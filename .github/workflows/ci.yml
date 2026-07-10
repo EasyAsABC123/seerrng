@@ -381,6 +381,20 @@ jobs:
           persist-credentials: true
           clean: false
 
+      - name: Verify seerr.home SSH host key
+        env:
+          EXPECTED_FINGERPRINT: SHA256:aUNU5vxcEoLLYhf6FzV9Mu+wNuCUf5azhQYnICmRLfA
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          ssh-keygen -R kspls0 >/dev/null 2>&1 || true
+          host_key="$(ssh-keyscan -T 10 -t ed25519 kspls0 2>/dev/null)"
+          test -n "$host_key"
+          actual_fingerprint="$(printf '%s\n' "$host_key" | ssh-keygen -E sha256 -lf - | awk '{print $2}')"
+          test "$actual_fingerprint" = "$EXPECTED_FINGERPRINT"
+          printf '%s\n' "$host_key" >> "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
       - name: Log in to GitHub Container Registry on seerr.home
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
