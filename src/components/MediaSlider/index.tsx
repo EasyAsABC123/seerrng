@@ -6,10 +6,9 @@ import TitleCard from '@app/components/TitleCard';
 import useCardTextVisibility from '@app/hooks/useCardTextVisibility';
 import useSettings from '@app/hooks/useSettings';
 import { useUser } from '@app/hooks/useUser';
-import useWarmImageCache from '@app/hooks/useWarmImageCache';
 import {
-  getPersistentResponse,
   setPersistentResponse,
+  usePersistentResponse,
 } from '@app/utils/swrCache';
 import {
   ArrowPathIcon,
@@ -54,6 +53,7 @@ interface MediaSliderProps {
   extraParams?: string;
   onNewTitles?: (titleCount: number) => void;
   randomizeOrder?: boolean;
+  prioritizeFirstRow?: boolean;
 }
 
 type SliderTitle =
@@ -76,10 +76,11 @@ const MediaSlider = ({
   hideWhenEmpty = false,
   onNewTitles,
   randomizeOrder = false,
+  prioritizeFirstRow = false,
 }: MediaSliderProps) => {
   const settings = useSettings();
   const { visibility } = useCardTextVisibility();
-  const { hasPermission } = useUser();
+  const { hasPermission, user } = useUser();
   const { ref, inView } = useInView({
     rootMargin: '450px 0px',
     triggerOnce: true,
@@ -89,12 +90,11 @@ const MediaSlider = ({
     Math.random().toString(36).slice(2)
   );
   const fallbackCacheKey = useMemo(
-    () => `discover-slider:${sliderKey}:${url}:${extraParams ?? ''}`,
-    [extraParams, sliderKey, url]
+    () =>
+      `discover-slider:${user?.id ?? 'anonymous'}:${sliderKey}:${url}:${extraParams ?? ''}`,
+    [extraParams, sliderKey, url, user?.id]
   );
-  const [fallbackData] = useState(() =>
-    getPersistentResponse<MixedResult[]>(fallbackCacheKey)
-  );
+  const fallbackData = usePersistentResponse<MixedResult[]>(fallbackCacheKey);
   const getKey = useCallback(
     (pageIndex: number, previousPageData: MixedResult | null) => {
       if (!shouldLoad) {
@@ -116,13 +116,25 @@ const MediaSlider = ({
     [extraParams, randomizeOrder, shouldLoad, shuffleSeed, url]
   );
 
-  const { data, error, setSize, size } = useSWRInfinite<MixedResult>(getKey, {
+  const {
+    data,
+    error,
+    setSize,
+    size,
+    mutate: revalidate,
+  } = useSWRInfinite<MixedResult>(getKey, {
     initialSize: 1,
-    revalidateFirstPage: false,
+    revalidateFirstPage: true,
     dedupingInterval: 30000,
     revalidateOnFocus: false,
     fallbackData,
   });
+
+  useEffect(() => {
+    if (fallbackData) {
+      void revalidate();
+    }
+  }, [fallbackData, revalidate]);
 
   const refreshRandomizedOrder = useCallback(() => {
     if (!randomizeOrder) {
@@ -200,7 +212,6 @@ const MediaSlider = ({
     () => renderableTitles.slice(0, 20),
     [renderableTitles]
   );
-  useWarmImageCache(visibleTitles, { enabled: shouldLoad, maxUrls: 20 });
 
   const shouldLoadMore =
     renderableTitles.length < 24 &&
@@ -240,7 +251,7 @@ const MediaSlider = ({
   );
 
   const finalTitles = useMemo(() => {
-    const cardTitles = visibleTitles.map((title) => {
+    const cardTitles = visibleTitles.map((title, index) => {
       switch (title.mediaType) {
         case 'movie':
           return (
@@ -257,6 +268,7 @@ const MediaSlider = ({
               mediaType={title.mediaType}
               inProgress={(title.mediaInfo?.downloadStatus ?? []).length > 0}
               showText={visibility.movie === 'always'}
+              priority={prioritizeFirstRow && index < 3}
             />
           );
         case 'tv':
@@ -274,6 +286,7 @@ const MediaSlider = ({
               mediaType={title.mediaType}
               inProgress={(title.mediaInfo?.downloadStatus ?? []).length > 0}
               showText={visibility.tv === 'always'}
+              priority={prioritizeFirstRow && index < 3}
             />
           );
         case 'person':
@@ -303,6 +316,7 @@ const MediaSlider = ({
               inProgress={(title.mediaInfo?.downloadStatus ?? []).length > 0}
               needsCoverArt={title.needsCoverArt}
               showText={visibility.album === 'always'}
+              priority={prioritizeFirstRow && index < 3}
             />
           );
         case 'book':
@@ -318,6 +332,7 @@ const MediaSlider = ({
               year={title.firstPublishYear?.toString()}
               mediaType={title.mediaType}
               showText={visibility.book === 'always'}
+              priority={prioritizeFirstRow && index < 3}
             />
           );
         case 'artist':
@@ -328,6 +343,7 @@ const MediaSlider = ({
               image={title.artistThumb ?? undefined}
               title={title.name}
               mediaType={title.mediaType}
+              priority={prioritizeFirstRow && index < 3}
             />
           );
       }
@@ -342,6 +358,7 @@ const MediaSlider = ({
     return cardTitles;
   }, [
     linkUrl,
+    prioritizeFirstRow,
     renderableTitles.length,
     showMorePosters,
     visibleTitles,

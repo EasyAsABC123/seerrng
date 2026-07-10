@@ -381,7 +381,7 @@ router.get('/genres/tv', isAuthenticated(), async (req, res, next) => {
   }
 });
 
-router.get('/backdrops', isAuthenticated(), async (req, res, next) => {
+router.get('/backdrops', async (req, res, next) => {
   const tmdb = createTmdbWithRegionLanguage();
 
   try {

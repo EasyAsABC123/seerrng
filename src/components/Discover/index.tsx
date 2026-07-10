@@ -89,7 +89,9 @@ const Discover = ({ initialSliders }: DiscoverProps) => {
     revalidateOnFocus: false,
     dedupingInterval: 60000,
   });
-  const [sliders, setSliders] = useState<Partial<DiscoverSlider>[]>([]);
+  const [sliders, setSliders] = useState<Partial<DiscoverSlider>[]>(
+    initialSliders ?? []
+  );
   const [isEditing, setIsEditing] = useState(false);
 
   // We need to sync the state here so that we can modify the changes locally without commiting
@@ -169,12 +171,10 @@ const Discover = ({ initialSliders }: DiscoverProps) => {
               </div>
               <div className="p-4">
                 <CreateSlider
-                  onCreate={async () => {
-                    const newSliders = await mutate();
-
-                    if (newSliders) {
-                      setSliders(newSliders);
-                    }
+                  onCreate={async (createdSlider) => {
+                    const newSliders = [createdSlider, ...sliders];
+                    await mutate(newSliders as DiscoverSlider[], false);
+                    setSliders(newSliders);
                   }}
                 />
               </div>
@@ -193,6 +193,7 @@ const Discover = ({ initialSliders }: DiscoverProps) => {
             <button
               onClick={() => setIsEditing(true)}
               data-testid="discover-start-editing"
+              aria-label={intl.formatMessage(messages.customizediscover)}
               className="h-12 w-12 rounded-full border-2 border-gray-600 bg-gray-700/90 p-3 text-gray-400 shadow transition-all hover:bg-gray-700"
             >
               <PencilIcon className="h-full w-full" />
@@ -261,6 +262,7 @@ const Discover = ({ initialSliders }: DiscoverProps) => {
                 title={intl.formatMessage(sliderTitles.trending)}
                 url="/api/v1/discover/trending"
                 linkUrl="/discover/trending"
+                prioritizeFirstRow
               />
             );
             break;
@@ -538,11 +540,11 @@ const Discover = ({ initialSliders }: DiscoverProps) => {
               key={`discover-slider-${slider.id}-edit`}
               slider={slider}
               onDelete={async () => {
-                const newSliders = await mutate();
-
-                if (newSliders) {
-                  setSliders(newSliders);
-                }
+                const newSliders = sliders.filter(
+                  (currentSlider) => currentSlider.id !== slider.id
+                );
+                await mutate(newSliders as DiscoverSlider[], false);
+                setSliders(newSliders);
               }}
               onEnable={() => {
                 const tempSliders = sliders.slice();

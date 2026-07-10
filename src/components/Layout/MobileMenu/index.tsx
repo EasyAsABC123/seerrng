@@ -199,12 +199,6 @@ const MobileMenu = ({
     openIssuesCount,
   ]);
 
-  useEffect(() => {
-    filteredLinks.forEach((link) => {
-      router.prefetch(link.href);
-    });
-  }, [filteredLinks, router]);
-
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50">
       <Transition
@@ -225,6 +219,7 @@ const MobileMenu = ({
             <Link
               key={`mobile-menu-link-${link.href}`}
               href={link.href}
+              prefetch={false}
               className={`flex items-center ${
                 isActive ? 'text-indigo-500' : ''
               }`}
@@ -274,6 +269,10 @@ const MobileMenu = ({
                 <Link
                   key={`mobile-menu-link-${link.href}`}
                   href={link.href}
+                  prefetch={false}
+                  aria-label={
+                    typeof link.content === 'string' ? link.content : undefined
+                  }
                   className={`relative flex flex-col items-center space-y-1 ${
                     isActive ? 'text-indigo-500' : ''
                   }`}
@@ -312,6 +311,7 @@ const MobileMenu = ({
                 isOpen ? 'text-indigo-500' : ''
               }`}
               onClick={() => toggle()}
+              aria-label={isOpen ? 'Close menu' : 'More navigation'}
             >
               {isOpen ? (
                 <XMarkIcon className="h-6 w-6" />

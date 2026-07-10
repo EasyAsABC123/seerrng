@@ -6,7 +6,7 @@ import defineMessages from '@app/utils/defineMessages';
 import { Transition } from '@headlessui/react';
 import type { StatusResponse } from '@server/interfaces/api/settingsInterfaces';
 import { useRouter } from 'next/router';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
 
@@ -61,11 +61,13 @@ const StatusChecker = () => {
     }
   );
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const previousRestartRequired = useRef(data?.restartRequired);
 
   useEffect(() => {
-    if (!data?.restartRequired) {
+    if (previousRestartRequired.current && !data?.restartRequired) {
       setAlertDismissed(false);
     }
+    previousRestartRequired.current = data?.restartRequired;
   }, [data?.restartRequired]);
 
   if (!data && !error) {

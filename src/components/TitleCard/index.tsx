@@ -59,6 +59,8 @@ interface TitleCardProps {
   needsCoverArt?: boolean;
   mutateParent?: () => void;
   showText?: boolean;
+  hideAssociationWhenEmpty?: boolean;
+  priority?: boolean;
 }
 
 const messages = defineMessages('components.TitleCard', {
@@ -86,6 +88,8 @@ const TitleCard = ({
   canExpand = false,
   mutateParent,
   showText = false,
+  hideAssociationWhenEmpty = false,
+  priority = false,
 }: TitleCardProps) => {
   const isTouch = useIsTouch();
   const intl = useIntl();
@@ -386,11 +390,12 @@ const TitleCard = ({
             : mediaType === 'book'
               ? `/book/${encodeApiPathSegment(canonicalId)}`
               : `/artist/${encodeApiPathSegment(canonicalId)}`;
-  const displayImage = image?.startsWith('http')
-    ? image
-    : image
-      ? `https://image.tmdb.org/t/p/w300_and_h450_face${image}`
-      : undefined;
+  const displayImage =
+    image?.startsWith('http') || image?.startsWith('/images/')
+      ? image
+      : image
+        ? `https://image.tmdb.org/t/p/w300_and_h450_face${image}`
+        : undefined;
   const imageCacheType =
     displayImage?.startsWith('http') && isBook
       ? 'book'
@@ -529,6 +534,7 @@ const TitleCard = ({
             src={displayImage ?? '/images/seerr_poster_not_found_logo_top.png'}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             fill
+            priority={priority}
           />
           <div className="absolute left-0 right-0 flex items-center justify-between p-2">
             <div className="flex items-center gap-1.5">
@@ -563,6 +569,7 @@ const TitleCard = ({
                     mediaType={mediaType}
                     id={id}
                     variant="card"
+                    hideWhenEmpty={hideAssociationWhenEmpty}
                   />
                 </div>
               )}

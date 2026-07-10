@@ -5,8 +5,26 @@ import {
   getRateLimitKey,
   isSafeHttpUrl,
   isValidHttpUrl,
+  redactSecrets,
   safeStringEqual,
 } from './security';
+
+describe('redactSecrets', () => {
+  it('redacts credentials without corrupting proxy bypass settings', () => {
+    assert.deepEqual(
+      redactSecrets({
+        password: 'secret',
+        bypassFilter: 'localhost',
+        bypassLocalAddresses: true,
+      }),
+      {
+        password: '[REDACTED]',
+        bypassFilter: 'localhost',
+        bypassLocalAddresses: true,
+      }
+    );
+  });
+});
 
 describe('isValidHttpUrl', () => {
   it('accepts http and https URLs', () => {

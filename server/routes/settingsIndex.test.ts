@@ -247,6 +247,18 @@ describe('Settings route input validation', () => {
     assert.strictEqual(saveMock.mock.callCount(), 0);
   });
 
+  it('accepts the disabled DNS cache maximum TTL sentinel', async () => {
+    const settings = getSettings();
+    mock.method(settings, 'save', async () => undefined);
+
+    const res = await request(app)
+      .post('/settings/network')
+      .send({ dnsCache: { enabled: false, forceMinTtl: 0, forceMaxTtl: -1 } });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.dnsCache.forceMaxTtl, -1);
+  });
+
   it('rejects malformed media server settings bodies before external work', async () => {
     const settings = getSettings();
     const saveMock = mock.method(settings, 'save', async () => undefined);

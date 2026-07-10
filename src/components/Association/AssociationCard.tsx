@@ -14,6 +14,7 @@ const AssociationCard = ({ node }: { node: AssociationNode }) => {
           title={node.title}
           year={node.releaseDate}
           mediaType="movie"
+          hideAssociationWhenEmpty
         />
       );
     case 'tv':
@@ -26,6 +27,7 @@ const AssociationCard = ({ node }: { node: AssociationNode }) => {
           title={node.name}
           year={node.firstAirDate}
           mediaType="tv"
+          hideAssociationWhenEmpty
         />
       );
     case 'album':
@@ -39,6 +41,7 @@ const AssociationCard = ({ node }: { node: AssociationNode }) => {
           year={node['first-release-date']?.split('-')[0]}
           mediaType="album"
           needsCoverArt={node.needsCoverArt}
+          hideAssociationWhenEmpty
         />
       );
     case 'artist':
@@ -48,6 +51,7 @@ const AssociationCard = ({ node }: { node: AssociationNode }) => {
           image={node.artistThumb ?? undefined}
           title={node.name}
           mediaType="artist"
+          hideAssociationWhenEmpty
         />
       );
     case 'book':
@@ -59,6 +63,7 @@ const AssociationCard = ({ node }: { node: AssociationNode }) => {
           title={node.title}
           year={node.firstPublishYear?.toString()}
           mediaType="book"
+          hideAssociationWhenEmpty
         />
       );
     case 'person':

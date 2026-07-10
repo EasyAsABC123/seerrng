@@ -62,6 +62,11 @@ const messages = defineMessages('components.Settings.SettingsNetwork', {
   validationApiRequestTimeout: 'You must provide a valid timeout value',
 });
 
+const toOptionalNumber = (value: unknown): number | undefined =>
+  value === '' || value === null || value === undefined
+    ? undefined
+    : Number(value);
+
 const SettingsNetwork = () => {
   const { addToast } = useToasts();
   const intl = useIntl();
@@ -159,13 +164,13 @@ const SettingsNetwork = () => {
                 trustProxy: values.trustProxy,
                 dnsCache: {
                   enabled: values.dnsCacheEnabled,
-                  forceMinTtl: Number(values.dnsCacheForceMinTtl),
-                  forceMaxTtl: Number(values.dnsCacheForceMaxTtl),
+                  forceMinTtl: toOptionalNumber(values.dnsCacheForceMinTtl),
+                  forceMaxTtl: toOptionalNumber(values.dnsCacheForceMaxTtl),
                 },
                 proxy: {
                   enabled: values.proxyEnabled,
                   hostname: values.proxyHostname,
-                  port: Number(values.proxyPort),
+                  port: toOptionalNumber(values.proxyPort),
                   useSsl: values.proxySsl,
                   user: values.proxyUser,
                   password: values.proxyPassword,

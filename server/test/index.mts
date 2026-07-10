@@ -70,6 +70,9 @@ process.env.TS_NODE_FILES = 'true';
 
 const stream = run({
   files,
+  // Test files share the singleton application DataSource. Running files in
+  // parallel races schema resets and causes nested SQLite transactions.
+  concurrency: 1,
   execArgv: [
     '--experimental-test-module-mocks',
     '-r',

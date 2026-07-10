@@ -32,7 +32,7 @@ const messages = defineMessages('components.Login', {
   orsigninwith: 'Or sign in with',
 });
 
-const Login = () => {
+const Login = ({ initialBackdrops }: { initialBackdrops?: string[] }) => {
   const intl = useIntl();
   const router = useRouter();
   const settings = useSettings();
@@ -77,6 +77,8 @@ const Login = () => {
   }, [user, router]);
 
   const { data: backdrops } = useSWR<string[]>('/api/v1/backdrops', {
+    fallbackData: initialBackdrops,
+    revalidateOnMount: !initialBackdrops,
     refreshInterval: 0,
     refreshWhenHidden: false,
     revalidateOnFocus: false,
@@ -169,6 +171,8 @@ const Login = () => {
             src={versionedAsset('/logo_stacked.svg')}
             alt="Logo"
             fill
+            priority
+            fetchPriority="high"
             className="object-contain"
           />
         </div>

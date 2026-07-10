@@ -66,6 +66,12 @@ async function login() {
 }
 
 describe('Top-level API route validation', () => {
+  it('allows unauthenticated login backdrop requests', async () => {
+    const res = await request(app).get('/api/v1/backdrops');
+
+    assert.notStrictEqual(res.status, 403);
+  });
+
   it('rejects malformed keyword detail IDs before provider lookup', async () => {
     const agent = await login();
     const res = await agent.get('/api/v1/keyword/not-a-number');

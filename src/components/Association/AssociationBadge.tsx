@@ -58,7 +58,7 @@ const AssociationBadge = ({
     return null;
   }
 
-  if (hideWhenEmpty && !isChecking && !hasStrongEdges) {
+  if (hideWhenEmpty && (isChecking || !hasStrongEdges)) {
     return null;
   }
 

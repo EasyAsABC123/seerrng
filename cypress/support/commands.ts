@@ -13,9 +13,8 @@ Cypress.Commands.add('login', (email, password) => {
       cy.intercept('/api/v1/auth/local').as('localLogin');
       cy.get('[data-testid=local-signin-button]').click();
 
-      cy.wait('@localLogin');
-
-      cy.url().should('contain', '/');
+      cy.wait('@localLogin').its('response.statusCode').should('eq', 200);
+      cy.location('pathname').should('eq', '/');
     },
     {
       validate() {

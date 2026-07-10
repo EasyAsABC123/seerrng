@@ -33,10 +33,6 @@ const RecentRequestsSlider = () => {
       }
     );
 
-  if (requests && requests.results.length === 0 && !requestError) {
-    return null;
-  }
-
   const hasServiceErrors =
     requests?.serviceErrors &&
     (requests.serviceErrors.radarr.length > 0 ||
@@ -74,6 +70,7 @@ const RecentRequestsSlider = () => {
       <Slider
         sliderKey="requests"
         isLoading={inView && !requests}
+        isEmpty={!!requests && requests.results.length === 0 && !requestError}
         items={(requests?.results ?? []).map((request) => (
           <RequestCard
             key={`request-slider-item-${request.id}`}

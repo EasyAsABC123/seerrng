@@ -24,25 +24,39 @@ describe('Discover Customization', () => {
     );
   });
 
-  it('can drag to re-order elements and save to persist the changes', () => {
-    let dataTransfer = new DataTransfer();
+  it('can re-order elements and save to persist the changes', () => {
+    let firstTitle = '';
+    let secondTitle = '';
     cy.visit('/');
 
     cy.get('[data-testid=discover-start-editing]').click();
 
     cy.get('[data-testid=discover-slider-edit-mode]')
-      .first()
-      .trigger('dragstart', { dataTransfer });
+      .eq(0)
+      .find('[data-testid=discover-slider-title]')
+      .invoke('text')
+      .then((text) => {
+        firstTitle = text.trim();
+      });
     cy.get('[data-testid=discover-slider-edit-mode]')
       .eq(1)
-      .trigger('drop', { dataTransfer });
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .eq(1)
-      .trigger('dragend', { dataTransfer });
+      .find('[data-testid=discover-slider-title]')
+      .invoke('text')
+      .then((text) => {
+        secondTitle = text.trim();
+      });
 
     cy.get('[data-testid=discover-slider-edit-mode]')
-      .eq(1)
-      .should('contain', 'Recently Added');
+      .first()
+      .find('[data-testid=discover-slider-move-down]')
+      .click();
+
+    cy.then(() => {
+      cy.get('[data-testid=discover-slider-edit-mode]')
+        .eq(1)
+        .find('[data-testid=discover-slider-title]')
+        .should('have.text', firstTitle);
+    });
 
     cy.get('[data-testid=discover-customize-submit').click();
     cy.wait('@getDiscoverSliders');
@@ -51,25 +65,24 @@ describe('Discover Customization', () => {
 
     cy.get('[data-testid=discover-start-editing]').click();
 
-    dataTransfer = new DataTransfer();
-
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .eq(1)
-      .should('contain', 'Recently Added');
+    cy.then(() => {
+      cy.get('[data-testid=discover-slider-edit-mode]')
+        .eq(1)
+        .find('[data-testid=discover-slider-title]')
+        .should('have.text', firstTitle);
+    });
 
     cy.get('[data-testid=discover-slider-edit-mode]')
       .first()
-      .trigger('dragstart', { dataTransfer });
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .eq(1)
-      .trigger('drop', { dataTransfer });
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .eq(1)
-      .trigger('dragend', { dataTransfer });
+      .find('[data-testid=discover-slider-move-down]')
+      .click();
 
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .eq(1)
-      .should('contain', 'Recent Requests');
+    cy.then(() => {
+      cy.get('[data-testid=discover-slider-edit-mode]')
+        .eq(1)
+        .find('[data-testid=discover-slider-title]')
+        .should('have.text', secondTitle);
+    });
 
     cy.get('[data-testid=discover-customize-submit').click();
     cy.wait('@getDiscoverSliders');
@@ -77,26 +90,30 @@ describe('Discover Customization', () => {
 
   it('can create a new discover option and remove it', () => {
     cy.visit('/');
-    cy.intercept('/api/v1/settings/discover/*').as('discoverSlider');
-    cy.intercept('/api/v1/search/keyword*').as('searchKeyword');
+    cy.intercept('POST', '/api/v1/settings/discover/add').as(
+      'addDiscoverSlider'
+    );
+    cy.intercept('DELETE', '/api/v1/settings/discover/*').as(
+      'deleteDiscoverSlider'
+    );
 
     cy.get('[data-testid=discover-start-editing]').click();
 
-    const sliderTitle = 'Custom Keyword Slider';
+    const sliderTitle = `Custom Keyword Slider ${Date.now()}`;
 
     cy.get('#sliderType').select('TMDB Movie Keyword');
 
     cy.get('#title').type(sliderTitle);
     // First confirm that an invalid keyword doesn't allow us to submit anything
-    cy.get('#data').type('invalidkeyword{enter}', { delay: 100 });
-    cy.wait('@searchKeyword');
+    cy.get('#data').type('invalidkeyword', { delay: 100 });
 
     cy.get('[data-testid=create-discover-option-form]')
       .find('button')
       .should('be.disabled');
 
     cy.get('#data').clear();
-    cy.get('#data').type('christmas{enter}', { delay: 100 });
+    cy.get('#data').type('christmas', { delay: 100 });
+    cy.get('.react-select__option').first().click();
 
     // Confirming we have some results
     cy.contains('.slider-header', sliderTitle)
@@ -105,22 +122,20 @@ describe('Discover Customization', () => {
 
     cy.get('[data-testid=create-discover-option-form]').submit();
 
-    cy.wait('@discoverSlider');
-    cy.wait('@getDiscoverSliders');
-    cy.wait(1000);
+    cy.wait('@addDiscoverSlider').its('response.statusCode').should('eq', 200);
 
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .first()
-      .should('contain', sliderTitle);
+    cy.contains('[data-testid=discover-slider-edit-mode]', sliderTitle).should(
+      'be.visible'
+    );
 
     // Make sure its still there even if we reload
     cy.reload();
 
     cy.get('[data-testid=discover-start-editing]').click();
 
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .first()
-      .should('contain', sliderTitle);
+    cy.contains('[data-testid=discover-slider-edit-mode]', sliderTitle).should(
+      'be.visible'
+    );
 
     // Verify it's not rendering on our discover page (its still disabled!)
     cy.visit('/');
@@ -130,8 +145,7 @@ describe('Discover Customization', () => {
     cy.get('[data-testid=discover-start-editing]').click();
 
     // Enable it, and check again
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .first()
+    cy.contains('[data-testid=discover-slider-edit-mode]', sliderTitle)
       .find('[role="checkbox"]')
       .click();
 
@@ -147,17 +161,16 @@ describe('Discover Customization', () => {
     cy.get('[data-testid=discover-start-editing]').click();
 
     // let's delete it and confirm its deleted.
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .first()
+    cy.contains('[data-testid=discover-slider-edit-mode]', sliderTitle)
       .find('[data-testid=discover-slider-remove-button]')
       .click();
 
-    cy.wait('@discoverSlider');
-    cy.wait('@getDiscoverSliders');
-    cy.wait(1000);
+    cy.wait('@deleteDiscoverSlider')
+      .its('response.statusCode')
+      .should('eq', 204);
 
-    cy.get('[data-testid=discover-slider-edit-mode]')
-      .first()
-      .should('not.contain', sliderTitle);
+    cy.contains('[data-testid=discover-slider-edit-mode]', sliderTitle).should(
+      'not.exist'
+    );
   });
 });

@@ -59,7 +59,7 @@ const albumTitles = [
   ['Lemonade', 'Beyonce'],
 ];
 
-const baseUrl = 'http://localhost:5055';
+const baseUrl = Cypress.config('baseUrl') ?? 'http://localhost:5055';
 
 const books = bookTitles.map(([title, author], index) => ({
   id: `OLREADME${index + 1}W`,
@@ -94,6 +94,9 @@ const movies = books.slice(0, 18).map((book, index) => ({
 }));
 
 const installMocks = () => {
+  cy.intercept('GET', /\/imageproxy\//, (req) => {
+    req.redirect('/logo_full.png');
+  });
   cy.intercept('GET', '/api/v1/settings/discover', [
     { id: 1, type: 4, enabled: true, isBuiltIn: true, order: 0 },
     { id: 2, type: 22, enabled: true, isBuiltIn: true, order: 1 },
@@ -185,10 +188,14 @@ const prepareScreenshot = () => {
 };
 
 describe('README screenshots', () => {
+  before(() => {
+    Cypress.config('responseTimeout', 60000);
+  });
+
   beforeEach(() => {
     cy.viewport(1920, 1080);
-    cy.loginAsAdmin();
     installMocks();
+    cy.loginAsAdmin();
   });
 
   it('captures the discover panel', () => {
@@ -203,7 +210,11 @@ describe('README screenshots', () => {
     cy.contains('Recommended Music').scrollIntoView();
     prepareScreenshot();
     cy.wait(1000);
-    cy.screenshot('readme-discover', { capture: 'viewport', scale: false });
+    cy.screenshot('readme-discover', {
+      capture: 'viewport',
+      scale: false,
+      overwrite: true,
+    });
   });
 
   it('captures the books pane', () => {
@@ -212,7 +223,11 @@ describe('README screenshots', () => {
     cy.get('[data-testid=title-card]').should('have.length.greaterThan', 20);
     waitForImages();
     prepareScreenshot();
-    cy.screenshot('readme-books', { capture: 'viewport', scale: false });
+    cy.screenshot('readme-books', {
+      capture: 'viewport',
+      scale: false,
+      overwrite: true,
+    });
   });
 
   it('captures the music pane', () => {
@@ -221,6 +236,10 @@ describe('README screenshots', () => {
     cy.get('[data-testid=title-card]').should('have.length.greaterThan', 20);
     waitForImages();
     prepareScreenshot();
-    cy.screenshot('readme-music', { capture: 'viewport', scale: false });
+    cy.screenshot('readme-music', {
+      capture: 'viewport',
+      scale: false,
+      overwrite: true,
+    });
   });
 });

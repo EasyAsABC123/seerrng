@@ -13,20 +13,32 @@ describe('General Settings', () => {
   });
 
   it('modifies setting that requires restart', () => {
+    cy.intercept('POST', '/api/v1/settings/network').as('saveNetwork');
+    cy.intercept('GET', '/api/v1/status').as('getStatus');
     cy.visit('/settings/network');
+    cy.wait('@getStatus');
 
     cy.get('#trustProxy').click();
     cy.get('[data-testid=settings-network-form]').submit();
+    cy.wait('@saveNetwork').then(({ request, response }) => {
+      expect(
+        response?.statusCode,
+        JSON.stringify({ request: request.body, response: response?.body })
+      ).to.eq(200);
+    });
+    cy.wait('@getStatus');
     cy.get('[data-testid=modal-title]').should(
       'contain',
       'Server Restart Required'
     );
 
     cy.get('[data-testid=modal-ok-button]').click();
-    cy.get('[data-testid=modal-title]').should('not.exist');
+    cy.get('[data-testid=modal-root]').should('not.exist');
 
     cy.get('[type=checkbox]#trustProxy').click();
     cy.get('[data-testid=settings-network-form]').submit();
+    cy.wait('@saveNetwork');
+    cy.wait('@getStatus');
     cy.get('[data-testid=modal-title]').should('not.exist');
   });
 });

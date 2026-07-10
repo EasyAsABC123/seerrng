@@ -47,10 +47,46 @@ export interface DownloadingItem {
 }
 
 class DownloadTracker {
+  private static readonly monitoredRefreshCooldownMs = 5 * 60 * 1000;
+
   private radarrServers: Record<number, DownloadingItem[]> = {};
   private sonarrServers: Record<number, DownloadingItem[]> = {};
   private lidarrServers: Record<number, DownloadingItem[]> = {};
   private readarrServers: Record<number, DownloadingItem[]> = {};
+  private monitoredRefreshes = new Set<string>();
+  private lastMonitoredRefresh = new Map<string, number>();
+
+  private refreshMonitoredDownloads(
+    key: string,
+    refresh: () => Promise<void>,
+    serverName: string
+  ): void {
+    const lastRefresh = this.lastMonitoredRefresh.get(key) ?? 0;
+
+    if (Date.now() - lastRefresh < DownloadTracker.monitoredRefreshCooldownMs) {
+      return;
+    }
+
+    if (this.monitoredRefreshes.has(key)) {
+      return;
+    }
+
+    this.monitoredRefreshes.add(key);
+    this.lastMonitoredRefresh.set(key, Date.now());
+    refresh()
+      .catch((e) => {
+        logger.debug(
+          `Unable to refresh monitored downloads for server: ${serverName}`,
+          {
+            errorMessage: e instanceof Error ? e.message : String(e),
+            label: 'Download Tracker',
+          }
+        );
+      })
+      .finally(() => {
+        this.monitoredRefreshes.delete(key);
+      });
+  }
 
   public getMovieProgress(
     serverId: number,
@@ -142,7 +178,11 @@ class DownloadTracker {
           });
 
           try {
-            await radarr.refreshMonitoredDownloads();
+            this.refreshMonitoredDownloads(
+              `radarr:${server.id}`,
+              () => radarr.refreshMonitoredDownloads(),
+              server.name
+            );
             const queueItems = await radarr.getQueue();
 
             this.radarrServers[server.id] = queueItems.map((item) => ({
@@ -220,7 +260,11 @@ class DownloadTracker {
           });
 
           try {
-            await sonarr.refreshMonitoredDownloads();
+            this.refreshMonitoredDownloads(
+              `sonarr:${server.id}`,
+              () => sonarr.refreshMonitoredDownloads(),
+              server.name
+            );
             const queueItems = await sonarr.getQueue();
 
             this.sonarrServers[server.id] = queueItems.map((item) => ({
@@ -297,7 +341,11 @@ class DownloadTracker {
           });
 
           try {
-            await lidarr.refreshMonitoredDownloads();
+            this.refreshMonitoredDownloads(
+              `lidarr:${server.id}`,
+              () => lidarr.refreshMonitoredDownloads(),
+              server.name
+            );
             const queueItems = await lidarr.getQueue();
 
             this.lidarrServers[server.id] = queueItems
@@ -371,7 +419,11 @@ class DownloadTracker {
           });
 
           try {
-            await readarr.refreshMonitoredDownloads();
+            this.refreshMonitoredDownloads(
+              `readarr:${server.id}`,
+              () => readarr.refreshMonitoredDownloads(),
+              server.name
+            );
             const queueItems = await readarr.getQueue();
 
             this.readarrServers[server.id] = queueItems

@@ -31,6 +31,7 @@ const PlexLoginButton = ({
       onClick={login}
       disabled={loading || isProcessing}
       data-testid="plex-login-button"
+      aria-label="Login with Plex"
     >
       {loading && (
         <div className="absolute right-0 mr-4 h-4 w-4">

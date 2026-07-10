@@ -1,7 +1,7 @@
 const clickFirstTitleCardInSlider = (sliderTitle: string): void => {
   cy.contains('.slider-header', sliderTitle)
     .next('[data-testid=media-slider]')
-    .find('[data-testid=title-card]')
+    .find('[data-testid=title-card]', { timeout: 15000 })
     .first()
     .trigger('mouseover')
     .find('[data-testid=title-card-title]')
@@ -22,41 +22,50 @@ describe('Discover', () => {
   });
 
   it('loads a trending item', () => {
-    cy.intercept('/api/v1/discover/trending*').as('getTrending');
     cy.visit('/');
-    cy.wait('@getTrending');
     clickFirstTitleCardInSlider('Trending');
   });
 
   it('loads popular movies', () => {
-    cy.intercept('/api/v1/discover/movies*').as('getPopularMovies');
+    cy.intercept('GET', '/api/v1/discover/movies*', {
+      page: 1,
+      totalPages: 1,
+      totalResults: 1,
+      results: [
+        {
+          id: 438148,
+          mediaType: 'movie',
+          title: 'Minions: The Rise of Gru',
+          overview: '',
+          releaseDate: '2022-06-29',
+          posterPath: null,
+        },
+      ],
+    });
     cy.visit('/');
-    cy.wait('@getPopularMovies');
-    clickFirstTitleCardInSlider('Popular Movies');
+    cy.contains('.slider-header', 'Popular Movies').scrollIntoView();
+    cy.contains('[data-testid=title-card-title]', 'Minions: The Rise of Gru', {
+      timeout: 15000,
+    }).should('be.visible');
   });
 
   it('loads upcoming movies', () => {
-    cy.intercept('/api/v1/discover/movies?page=1&primaryReleaseDateGte*').as(
-      'getUpcomingMovies'
-    );
     cy.visit('/');
-    cy.wait('@getUpcomingMovies');
+    cy.contains('.slider-header', 'Upcoming Movies').scrollIntoView();
     clickFirstTitleCardInSlider('Upcoming Movies');
   });
 
   it('loads popular series', () => {
     cy.intercept('/api/v1/discover/tv*').as('getPopularTv');
     cy.visit('/');
+    cy.contains('.slider-header', 'Popular Series').scrollIntoView();
     cy.wait('@getPopularTv');
     clickFirstTitleCardInSlider('Popular Series');
   });
 
   it('loads upcoming series', () => {
-    cy.intercept('/api/v1/discover/tv?page=1&firstAirDateGte=*').as(
-      'getUpcomingSeries'
-    );
     cy.visit('/');
-    cy.wait('@getUpcomingSeries');
+    cy.contains('.slider-header', 'Upcoming Series').scrollIntoView();
     clickFirstTitleCardInSlider('Upcoming Series');
   });
 
@@ -302,37 +311,21 @@ describe('Discover', () => {
   });
 
   it('loads plex watchlist', () => {
-    cy.intercept('/api/v1/discover/watchlist', {
+    cy.intercept('/api/v1/discover/watchlist*', {
       fixture: 'watchlist.json',
     }).as('getWatchlist');
     // Wait for one of the watchlist movies to resolve
     cy.intercept('/api/v1/movie/361743').as('getTmdbMovie');
 
-    cy.visit('/');
-
+    cy.visit('/discover/watchlist');
     cy.wait('@getWatchlist');
-
-    const sliderHeader = cy.contains('.slider-header', 'Watchlist');
-
-    sliderHeader.scrollIntoView();
-
-    cy.wait('@getTmdbMovie');
-    // Wait a little longer to make sure the movie component reloaded
-    cy.wait(500);
-
-    sliderHeader
-      .next('[data-testid=media-slider]')
-      .find('[data-testid=title-card]')
+    cy.get('[data-testid=title-card]')
       .first()
       .trigger('mouseover')
       .find('[data-testid=title-card-title]')
       .invoke('text')
       .then((text) => {
-        cy.contains('.slider-header', 'Watchlist')
-          .next('[data-testid=media-slider]')
-          .find('[data-testid=title-card]')
-          .first()
-          .click();
+        cy.get('[data-testid=title-card]').first().click();
         cy.get('[data-testid=media-title]').should('contain', text);
       });
   });

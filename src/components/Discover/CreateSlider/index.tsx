@@ -77,7 +77,7 @@ const messages = defineMessages('components.Discover.CreateSlider', {
 });
 
 type CreateSliderProps = {
-  onCreate: () => void;
+  onCreate: (createdSlider: DiscoverSlider) => void;
   slider?: Partial<DiscoverSlider>;
 };
 
@@ -417,18 +417,27 @@ const CreateSlider = ({ onCreate, slider }: CreateSliderProps) => {
       enableReinitialize
       onSubmit={async (values, { resetForm }) => {
         try {
+          let savedSlider: DiscoverSlider;
           if (slider) {
-            await axios.put(`/api/v1/settings/discover/${slider.id}`, {
-              type: Number(values.sliderType),
-              title: values.title,
-              data: values.data,
-            });
+            const { data } = await axios.put<DiscoverSlider>(
+              `/api/v1/settings/discover/${slider.id}`,
+              {
+                type: Number(values.sliderType),
+                title: values.title,
+                data: values.data,
+              }
+            );
+            savedSlider = data;
           } else {
-            await axios.post('/api/v1/settings/discover/add', {
-              type: Number(values.sliderType),
-              title: values.title,
-              data: values.data,
-            });
+            const { data } = await axios.post<DiscoverSlider>(
+              '/api/v1/settings/discover/add',
+              {
+                type: Number(values.sliderType),
+                title: values.title,
+                data: values.data,
+              }
+            );
+            savedSlider = data;
           }
 
           addToast(
@@ -440,7 +449,7 @@ const CreateSlider = ({ onCreate, slider }: CreateSliderProps) => {
               autoDismiss: true,
             }
           );
-          onCreate();
+          onCreate(savedSlider);
           resetForm();
         } catch {
           addToast(

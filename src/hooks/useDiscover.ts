@@ -1,8 +1,8 @@
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
 import {
-  getPersistentResponse,
   setPersistentResponse,
+  usePersistentResponse,
 } from '@app/utils/swrCache';
 import { MediaRequestStatus, MediaStatus } from '@server/constants/media';
 import { buildDiscoverQueryString } from '@server/utils/discoverQuery';
@@ -11,7 +11,6 @@ import { useIntl } from 'react-intl';
 import useSWRInfinite from 'swr/infinite';
 import useSettings from './useSettings';
 import { Permission, useUser } from './useUser';
-import useWarmImageCache from './useWarmImageCache';
 
 export { encodeURIExtraParams } from '@server/utils/discoverQuery';
 
@@ -144,20 +143,19 @@ const useDiscover = <
   } = {}
 ): DiscoverResult<T, S> => {
   const settings = useSettings();
-  const { hasPermission } = useUser();
+  const { hasPermission, user } = useUser();
   const { addToast } = useToasts();
   const intl = useIntl();
   const [shuffleSeed, setShuffleSeed] = useState(getShuffleSeed);
   const fallbackCacheKey = useMemo(
     () =>
-      `discover-view:${endpoint}:${buildDiscoverQueryString(
+      `discover-view:${user?.id ?? 'anonymous'}:${endpoint}:${buildDiscoverQueryString(
         (options ?? {}) as Record<string, unknown>
       )}:${randomizeOrder ? 'random' : 'stable'}`,
-    [endpoint, options, randomizeOrder]
+    [endpoint, options, randomizeOrder, user?.id]
   );
-  const [fallbackData] = useState(() =>
-    getPersistentResponse<(BaseSearchResult<T> & S)[]>(fallbackCacheKey)
-  );
+  const fallbackData =
+    usePersistentResponse<(BaseSearchResult<T> & S)[]>(fallbackCacheKey);
   const {
     data,
     error,
@@ -188,7 +186,7 @@ const useDiscover = <
     },
     {
       initialSize: 1,
-      revalidateFirstPage: false,
+      revalidateFirstPage: true,
       dedupingInterval: 30000,
       revalidateOnFocus: false,
       fallbackData,
@@ -196,6 +194,13 @@ const useDiscover = <
   );
 
   const isLoadingInitialData = enabled && !data && !error;
+
+  useEffect(() => {
+    if (fallbackData) {
+      void revalidate();
+    }
+  }, [fallbackData, revalidate]);
+
   const isLoadingMore =
     isLoadingInitialData ||
     (size > 0 &&
@@ -274,7 +279,6 @@ const useDiscover = <
     settings.currentSettings.hideAvailable,
     settings.currentSettings.hideBlocklisted,
   ]);
-  useWarmImageCache(titles);
 
   const rawResultCount = useMemo(
     () =>

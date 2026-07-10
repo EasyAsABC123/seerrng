@@ -149,6 +149,7 @@ const Slider = ({
           onClick={() => slide(Direction.LEFT)}
           disabled={scrollPos.isStart}
           type="button"
+          aria-label={intl.formatMessage(globalMessages.previous)}
         >
           <ChevronLeftIcon className="h-6 w-6" />
         </button>
@@ -159,12 +160,13 @@ const Slider = ({
           onClick={() => slide(Direction.RIGHT)}
           disabled={scrollPos.isEnd}
           type="button"
+          aria-label={intl.formatMessage(globalMessages.next)}
         >
           <ChevronRightIcon className="h-6 w-6" />
         </button>
       </div>
       <div
-        className="hide-scrollbar relative -my-2 -ml-4 -mr-4 overflow-y-auto overflow-x-scroll overscroll-x-contain whitespace-nowrap px-2 py-2"
+        className="hide-scrollbar relative -my-2 -ml-4 -mr-4 min-h-[17rem] overflow-y-auto overflow-x-scroll overscroll-x-contain whitespace-nowrap px-2 py-2"
         ref={containerRef}
         onScroll={onScroll}
       >
@@ -186,7 +188,7 @@ const Slider = ({
             </div>
           ))}
         {isEmpty && (
-          <div className="mb-16 mt-16 text-center font-medium text-gray-400">
+          <div className="mb-16 mt-16 text-center font-medium text-gray-300">
             {emptyMessage
               ? emptyMessage
               : intl.formatMessage(globalMessages.noresults)}

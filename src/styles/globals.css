@@ -447,7 +447,8 @@
 
   .slider-item {
     content-visibility: auto;
-    contain-intrinsic-size: auto 11rem auto 17rem;
+    contain-intrinsic-inline-size: auto 11rem;
+    contain-intrinsic-block-size: auto 17rem;
   }
 
   .provider-icons {

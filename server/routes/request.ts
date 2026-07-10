@@ -67,6 +67,7 @@ const requestMediaTypeFilters = [
   'book',
 ] as const;
 const requestStatusFilters = [
+  'all',
   'approved',
   'processing',
   'pending',
@@ -77,7 +78,7 @@ const requestStatusFilters = [
   'deleted',
 ] as const;
 const requestSortFields = ['modified'] as const;
-const requestSortDirections = ['asc'] as const;
+const requestSortDirections = ['asc', 'desc'] as const;
 
 const getErrorLogFields = (error: unknown) => ({
   errorMessage: error instanceof Error ? error.message : 'Unknown error',

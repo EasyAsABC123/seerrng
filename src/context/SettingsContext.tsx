@@ -1,5 +1,6 @@
 import { MediaServerType } from '@server/constants/server';
 import type { PublicSettingsResponse } from '@server/interfaces/api/settingsInterfaces';
+import axios from 'axios';
 import React from 'react';
 import useSWR from 'swr';
 
@@ -45,19 +46,25 @@ export const SettingsProvider = ({
   currentSettings?: PublicSettingsResponse;
   children?: React.ReactNode;
 }) => {
-  const { data, error } = useSWR<PublicSettingsResponse>(
-    '/api/v1/settings/public',
-    {
-      fallbackData: currentSettings,
-      dedupingInterval: 60000,
-      revalidateOnMount: true,
-      revalidateOnFocus: false,
-    }
-  );
+  const { data } = useSWR<PublicSettingsResponse>('/api/v1/settings/public', {
+    fetcher: () =>
+      axios
+        .get<PublicSettingsResponse>('/api/v1/settings/public', {
+          headers: { 'Cache-Control': 'no-cache' },
+        })
+        .then((response) => response.data),
+    fallbackData: currentSettings,
+    // Settings drive visibility, authentication options, and feature flags.
+    // Always validate them on a fresh app mount instead of rendering a stale
+    // value from an earlier page load.
+    dedupingInterval: 0,
+    revalidateOnMount: true,
+    revalidateOnFocus: false,
+  });
 
   let newSettings = defaultSettings;
 
-  if (data && !error) {
+  if (data) {
     newSettings = data;
   }
 

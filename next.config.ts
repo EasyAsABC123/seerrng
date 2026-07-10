@@ -1,4 +1,8 @@
 import type { NextConfig } from 'next';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const ONE_DAY = 24 * 60 * 60;
 const THIRTY_DAYS = 30 * ONE_DAY;
@@ -6,6 +10,7 @@ const ONE_DAY_STATIC_CACHE = `public, max-age=${ONE_DAY}, stale-while-revalidate
 const THIRTY_DAY_STATIC_CACHE = `public, max-age=${THIRTY_DAYS}, stale-while-revalidate=${THIRTY_DAYS}, stale-if-error=${ONE_DAY}`;
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: projectRoot,
   env: {
     commitTag: process.env.COMMIT_TAG || 'local',
   },
@@ -80,6 +85,7 @@ const nextConfig: NextConfig = {
     return config;
   },
   turbopack: {
+    root: projectRoot,
     rules: {
       '*.svg': {
         loaders: ['@svgr/webpack'],

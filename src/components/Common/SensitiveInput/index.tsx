@@ -62,6 +62,9 @@ const SensitiveInput = memo(
           onClick={handleToggleVisibility}
           type="button"
           className="input-action"
+          aria-label={
+            isHidden ? 'Show sensitive value' : 'Hide sensitive value'
+          }
         >
           {isHidden ? <EyeSlashIcon /> : <EyeIcon />}
         </button>

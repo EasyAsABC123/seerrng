@@ -5,6 +5,7 @@ import ListenBrainzAPI from '@server/api/listenbrainz';
 import MusicBrainz from '@server/api/musicbrainz';
 import OpenLibraryAPI from '@server/api/openlibrary';
 import ReadarrAPI from '@server/api/servarr/readarr';
+import TheMovieDb from '@server/api/themoviedb';
 import {
   MediaRequestStatus,
   MediaStatus,
@@ -366,6 +367,20 @@ describe('PUT /request/:requestId (movie)', () => {
 });
 
 describe('GET /request', () => {
+  it('accepts the recent requests slider query', async () => {
+    const agent = await loginAs('admin@seerr.dev', 'test1234');
+    const res = await agent.get('/request').query({
+      filter: 'all',
+      take: 10,
+      sort: 'modified',
+      sortDirection: 'desc',
+      skip: 0,
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.ok(Array.isArray(res.body.results));
+  });
+
   it('rejects malformed request list query filters', async () => {
     const agent = await loginAs('admin@seerr.dev', 'test1234');
     const res = await agent
@@ -547,6 +562,79 @@ describe('POST /request', () => {
     assert.strictEqual(res.status, 400);
     assert.match(res.body.message, /tags must contain positive integers/i);
     assert.strictEqual(await getRepository(MediaRequest).count(), 0);
+  });
+
+  it('reuses existing TV media when TMDB changes but TVDB matches', async (t) => {
+    const settings = getSettings();
+    settings.sonarr = [
+      {
+        id: 10,
+        name: 'Sonarr',
+        hostname: 'sonarr.local',
+        port: 8989,
+        apiKey: 'sonarr-key',
+        useSsl: false,
+        activeProfileId: 20,
+        activeProfileName: 'TV',
+        activeDirectory: '/tv',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: false,
+        tagRequests: false,
+        overrideRule: [],
+        seriesType: 'standard',
+        animeSeriesType: 'anime',
+        activeAnimeProfileId: 20,
+        activeAnimeProfileName: 'TV',
+        activeAnimeDirectory: '/tv',
+        activeAnimeLanguageProfileId: 1,
+        activeLanguageProfileId: 1,
+        animeTags: [],
+        enableSeasonFolders: true,
+        monitorNewItems: 'all',
+      },
+    ];
+    const existingMedia = await getRepository(Media).save(
+      new Media({
+        mediaType: MediaType.TV,
+        tmdbId: 111,
+        tvdbId: 222,
+        status: MediaStatus.UNKNOWN,
+        status4k: MediaStatus.UNKNOWN,
+      })
+    );
+    Object.defineProperty(TheMovieDb.prototype, 'getTvShow', {
+      configurable: true,
+      get: () => async () =>
+        ({
+          id: 333,
+          external_ids: { tvdb_id: 222 },
+          keywords: { results: [] },
+          genres: [],
+          original_language: 'en',
+          seasons: [{ season_number: 1 }],
+        }) as unknown as Awaited<ReturnType<TheMovieDb['getTvShow']>>,
+      set: () => undefined,
+    });
+    t.after(() => {
+      delete (TheMovieDb.prototype as Partial<TheMovieDb>).getTvShow;
+      settings.sonarr = [];
+    });
+
+    const agent = await loginAs('friend@seerr.dev', 'test1234');
+    const res = await agent.post('/request').send({
+      mediaType: MediaType.TV,
+      mediaId: 333,
+      seasons: [1],
+    });
+
+    assert.strictEqual(res.status, 201);
+    assert.strictEqual(res.body.media.id, existingMedia.id);
+    assert.strictEqual(res.body.media.tmdbId, 333);
+    assert.strictEqual(res.body.media.tvdbId, 222);
+    assert.strictEqual(await getRepository(Media).count(), 1);
   });
 
   it('creates a pending music request with the resolved MusicBrainz release group', async (t) => {

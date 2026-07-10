@@ -5,7 +5,7 @@ import { timingSafeEqual } from 'node:crypto';
 import dns from 'node:dns/promises';
 
 const SECRET_KEY_PATTERN =
-  /(api[-_]?key|token|secret|password|pass|authorization|authHeader|webhookUrl|accessToken|userToken|botAPI|smtpHost|authUser|authPass|pgpPrivateKey|pgpPassword)/i;
+  /(api[-_]?key|token|secret|password|(?<!by)pass|authorization|authHeader|webhookUrl|accessToken|userToken|botAPI|smtpHost|authUser|authPass|pgpPrivateKey|pgpPassword)/i;
 
 const REDACTED = '[REDACTED]';
 

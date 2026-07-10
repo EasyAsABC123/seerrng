@@ -210,7 +210,10 @@ const DiscoverSliderEdit = ({
           className={`${slider.data ? 'mb-4' : 'mb-0'} flex space-x-2 md:mb-0`}
         >
           <Bars3Icon className="h-6 w-6" />
-          <div className="w-7/12 truncate md:w-full">
+          <div
+            className="w-7/12 truncate md:w-full"
+            data-testid="discover-slider-title"
+          >
             {getSliderTitle(slider)}
           </div>
         </div>
@@ -302,6 +305,7 @@ const DiscoverSliderEdit = ({
           )}
           <div className="absolute right-14 top-4 flex px-2 md:relative md:right-0 md:top-0">
             <button
+              data-testid="discover-slider-move-up"
               className={'hover:text-white disabled:text-gray-800'}
               onClick={() =>
                 onPositionUpdate(Number(slider.id), Position.Above, true)
@@ -311,6 +315,7 @@ const DiscoverSliderEdit = ({
               <ChevronUpIcon className="h-7 w-7 md:h-6 md:w-6" />
             </button>
             <button
+              data-testid="discover-slider-move-down"
               className={'hover:text-white disabled:text-gray-800'}
               onClick={() =>
                 onPositionUpdate(Number(slider.id), Position.Below, true)

@@ -42,7 +42,6 @@ import {
   parseOptionalAllowedString,
   parseOptionalBodyBoolean,
   parseOptionalBoundedString,
-  parseOptionalNonNegativeInteger,
   parseOptionalQueryBoolean,
 } from '@server/utils/validation';
 import type { DnsEntries, DnsStats } from 'dns-caching';
@@ -182,16 +181,19 @@ const parseOptionalBooleanSetting = (
 const parseOptionalNetworkInteger = (
   value: unknown,
   fieldName: string,
-  max: number
+  max: number,
+  min = 0
 ): { value: number | undefined } | { error: string } => {
   if (value === undefined || value === null) {
     return { value: undefined };
   }
 
-  const parsed = parseOptionalNonNegativeInteger(value, max);
-  return parsed === undefined
+  return typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < min ||
+    value > max
     ? { error: `${fieldName} must be a valid number.` }
-    : { value: parsed };
+    : { value };
 };
 
 const parseNetworkSettingsBody = (
@@ -242,14 +244,15 @@ const parseNetworkSettingsBody = (
     }
     dnsCache.enabled = enabled.value;
 
-    for (const [key, fieldName] of [
-      ['forceMinTtl', 'dnsCache.forceMinTtl'],
-      ['forceMaxTtl', 'dnsCache.forceMaxTtl'],
+    for (const [key, fieldName, min] of [
+      ['forceMinTtl', 'dnsCache.forceMinTtl', 0],
+      ['forceMaxTtl', 'dnsCache.forceMaxTtl', -1],
     ] as const) {
       const parsed = parseOptionalNetworkInteger(
         dnsCache[key],
         fieldName,
-        MAX_DNS_CACHE_TTL
+        MAX_DNS_CACHE_TTL,
+        min
       );
       if ('error' in parsed) {
         return parsed;

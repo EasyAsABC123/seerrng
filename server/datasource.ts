@@ -3,6 +3,27 @@ import type { TlsOptions } from 'tls';
 import type { DataSourceOptions, EntityTarget, Repository } from 'typeorm';
 import { DataSource } from 'typeorm';
 
+const getMigrationFiles = (directory: string, extension: 'ts' | 'js') =>
+  fs.existsSync(directory)
+    ? fs
+        .readdirSync(directory)
+        .filter((file) => /^\d+-[^.]+\.(?:ts|js)$/.test(file))
+        .filter((file) => file.endsWith(`.${extension}`))
+        .map((file) => `${directory}/${file}`)
+    : [];
+
+const getRuntimeFiles = (directory: string, extension: 'ts' | 'js') =>
+  fs.existsSync(directory)
+    ? fs
+        .readdirSync(directory)
+        .filter(
+          (file) =>
+            file.endsWith(`.${extension}`) &&
+            !file.endsWith(`.test.${extension}`)
+        )
+        .map((file) => `${directory}/${file}`)
+    : [];
+
 const DB_SSL_PREFIX = 'DB_SSL_';
 
 function boolFromEnv(envVar: string, defaultVal = false) {
@@ -50,12 +71,14 @@ function buildSslConfig(): TlsOptions | undefined {
 const testConfig: DataSourceOptions = {
   type: 'sqlite',
   database: ':memory:',
-  synchronize: true,
-  dropSchema: true,
+  // Test setup owns schema creation and reset. Enabling these here makes
+  // initialize() race seedTestDb() with a second schema synchronization.
+  synchronize: false,
+  dropSchema: false,
   logging: boolFromEnv('DB_LOG_QUERIES'),
-  entities: ['server/entity/**/*.ts'],
-  migrations: ['server/migration/sqlite/**/*.ts'],
-  subscribers: ['server/subscriber/**/*.ts'],
+  entities: getRuntimeFiles('server/entity', 'ts'),
+  migrations: getMigrationFiles('server/migration/sqlite', 'ts'),
+  subscribers: getRuntimeFiles('server/subscriber', 'ts'),
 };
 
 const devConfig: DataSourceOptions = {
@@ -67,9 +90,9 @@ const devConfig: DataSourceOptions = {
   migrationsRun: false,
   logging: boolFromEnv('DB_LOG_QUERIES'),
   enableWAL: true,
-  entities: ['server/entity/**/*.ts'],
-  migrations: ['server/migration/sqlite/**/*.ts'],
-  subscribers: ['server/subscriber/**/*.ts'],
+  entities: getRuntimeFiles('server/entity', 'ts'),
+  migrations: getMigrationFiles('server/migration/sqlite', 'ts'),
+  subscribers: getRuntimeFiles('server/subscriber', 'ts'),
 };
 
 const prodConfig: DataSourceOptions = {
@@ -81,9 +104,9 @@ const prodConfig: DataSourceOptions = {
   migrationsRun: false,
   logging: boolFromEnv('DB_LOG_QUERIES'),
   enableWAL: true,
-  entities: ['dist/entity/**/*.js'],
-  migrations: ['dist/migration/sqlite/**/*.js'],
-  subscribers: ['dist/subscriber/**/*.js'],
+  entities: getRuntimeFiles('dist/entity', 'js'),
+  migrations: getMigrationFiles('dist/migration/sqlite', 'js'),
+  subscribers: getRuntimeFiles('dist/subscriber', 'js'),
 };
 
 const postgresDevConfig: DataSourceOptions = {
@@ -100,9 +123,9 @@ const postgresDevConfig: DataSourceOptions = {
   synchronize: false,
   migrationsRun: true,
   logging: boolFromEnv('DB_LOG_QUERIES'),
-  entities: ['server/entity/**/*.ts'],
-  migrations: ['server/migration/postgres/**/*.ts'],
-  subscribers: ['server/subscriber/**/*.ts'],
+  entities: getRuntimeFiles('server/entity', 'ts'),
+  migrations: getMigrationFiles('server/migration/postgres', 'ts'),
+  subscribers: getRuntimeFiles('server/subscriber', 'ts'),
 };
 
 const postgresProdConfig: DataSourceOptions = {
@@ -119,9 +142,9 @@ const postgresProdConfig: DataSourceOptions = {
   synchronize: false,
   migrationsRun: false,
   logging: boolFromEnv('DB_LOG_QUERIES'),
-  entities: ['dist/entity/**/*.js'],
-  migrations: ['dist/migration/postgres/**/*.js'],
-  subscribers: ['dist/subscriber/**/*.js'],
+  entities: getRuntimeFiles('dist/entity', 'js'),
+  migrations: getMigrationFiles('dist/migration/postgres', 'js'),
+  subscribers: getRuntimeFiles('dist/subscriber', 'js'),
 };
 
 export const isPgsql = process.env.DB_TYPE === 'postgres';

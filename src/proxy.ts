@@ -24,7 +24,7 @@ const isResetPasswordPath = (pathname: string): boolean =>
  * client-side UserContext still revalidates the session on soft
  * navigations as a defense-in-depth fallback.
  */
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const apiBaseUrl = getInternalApiBaseUrl();
 

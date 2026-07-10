@@ -69,6 +69,12 @@ const isActiveMediaRequest = (request: MediaRequest): boolean =>
   request.status !== MediaRequestStatus.FAILED &&
   request.status !== MediaRequestStatus.COMPLETED;
 
+const isTvdbConstraintError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return message.includes('media.tvdbId');
+};
+
 const resolveMusicReleaseGroupId = async (
   mediaId: string,
   listenbrainz: ListenBrainzAPI,
@@ -714,6 +720,10 @@ export class MediaRequest {
         ? await tmdb.getMovie({ movieId: requestBody.mediaId as number })
         : await tmdb.getTvShow({ tvId: requestBody.mediaId as number });
 
+    const tvdbId =
+      requestBody.mediaType === MediaType.TV
+        ? (requestBody.tvdbId ?? tmdbMedia.external_ids.tvdb_id)
+        : undefined;
     let media = await mediaRepository.findOne({
       where: {
         tmdbId: requestBody.mediaId as number,
@@ -722,15 +732,40 @@ export class MediaRequest {
       relations: ['requests'],
     });
 
+    if (!media && requestBody.mediaType === MediaType.TV && tvdbId) {
+      media = await mediaRepository.findOne({
+        where: {
+          tvdbId,
+          mediaType: MediaType.TV,
+        },
+        relations: ['requests'],
+      });
+
+      if (media && media.tmdbId !== tmdbMedia.id) {
+        logger.info('Matched existing TV media by TVDB ID', {
+          label: 'Media Request',
+          mediaId: media.id,
+          oldTmdbId: media.tmdbId,
+          newTmdbId: tmdbMedia.id,
+          tvdbId,
+        });
+        media.tmdbId = tmdbMedia.id;
+      }
+    }
+
     if (!media) {
       media = new Media({
         tmdbId: tmdbMedia.id,
-        tvdbId: requestBody.tvdbId ?? tmdbMedia.external_ids.tvdb_id,
+        tvdbId,
         status: !requestBody.is4k ? MediaStatus.PENDING : MediaStatus.UNKNOWN,
         status4k: requestBody.is4k ? MediaStatus.PENDING : MediaStatus.UNKNOWN,
         mediaType: requestBody.mediaType,
       });
     } else {
+      if (requestBody.mediaType === MediaType.TV && tvdbId && !media.tvdbId) {
+        media.tvdbId = tvdbId;
+      }
+
       if (media.status === MediaStatus.BLOCKLISTED) {
         logger.warn('Request for media blocked due to being blocklisted', {
           tmdbId: tmdbMedia.id,
@@ -750,16 +785,27 @@ export class MediaRequest {
       }
     }
 
-    const existing = await requestRepository
+    const existingRequestQuery = requestRepository
       .createQueryBuilder('request')
       .leftJoin('request.media', 'media')
       .leftJoinAndSelect('request.requestedBy', 'user')
       .where('request.is4k = :is4k', { is4k: requestBody.is4k })
-      .andWhere('media.tmdbId = :tmdbId', { tmdbId: tmdbMedia.id })
       .andWhere('media.mediaType = :mediaType', {
         mediaType: requestBody.mediaType,
-      })
-      .getMany();
+      });
+
+    if (requestBody.mediaType === MediaType.TV && tvdbId) {
+      existingRequestQuery.andWhere(
+        '(media.tmdbId = :tmdbId OR media.tvdbId = :tvdbId)',
+        { tmdbId: tmdbMedia.id, tvdbId }
+      );
+    } else {
+      existingRequestQuery.andWhere('media.tmdbId = :tmdbId', {
+        tmdbId: tmdbMedia.id,
+      });
+    }
+
+    const existing = await existingRequestQuery.getMany();
 
     if (existing && existing.length > 0) {
       // If there is an existing active movie request, don't allow a new one.
@@ -995,45 +1041,48 @@ export class MediaRequest {
         requestedSeasons = requestedSeasons.filter((sn) => sn > 0);
       }
 
-      let existingSeasons: number[] = [];
+      const getFinalSeasons = (requestMedia: Media): number[] => {
+        let existingSeasons: number[] = [];
 
-      // We need to check existing requests on this title to make sure we don't double up on seasons that were
-      // already requested. In the case they were, we just throw out any duplicates but still approve the request.
-      // (Unless there are no seasons, in which case we abort)
-      if (media.requests) {
-        existingSeasons = media.requests
-          .filter(
-            (request) =>
-              request.is4k === requestBody.is4k && isActiveMediaRequest(request)
-          )
-          .reduce((seasons, request) => {
-            const combinedSeasons = request.seasons.map(
-              (season) => season.seasonNumber
-            );
-
-            return [...seasons, ...combinedSeasons];
-          }, [] as number[]);
-      }
-
-      // We should also check seasons that are available/partially available but don't have existing requests
-      if (media.seasons) {
-        existingSeasons = [
-          ...existingSeasons,
-          ...media.seasons
+        // We need to check existing requests on this title to make sure we don't double up on seasons that were
+        // already requested. In the case they were, we just throw out any duplicates but still approve the request.
+        // (Unless there are no seasons, in which case we abort)
+        if (requestMedia.requests) {
+          existingSeasons = requestMedia.requests
             .filter(
-              (season) =>
-                season[requestBody.is4k ? 'status4k' : 'status'] !==
-                  MediaStatus.UNKNOWN &&
-                season[requestBody.is4k ? 'status4k' : 'status'] !==
-                  MediaStatus.DELETED
+              (request) =>
+                request.is4k === requestBody.is4k &&
+                isActiveMediaRequest(request)
             )
-            .map((season) => season.seasonNumber),
-        ];
-      }
+            .reduce((seasons, request) => {
+              const combinedSeasons = request.seasons.map(
+                (season) => season.seasonNumber
+              );
 
-      const finalSeasons = requestedSeasons.filter(
-        (rs) => !existingSeasons.includes(rs)
-      );
+              return [...seasons, ...combinedSeasons];
+            }, [] as number[]);
+        }
+
+        // We should also check seasons that are available/partially available but don't have existing requests
+        if (requestMedia.seasons) {
+          existingSeasons = [
+            ...existingSeasons,
+            ...requestMedia.seasons
+              .filter(
+                (season) =>
+                  season[requestBody.is4k ? 'status4k' : 'status'] !==
+                    MediaStatus.UNKNOWN &&
+                  season[requestBody.is4k ? 'status4k' : 'status'] !==
+                    MediaStatus.DELETED
+              )
+              .map((season) => season.seasonNumber),
+          ];
+        }
+
+        return requestedSeasons.filter((rs) => !existingSeasons.includes(rs));
+      };
+
+      let finalSeasons = getFinalSeasons(media);
 
       if (finalSeasons.length === 0) {
         throw new NoSeasonsAvailableError('No seasons available to request');
@@ -1044,7 +1093,54 @@ export class MediaRequest {
         throw new QuotaRestrictedError('Series Quota exceeded.');
       }
 
-      await mediaRepository.save(media);
+      try {
+        await mediaRepository.save(media);
+      } catch (e) {
+        if (!tvdbId || !isTvdbConstraintError(e)) {
+          throw e;
+        }
+
+        const existingMedia = await mediaRepository.findOne({
+          where: {
+            tvdbId,
+            mediaType: MediaType.TV,
+          },
+          relations: ['requests'],
+        });
+
+        if (!existingMedia) {
+          throw e;
+        }
+
+        logger.warn('Recovered from duplicate TVDB media insert', {
+          label: 'Media Request',
+          tmdbId: tmdbMedia.id,
+          tvdbId,
+          mediaId: existingMedia.id,
+        });
+
+        media = existingMedia;
+
+        if (media.tmdbId !== tmdbMedia.id) {
+          media.tmdbId = tmdbMedia.id;
+        }
+
+        if (media.status === MediaStatus.UNKNOWN && !requestBody.is4k) {
+          media.status = MediaStatus.PENDING;
+        }
+
+        if (media.status4k === MediaStatus.UNKNOWN && requestBody.is4k) {
+          media.status4k = MediaStatus.PENDING;
+        }
+
+        finalSeasons = getFinalSeasons(media);
+
+        if (finalSeasons.length === 0) {
+          throw new NoSeasonsAvailableError('No seasons available to request');
+        }
+
+        await mediaRepository.save(media);
+      }
 
       const request = new MediaRequest({
         type: MediaType.TV,

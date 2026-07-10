@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -694,12 +695,29 @@ const applyTheme = (mode: ThemeMode, palette: string) => {
 };
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [mode, setModeState] = useState<ThemeMode>(() => getStoredMode());
-  const [palette, setPaletteState] = useState(() => getStoredPalette());
+  // The server and the client's first render must use the same values. Restore
+  // browser preferences only after hydration to avoid replacing the SSR tree.
+  const [mode, setModeState] = useState<ThemeMode>('dark');
+  const [palette, setPaletteState] = useState(themePalettes[0].id);
+  const hasRestoredTheme = useRef(false);
 
   useEffect(() => {
+    if (!hasRestoredTheme.current) {
+      return;
+    }
+
     applyTheme(mode, palette);
   }, [mode, palette]);
+
+  useEffect(() => {
+    const storedMode = getStoredMode();
+    const storedPalette = getStoredPalette();
+
+    hasRestoredTheme.current = true;
+    setModeState(storedMode);
+    setPaletteState(storedPalette);
+    applyTheme(storedMode, storedPalette);
+  }, []);
 
   const setMode = useCallback(
     (nextMode: ThemeMode) => {

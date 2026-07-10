@@ -1485,6 +1485,44 @@ describe('GET /discover/music', () => {
     );
   });
 
+  it('skips ListenBrainz chart albums without release group ids', async () => {
+    mock.method(ListenBrainzAPI.prototype, 'getTopAlbums', async () => ({
+      payload: {
+        count: 2,
+        release_groups: [
+          {
+            artist_mbids: ['artist-missing'],
+            artist_name: 'Missing Id Artist',
+            caa_release_mbid: 'release-missing',
+            listen_count: 6000,
+            release_group_mbid: null as unknown as string,
+            release_group_name: 'Missing Id Album',
+          },
+          {
+            artist_mbids: ['artist-valid'],
+            artist_name: 'Valid Artist',
+            caa_release_mbid: 'release-valid',
+            listen_count: 5000,
+            release_group_mbid: 'album-valid',
+            release_group_name: 'Valid Album',
+          },
+        ],
+      },
+    }));
+    mock.method(ListenBrainzAPI.prototype, 'getFreshReleases', async () => ({
+      payload: { releases: [] },
+    }));
+
+    const agent = await login();
+    const res = await agent.get('/discover/music?sortBy=ranked');
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(
+      res.body.results.map((result: { title: string }) => result.title),
+      ['Valid Album']
+    );
+  });
+
   it('accepts shuffle seeds for ranked music discovery', async () => {
     mock.method(ListenBrainzAPI.prototype, 'getTopAlbums', async () => ({
       payload: {

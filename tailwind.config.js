@@ -1,6 +1,21 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const defaultTheme = require('tailwindcss/defaultTheme');
 const colors = require('tailwindcss/colors');
+const deprecatedColorAliases = new Set([
+  'lightBlue',
+  'warmGray',
+  'trueGray',
+  'coolGray',
+  'blueGray',
+]);
+const supportedColors = Object.defineProperties(
+  {},
+  Object.fromEntries(
+    Object.entries(Object.getOwnPropertyDescriptors(colors)).filter(
+      ([name]) => !deprecatedColorAliases.has(name)
+    )
+  )
+);
 
 const themedScale = (name) =>
   Object.fromEntries(
@@ -20,7 +35,7 @@ module.exports = {
   ],
   theme: {
     colors: {
-      ...colors,
+      ...supportedColors,
       gray: themedScale('gray'),
       indigo: themedScale('indigo'),
       purple: themedScale('purple'),

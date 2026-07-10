@@ -43,7 +43,6 @@ const RecentlyAddedSlider = () => {
   );
 
   if (
-    (media && !recentlyAddedCards.length && !mediaError) ||
     !hasPermission([Permission.MANAGE_REQUESTS, Permission.RECENT_VIEW], {
       type: 'or',
     })
@@ -61,6 +60,7 @@ const RecentlyAddedSlider = () => {
       <Slider
         sliderKey="media"
         isLoading={inView && !media}
+        isEmpty={!!media && !recentlyAddedCards.length && !mediaError}
         items={recentlyAddedCards}
       />
     </div>

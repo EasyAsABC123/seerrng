@@ -185,12 +185,36 @@ const normalizeDiscoverTitle = (value?: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const getMusicBrainzIdKey = (id?: string | null): string | undefined => {
+  if (typeof id !== 'string') {
+    return undefined;
+  }
+
+  const normalizedId = normalizeMusicBrainzId(id);
+
+  return normalizedId || undefined;
+};
+
+const getRelatedMusicMedia = (
+  relatedMediaMap: Map<string, MediaEntity>,
+  id?: string | null
+): MediaEntity | undefined => {
+  const idKey = getMusicBrainzIdKey(id);
+
+  return idKey ? relatedMediaMap.get(idKey) : undefined;
+};
+
 const dedupeMusicAlbums = <T extends MbAlbumResult>(albums: T[]): T[] => {
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();
 
   return albums.filter((album) => {
-    const idKey = normalizeMusicBrainzId(album.id);
+    const idKey = getMusicBrainzIdKey(album.id);
+
+    if (!idKey) {
+      return false;
+    }
+
     const titleKey = [
       normalizeDiscoverTitle(album.title),
       normalizeDiscoverTitle(album['artist-credit']?.[0]?.name),
@@ -213,7 +237,12 @@ const dedupeFreshReleases = (releases: LbRelease[]): LbRelease[] => {
   const seenTitles = new Set<string>();
 
   return releases.filter((release) => {
-    const idKey = normalizeMusicBrainzId(release.release_group_mbid);
+    const idKey = getMusicBrainzIdKey(release.release_group_mbid);
+
+    if (!idKey) {
+      return false;
+    }
+
     const titleKey = [
       normalizeDiscoverTitle(release.release_name),
       normalizeDiscoverTitle(release.artist_credit_name),
@@ -280,11 +309,11 @@ const getProviderWindow = (
 };
 
 const getRelatedMusicMediaMap = async (
-  ids: string[],
+  ids: (string | null | undefined)[],
   userId?: number
 ): Promise<Map<string, MediaEntity>> => {
-  const normalizedIds = [...new Set(ids.map(normalizeMusicBrainzId))].filter(
-    Boolean
+  const normalizedIds = [...new Set(ids.map(getMusicBrainzIdKey))].filter(
+    (id): id is string => Boolean(id)
   );
 
   if (!normalizedIds.length) {
@@ -1759,10 +1788,7 @@ discoverRoutes.get('/music', async (req, res) => {
         totalPages: albums.length === itemsPerPage ? page + 1 : page,
         totalResults: getUnknownTotalResults(page, albums.length, itemsPerPage),
         results: albums.map((album) =>
-          mapAlbumResult(
-            album,
-            relatedMediaMap.get(normalizeMusicBrainzId(album.id))
-          )
+          mapAlbumResult(album, getRelatedMusicMedia(relatedMediaMap, album.id))
         ),
       });
     }
@@ -1818,10 +1844,7 @@ discoverRoutes.get('/music', async (req, res) => {
         totalPages: Math.max(1, Math.ceil(totalCount / itemsPerPage)),
         totalResults: totalCount,
         results: albums.map((album) =>
-          mapAlbumResult(
-            album,
-            relatedMediaMap.get(normalizeMusicBrainzId(album.id))
-          )
+          mapAlbumResult(album, getRelatedMusicMedia(relatedMediaMap, album.id))
         ),
       });
     }
@@ -1860,10 +1883,7 @@ discoverRoutes.get('/music', async (req, res) => {
         ),
         totalResults: topAlbums.payload.count,
         results: albums.map((album) =>
-          mapAlbumResult(
-            album,
-            relatedMediaMap.get(normalizeMusicBrainzId(album.id))
-          )
+          mapAlbumResult(album, getRelatedMusicMedia(relatedMediaMap, album.id))
         ),
       });
     }
@@ -1925,7 +1945,12 @@ discoverRoutes.get('/music', async (req, res) => {
             result.status === 'fulfilled' ? result.value.releaseGroups : []
           )
           .forEach((album) => {
-            const albumId = normalizeMusicBrainzId(album.id);
+            const albumId = getMusicBrainzIdKey(album.id);
+
+            if (!albumId) {
+              return;
+            }
+
             const existingAlbum = fallbackAlbumsById.get(albumId);
 
             fallbackAlbumsById.set(
@@ -1969,7 +1994,7 @@ discoverRoutes.get('/music', async (req, res) => {
           results: fallbackAlbums.map((album) =>
             mapAlbumResult(
               album,
-              fallbackRelatedMediaMap.get(normalizeMusicBrainzId(album.id))
+              getRelatedMusicMedia(fallbackRelatedMediaMap, album.id)
             )
           ),
         });
@@ -2001,7 +2026,12 @@ discoverRoutes.get('/music', async (req, res) => {
           )
           .map(mapFreshReleaseAlbum),
       ].forEach((album) => {
-        const albumId = normalizeMusicBrainzId(album.id);
+        const albumId = getMusicBrainzIdKey(album.id);
+
+        if (!albumId) {
+          return;
+        }
+
         const existingAlbum = albumsById.get(albumId);
 
         albumsById.set(
@@ -2032,10 +2062,7 @@ discoverRoutes.get('/music', async (req, res) => {
         totalPages: albums.length === itemsPerPage ? page + 1 : 1,
         totalResults: getUnknownTotalResults(page, albums.length, itemsPerPage),
         results: albums.map((album) =>
-          mapAlbumResult(
-            album,
-            relatedMediaMap.get(normalizeMusicBrainzId(album.id))
-          )
+          mapAlbumResult(album, getRelatedMusicMedia(relatedMediaMap, album.id))
         ),
       });
     }
@@ -2107,8 +2134,8 @@ discoverRoutes.get('/music', async (req, res) => {
             .map((album) => {
               const release = sortedReleases.find(
                 (sortedRelease) =>
-                  normalizeMusicBrainzId(sortedRelease.release_group_mbid) ===
-                  normalizeMusicBrainzId(album.id)
+                  getMusicBrainzIdKey(sortedRelease.release_group_mbid) ===
+                  getMusicBrainzIdKey(album.id)
               );
 
               return release;
@@ -2132,7 +2159,7 @@ discoverRoutes.get('/music', async (req, res) => {
               ? scoreMusicRelease(release)
               : (release.listen_count ?? 0),
         },
-        relatedMediaMap.get(normalizeMusicBrainzId(release.release_group_mbid))
+        getRelatedMusicMedia(relatedMediaMap, release.release_group_mbid)
       )
     );
 

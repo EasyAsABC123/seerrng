@@ -1,8 +1,7 @@
+import { useEffect, useState } from 'react';
 import type { Cache } from 'swr';
 
-const SWR_CACHE_KEY = 'seerr-swr-cache-v1';
 const RESPONSE_CACHE_PREFIX = 'seerr-response-cache-v1:';
-const MAX_SWR_CACHE_ENTRIES = 160;
 const MAX_RESPONSE_CACHE_AGE = 1000 * 60 * 60 * 24;
 
 type CacheRecord<T> = {
@@ -12,9 +11,6 @@ type CacheRecord<T> = {
 
 const canUseStorage = () =>
   typeof window !== 'undefined' && !!window.localStorage;
-
-const isCacheableKey = (key: unknown): key is string =>
-  typeof key === 'string' && key.startsWith('/api/v1/');
 
 const readJson = <T>(key: string): T | undefined => {
   if (!canUseStorage()) {
@@ -71,53 +67,18 @@ export const setPersistentResponse = <T>(key: string, data: T | undefined) => {
   });
 };
 
-export const createPersistentSWRCache = (): Cache => {
-  const entries = readJson<[string, unknown][]>(SWR_CACHE_KEY) ?? [];
-  const cache = new Map<string, unknown>(
-    entries.filter(([key]) => isCacheableKey(key))
-  );
-  let persistTimer: number | undefined;
+export const usePersistentResponse = <T>(key: string): T | undefined => {
+  const [data, setData] = useState<T>();
 
-  const persist = () => {
-    if (!canUseStorage()) {
-      return;
-    }
+  useEffect(() => {
+    setData(getPersistentResponse<T>(key));
+  }, [key]);
 
-    if (persistTimer) {
-      window.clearTimeout(persistTimer);
-    }
-
-    persistTimer = window.setTimeout(() => {
-      const cacheEntries = Array.from(cache.entries())
-        .filter(([key]) => isCacheableKey(key))
-        .slice(-MAX_SWR_CACHE_ENTRIES);
-
-      writeJson(SWR_CACHE_KEY, cacheEntries);
-    }, 250);
-  };
-
-  const originalSet = cache.set.bind(cache);
-  const originalDelete = cache.delete.bind(cache);
-
-  cache.set = (key, value) => {
-    originalSet(key, value);
-
-    if (isCacheableKey(key)) {
-      persist();
-    }
-
-    return cache;
-  };
-
-  cache.delete = (key) => {
-    const deleted = originalDelete(key);
-
-    if (isCacheableKey(key)) {
-      persist();
-    }
-
-    return deleted;
-  };
-
-  return cache as Cache;
+  return data;
 };
+
+// SWR's shared in-memory cache handles navigation deduplication. Persisted
+// discover fallbacks are restored explicitly after hydration above; storing
+// every authenticated API response in localStorage risks stale cross-user data.
+export const createPersistentSWRCache = (): Cache =>
+  new Map<string, unknown>() as Cache;

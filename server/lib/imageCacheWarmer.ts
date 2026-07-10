@@ -5,7 +5,10 @@ import logger from '@server/logger';
 const warmBatchSize = 8;
 const maxWarmUrls = 80;
 const maxWarmPathLength = 2048;
+const warmCooldownMs = 5 * 60 * 1000;
+const maxRememberedWarmUrls = 5000;
 const queuedWarmUrls = new Set<string>();
+const recentlyWarmedUrls = new Map<string, number>();
 
 const tmdbImageProxy = new ImageProxy('tmdb', 'https://image.tmdb.org', {
   rateLimitOptions: {
@@ -138,6 +141,16 @@ export const enqueueImageCacheWarm = (urls: string[]) => {
     return;
   }
 
+  const now = Date.now();
+
+  if (recentlyWarmedUrls.size > maxRememberedWarmUrls) {
+    for (const [url, expiresAt] of recentlyWarmedUrls) {
+      if (expiresAt <= now || recentlyWarmedUrls.size > maxRememberedWarmUrls) {
+        recentlyWarmedUrls.delete(url);
+      }
+    }
+  }
+
   const uniqueUrls = [...new Set(urls)]
     .filter(isImageCacheWarmUrl)
     .slice(0, maxWarmUrls)
@@ -146,7 +159,12 @@ export const enqueueImageCacheWarm = (urls: string[]) => {
         return false;
       }
 
+      if ((recentlyWarmedUrls.get(url) ?? 0) > now) {
+        return false;
+      }
+
       queuedWarmUrls.add(url);
+      recentlyWarmedUrls.set(url, now + warmCooldownMs);
       return true;
     });
 

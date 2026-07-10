@@ -52,6 +52,7 @@ const UserDropdown = () => {
         <Menu.Button
           className="flex max-w-xs items-center rounded-full text-sm ring-1 ring-gray-700 hover:ring-gray-500 focus:outline-none focus:ring-gray-500"
           data-testid="user-menu"
+          aria-label="User menu"
         >
           <CachedImage
             type="avatar"

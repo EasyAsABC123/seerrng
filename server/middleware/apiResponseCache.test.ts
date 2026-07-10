@@ -18,6 +18,7 @@ const createApp = (authenticated = true) => {
   app.get('/discover/books', (_req, res) => res.json({ results: [] }));
   app.get('/book/OL1W', (_req, res) => res.json({ id: 'OL1W' }));
   app.get('/settings/public', (_req, res) => res.json({ initialized: true }));
+  app.get('/settings/discover', (_req, res) => res.json([]));
   app.get('/request/count', (_req, res) => res.json({ pending: 0 }));
   app.get('/discover/fails', (_req, res) =>
     res.status(500).json({ message: 'failed' })
@@ -32,7 +33,7 @@ describe('apiResponseCache', () => {
 
     assert.equal(res.status, 200);
     assert.match(res.headers['cache-control'], /private/);
-    assert.match(res.headers['cache-control'], /max-age=900/);
+    assert.match(res.headers['cache-control'], /no-cache/);
     assert.equal(res.headers.vary, 'Cookie, Accept-Encoding');
   });
 
@@ -44,11 +45,24 @@ describe('apiResponseCache', () => {
     assert.match(res.headers['cache-control'], /max-age=300/);
   });
 
-  it('allows public settings to be cached without authentication', async () => {
-    const res = await request(createApp(false)).get('/settings/public');
+  it('prevents stale public settings from being reused', async () => {
+    const app = createApp(false);
+    const res = await request(app).get('/settings/public');
+    const revalidated = await request(app)
+      .get('/settings/public')
+      .set('If-None-Match', res.headers.etag);
 
     assert.equal(res.status, 200);
-    assert.match(res.headers['cache-control'], /public/);
+    assert.match(res.headers['cache-control'], /no-store/);
+    assert.equal(revalidated.status, 200);
+  });
+
+  it('revalidates mutable discover settings before reuse', async () => {
+    const res = await request(createApp()).get('/settings/discover');
+
+    assert.equal(res.status, 200);
+    assert.match(res.headers['cache-control'], /private/);
+    assert.match(res.headers['cache-control'], /no-cache/);
   });
 
   it('does not cache errors or unrelated operational routes', async () => {

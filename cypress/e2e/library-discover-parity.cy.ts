@@ -47,32 +47,6 @@ describe('Books and Music discover parity', () => {
     tags: [],
   });
 
-  const publicSettings = {
-    initialized: true,
-    applicationTitle: 'SeerrNG',
-    applicationUrl: '',
-    hideAvailable: false,
-    hideBlocklisted: false,
-    movie4kEnabled: false,
-    series4kEnabled: false,
-    localLogin: true,
-    mediaServerLogin: true,
-    discoverRegion: '',
-    streamingRegion: '',
-    originalLanguage: '',
-    mediaServerType: 4,
-    partialRequestsEnabled: true,
-    enableSpecialEpisodes: false,
-    cacheImages: false,
-    vapidPublic: '',
-    enablePushRegistration: false,
-    locale: 'en',
-    emailEnabled: false,
-    newPlexLogin: true,
-    youtubeUrl: '',
-    plexClientIdentifier: '',
-  };
-
   beforeEach(() => {
     cy.loginAsAdmin();
   });
@@ -1100,10 +1074,11 @@ describe('Books and Music discover parity', () => {
   });
 
   it('honors hide available for music and dual-format books', () => {
-    cy.intercept('GET', '/api/v1/settings/public', {
-      ...publicSettings,
-      hideAvailable: true,
-    }).as('getPublicSettings');
+    cy.request('POST', '/api/v1/settings/main', { hideAvailable: true });
+    cy.request('/api/v1/settings/public')
+      .its('body.hideAvailable')
+      .should('eq', true);
+    cy.intercept('GET', '/api/v1/settings/public').as('getPublicSettings');
 
     cy.intercept('GET', '/api/v1/discover/books*', {
       page: 1,
@@ -1174,6 +1149,12 @@ describe('Books and Music discover parity', () => {
     }).as('getHideBooks');
 
     cy.visit('/discover/books');
+    cy.wait('@getPublicSettings').then(({ response }) => {
+      expect(response?.statusCode).to.eq(200);
+      expect(response?.body.hideAvailable).to.eq(true);
+    });
+    cy.reload(true);
+    cy.wait('@getPublicSettings');
     cy.wait('@getHideBooks');
     cy.contains('[data-testid=title-card-title]', 'Ebook Only Book').should(
       'be.visible'
@@ -1221,13 +1202,15 @@ describe('Books and Music discover parity', () => {
       'be.visible'
     );
     cy.contains('Owned Album').should('not.exist');
+    cy.request('POST', '/api/v1/settings/main', { hideAvailable: false });
   });
 
   it('honors hide blocklisted for books and music', () => {
-    cy.intercept('GET', '/api/v1/settings/public', {
-      ...publicSettings,
-      hideBlocklisted: true,
-    }).as('getPublicSettings');
+    cy.request('POST', '/api/v1/settings/main', { hideBlocklisted: true });
+    cy.request('/api/v1/settings/public')
+      .its('body.hideBlocklisted')
+      .should('eq', true);
+    cy.intercept('GET', '/api/v1/settings/public').as('getPublicSettings');
 
     cy.intercept('GET', '/api/v1/discover/books*', {
       page: 1,
@@ -1260,6 +1243,11 @@ describe('Books and Music discover parity', () => {
     }).as('getBlocklistedBooks');
 
     cy.visit('/discover/books');
+    cy.wait('@getPublicSettings').then(({ response }) => {
+      expect(response?.statusCode).to.eq(200);
+      expect(response?.body.hideBlocklisted).to.eq(true);
+    });
+    cy.reload(true);
     cy.wait('@getPublicSettings');
     cy.wait('@getBlocklistedBooks');
     cy.contains('[data-testid=title-card-title]', 'Visible Book').should(
@@ -1303,6 +1291,7 @@ describe('Books and Music discover parity', () => {
       'be.visible'
     );
     cy.contains('Blocked Album').should('not.exist');
+    cy.request('POST', '/api/v1/settings/main', { hideBlocklisted: false });
   });
 
   it('keeps request list media filters addressable for book and music queues', () => {
