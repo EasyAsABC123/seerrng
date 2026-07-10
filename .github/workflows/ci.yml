@@ -365,7 +365,7 @@ jobs:
     name: Deploy main to seerr.home
     if: github.ref == 'refs/heads/main'
     needs: publish
-    runs-on: [self-hosted, seerrng, linux-build]
+    runs-on: [self-hosted, seerrng, linux-build, kspls0]
     permissions:
       contents: read
       packages: read
@@ -381,69 +381,46 @@ jobs:
           persist-credentials: true
           clean: false
 
-      - name: Verify seerr.home SSH host key
-        env:
-          EXPECTED_FINGERPRINT: SHA256:aUNU5vxcEoLLYhf6FzV9Mu+wNuCUf5azhQYnICmRLfA
-        run: |
-          mkdir -p "$HOME/.ssh"
-          chmod 700 "$HOME/.ssh"
-          ssh-keygen -R kspls0 >/dev/null 2>&1 || true
-          host_key="$(ssh-keyscan -T 10 -t ed25519 kspls0 2>/dev/null)"
-          test -n "$host_key"
-          actual_fingerprint="$(printf '%s\n' "$host_key" | ssh-keygen -E sha256 -lf - | awk '{print $2}')"
-          test "$actual_fingerprint" = "$EXPECTED_FINGERPRINT"
-          printf '%s\n' "$host_key" >> "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/known_hosts"
-
       - name: Log in to GitHub Container Registry on seerr.home
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          printf '%s' "$GHCR_TOKEN" | ssh kspls0 \
-            "docker login ghcr.io --username '${{ github.repository_owner }}' --password-stdin"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io \
+            --username '${{ github.repository_owner }}' --password-stdin
 
       - name: Pull latest main image
-        run: ssh kspls0 "docker pull ghcr.io/${{ github.repository }}:main"
+        run: docker pull "ghcr.io/${{ github.repository }}:main"
 
       - name: Prepare config directory
         run: |
-          ssh kspls0 "sudo install -d -o 1000 -g 1000 -m 0755 '$SEERRNG_CONFIG_DIR'"
+          docker run --rm --user 0 \
+            --entrypoint sh \
+            -v "$SEERRNG_CONFIG_DIR:/config" \
+            "ghcr.io/${{ github.repository }}:main" \
+            -c 'chown 1000:1000 /config && chmod 0755 /config'
 
       - name: Deploy seerr.home
         run: |
-          ssh kspls0 \
-            "SEERRNG_CONTAINER_NAME='$SEERRNG_CONTAINER_NAME' \
-            SEERRNG_PORT='$SEERRNG_PORT' \
-            SEERRNG_CONFIG_DIR='$SEERRNG_CONFIG_DIR' \
-            SEERRNG_TAG='$SEERRNG_TAG' \
-            TZ='${TZ:-America/Regina}' \
-            LOG_LEVEL='${LOG_LEVEL:-info}' \
-            REPOSITORY='${{ github.repository }}' \
-            bash -s" <<'EOF'
           docker rm -f "$SEERRNG_CONTAINER_NAME" 2>/dev/null || true
           docker run -d \
             --name "$SEERRNG_CONTAINER_NAME" \
             --restart unless-stopped \
             --network host \
-            -e TZ="$TZ" \
+            -e TZ="${TZ:-America/Regina}" \
             -e PORT="$SEERRNG_PORT" \
             -e CONFIG_DIRECTORY=/app/config \
-            -e LOG_LEVEL="$LOG_LEVEL" \
+            -e LOG_LEVEL="${LOG_LEVEL:-info}" \
             -v "$SEERRNG_CONFIG_DIR:/app/config" \
-            "ghcr.io/$REPOSITORY:$SEERRNG_TAG"
-          EOF
+            "ghcr.io/${{ github.repository }}:$SEERRNG_TAG"
 
       - name: Verify seerr.home deployment
         run: |
-          ssh kspls0 \
-            "SEERRNG_CONTAINER_NAME='$SEERRNG_CONTAINER_NAME' \
-            SEERRNG_PORT='$SEERRNG_PORT' \
-            GITHUB_SHA='$GITHUB_SHA' \
-            bash -s" <<'EOF'
           docker ps --filter "name=^/${SEERRNG_CONTAINER_NAME}$" --filter "status=running" --format '{{.Names}}' | grep -qx "$SEERRNG_CONTAINER_NAME"
           status_ready=false
           for i in $(seq 1 90); do
-            if curl --fail --silent --show-error "http://127.0.0.1:${SEERRNG_PORT}/api/v1/status" --output status.json; then
+            if docker exec "$SEERRNG_CONTAINER_NAME" node -e \
+              "fetch('http://127.0.0.1:${SEERRNG_PORT}/api/v1/status').then(async response => { if (!response.ok) process.exit(1); process.stdout.write(await response.text()); }).catch(() => process.exit(1))" \
+              > status.json; then
               status_ready=true
               cat status.json
               break
@@ -453,4 +430,3 @@ jobs:
           test "$status_ready" = true
           short_sha="${GITHUB_SHA::8}"
           grep -Eq "\"commitTag\":\"(${GITHUB_SHA}|${short_sha})\"" status.json
-          EOF
