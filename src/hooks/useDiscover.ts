@@ -154,8 +154,12 @@ const useDiscover = <
       )}:${randomizeOrder ? 'random' : 'stable'}`,
     [endpoint, options, randomizeOrder, user?.id]
   );
-  const fallbackData =
+  const persistentFallbackData =
     usePersistentResponse<(BaseSearchResult<T> & S)[]>(fallbackCacheKey);
+  // A randomized view gets a new seed on each mount. Restoring results produced
+  // with the previous seed would paint one lineup and then replace it as soon as
+  // the current request completes.
+  const fallbackData = randomizeOrder ? undefined : persistentFallbackData;
   const {
     data,
     error,
@@ -186,7 +190,9 @@ const useDiscover = <
     },
     {
       initialSize: 1,
-      revalidateFirstPage: true,
+      // Loading the next page should only append that page. Availability and
+      // request state are refreshed explicitly when a cached view is restored.
+      revalidateFirstPage: false,
       dedupingInterval: 30000,
       revalidateOnFocus: false,
       fallbackData,
@@ -322,10 +328,10 @@ const useDiscover = <
   }, [setSize, shouldScanNextFilteredPage]);
 
   useEffect(() => {
-    if (data?.length && titles.length) {
+    if (!randomizeOrder && data?.length && titles.length) {
       setPersistentResponse(fallbackCacheKey, data);
     }
-  }, [data, fallbackCacheKey, titles.length]);
+  }, [data, fallbackCacheKey, randomizeOrder, titles.length]);
 
   useEffect(() => {
     if (error && titles.length) {
