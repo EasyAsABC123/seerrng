@@ -68,13 +68,13 @@ export const setPersistentResponse = <T>(key: string, data: T | undefined) => {
 };
 
 export const usePersistentResponse = <T>(key: string): T | undefined => {
-  const [data, setData] = useState<T>();
+  const [response, setResponse] = useState<{ key: string; data?: T }>();
 
   useEffect(() => {
-    setData(getPersistentResponse<T>(key));
+    setResponse({ key, data: getPersistentResponse<T>(key) });
   }, [key]);
 
-  return data;
+  return response?.key === key ? response.data : undefined;
 };
 
 // SWR's shared in-memory cache handles navigation deduplication. Persisted

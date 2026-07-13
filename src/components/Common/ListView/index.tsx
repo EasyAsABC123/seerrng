@@ -116,7 +116,7 @@ const ListView = ({
   );
   const itemCards = useMemo(
     () =>
-      visibleItems?.map((title, index) => {
+      visibleItems?.map((title) => {
         let titleCard: React.ReactNode;
 
         switch (title.mediaType) {
@@ -247,7 +247,7 @@ const ListView = ({
             return null;
         }
 
-        return <li key={`${title.id}-${index}`}>{titleCard}</li>;
+        return <li key={`${title.mediaType}:${title.id}`}>{titleCard}</li>;
       }),
     [
       visibleItems,
