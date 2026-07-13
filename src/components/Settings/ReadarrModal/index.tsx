@@ -191,12 +191,14 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
 
   const testConnection = useCallback(
     async ({
+      id,
       hostname,
       port,
       apiKey,
       baseUrl,
       useSsl = false,
     }: {
+      id?: number;
       hostname: string;
       port: number;
       apiKey: string;
@@ -208,6 +210,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
         const response = await axios.post<TestResponse>(
           '/api/v1/settings/readarr/test',
           {
+            id,
             hostname,
             apiKey,
             port: Number(port),
@@ -260,6 +263,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
   useEffect(() => {
     if (readarr) {
       testConnection({
+        id: readarr.id,
         apiKey: readarr.apiKey,
         hostname: readarr.hostname,
         port: readarr.port,
@@ -377,6 +381,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
             onSecondary={async () => {
               if (values.apiKey && values.hostname && values.port) {
                 const response = await testConnection({
+                  id: readarr?.id,
                   apiKey: values.apiKey,
                   baseUrl: values.baseUrl,
                   hostname: values.hostname,
@@ -440,6 +445,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
                         const response = await axios.post<DiagnosticResponse>(
                           '/api/v1/settings/readarr/diagnose',
                           {
+                            id: readarr?.id,
                             hostname: values.hostname,
                             apiKey: values.apiKey,
                             port: Number(values.port),

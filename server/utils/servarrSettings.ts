@@ -26,7 +26,7 @@ const MAX_SERVICE_ID = 1_000_000;
 export type ServarrConnectionSettings = Pick<
   DVRSettings,
   'hostname' | 'port' | 'apiKey' | 'useSsl' | 'baseUrl'
->;
+> & { id?: number };
 
 const parseNumberArray = (
   value: unknown,
