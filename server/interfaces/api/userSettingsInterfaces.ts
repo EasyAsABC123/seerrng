@@ -1,4 +1,7 @@
-import type { NotificationAgentKey } from '@server/lib/settings';
+import type {
+  NotificationAgentKey,
+  PublicOidcProvider,
+} from '@server/lib/settings';
 
 export type CardTextVisibility = 'always' | 'hover';
 
@@ -59,3 +62,11 @@ export interface UserSettingsNotificationsResponse {
   webPushEnabled?: boolean;
   notificationTypes: Partial<NotificationAgentTypes>;
 }
+
+export type UserSettingsLinkedAccount = {
+  id: number;
+  username: string;
+  provider: PublicOidcProvider;
+};
+
+export type UserSettingsLinkedAccountResponse = UserSettingsLinkedAccount[];

@@ -206,7 +206,7 @@ app
       server.set('trust proxy', 1);
     }
     server.use(compression());
-    server.use(cookieParser());
+    server.use(cookieParser(settings.sessionSecret));
     server.use(express.json({ limit: API_BODY_LIMIT }));
     server.use(
       express.urlencoded({
@@ -301,6 +301,7 @@ app
           message?: string;
           errors?: string[];
           stack?: string;
+          error?: string;
         },
         req: Request,
         res: Response,
@@ -326,6 +327,7 @@ app
         res.status(status).json({
           message: err.message,
           errors: err.errors,
+          ...(err.error && { error: err.error }),
         });
       }
     );
