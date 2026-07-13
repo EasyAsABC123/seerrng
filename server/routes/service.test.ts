@@ -593,6 +593,46 @@ describe('Bookshelf settings routes', () => {
     assert.deepStrictEqual(res.body.rootFolders, [{ id: 3, path: '/books' }]);
   });
 
+  it('uses the stored API key when testing an existing Bookshelf', async () => {
+    let apiKeyUsed: string | undefined;
+    getSettings().readarr = [makeReadarr({ id: 7, apiKey: 'stored-key' })];
+    mock.method(
+      ReadarrAPI.prototype,
+      'getSystemStatus',
+      async function (this: ReadarrAPI) {
+        const client = Reflect.get(this, 'axios') as {
+          defaults: { params?: Record<string, string> };
+        };
+        apiKeyUsed = client.defaults.params?.apikey;
+        return {
+          appName: 'Bookshelf',
+          version: '0.4.20.129',
+          urlBase: '',
+        };
+      }
+    );
+    mock.method(ReadarrAPI.prototype, 'getDevelopmentConfig', async () => ({
+      id: 1,
+      metadataSource: 'https://api.hardcover.app',
+    }));
+    mock.method(ReadarrAPI.prototype, 'getProfiles', async () => []);
+    mock.method(ReadarrAPI.prototype, 'getMetadataProfiles', async () => []);
+    mock.method(ReadarrAPI.prototype, 'getRootFolders', async () => []);
+
+    const res = await request(createOpenApiApp())
+      .post('/api/v1/settings/readarr/test')
+      .send({
+        id: 7,
+        hostname: 'bookshelf.local',
+        port: 8787,
+        apiKey: '[REDACTED]',
+        useSsl: false,
+      });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(apiKeyUsed, 'stored-key');
+  });
+
   it('rejects malformed settings IDs before update lookup', async () => {
     getSettings().readarr = [makeReadarr({ id: 7 })];
 

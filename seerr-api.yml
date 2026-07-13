@@ -601,6 +601,8 @@ components:
     ServarrConnectionSettings:
       type: object
       properties:
+        id:
+          type: number
         hostname:
           type: string
           example: '127.0.0.1'

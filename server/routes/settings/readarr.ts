@@ -18,6 +18,24 @@ import { Router } from 'express';
 
 const readarrRoutes = Router();
 
+const preserveReadarrConnectionSecret = (body: unknown): unknown => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return body;
+  }
+
+  const incoming = body as Record<string, unknown>;
+  const id =
+    typeof incoming.id === 'number' && Number.isSafeInteger(incoming.id)
+      ? incoming.id
+      : undefined;
+  const current =
+    id === undefined
+      ? undefined
+      : getSettings().readarr.find((readarr) => readarr.id === id);
+
+  return current ? preserveRedactedSecrets(body, current) : body;
+};
+
 const isAddableBookLookupResult = (result: ReadarrBookLookupResult): boolean =>
   !!(
     result.foreignBookId &&
@@ -139,7 +157,9 @@ readarrRoutes.post<
   ServarrConnectionSettings
 >('/test', async (req, res, next) => {
   try {
-    const parsedReadarr = parseServarrConnectionSettings(req.body);
+    const parsedReadarr = parseServarrConnectionSettings(
+      preserveReadarrConnectionSecret(req.body)
+    );
 
     if ('error' in parsedReadarr) {
       return res.status(400).json({ message: parsedReadarr.error });
@@ -192,7 +212,9 @@ readarrRoutes.post<
     testAdd?: unknown;
   }
 >('/diagnose', async (req, res) => {
-  const parsedReadarr = parseServarrConnectionSettings(req.body);
+  const parsedReadarr = parseServarrConnectionSettings(
+    preserveReadarrConnectionSecret(req.body)
+  );
 
   if ('error' in parsedReadarr) {
     return res.status(400).json({
