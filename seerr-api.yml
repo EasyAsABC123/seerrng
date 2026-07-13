@@ -598,6 +598,27 @@ components:
         externalUrl:
           type: string
           nullable: true
+    ServarrConnectionSettings:
+      type: object
+      properties:
+        hostname:
+          type: string
+          example: '127.0.0.1'
+        port:
+          type: number
+          example: 8787
+        apiKey:
+          type: string
+          example: 'exampleapikey'
+        useSsl:
+          type: boolean
+          example: false
+        baseUrl:
+          type: string
+      required:
+        - hostname
+        - port
+        - apiKey
     RadarrSettings:
       type: object
       properties:
@@ -7400,7 +7421,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ReadarrSettings'
+              $ref: '#/components/schemas/ServarrConnectionSettings'
       responses:
         '200':
           description: Bookshelf connection details returned
@@ -7419,9 +7440,15 @@ paths:
           application/json:
             schema:
               allOf:
-                - $ref: '#/components/schemas/ReadarrSettings'
+                - $ref: '#/components/schemas/ServarrConnectionSettings'
                 - type: object
                   properties:
+                    activeDirectory:
+                      type: string
+                    activeProfileId:
+                      type: number
+                    activeMetadataProfileId:
+                      type: number
                     term:
                       type: string
                       example: isbn:9780547928227

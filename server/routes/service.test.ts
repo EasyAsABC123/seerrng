@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
 import ReadarrAPI from '@server/api/servarr/readarr';
@@ -13,6 +14,7 @@ import type {
 import { getSettings } from '@server/lib/settings';
 import type { Express } from 'express';
 import express from 'express';
+import * as OpenApiValidator from 'express-openapi-validator';
 import request from 'supertest';
 import serviceRoutes from './service';
 import lidarrRoutes from './settings/lidarr';
@@ -74,6 +76,35 @@ function createApp(permissions = Permission.REQUEST_ADVANCED) {
       res
         .status(Number(err.status ?? 500))
         .json({ status: Number(err.status ?? 500), message: err.message });
+    }
+  );
+  return app;
+}
+
+function createOpenApiApp() {
+  const app = express();
+  app.use(express.json());
+  app.use(
+    OpenApiValidator.middleware({
+      apiSpec: path.join(process.cwd(), 'seerr-api.yml'),
+      validateRequests: true,
+      validateSecurity: false,
+    })
+  );
+  app.use('/api/v1/settings/readarr', readarrRoutes);
+  app.use(
+    (
+      err: { status?: number | string; message?: string; errors?: unknown[] },
+      _req: express.Request,
+      res: express.Response,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      _next: express.NextFunction
+    ) => {
+      res.status(Number(err.status ?? 500)).json({
+        status: Number(err.status ?? 500),
+        message: err.message,
+        errors: err.errors,
+      });
     }
   );
   return app;
@@ -544,12 +575,14 @@ describe('Bookshelf settings routes', () => {
         unmappedFolders: [],
       },
     ]);
-    const res = await request(app).post('/settings/readarr/test').send({
-      hostname: 'bookshelf.local',
-      port: 8787,
-      apiKey: 'test-key',
-      useSsl: false,
-    });
+    const res = await request(createOpenApiApp())
+      .post('/api/v1/settings/readarr/test')
+      .send({
+        hostname: 'bookshelf.local',
+        port: 8787,
+        apiKey: 'test-key',
+        useSsl: false,
+      });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.urlBase, '/bookshelf');
