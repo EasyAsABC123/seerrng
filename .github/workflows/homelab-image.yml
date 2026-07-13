@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate search fix
+    name: Validate develop fixes
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -37,14 +37,23 @@ jobs:
           CYPRESS_INSTALL_BINARY: 0
         run: pnpm install --frozen-lockfile
 
-      - name: Run search regression tests
-        run: pnpm test src/hooks/useSearchInput.test.ts
+      - name: Run regression tests
+        run: pnpm test src/hooks/useSearchInput.test.ts server/routes/service.test.ts
 
-      - name: Lint search changes
-        run: pnpm exec eslint src/hooks/useSearchInput.ts src/hooks/useSearchInput.utils.ts src/hooks/useSearchInput.test.ts
+      - name: Lint changed files
+        run: >-
+          pnpm exec eslint
+          server/api/servarr/base.ts
+          server/routes/service.test.ts
+          server/routes/settings/readarr.ts
+          server/utils/servarrSettings.ts
+          src/components/Settings/ReadarrModal/index.tsx
+          src/hooks/useSearchInput.ts
+          src/hooks/useSearchInput.utils.ts
+          src/hooks/useSearchInput.test.ts
 
-      - name: Type-check client
-        run: pnpm typecheck:client
+      - name: Type-check
+        run: pnpm typecheck
 
   publish:
     name: Publish immutable image
