@@ -177,4 +177,53 @@ describe('Theme picker and seeded discovery refresh', () => {
       expect(new Set(bookSeeds).size).to.be.greaterThan(1);
     });
   });
+
+  it('appends another ranked book page without reloading the first page', () => {
+    cy.viewport(1400, 900);
+
+    let firstPageRequests = 0;
+    const firstPageBooks = Array.from({ length: 20 }, (_, index) =>
+      makeBook(`First page book ${index + 1}`, `first-page-${index + 1}`)
+    );
+
+    cy.intercept('GET', '/api/v1/discover/books*', (req) => {
+      if (req.query.page === '2') {
+        req.reply({
+          page: 2,
+          totalPages: 2,
+          totalResults: 41,
+          results: [makeBook('Appended book', 'second-page-1')],
+        });
+        return;
+      }
+
+      firstPageRequests += 1;
+      req.reply({
+        page: 1,
+        totalPages: 2,
+        totalResults: 41,
+        results: firstPageBooks,
+      });
+    }).as('books');
+
+    cy.visit('/discover/books');
+    cy.wait('@books');
+    cy.get('[data-testid=title-card]')
+      .should('have.length', 20)
+      .first()
+      .then(($firstCard) => {
+        cy.scrollTo('bottom');
+        cy.wait('@books').its('request.query.page').should('eq', '2');
+
+        cy.get('[data-testid=title-card]')
+          .should('have.length', 21)
+          .first()
+          .should(($currentFirstCard) => {
+            expect($currentFirstCard[0]).to.eq($firstCard[0]);
+          });
+      });
+    cy.then(() => {
+      expect(firstPageRequests).to.eq(1);
+    });
+  });
 });
