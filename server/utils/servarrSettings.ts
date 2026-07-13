@@ -23,6 +23,11 @@ const MAX_SERVICE_TAGS = 100;
 const MAX_SERVICE_PORT = 65535;
 const MAX_SERVICE_ID = 1_000_000;
 
+export type ServarrConnectionSettings = Pick<
+  DVRSettings,
+  'hostname' | 'port' | 'apiKey' | 'useSsl' | 'baseUrl'
+>;
+
 const parseNumberArray = (
   value: unknown,
   fieldName: string
@@ -98,6 +103,43 @@ const parseOptionalUrlBase = (
   return normalized || !parsed.value.trim()
     ? { value: normalized || undefined }
     : { error: 'baseUrl must be a relative path.' };
+};
+
+export const parseServarrConnectionSettings = (
+  body: unknown
+): { value: ServarrConnectionSettings } | { error: string } => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { error: 'settings must be an object.' };
+  }
+
+  const settings = body as Partial<DVRSettings>;
+  const hostname = parseRequiredServiceString(settings.hostname, 'hostname');
+  if ('error' in hostname) return hostname;
+  const normalizedHostname = normalizeServiceHostname(hostname.value);
+  if (!normalizedHostname) {
+    return { error: 'hostname is invalid.' };
+  }
+
+  const apiKey = parseRequiredServiceString(settings.apiKey, 'apiKey');
+  if ('error' in apiKey) return apiKey;
+
+  const port = parseOptionalNonNegativeInteger(settings.port, MAX_SERVICE_PORT);
+  if (port === undefined || port < 1) {
+    return { error: 'port is invalid.' };
+  }
+
+  const baseUrl = parseOptionalUrlBase(settings.baseUrl);
+  if ('error' in baseUrl) return baseUrl;
+
+  return {
+    value: {
+      hostname: normalizedHostname,
+      port,
+      apiKey: apiKey.value,
+      useSsl: parseOptionalBoolean(settings.useSsl) ?? false,
+      baseUrl: baseUrl.value,
+    },
+  };
 };
 
 const parseDvrSettings = (

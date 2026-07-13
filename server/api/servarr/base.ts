@@ -104,7 +104,10 @@ const normalizeConfiguredServiceUrl = (value: string, apiName: string) => {
 };
 
 class ServarrBase<QueueItemAppendT> extends ExternalAPI {
-  static buildUrl(settings: DVRSettings, path?: string): string {
+  static buildUrl(
+    settings: Pick<DVRSettings, 'useSsl' | 'hostname' | 'port' | 'baseUrl'>,
+    path?: string
+  ): string {
     return buildServiceUrl({
       useSsl: settings.useSsl,
       hostname: settings.hostname,

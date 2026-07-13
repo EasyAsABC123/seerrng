@@ -9,7 +9,11 @@ import {
 } from '@server/utils/bookshelfProvider';
 import { parseNonNegativeRouteId } from '@server/utils/routeId';
 import { preserveRedactedSecrets, redactSecrets } from '@server/utils/security';
-import { parseReadarrSettings } from '@server/utils/servarrSettings';
+import {
+  parseReadarrSettings,
+  parseServarrConnectionSettings,
+  type ServarrConnectionSettings,
+} from '@server/utils/servarrSettings';
 import { Router } from 'express';
 
 const readarrRoutes = Router();
@@ -132,10 +136,10 @@ readarrRoutes.post('/', async (req, res) => {
 readarrRoutes.post<
   undefined,
   Record<string, unknown>,
-  ReadarrSettings & { tagLabel?: string }
+  ServarrConnectionSettings
 >('/test', async (req, res, next) => {
   try {
-    const parsedReadarr = parseReadarrSettings(req.body);
+    const parsedReadarr = parseServarrConnectionSettings(req.body);
 
     if ('error' in parsedReadarr) {
       return res.status(400).json({ message: parsedReadarr.error });
@@ -156,7 +160,6 @@ readarrRoutes.post<
     const profiles = await readarr.getProfiles();
     const metadataProfiles = await readarr.getMetadataProfiles();
     const folders = await readarr.getRootFolders();
-    const tags = await readarr.getTags();
     const provider = classifyBookshelfProvider(development?.metadataSource);
 
     return res.status(200).json({
@@ -166,7 +169,7 @@ readarrRoutes.post<
         id: folder.id,
         path: folder.path,
       })),
-      tags,
+      tags: [],
       urlBase,
       provider,
       legacyWarning: getBookshelfProviderWarning(provider),
@@ -189,7 +192,7 @@ readarrRoutes.post<
     testAdd?: unknown;
   }
 >('/diagnose', async (req, res) => {
-  const parsedReadarr = parseReadarrSettings(req.body);
+  const parsedReadarr = parseServarrConnectionSettings(req.body);
 
   if ('error' in parsedReadarr) {
     return res.status(400).json({
@@ -281,14 +284,21 @@ readarrRoutes.post<
 
     if (testAdd) {
       try {
-        const rootFolder =
-          parsedReadarr.value.activeDirectory || folders[0]?.path;
-        const qualityProfileId =
-          parsedReadarr.value.activeProfileId || profiles[0]?.id;
-        const metadataProfileId =
-          parsedReadarr.value.activeMetadataProfileId ||
-          metadataProfiles[0]?.id ||
-          1;
+        const requestedRootFolder =
+          typeof req.body.activeDirectory === 'string'
+            ? req.body.activeDirectory.trim()
+            : '';
+        const requestedQualityProfileId = Number(req.body.activeProfileId);
+        const requestedMetadataProfileId = Number(
+          req.body.activeMetadataProfileId
+        );
+        const rootFolder = requestedRootFolder || folders[0]?.path;
+        const qualityProfileId = Number.isInteger(requestedQualityProfileId)
+          ? requestedQualityProfileId
+          : profiles[0]?.id;
+        const metadataProfileId = Number.isInteger(requestedMetadataProfileId)
+          ? requestedMetadataProfileId
+          : metadataProfiles[0]?.id || 1;
 
         const added = await readarr.addBook({
           ...addableResult,
@@ -296,7 +306,7 @@ readarrRoutes.post<
           qualityProfileId,
           metadataProfileId,
           rootFolderPath: rootFolder,
-          tags: parsedReadarr.value.tags ?? [],
+          tags: [],
           author: {
             ...addableResult.author,
             rootFolderPath: rootFolder,

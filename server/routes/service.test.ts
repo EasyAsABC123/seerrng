@@ -519,6 +519,47 @@ describe('Bookshelf settings routes', () => {
     assert.match(res.body.message, /settings must be an object/i);
   });
 
+  it('tests a Bookshelf connection before the add form is complete', async () => {
+    mock.method(ReadarrAPI.prototype, 'getSystemStatus', async () => ({
+      appName: 'Bookshelf',
+      version: '0.4.20.129',
+      urlBase: '/bookshelf',
+    }));
+    mock.method(ReadarrAPI.prototype, 'getDevelopmentConfig', async () => ({
+      id: 1,
+      metadataSource: 'https://api.hardcover.app',
+    }));
+    mock.method(ReadarrAPI.prototype, 'getProfiles', async () => [
+      { id: 1, name: 'eBook' },
+    ]);
+    mock.method(ReadarrAPI.prototype, 'getMetadataProfiles', async () => [
+      { id: 2, name: 'Standard' },
+    ]);
+    mock.method(ReadarrAPI.prototype, 'getRootFolders', async () => [
+      {
+        id: 3,
+        path: '/books',
+        freeSpace: 1,
+        totalSpace: 1,
+        unmappedFolders: [],
+      },
+    ]);
+    const res = await request(app).post('/settings/readarr/test').send({
+      hostname: 'bookshelf.local',
+      port: 8787,
+      apiKey: 'test-key',
+      useSsl: false,
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.urlBase, '/bookshelf');
+    assert.deepStrictEqual(res.body.profiles, [{ id: 1, name: 'eBook' }]);
+    assert.deepStrictEqual(res.body.metadataProfiles, [
+      { id: 2, name: 'Standard' },
+    ]);
+    assert.deepStrictEqual(res.body.rootFolders, [{ id: 3, path: '/books' }]);
+  });
+
   it('rejects malformed settings IDs before update lookup', async () => {
     getSettings().readarr = [makeReadarr({ id: 7 })];
 
@@ -745,9 +786,12 @@ describe('Bookshelf settings routes', () => {
     ]);
     mock.method(ReadarrAPI.prototype, 'lookupBook', async () => []);
 
-    const res = await request(app)
-      .post('/settings/readarr/diagnose')
-      .send(makeReadarr({ activeDirectory: '/books' }));
+    const res = await request(app).post('/settings/readarr/diagnose').send({
+      hostname: 'bookshelf.local',
+      port: 8787,
+      apiKey: 'test-key',
+      useSsl: false,
+    });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.ok, false);

@@ -29,6 +29,7 @@ const messages = defineMessages('components.Settings.ReadarrModal', {
   validationBaseUrlTrailingSlash: 'URL base must not end in a trailing slash',
   toastReadarrTestSuccess: 'Bookshelf connection established successfully!',
   toastReadarrTestFailure: 'Failed to connect to Bookshelf.',
+  toastReadarrSaveFailure: 'Failed to save the Bookshelf server.',
   add: 'Add Server',
   defaultserver: 'Default Server',
   servername: 'Server Name',
@@ -237,6 +238,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
             autoDismiss: true,
           });
         }
+        return response.data;
       } catch {
         setIsValidated(false);
         setDiagnosticResponse(null);
@@ -246,6 +248,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
             autoDismiss: true,
           });
         }
+        return null;
       } finally {
         setIsTesting(false);
         initialLoad.current = true;
@@ -280,63 +283,70 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
     >
       <Formik
         initialValues={{
-          name: readarr?.name,
-          hostname: readarr?.hostname,
+          name: readarr?.name ?? '',
+          hostname: readarr?.hostname ?? '',
           port: readarr?.port ?? 8787,
           ssl: readarr?.useSsl ?? false,
-          apiKey: readarr?.apiKey,
-          baseUrl: readarr?.baseUrl,
-          activeProfileId: readarr?.activeProfileId,
-          rootFolder: readarr?.activeDirectory,
+          apiKey: readarr?.apiKey ?? '',
+          baseUrl: readarr?.baseUrl ?? '',
+          activeProfileId: readarr?.activeProfileId ?? '',
+          rootFolder: readarr?.activeDirectory ?? '',
           isDefault: readarr?.isDefault ?? false,
-          externalUrl: readarr?.externalUrl,
+          externalUrl: readarr?.externalUrl ?? '',
           syncEnabled: readarr?.syncEnabled ?? false,
           enableSearch: !readarr?.preventSearch,
-          activeMetadataProfileId: readarr?.activeMetadataProfileId ?? 1,
+          activeMetadataProfileId: readarr?.activeMetadataProfileId ?? '',
           serviceType: readarr?.serviceType ?? 'ebook',
         }}
         validationSchema={ReadarrSettingsSchema}
         onSubmit={async (values) => {
-          const profileName = testResponse.profiles.find(
-            (profile) => profile.id === Number(values.activeProfileId)
-          )?.name;
-          const metadataProfileName = testResponse.metadataProfiles.find(
-            (profile) => profile.id === Number(values.activeMetadataProfileId)
-          )?.name;
+          try {
+            const profileName = testResponse.profiles.find(
+              (profile) => profile.id === Number(values.activeProfileId)
+            )?.name;
+            const metadataProfileName = testResponse.metadataProfiles.find(
+              (profile) => profile.id === Number(values.activeMetadataProfileId)
+            )?.name;
 
-          const submission = {
-            name: values.name,
-            hostname: values.hostname,
-            port: Number(values.port),
-            apiKey: values.apiKey,
-            useSsl: values.ssl,
-            baseUrl: values.baseUrl,
-            activeProfileId: Number(values.activeProfileId),
-            activeProfileName: profileName,
-            activeDirectory: values.rootFolder,
-            tags: [],
-            isDefault: values.isDefault,
-            is4k: false,
-            externalUrl: values.externalUrl,
-            syncEnabled: values.syncEnabled,
-            preventSearch: !values.enableSearch,
-            tagRequests: false,
-            overrideRule: [],
-            activeMetadataProfileId: Number(values.activeMetadataProfileId),
-            activeMetadataProfileName: metadataProfileName,
-            serviceType: values.serviceType,
-          };
+            const submission = {
+              name: values.name,
+              hostname: values.hostname,
+              port: Number(values.port),
+              apiKey: values.apiKey,
+              useSsl: values.ssl,
+              baseUrl: values.baseUrl,
+              activeProfileId: Number(values.activeProfileId),
+              activeProfileName: profileName,
+              activeDirectory: values.rootFolder,
+              tags: [],
+              isDefault: values.isDefault,
+              is4k: false,
+              externalUrl: values.externalUrl,
+              syncEnabled: values.syncEnabled,
+              preventSearch: !values.enableSearch,
+              tagRequests: false,
+              overrideRule: [],
+              activeMetadataProfileId: Number(values.activeMetadataProfileId),
+              activeMetadataProfileName: metadataProfileName,
+              serviceType: values.serviceType,
+            };
 
-          if (!readarr) {
-            await axios.post('/api/v1/settings/readarr', submission);
-          } else {
-            await axios.put(
-              `/api/v1/settings/readarr/${readarr.id}`,
-              submission
-            );
+            if (!readarr) {
+              await axios.post('/api/v1/settings/readarr', submission);
+            } else {
+              await axios.put(
+                `/api/v1/settings/readarr/${readarr.id}`,
+                submission
+              );
+            }
+
+            onSave();
+          } catch {
+            addToast(intl.formatMessage(messages.toastReadarrSaveFailure), {
+              appearance: 'error',
+              autoDismiss: true,
+            });
           }
-
-          onSave();
         }}
       >
         {({
@@ -364,17 +374,17 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
                 ? intl.formatMessage(globalMessages.testing)
                 : intl.formatMessage(globalMessages.test)
             }
-            onSecondary={() => {
+            onSecondary={async () => {
               if (values.apiKey && values.hostname && values.port) {
-                testConnection({
+                const response = await testConnection({
                   apiKey: values.apiKey,
                   baseUrl: values.baseUrl,
                   hostname: values.hostname,
                   port: values.port,
                   useSsl: values.ssl,
                 });
-                if (!values.baseUrl || values.baseUrl === '/') {
-                  setFieldValue('baseUrl', testResponse.urlBase);
+                if (response && (!values.baseUrl || values.baseUrl === '/')) {
+                  setFieldValue('baseUrl', response.urlBase || '');
                 }
               }
             }}
@@ -535,7 +545,6 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
                       name="name"
                       type="text"
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        setIsValidated(false);
                         setFieldValue('name', e.target.value);
                       }}
                     />
