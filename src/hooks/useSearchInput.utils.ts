@@ -1,0 +1,23 @@
+export const getSearchQuery = (query: string | string[] | undefined): string =>
+  typeof query === 'string' ? query : '';
+
+export const shouldNavigateToSearch = (
+  pathname: string,
+  currentQuery: string,
+  nextQuery: string,
+  searchOpen: boolean
+): boolean =>
+  searchOpen &&
+  nextQuery !== '' &&
+  (!pathname.startsWith('/search') || currentQuery !== nextQuery);
+
+export const shouldSyncSearchInput = (
+  pathname: string,
+  routeQuery: string,
+  searchValue: string,
+  debouncedValue: string,
+  closingSearch: boolean
+): boolean =>
+  routeQuery !== searchValue &&
+  searchValue === debouncedValue &&
+  !(pathname.startsWith('/search') && closingSearch);
