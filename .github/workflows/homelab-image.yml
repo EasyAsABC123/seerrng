@@ -4,7 +4,7 @@ name: Homelab Image
 on:
   push:
     branches:
-      - fix/search-input-routing
+      - develop
   workflow_dispatch:
 
 permissions:
@@ -76,10 +76,10 @@ jobs:
           push: true
           tags: |
             ghcr.io/easyasabc123/seerrng:sha-${{ github.sha }}
-            ghcr.io/easyasabc123/seerrng:search-fix
+            ghcr.io/easyasabc123/seerrng:develop
           build-args: |
             COMMIT_TAG=${{ github.sha }}
-            BUILD_VERSION=search-fix
+            BUILD_VERSION=develop
           cache-from: type=gha,scope=homelab-amd64
           cache-to: type=gha,mode=max,scope=homelab-amd64
           provenance: false
