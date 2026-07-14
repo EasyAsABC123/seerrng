@@ -98,7 +98,7 @@ describe('GET /avatarproxy/remote', () => {
     assert.equal(res.body.toString(), 'avatar-bytes');
   });
 
-  it('proxies apex Plex avatars with a safe fallback', async () => {
+  it('keeps the client default visible while refreshing Plex avatars', async () => {
     const { getCachedImageMock, getImageMock } = mockAvatarDependencies();
     const avatarUrl = 'https://plex.tv/users/abc/avatar?c=123';
 
@@ -106,15 +106,12 @@ describe('GET /avatarproxy/remote', () => {
       .get('/avatarproxy/remote')
       .query({ url: avatarUrl });
 
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 204);
+    assert.equal(res.headers['cache-control'], 'no-store');
     assert.equal(getCachedImageMock.mock.callCount(), 1);
     assert.equal(getCachedImageMock.mock.calls[0].arguments[0], avatarUrl);
-    assert.equal(getImageMock.mock.callCount(), 2);
-    assert.match(
-      String(getImageMock.mock.calls[0].arguments[0]),
-      /^https:\/\/(?:www\.)?gravatar\.com\/avatar\//
-    );
-    assert.equal(getImageMock.mock.calls[1].arguments[0], avatarUrl);
+    assert.equal(getImageMock.mock.callCount(), 1);
+    assert.equal(getImageMock.mock.calls[0].arguments[0], avatarUrl);
   });
 
   it('returns 304 with cache headers when the browser validator matches', async () => {
