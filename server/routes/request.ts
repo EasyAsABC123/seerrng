@@ -77,7 +77,7 @@ const requestStatusFilters = [
   'available',
   'deleted',
 ] as const;
-const requestSortFields = ['modified'] as const;
+const requestSortFields = ['added', 'modified'] as const;
 const requestSortDirections = ['asc', 'desc'] as const;
 
 const getErrorLogFields = (error: unknown) => ({
