@@ -6,6 +6,7 @@ import {
   getImageErrorFallback,
   getInitialImageUrl,
 } from '@app/utils/imageCache';
+import { UserIcon } from '@heroicons/react/24/solid';
 import type { ImageLoader, ImageProps } from 'next/image';
 import Image from 'next/image';
 import { memo, useEffect, useMemo, useState } from 'react';
@@ -64,6 +65,16 @@ const CachedImage = memo(
         avatarPreloader.onerror = null;
       };
     }, [imageUrl, type]);
+
+    if (type === 'avatar' && activeImageUrl === AVATAR_FALLBACK_IMAGE) {
+      return (
+        <UserIcon
+          aria-label={typeof props.alt === 'string' ? props.alt : undefined}
+          className={`inline-flex p-[15%] text-indigo-500 ${props.className ?? ''}`}
+          role={props.alt ? 'img' : undefined}
+        />
+      );
+    }
 
     return (
       <Image
