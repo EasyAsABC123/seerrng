@@ -1,6 +1,5 @@
 import PlexIcon from '@app/assets/services/plex.svg';
-import Button from '@app/components/Common/Button';
-import { SmallLoadingSpinner } from '@app/components/Common/LoadingSpinner';
+import ButtonWithLoader from '@app/components/Common/ButtonWithLoader';
 import usePlexLogin from '@app/hooks/usePlexLogin';
 import defineMessages from '@app/utils/defineMessages';
 import { Fragment } from 'react';
@@ -26,19 +25,13 @@ const PlexLoginButton = ({
   const { loading, login } = usePlexLogin({ onAuthToken, onError });
 
   return (
-    <Button
-      className="relative flex-1 border-[#cc7b19] bg-[rgba(204,123,25,0.3)] hover:border-[#cc7b19] hover:bg-[rgba(204,123,25,0.7)] disabled:opacity-50"
+    <ButtonWithLoader
+      className="min-w-0 flex-grow border-[#cc7b19] bg-[rgba(204,123,25,0.3)] hover:border-[#cc7b19] hover:bg-[rgba(204,123,25,0.7)]"
       onClick={login}
-      disabled={loading || isProcessing}
+      loading={loading || isProcessing}
       data-testid="plex-login-button"
       aria-label="Login with Plex"
     >
-      {loading && (
-        <div className="absolute right-0 mr-4 h-4 w-4">
-          <SmallLoadingSpinner />
-        </div>
-      )}
-
       {large ? (
         <FormattedMessage
           {...messages.loginwithapp}
@@ -61,7 +54,7 @@ const PlexLoginButton = ({
       ) : (
         <PlexIcon className="w-8" />
       )}
-    </Button>
+    </ButtonWithLoader>
   );
 };
 
