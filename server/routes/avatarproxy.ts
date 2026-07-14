@@ -30,6 +30,8 @@ const REMOTE_AVATAR_FALLBACK_URL = gravatarUrl('none', {
   default: 'mm',
   size: 200,
 });
+const REMOTE_PLEX_AVATAR_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+const remotePlexAvatarRetryAfter = new Map<string, number>();
 export const AVATAR_HEAD_REQUEST_OPTIONS = {
   timeout: 5_000,
   maxRedirects: 0,
@@ -46,6 +48,34 @@ const avatarProxyRateLimit = rateLimit({
 });
 
 let _avatarImageProxy: ImageProxy | null = null;
+
+const isPlexAvatarUrl = (avatarUrl: string): boolean => {
+  const hostname = new URL(avatarUrl).hostname.toLowerCase();
+  return hostname === 'plex.tv' || hostname.endsWith('.plex.tv');
+};
+
+const refreshPlexAvatarInBackground = (
+  avatarImageCache: ImageProxy,
+  avatarUrl: string
+) => {
+  const now = Date.now();
+
+  for (const [url, retryAfter] of remotePlexAvatarRetryAfter) {
+    if (retryAfter <= now) {
+      remotePlexAvatarRetryAfter.delete(url);
+    }
+  }
+
+  if ((remotePlexAvatarRetryAfter.get(avatarUrl) ?? 0) > now) {
+    return;
+  }
+
+  remotePlexAvatarRetryAfter.set(
+    avatarUrl,
+    now + REMOTE_PLEX_AVATAR_RETRY_COOLDOWN_MS
+  );
+  void avatarImageCache.getImage(avatarUrl).catch(() => undefined);
+};
 
 async function initAvatarImageProxy() {
   if (!_avatarImageProxy) {
@@ -210,10 +240,19 @@ router.get('/remote', avatarProxyRateLimit, async (req, res) => {
     }
 
     const avatarImageCache = await initAvatarImageProxy();
-    const imageData = await avatarImageCache.getImage(
-      avatarUrl,
-      REMOTE_AVATAR_FALLBACK_URL
-    );
+    let imageData;
+    if (isPlexAvatarUrl(avatarUrl)) {
+      imageData = await avatarImageCache.getCachedImage(avatarUrl);
+      if (!imageData) {
+        imageData = await avatarImageCache.getImage(REMOTE_AVATAR_FALLBACK_URL);
+        refreshPlexAvatarInBackground(avatarImageCache, avatarUrl);
+      }
+    } else {
+      imageData = await avatarImageCache.getImage(
+        avatarUrl,
+        REMOTE_AVATAR_FALLBACK_URL
+      );
+    }
 
     return sendCachedAvatarImage({
       imageData,
