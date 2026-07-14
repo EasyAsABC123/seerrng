@@ -1,5 +1,15 @@
 export type CacheableImageType = 'tmdb' | 'avatar' | 'tvdb' | 'music' | 'book';
 
+export const AVATAR_FALLBACK_IMAGE = '/user-icon-192x192.png';
+
+export const getImageErrorFallback = (
+  type: CacheableImageType,
+  currentSrc: string
+): string | null =>
+  type === 'avatar' && currentSrc !== AVATAR_FALLBACK_IMAGE
+    ? AVATAR_FALLBACK_IMAGE
+    : null;
+
 const PROXIED_IMAGE_PREFIXES = {
   tmdb: {
     source: /^https:\/\/image\.tmdb\.org\//,
@@ -50,6 +60,7 @@ export const isRemoteAvatarCacheUrlAllowed = (src: string): boolean => {
         hostname === 'secure.gravatar.com' ||
         hostname === 'www.gravatar.com' ||
         hostname.endsWith('.gravatar.com') ||
+        hostname === 'plex.tv' ||
         hostname.endsWith('.plex.tv'))
     );
   } catch {
