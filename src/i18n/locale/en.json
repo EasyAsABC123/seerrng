@@ -1280,6 +1280,7 @@
   "components.Settings.ReadarrModal.testFirstMetadataProfiles": "Test connection to load metadata profiles",
   "components.Settings.ReadarrModal.testFirstQualityProfiles": "Test connection to load quality profiles",
   "components.Settings.ReadarrModal.testFirstRootFolders": "Test connection to load root folders",
+  "components.Settings.ReadarrModal.toastReadarrSaveFailure": "Failed to save the Bookshelf server.",
   "components.Settings.ReadarrModal.toastReadarrTestFailure": "Failed to connect to Bookshelf.",
   "components.Settings.ReadarrModal.toastReadarrTestSuccess": "Bookshelf connection established successfully!",
   "components.Settings.ReadarrModal.validationApiKeyRequired": "You must provide an API key",
