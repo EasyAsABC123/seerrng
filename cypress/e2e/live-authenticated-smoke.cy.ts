@@ -73,8 +73,17 @@ const routes = [
 
   it('executes search and follows a result link', () => {
     cy.visit('/search?query=Star%20Wars');
-    cy.contains('Star Wars', { timeout: 10_000 }).should('be.visible').click();
-    cy.location('pathname').should('match', /^\/(movie|tv|music|book)\//);
-    cy.get('#__next').should('be.visible').and('not.be.empty');
+    cy.contains('Star Wars', { timeout: 10_000 })
+      .should('be.visible')
+      .closest('[data-testid="title-card"]')
+      .find('a[href]')
+      .first()
+      .should('have.attr', 'href')
+      .then((href) => {
+        expect(href).to.match(/^\/(movie|tv|music|book)\//);
+        cy.visit(String(href));
+        cy.location('pathname').should('eq', String(href).split('?')[0]);
+        cy.get('#__next').should('be.visible').and('not.be.empty');
+      });
   });
 });
