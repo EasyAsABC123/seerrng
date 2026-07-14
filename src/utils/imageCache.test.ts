@@ -5,8 +5,22 @@ import {
   AVATAR_FALLBACK_IMAGE,
   getImageCacheUrl,
   getImageErrorFallback,
+  getInitialImageUrl,
   isRemoteAvatarCacheUrlAllowed,
 } from './imageCache';
+
+describe('getInitialImageUrl', () => {
+  it('shows the bundled default while avatars load', () => {
+    assert.equal(
+      getInitialImageUrl('avatar', '/avatarproxy/remote?url=plex'),
+      AVATAR_FALLBACK_IMAGE
+    );
+    assert.equal(
+      getInitialImageUrl('tmdb', '/imageproxy/tmdb/poster.jpg'),
+      '/imageproxy/tmdb/poster.jpg'
+    );
+  });
+});
 
 describe('getImageErrorFallback', () => {
   it('falls back failed avatars once without changing other image types', () => {
