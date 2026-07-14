@@ -95,7 +95,7 @@ const parseRequestBodyObject = (
 };
 
 export const establishAuthenticatedSession = (
-  req: Request,
+  req: Pick<Request, 'session'>,
   userId: number
 ): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -895,18 +895,31 @@ authRoutes.post('/local', authRateLimit, async (req, res, next) => {
 });
 
 const getOidcRedirectUrl = (req: Request) => {
+  const base =
+    getSettings().main.applicationUrl ||
+    `${req.protocol}://${req.headers.host}`;
+  const baseUrl = new URL(base);
   const returnUrl =
     typeof req.query.returnUrl === 'string' ? req.query.returnUrl : '/login';
-  return new URL(
-    returnUrl,
-    getSettings().main.applicationUrl || `${req.protocol}://${req.headers.host}`
-  );
+
+  const resolved = new URL(returnUrl, baseUrl);
+
+  // Only allow same-origin return targets. This URL becomes the OIDC
+  // redirect_uri, so an attacker-supplied absolute or protocol-relative
+  // returnUrl (e.g. "https://evil.example" or "//evil.example") would
+  // otherwise turn the login flow into an open redirect / authorization-code
+  // leak whenever the provider's redirect allowlist is permissive.
+  if (resolved.origin !== baseUrl.origin) {
+    return new URL('/login', baseUrl);
+  }
+
+  return resolved;
 };
 
 const OIDC_STATE_KEY = 'oidc-state';
 const OIDC_CODE_VERIFIER_KEY = 'oidc-code-verifier';
 
-authRoutes.get('/oidc/login/:slug', async (req, res, next) => {
+authRoutes.get('/oidc/login/:slug', authRateLimit, async (req, res, next) => {
   const settings = getSettings();
   const provider = settings.oidc.providers.find(
     (p) => p.slug === req.params.slug
@@ -999,6 +1012,7 @@ authRoutes.get('/oidc/login/:slug', async (req, res, next) => {
 
 authRoutes.post(
   '/oidc/callback/:slug',
+  authRateLimit,
   async (
     req: Request<{ slug: string }, never, { callbackUrl: string }>,
     res,
@@ -1197,6 +1211,22 @@ authRoutes.post(
     if (!user && fullUserInfo.email != null && provider.newUserLogin) {
       const normalizedEmail = fullUserInfo.email.trim().toLowerCase();
 
+      // Only auto-provision an account when the provider asserts the email is
+      // verified. Without this an attacker whose IdP allows unverified emails
+      // could self-provision an account under an arbitrary address.
+      if (fullUserInfo.email_verified !== true) {
+        logger.warn('Rejected OIDC sign-up with unverified email', {
+          label: 'Auth',
+          provider: provider.slug,
+          ip: req.ip,
+          email: normalizedEmail,
+        });
+        return next({
+          status: 403,
+          error: ApiErrorCode.Unauthorized,
+        });
+      }
+
       // Check if a user with this email already exists
       const existingUser = await userRepository.findOne({
         where: { email: normalizedEmail },
@@ -1252,10 +1282,10 @@ authRoutes.post(
       });
     }
 
-    // Set logged in session and return
-    if (req.session) {
-      req.session.userId = user.id;
-    }
+    // Set logged in session and return. Regenerate the session id first so a
+    // fixated pre-login session cannot be promoted to an authenticated one,
+    // matching the local/plex/jellyfin login handlers.
+    await establishAuthenticatedSession(req, user.id);
 
     // Success!
     return res.sendStatus(204);

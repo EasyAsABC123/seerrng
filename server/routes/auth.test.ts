@@ -522,6 +522,7 @@ describe('OpenID Connect', () => {
   const DEFAULT_CLAIMS = {
     sub: 'new-user-sub',
     email: 'newuser@example.com',
+    email_verified: true,
   };
 
   // Claims for existing seeded user (friend@seerr.dev)
@@ -647,6 +648,10 @@ describe('OpenID Connect', () => {
     };
 
     fetchMock.mockGlobal();
+    // Clear any routes from a previous setup call so re-registering with new
+    // claims (e.g. existing-user vs. new-user fixtures) actually takes effect;
+    // fetch-mock keeps the first matching route otherwise.
+    fetchMock.removeRoutes({ includeSticky: true });
 
     fetchMock.route(
       'https://example.com/.well-known/openid-configuration',
@@ -844,6 +849,40 @@ describe('OpenID Connect', () => {
 
       assert.strictEqual(response.status, 400);
       assert.strictEqual(response.body.error, ApiErrorCode.OidcMissingEmail);
+    });
+
+    it('rejects new user when the email is not verified', async function () {
+      fetchMock.hardReset();
+
+      const settings = getSettings();
+      settings.oidc.providers[0].newUserLogin = true;
+
+      // Provider asserts an email address but has not verified ownership.
+      await setupFetchMock({
+        supportsPKCE: false,
+        idTokenClaims: {
+          sub: 'unverified-sub',
+          email: 'unverified@example.com',
+          email_verified: false,
+        },
+        userinfoResponse: {
+          sub: 'unverified-sub',
+          email: 'unverified@example.com',
+          email_verified: false,
+        },
+      });
+
+      const response = await performOidcCallback();
+
+      assert.strictEqual(response.status, 403);
+      assert.strictEqual(response.body.error, ApiErrorCode.Unauthorized);
+
+      // No account should have been provisioned for the unverified address.
+      const userRepo = getRepository(User);
+      const newUser = await userRepo.findOne({
+        where: { email: 'unverified@example.com' },
+      });
+      assert.strictEqual(newUser, null);
     });
   });
 
