@@ -427,11 +427,10 @@ class ImageProxy {
     path: string,
     fallbackPath?: string
   ): Promise<ImageResponse> {
-    const cacheKey = this.getCacheKey(path);
-
-    const imageResponse = await this.get(cacheKey);
+    const imageResponse = await this.getCachedImage(path);
 
     if (!imageResponse) {
+      const cacheKey = this.getCacheKey(path);
       const newImage = await this.set(path, cacheKey);
 
       if (!newImage) {
@@ -445,9 +444,20 @@ class ImageProxy {
       return newImage;
     }
 
-    // If the image is stale, we will revalidate it in the background.
-    if (imageResponse.meta.isStale) {
-      this.set(path, cacheKey);
+    return imageResponse;
+  }
+
+  /**
+   * Returns an image already held in memory or on disk without fetching a
+   * missing image from its upstream provider. Stale images are served while
+   * they are revalidated in the background.
+   */
+  public async getCachedImage(path: string): Promise<ImageResponse | null> {
+    const cacheKey = this.getCacheKey(path);
+    const imageResponse = await this.get(cacheKey);
+
+    if (imageResponse?.meta.isStale) {
+      void this.set(path, cacheKey);
     }
 
     return imageResponse;
