@@ -20,6 +20,10 @@ import {
   getDiscoverStateInputs,
 } from '@app/utils/discoverStateOverlay';
 import {
+  MEDIA_SLIDER_TITLE_LIMIT,
+  shouldShowMoreSliderCard,
+} from '@app/utils/mediaSlider';
+import {
   ArrowPathIcon,
   ArrowRightCircleIcon,
 } from '@heroicons/react/24/outline';
@@ -327,14 +331,14 @@ const MediaSlider = ({
     [blocklistVisibility, titles]
   );
   const visibleTitles = useMemo(
-    () => renderableTitles.slice(0, 20),
+    () => renderableTitles.slice(0, MEDIA_SLIDER_TITLE_LIMIT),
     [renderableTitles]
   );
 
   const shouldLoadMore =
-    renderableTitles.length < 24 &&
+    renderableTitles.length < MEDIA_SLIDER_TITLE_LIMIT + 4 &&
     size < 5 &&
-    (data?.[0]?.totalResults ?? 0) > size * 20;
+    (data?.[0]?.totalResults ?? 0) > size * MEDIA_SLIDER_TITLE_LIMIT;
 
   useEffect(() => {
     if (shouldLoadMore) {
@@ -381,7 +385,7 @@ const MediaSlider = ({
   const showMorePosters = useMemo(
     () =>
       renderableTitles
-        .slice(20, 24)
+        .slice(MEDIA_SLIDER_TITLE_LIMIT, MEDIA_SLIDER_TITLE_LIMIT + 4)
         .map((title) =>
           title.mediaType !== 'person' && title.mediaType !== 'artist'
             ? title.posterPath
@@ -489,7 +493,13 @@ const MediaSlider = ({
       }
     });
 
-    if (linkUrl && renderableTitles.length > 20) {
+    const shouldShowMore = shouldShowMoreSliderCard({
+      hasLink: !!linkUrl,
+      loadedTitleCount: renderableTitles.length,
+      totalResults: data?.[0]?.totalResults ?? 0,
+    });
+
+    if (linkUrl && shouldShowMore) {
       cardTitles.push(
         <ShowMoreCard key="show-more" url={linkUrl} posters={showMorePosters} />
       );
@@ -497,6 +507,7 @@ const MediaSlider = ({
 
     return cardTitles;
   }, [
+    data,
     linkUrl,
     prioritizeFirstRow,
     renderableTitles.length,
@@ -510,8 +521,9 @@ const MediaSlider = ({
 
   const hasReachedEnd =
     !!data &&
-    ((data[data.length - 1]?.results.length ?? 0) < 20 ||
-      (data[data.length - 1]?.totalResults ?? 0) <= size * 20 ||
+    ((data[data.length - 1]?.results.length ?? 0) < MEDIA_SLIDER_TITLE_LIMIT ||
+      (data[data.length - 1]?.totalResults ?? 0) <=
+        size * MEDIA_SLIDER_TITLE_LIMIT ||
       size >= 5);
 
   if (hideWhenEmpty && data && hasReachedEnd && !renderableTitles.length) {
