@@ -2,6 +2,7 @@ const REMOTE_AVATAR_HOSTS = new Set([
   'gravatar.com',
   'secure.gravatar.com',
   'www.gravatar.com',
+  'plex.tv',
 ]);
 
 const REMOTE_AVATAR_DOMAIN_SUFFIXES = ['.gravatar.com', '.plex.tv'];

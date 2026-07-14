@@ -50,7 +50,18 @@ function mockAvatarDependencies() {
       return null;
     },
   }));
-  mock.method(ImageProxy.prototype, 'getImage', async () => avatarResponse);
+  const getCachedImageMock = mock.method(
+    ImageProxy.prototype,
+    'getCachedImage',
+    async () => null
+  );
+  const getImageMock = mock.method(
+    ImageProxy.prototype,
+    'getImage',
+    async () => avatarResponse
+  );
+
+  return { getCachedImageMock, getImageMock };
 }
 
 afterEach(() => {
@@ -85,6 +96,22 @@ describe('GET /avatarproxy/remote', () => {
     assert.equal(res.headers['os-cache-key'], 'avatar-cache-key');
     assert.equal(res.headers['os-cache-status'], 'HIT');
     assert.equal(res.body.toString(), 'avatar-bytes');
+  });
+
+  it('keeps the client default visible while refreshing Plex avatars', async () => {
+    const { getCachedImageMock, getImageMock } = mockAvatarDependencies();
+    const avatarUrl = 'https://plex.tv/users/abc/avatar?c=123';
+
+    const res = await request(createApp())
+      .get('/avatarproxy/remote')
+      .query({ url: avatarUrl });
+
+    assert.equal(res.status, 204);
+    assert.equal(res.headers['cache-control'], 'no-store');
+    assert.equal(getCachedImageMock.mock.callCount(), 1);
+    assert.equal(getCachedImageMock.mock.calls[0].arguments[0], avatarUrl);
+    assert.equal(getImageMock.mock.callCount(), 1);
+    assert.equal(getImageMock.mock.calls[0].arguments[0], avatarUrl);
   });
 
   it('returns 304 with cache headers when the browser validator matches', async () => {
