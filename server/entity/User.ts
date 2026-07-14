@@ -26,6 +26,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import Issue from './Issue';
+import { LinkedAccount } from './LinkedAccount';
 import { MediaRequest } from './MediaRequest';
 import SeasonRequest from './SeasonRequest';
 import { UserPushSubscription } from './UserPushSubscription';
@@ -45,7 +46,7 @@ export class User {
     return users.map((u) => u.filter(showFiltered));
   }
 
-  static readonly filteredFields: string[] = [
+  static readonly filteredFields: (keyof User)[] = [
     'email',
     'plexId',
     'password',
@@ -54,6 +55,7 @@ export class User {
     'jellyfinAuthToken',
     'plexToken',
     'settings',
+    'linkedAccounts',
   ];
 
   public displayName: string;
@@ -105,6 +107,9 @@ export class User {
 
   @Column({ type: 'varchar', nullable: true, select: false })
   public plexToken?: string | null;
+
+  @OneToMany(() => LinkedAccount, (link) => link.user, { cascade: true })
+  public linkedAccounts: LinkedAccount[];
 
   @Column({
     type: 'bigint',
@@ -209,6 +214,17 @@ export class User {
         return resolve(false);
       }
     });
+  }
+
+  public getActiveLinkedAccounts(): LinkedAccount[] {
+    const settings = getSettings();
+    if (!settings.main.oidcLogin) {
+      return [];
+    }
+    const activeProviderSlugs = settings.oidc.providers.map((p) => p.slug);
+    return (this.linkedAccounts ?? []).filter((a) =>
+      activeProviderSlugs.includes(a.provider)
+    );
   }
 
   public async setPassword(password: string): Promise<void> {
