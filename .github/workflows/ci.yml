@@ -24,6 +24,7 @@ concurrency:
 jobs:
   i18n:
     name: i18n Check
+    timeout-minutes: 30
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, seerrng, linux-build]
     permissions:
@@ -89,6 +90,7 @@ jobs:
           exit $check_failed
   test:
     name: Lint & Test Build
+    timeout-minutes: 30
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, seerrng, linux-build]
     container:
@@ -135,6 +137,7 @@ jobs:
 
   unit-test:
     name: Unit Tests
+    timeout-minutes: 30
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, seerrng, linux-build]
     container:
@@ -185,6 +188,7 @@ jobs:
 
   build:
     name: Build cache (${{ matrix.platform }})
+    timeout-minutes: 60
     if: github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
@@ -235,6 +239,7 @@ jobs:
 
   publish:
     name: Publish multi-arch image
+    timeout-minutes: 90
     needs: build
     runs-on:
       [self-hosted, seerrng, linux-build, linux-amd64, linux-arm64-cross]
@@ -371,6 +376,7 @@ jobs:
 
   deploy-main:
     name: Deploy main to seerr.home
+    timeout-minutes: 30
     if: github.ref == 'refs/heads/main'
     needs: publish
     runs-on: [self-hosted, seerrng, linux-build, kspls0]

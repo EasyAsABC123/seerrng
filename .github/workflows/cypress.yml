@@ -34,6 +34,7 @@ concurrency:
 jobs:
   cypress-run:
     name: Cypress Run
+    timeout-minutes: 45
     runs-on: [self-hosted, Linux, X64, seerrng]
     steps:
       - name: Checkout
