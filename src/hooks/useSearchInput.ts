@@ -1,4 +1,3 @@
-import type { Nullable } from '@app/utils/typeHelpers';
 import { useRouter } from 'next/router';
 import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -23,8 +22,8 @@ interface SearchObject {
 const useSearchInput = (): SearchObject => {
   const router = useRouter();
   const [searchOpen, setIsOpen] = useState(false);
-  const [lastRoute, setLastRoute] = useState<Nullable<Url>>(null);
-  const pendingSearchQuery = useRef<Nullable<string>>(null);
+  const [lastRoute, setLastRoute] = useState<Url | null>(null);
+  const pendingSearchQuery = useRef<string | null>(null);
   const closingSearch = useRef(false);
   const [searchValue, debouncedValue, setSearchValue] = useDebouncedState(
     getSearchQuery(router.query.query)
