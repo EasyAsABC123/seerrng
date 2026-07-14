@@ -367,6 +367,21 @@ describe('PUT /request/:requestId (movie)', () => {
 });
 
 describe('GET /request', () => {
+  it('accepts the default added sort used by the request list', async () => {
+    const agent = await loginAs('admin@seerr.dev', 'test1234');
+    const res = await agent.get('/request').query({
+      filter: 'pending',
+      mediaType: 'all',
+      take: 10,
+      sort: 'added',
+      sortDirection: 'desc',
+      skip: 0,
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.ok(Array.isArray(res.body.results));
+  });
+
   it('accepts the recent requests slider query', async () => {
     const agent = await loginAs('admin@seerr.dev', 'test1234');
     const res = await agent.get('/request').query({
