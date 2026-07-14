@@ -6,6 +6,7 @@ import {
   initiateOidcLogin,
   processOidcCallback,
 } from '@app/utils/oidc';
+import { hasOidcCallbackParameters } from '@app/utils/oidcQuery';
 import type { PublicOidcProvider } from '@server/lib/settings';
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useState } from 'react';
@@ -58,15 +59,11 @@ export default function OidcLoginButton({
       if (!router.isReady || loading) return;
 
       // OIDC provider has redirected back with an authorization code or error
-      const isCallback = query.code != null || query.error != null;
+      const isCallback = hasOidcCallbackParameters(query);
 
       if (isCallback && getOidcProviderSlug() === provider.slug) {
         clearOidcProviderSlug();
         handleCallback();
-      }
-      // Support direct redirect via ?provider=slug query param
-      else if (!isCallback && query.provider === provider.slug) {
-        redirectToLogin();
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
