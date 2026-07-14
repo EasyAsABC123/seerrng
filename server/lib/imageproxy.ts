@@ -1,5 +1,9 @@
 import logger from '@server/logger';
 import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
+import {
+  getHttpErrorDetails,
+  withTransientHttpRetry,
+} from '@server/utils/httpError';
 import axios, { type AxiosInstance } from 'axios';
 import rateLimit, { type rateLimitOptions } from 'axios-rate-limit';
 import { createHash } from 'crypto';
@@ -582,11 +586,25 @@ class ImageProxy {
   ): Promise<ImageResponse | null> {
     try {
       const directory = resolveCachePath(this.key, cacheKey);
-      const response = await this.axios.get(path, {
-        responseType: 'arraybuffer',
-        maxContentLength: MAX_IMAGE_BYTES,
-        maxBodyLength: MAX_IMAGE_BYTES,
-      });
+      const response = await withTransientHttpRetry(
+        () =>
+          this.axios.get(path, {
+            responseType: 'arraybuffer',
+            maxContentLength: MAX_IMAGE_BYTES,
+            maxBodyLength: MAX_IMAGE_BYTES,
+          }),
+        {
+          onRetry: (error, nextAttempt) => {
+            logger.debug('Retrying transient upstream image request', {
+              label: 'Image Cache',
+              imageProvider: this.key,
+              imagePath: path,
+              nextAttempt,
+              ...getHttpErrorDetails(error),
+            });
+          },
+        }
+      );
 
       let buffer = Buffer.from(response.data, 'binary');
       if (buffer.length > MAX_IMAGE_BYTES) {
@@ -659,10 +677,12 @@ class ImageProxy {
           ? { imageBuffer: buffer }
           : { filePath }),
       };
-    } catch (e) {
-      logger.debug('Something went wrong caching image.', {
+    } catch (error) {
+      logger.warn('Failed to cache upstream image', {
         label: 'Image Cache',
-        errorMessage: e.message,
+        imageProvider: this.key,
+        imagePath: path,
+        ...getHttpErrorDetails(error),
       });
       return null;
     }

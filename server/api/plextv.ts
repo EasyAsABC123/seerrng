@@ -2,6 +2,10 @@ import type { PlexDevice } from '@server/interfaces/api/plexInterfaces';
 import cacheManager from '@server/lib/cache';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
+import {
+  getHttpErrorDetails,
+  withTransientHttpRetry,
+} from '@server/utils/httpError';
 import { randomUUID } from 'node:crypto';
 import xml2js from 'xml2js';
 import ExternalAPI from './externalapi';
@@ -290,18 +294,27 @@ class PlexTvAPI extends ExternalAPI {
         this.authToken
       );
 
-      const response = await this.axios.get<WatchlistResponse>(
-        '/library/sections/watchlist/all',
+      const response = await withTransientHttpRetry(
+        () =>
+          this.axios.get<WatchlistResponse>('/library/sections/watchlist/all', {
+            params: {
+              'X-Plex-Container-Start': offset,
+              'X-Plex-Container-Size': size,
+            },
+            headers: {
+              'If-None-Match': cachedWatchlist?.etag,
+            },
+            baseURL: 'https://discover.provider.plex.tv',
+            validateStatus: (status) => status < 400, // Allow HTTP 304 to return without error
+          }),
         {
-          params: {
-            'X-Plex-Container-Start': offset,
-            'X-Plex-Container-Size': size,
+          onRetry: (error, nextAttempt) => {
+            logger.warn('Retrying transient Plex watchlist request', {
+              label: 'Plex.TV Metadata API',
+              nextAttempt,
+              ...getHttpErrorDetails(error),
+            });
           },
-          headers: {
-            'If-None-Match': cachedWatchlist?.etag,
-          },
-          baseURL: 'https://discover.provider.plex.tv',
-          validateStatus: (status) => status < 400, // Allow HTTP 304 to return without error
         }
       );
 
@@ -385,10 +398,10 @@ class PlexTvAPI extends ExternalAPI {
         totalSize: cachedWatchlist?.response.MediaContainer.totalSize ?? 0,
         items: filteredList,
       };
-    } catch (e) {
+    } catch (error) {
       logger.error('Failed to retrieve watchlist items', {
         label: 'Plex.TV Metadata API',
-        errorMessage: e.message,
+        ...getHttpErrorDetails(error),
       });
       return {
         offset,
