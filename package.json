@@ -21,7 +21,7 @@
     "migration:create": "ts-node -r tsconfig-paths/register --project server/tsconfig.json ./node_modules/typeorm/cli.js migration:create -d server/datasource.ts",
     "migration:run": "ts-node -r tsconfig-paths/register --project server/tsconfig.json ./node_modules/typeorm/cli.js migration:run -d server/datasource.ts",
     "format": "git ls-files -z | xargs -0 prettier --log-level warn --write --cache --ignore-unknown",
-    "format:check": "git ls-files -z | xargs -0 prettier --check --cache --ignore-unknown",
+    "format:check": "find . \\( -name .git -o -name node_modules -o -name .next -o -name dist -o -name build -o -name .docusaurus -o -name .bookshelf-migration-lab \\) -prune -o -type f -print0 | xargs -0 prettier --check --cache --ignore-unknown",
     "typecheck": "pnpm typecheck:server && pnpm typecheck:client",
     "typecheck:server": "tsc --project server/tsconfig.json --noEmit",
     "typecheck:client": "next typegen && tsc --noEmit",
