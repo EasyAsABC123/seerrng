@@ -179,6 +179,14 @@ describe('Issue route validation', () => {
     assert.strictEqual(res.status, 404);
   });
 
+  it('returns 404 when issue details do not exist', async () => {
+    const agent = await login();
+    const res = await agent.get('/issue/999999999');
+
+    assert.strictEqual(res.status, 404);
+    assert.strictEqual(res.body.message, 'Issue not found.');
+  });
+
   it('rejects malformed issue comment IDs before lookup', async () => {
     const agent = await login();
     const res = await agent

@@ -54,6 +54,17 @@ afterEach(() => {
 });
 
 describe('Settings route input validation', () => {
+  it('returns a controlled response when Jellyfin is not configured', async () => {
+    const settings = getSettings();
+    settings.jellyfin.ip = '';
+    settings.jellyfin.apiKey = '';
+
+    const res = await request(app).get('/settings/jellyfin/users');
+
+    assert.strictEqual(res.status, 400);
+    assert.strictEqual(res.body.message, 'Jellyfin is not configured.');
+  });
+
   it('rejects malformed persisted settings bodies before saving', async () => {
     const settings = getSettings();
     const saveMock = mock.method(settings, 'save', async () => undefined);

@@ -7,6 +7,19 @@ import type { AxiosInstance } from 'axios';
 import axios from 'axios';
 import { uniqWith } from 'lodash';
 
+export const isTautulliNoDataError = (error: unknown): boolean => {
+  let current = error;
+
+  while (current instanceof Error) {
+    if (axios.isAxiosError(current) && current.response?.status === 400) {
+      return true;
+    }
+    current = current.cause;
+  }
+
+  return false;
+};
+
 export const TAUTULLI_HTTP_LIMITS = {
   maxContentLength: 2 * 1024 * 1024,
   maxBodyLength: 1024,

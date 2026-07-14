@@ -393,7 +393,7 @@ issueRoutes.get<{ issueId: string }>(
         label: 'API',
         errorMessage: e.message,
       });
-      next({ status: 500, message: 'Issue not found.' });
+      next({ status: 404, message: 'Issue not found.' });
     }
   }
 );

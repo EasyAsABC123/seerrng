@@ -2,7 +2,7 @@ import LidarrAPI from '@server/api/servarr/lidarr';
 import RadarrAPI from '@server/api/servarr/radarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
-import TautulliAPI from '@server/api/tautulli';
+import TautulliAPI, { isTautulliNoDataError } from '@server/api/tautulli';
 import TheMovieDb from '@server/api/themoviedb';
 import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
@@ -725,6 +725,10 @@ mediaRoutes.get<{ id: string }, MediaWatchDataResponse>(
 
       return res.status(200).json(response);
     } catch (e) {
+      if (isTautulliNoDataError(e)) {
+        return res.status(200).json({});
+      }
+
       logger.error('Something went wrong fetching media watch data', {
         label: 'API',
         errorMessage: e.message,

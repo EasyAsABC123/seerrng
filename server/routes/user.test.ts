@@ -294,6 +294,18 @@ describe('User route input validation', () => {
     assert.match(res.body.message, /permissions is invalid/i);
   });
 
+  it('returns the updated users after a bulk permission update', async () => {
+    const agent = await loginAs('admin@seerr.dev', 'test1234');
+    const res = await agent.put('/user').send({
+      ids: [2],
+      permissions: Permission.REQUEST,
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body[0].id, 2);
+    assert.strictEqual(res.body[0].permissions, Permission.REQUEST);
+  });
+
   it('rejects malformed bulk permission bodies', async () => {
     const agent = await loginAs('admin@seerr.dev', 'test1234');
     const res = await agent.put('/user').send([]);
@@ -408,5 +420,22 @@ describe('User route input validation', () => {
 
     assert.strictEqual(res.status, 400);
     assert.match(res.body.message, /User settings body must be an object/i);
+  });
+
+  it('returns empty watch data for a user without a Plex account', async () => {
+    const settings = getSettings();
+    settings.tautulli.hostname = 'tautulli.local';
+    settings.tautulli.port = 8181;
+    settings.tautulli.apiKey = 'test-key';
+
+    const user = await getRepository(User).findOneByOrFail({ id: 2 });
+    user.plexId = null;
+    await getRepository(User).save(user);
+
+    const agent = await loginAs('admin@seerr.dev', 'test1234');
+    const res = await agent.get('/user/2/watch_data');
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(res.body, { recentlyWatched: [], playCount: 0 });
   });
 });

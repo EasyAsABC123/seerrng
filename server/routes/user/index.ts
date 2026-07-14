@@ -1,6 +1,6 @@
 import JellyfinAPI from '@server/api/jellyfin';
 import PlexTvAPI from '@server/api/plextv';
-import TautulliAPI from '@server/api/tautulli';
+import TautulliAPI, { isTautulliNoDataError } from '@server/api/tautulli';
 import { MediaType } from '@server/constants/media';
 import { MediaServerType } from '@server/constants/server';
 import { UserType } from '@server/constants/user';
@@ -1013,10 +1013,8 @@ router.put<
 
     const updatedUsers = await Promise.all(
       users.map(async (user) => {
-        return userRepository.save(<User>{
-          ...user,
-          ...{ permissions: parsedPermissions },
-        });
+        user.permissions = parsedPermissions;
+        return userRepository.save(user);
       })
     );
 
@@ -1386,6 +1384,10 @@ router.get<{ id: string }, UserWatchDataResponse>(
         select: { id: true, plexId: true },
       });
 
+      if (!user.plexId) {
+        return res.status(200).json({ recentlyWatched: [], playCount: 0 });
+      }
+
       const tautulli = new TautulliAPI(settings);
 
       const watchStats = await tautulli.getUserWatchStats(user);
@@ -1452,6 +1454,10 @@ router.get<{ id: string }, UserWatchDataResponse>(
         playCount: watchStats.total_plays,
       });
     } catch (e) {
+      if (isTautulliNoDataError(e)) {
+        return res.status(200).json({ recentlyWatched: [], playCount: 0 });
+      }
+
       logger.error('Something went wrong fetching user watch data', {
         label: 'API',
         errorMessage: e.message,

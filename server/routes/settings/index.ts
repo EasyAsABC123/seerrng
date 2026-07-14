@@ -793,7 +793,7 @@ settingsRoutes.get('/plex/devices/servers', async (req, res, next) => {
               const plexClient = new PlexAPI({
                 plexToken: admin.plexToken,
                 plexSettings: plexDeviceSettings,
-                timeout: 5000,
+                timeout: 2500,
               });
 
               try {
@@ -1041,6 +1041,10 @@ settingsRoutes.get('/jellyfin/library', async (req, res, next) => {
 
 settingsRoutes.get('/jellyfin/users', async (req, res) => {
   const settings = getSettings();
+
+  if (!settings.jellyfin.ip || !settings.jellyfin.apiKey) {
+    return res.status(400).json({ message: 'Jellyfin is not configured.' });
+  }
 
   const userRepository = getRepository(User);
   const admin = await userRepository.findOneOrFail({
