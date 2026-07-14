@@ -35,9 +35,9 @@ const PlexWatchlistSlider = () => {
     totalPages: number;
     totalResults: number;
     results: WatchlistItem[];
-    }>({
-      enabled: inView,
-      personalized: true,
+  }>({
+    enabled: inView,
+    personalized: true,
     rowKey: 'watchlist',
     url: WATCHLIST_URL,
   });

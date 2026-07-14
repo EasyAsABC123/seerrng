@@ -91,7 +91,11 @@ jobs:
     name: Lint & Test Build
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, seerrng, linux-build]
-    container: node:22.22.2-alpine3.23@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f
+    container:
+      image: node:22.22.2-alpine3.23@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f
+      # Match the self-hosted runner account so container jobs do not leave
+      # root-owned files that break checkout in later host jobs.
+      options: --user 1000:1001
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -133,7 +137,11 @@ jobs:
     name: Unit Tests
     if: github.event_name == 'pull_request'
     runs-on: [self-hosted, seerrng, linux-build]
-    container: node:22.22.2-alpine3.23@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f
+    container:
+      image: node:22.22.2-alpine3.23@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f
+      # Match the self-hosted runner account so container jobs do not leave
+      # root-owned files that break checkout in later host jobs.
+      options: --user 1000:1001
     permissions:
       checks: write
     steps:

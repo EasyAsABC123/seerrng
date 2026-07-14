@@ -151,7 +151,8 @@ const parseOptionalMediaServerType = (
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
-  skip: () => process.env.NODE_ENV === 'test',
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
@@ -160,7 +161,8 @@ const authRateLimit = rateLimit({
 const passwordResetRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 20,
-  skip: () => process.env.NODE_ENV === 'test',
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
