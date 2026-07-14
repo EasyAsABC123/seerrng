@@ -73,7 +73,8 @@ jobs:
           install: false
           build: pnpm cypress:build
           start: pnpm start
-          wait-on: 'http://localhost:5055'
+          wait-on: 'http://localhost:5056'
+          config: baseUrl=http://localhost:5056
           record: true
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
@@ -81,6 +82,7 @@ jobs:
           WITH_MIGRATIONS: true
           E2E_TESTS: true
           CONFIG_DIRECTORY: cypress/runtime-config
+          PORT: 5056
           # Fix test titles in cypress dashboard
           COMMIT_INFO_MESSAGE: ${{github.event.pull_request.title}}
           COMMIT_INFO_SHA: ${{github.event.pull_request.head.sha}}
