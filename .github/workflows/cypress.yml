@@ -75,7 +75,9 @@ jobs:
           start: pnpm start
           wait-on: 'http://localhost:5056'
           config: baseUrl=http://localhost:5056
-          record: true
+          # Forks and installations without a Cypress Dashboard key must still
+          # run the suite instead of failing before the first spec starts.
+          record: ${{ secrets.CYPRESS_RECORD_KEY != '' }}
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
