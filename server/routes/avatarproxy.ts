@@ -244,8 +244,8 @@ router.get('/remote', avatarProxyRateLimit, async (req, res) => {
     if (isPlexAvatarUrl(avatarUrl)) {
       imageData = await avatarImageCache.getCachedImage(avatarUrl);
       if (!imageData) {
-        imageData = await avatarImageCache.getImage(REMOTE_AVATAR_FALLBACK_URL);
         refreshPlexAvatarInBackground(avatarImageCache, avatarUrl);
+        return res.status(204).set('Cache-Control', 'no-store').end();
       }
     } else {
       imageData = await avatarImageCache.getImage(
