@@ -1,6 +1,11 @@
 import useSettings from '@app/hooks/useSettings';
 import type { CacheableImageType } from '@app/utils/imageCache';
-import { getImageCacheUrl, getImageErrorFallback } from '@app/utils/imageCache';
+import {
+  AVATAR_FALLBACK_IMAGE,
+  getImageCacheUrl,
+  getImageErrorFallback,
+  getInitialImageUrl,
+} from '@app/utils/imageCache';
 import type { ImageLoader, ImageProps } from 'next/image';
 import Image from 'next/image';
 import { memo, useEffect, useMemo, useState } from 'react';
@@ -37,11 +42,28 @@ const CachedImage = memo(
         }),
       [currentSettings.cacheImages, src, type]
     );
-    const [activeImageUrl, setActiveImageUrl] = useState(imageUrl);
+    const [activeImageUrl, setActiveImageUrl] = useState(() =>
+      getInitialImageUrl(type, imageUrl)
+    );
 
     useEffect(() => {
-      setActiveImageUrl(imageUrl);
-    }, [imageUrl]);
+      if (type !== 'avatar' || imageUrl === AVATAR_FALLBACK_IMAGE) {
+        setActiveImageUrl(imageUrl);
+        return;
+      }
+
+      setActiveImageUrl(AVATAR_FALLBACK_IMAGE);
+
+      const avatarPreloader = new window.Image();
+      avatarPreloader.onload = () => setActiveImageUrl(imageUrl);
+      avatarPreloader.onerror = () => setActiveImageUrl(AVATAR_FALLBACK_IMAGE);
+      avatarPreloader.src = imageUrl;
+
+      return () => {
+        avatarPreloader.onload = null;
+        avatarPreloader.onerror = null;
+      };
+    }, [imageUrl, type]);
 
     return (
       <Image

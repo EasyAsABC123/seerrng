@@ -2,6 +2,11 @@ export type CacheableImageType = 'tmdb' | 'avatar' | 'tvdb' | 'music' | 'book';
 
 export const AVATAR_FALLBACK_IMAGE = '/user-icon-192x192.png';
 
+export const getInitialImageUrl = (
+  type: CacheableImageType,
+  imageUrl: string
+): string => (type === 'avatar' ? AVATAR_FALLBACK_IMAGE : imageUrl);
+
 export const getImageErrorFallback = (
   type: CacheableImageType,
   currentSrc: string
