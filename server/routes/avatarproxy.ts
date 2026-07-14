@@ -26,6 +26,10 @@ import { createHash } from 'node:crypto';
 const router = Router();
 const MAX_AVATAR_VERSION_LENGTH = 128;
 const JELLYFIN_USER_ID_PATTERN = /^[a-f0-9]{32}$/;
+const REMOTE_AVATAR_FALLBACK_URL = gravatarUrl('none', {
+  default: 'mm',
+  size: 200,
+});
 export const AVATAR_HEAD_REQUEST_OPTIONS = {
   timeout: 5_000,
   maxRedirects: 0,
@@ -206,7 +210,10 @@ router.get('/remote', avatarProxyRateLimit, async (req, res) => {
     }
 
     const avatarImageCache = await initAvatarImageProxy();
-    const imageData = await avatarImageCache.getImage(avatarUrl);
+    const imageData = await avatarImageCache.getImage(
+      avatarUrl,
+      REMOTE_AVATAR_FALLBACK_URL
+    );
 
     return sendCachedAvatarImage({
       imageData,

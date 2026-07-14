@@ -1,7 +1,26 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { getImageCacheUrl, isRemoteAvatarCacheUrlAllowed } from './imageCache';
+import {
+  AVATAR_FALLBACK_IMAGE,
+  getImageCacheUrl,
+  getImageErrorFallback,
+  isRemoteAvatarCacheUrlAllowed,
+} from './imageCache';
+
+describe('getImageErrorFallback', () => {
+  it('falls back failed avatars once without changing other image types', () => {
+    assert.equal(
+      getImageErrorFallback('avatar', 'https://plex.tv/users/1/avatar'),
+      AVATAR_FALLBACK_IMAGE
+    );
+    assert.equal(getImageErrorFallback('avatar', AVATAR_FALLBACK_IMAGE), null);
+    assert.equal(
+      getImageErrorFallback('tmdb', 'https://example.com/poster.jpg'),
+      null
+    );
+  });
+});
 
 describe('getImageCacheUrl', () => {
   it('rewrites supported image providers when image caching is enabled', () => {
@@ -86,6 +105,14 @@ describe('getImageCacheUrl', () => {
       }),
       '/avatarproxy/remote?url=https%3A%2F%2Fsecure.gravatar.com%2Favatar%2Fabc%3Fd%3Dmm'
     );
+    assert.equal(
+      getImageCacheUrl({
+        cacheImages: true,
+        src: 'https://plex.tv/users/abc/avatar?c=123',
+        type: 'avatar',
+      }),
+      '/avatarproxy/remote?url=https%3A%2F%2Fplex.tv%2Fusers%2Fabc%2Favatar%3Fc%3D123'
+    );
   });
 
   it('leaves local, disabled, and unsupported URLs untouched', () => {
@@ -120,6 +147,10 @@ describe('isRemoteAvatarCacheUrlAllowed', () => {
   it('accepts only safe avatar provider URLs', () => {
     assert.equal(
       isRemoteAvatarCacheUrlAllowed('https://images.plex.tv/users/1/avatar'),
+      true
+    );
+    assert.equal(
+      isRemoteAvatarCacheUrlAllowed('https://plex.tv/users/1/avatar'),
       true
     );
     assert.equal(

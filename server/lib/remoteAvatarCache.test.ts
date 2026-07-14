@@ -18,6 +18,10 @@ describe('isRemoteAvatarCacheUrlAllowed', () => {
       ),
       true
     );
+    assert.equal(
+      isRemoteAvatarCacheUrlAllowed(new URL('https://plex.tv/users/1/avatar')),
+      true
+    );
   });
 
   it('rejects non-HTTPS, credentials, and unrelated hosts', () => {

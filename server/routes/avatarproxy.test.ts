@@ -50,7 +50,11 @@ function mockAvatarDependencies() {
       return null;
     },
   }));
-  mock.method(ImageProxy.prototype, 'getImage', async () => avatarResponse);
+  return mock.method(
+    ImageProxy.prototype,
+    'getImage',
+    async () => avatarResponse
+  );
 }
 
 afterEach(() => {
@@ -85,6 +89,23 @@ describe('GET /avatarproxy/remote', () => {
     assert.equal(res.headers['os-cache-key'], 'avatar-cache-key');
     assert.equal(res.headers['os-cache-status'], 'HIT');
     assert.equal(res.body.toString(), 'avatar-bytes');
+  });
+
+  it('proxies apex Plex avatars with a safe fallback', async () => {
+    const getImageMock = mockAvatarDependencies();
+    const avatarUrl = 'https://plex.tv/users/abc/avatar?c=123';
+
+    const res = await request(createApp())
+      .get('/avatarproxy/remote')
+      .query({ url: avatarUrl });
+
+    assert.equal(res.status, 200);
+    assert.equal(getImageMock.mock.callCount(), 1);
+    assert.equal(getImageMock.mock.calls[0].arguments[0], avatarUrl);
+    assert.match(
+      String(getImageMock.mock.calls[0].arguments[1]),
+      /^https:\/\/(?:www\.)?gravatar\.com\/avatar\//
+    );
   });
 
   it('returns 304 with cache headers when the browser validator matches', async () => {
