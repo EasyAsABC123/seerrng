@@ -5,7 +5,10 @@ import type { ImageResponse } from '@server/lib/imageproxy';
 import ImageProxy, { IMAGE_PROXY_HTTP_OPTIONS } from '@server/lib/imageproxy';
 import express from 'express';
 import request from 'supertest';
-import imageproxyRoutes from './imageproxy';
+import imageproxyRoutes, {
+  IMAGE_PROXY_CACHE_MISS_LIMIT,
+  IMAGE_PROXY_REQUEST_LIMIT,
+} from './imageproxy';
 
 const imageResponse: ImageResponse = {
   meta: {
@@ -37,6 +40,62 @@ describe('GET /imageproxy/:type/*path', () => {
     assert.equal(IMAGE_PROXY_HTTP_OPTIONS.timeout, 10_000);
   });
 
+  it('serves cache hits without entering the upstream fetch path', async () => {
+    const getCachedImage = mock.method(
+      ImageProxy.prototype,
+      'getCachedImage',
+      async () => imageResponse
+    );
+    const getImage = mock.method(
+      ImageProxy.prototype,
+      'getImage',
+      async () => imageResponse
+    );
+
+    const res = await request(createApp()).get(
+      '/imageproxy/tmdb/t/p/w300/cached-poster.jpg'
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['os-cache-status'], 'HIT');
+    assert.equal(
+      Number(res.headers['ratelimit-limit']),
+      IMAGE_PROXY_REQUEST_LIMIT
+    );
+    assert.equal(getCachedImage.mock.callCount(), 1);
+    assert.equal(getImage.mock.callCount(), 0);
+  });
+
+  it('applies the upstream-fetch budget only after a cache miss', async () => {
+    const cacheMissResponse: ImageResponse = {
+      ...imageResponse,
+      meta: { ...imageResponse.meta, cacheMiss: true },
+    };
+    const getCachedImage = mock.method(
+      ImageProxy.prototype,
+      'getCachedImage',
+      async () => null
+    );
+    const getImage = mock.method(
+      ImageProxy.prototype,
+      'getImage',
+      async () => cacheMissResponse
+    );
+
+    const res = await request(createApp()).get(
+      '/imageproxy/tmdb/t/p/w300/uncached-poster.jpg'
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['os-cache-status'], 'MISS');
+    assert.equal(
+      Number(res.headers['ratelimit-limit']),
+      IMAGE_PROXY_CACHE_MISS_LIMIT
+    );
+    assert.equal(getCachedImage.mock.callCount(), 1);
+    assert.equal(getImage.mock.callCount(), 1);
+  });
+
   it('sends browser cache headers with proxied images', async () => {
     mock.method(ImageProxy.prototype, 'getImage', async () => imageResponse);
 
@@ -58,7 +117,16 @@ describe('GET /imageproxy/:type/*path', () => {
   });
 
   it('returns 304 with cache headers when the browser validator matches', async () => {
-    mock.method(ImageProxy.prototype, 'getImage', async () => imageResponse);
+    mock.method(
+      ImageProxy.prototype,
+      'getCachedImage',
+      async () => imageResponse
+    );
+    const getImage = mock.method(
+      ImageProxy.prototype,
+      'getImage',
+      async () => imageResponse
+    );
 
     const res = await request(createApp())
       .get('/imageproxy/tmdb/t/p/w300/poster.jpg')
@@ -71,6 +139,7 @@ describe('GET /imageproxy/:type/*path', () => {
       'public, max-age=3600, stale-while-revalidate=2592000, stale-if-error=604800'
     );
     assert.equal(res.text, '');
+    assert.equal(getImage.mock.callCount(), 0);
   });
 
   it('keeps query strings in the upstream cache key', async () => {
@@ -110,6 +179,11 @@ describe('GET /imageproxy/:type/*path', () => {
   });
 
   it('rejects oversized proxied image paths before cache lookup', async () => {
+    const getCachedImage = mock.method(
+      ImageProxy.prototype,
+      'getCachedImage',
+      async () => imageResponse
+    );
     const getImage = mock.method(
       ImageProxy.prototype,
       'getImage',
@@ -122,6 +196,7 @@ describe('GET /imageproxy/:type/*path', () => {
 
     assert.equal(res.status, 403);
     assert.match(res.text, /Invalid URL for image proxy/);
+    assert.equal(getCachedImage.mock.callCount(), 0);
     assert.equal(getImage.mock.callCount(), 0);
   });
 
@@ -181,5 +256,6 @@ describe('POST /imageproxy/warm', () => {
 
     assert.equal(res.status, 202);
     assert.deepEqual(res.body, { accepted: true });
+    assert.equal(Number(res.headers['ratelimit-limit']), 10);
   });
 });

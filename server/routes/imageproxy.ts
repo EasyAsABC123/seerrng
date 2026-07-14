@@ -9,6 +9,7 @@ import ImageProxy, {
 } from '@server/lib/imageproxy';
 import logger from '@server/logger';
 import { getRateLimitKey } from '@server/utils/security';
+import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 
@@ -17,12 +18,51 @@ const maxWarmRequestUrls = 100;
 const maxWarmUrlLength = 2048;
 const maxProxyImagePathLength = 2048;
 
-const proxyRateLimit = rateLimit({
+export const IMAGE_PROXY_REQUEST_LIMIT = 1200;
+export const IMAGE_PROXY_CACHE_MISS_LIMIT = 600;
+
+type RateLimitRequest = Request & {
+  rateLimit?: {
+    limit: number;
+    used: number;
+  };
+};
+
+const createRateLimitHandler =
+  (policy: 'total' | 'cache-miss') =>
+  (
+    req: RateLimitRequest,
+    res: Response,
+    _next: NextFunction,
+    options: { message: unknown; statusCode: number }
+  ) => {
+    if (!req.rateLimit || req.rateLimit.used === req.rateLimit.limit + 1) {
+      logger.warn('Image proxy request rate limit exceeded', {
+        label: 'Image Proxy',
+        policy,
+        imageType: req.params.type,
+      });
+    }
+
+    res.status(options.statusCode).send(options.message);
+  };
+
+const proxyRequestRateLimit = rateLimit({
   windowMs: 60 * 1000,
-  limit: 240,
+  limit: IMAGE_PROXY_REQUEST_LIMIT,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
+  handler: createRateLimitHandler('total'),
+});
+
+const proxyCacheMissRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: IMAGE_PROXY_CACHE_MISS_LIMIT,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitKey,
+  handler: createRateLimitHandler('cache-miss'),
 });
 
 const warmRateLimit = rateLimit({
@@ -32,8 +72,6 @@ const warmRateLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
 });
-
-router.use(proxyRateLimit);
 
 // Delay the initialization of ImageProxy instances until the proxy (if any) is properly configured
 let _tmdbImageProxy: ImageProxy;
@@ -125,10 +163,66 @@ function initOpenLibraryCoversImageProxy() {
   return _openLibraryCoversImageProxy;
 }
 
-router.get<{
-  type: string;
-  path: string[];
-}>('/:type/*path', async (req, res) => {
+const getImageProxy = (type: string): ImageProxy | null => {
+  switch (type) {
+    case 'tmdb':
+      return initTmdbImageProxy();
+    case 'tvdb':
+      return initTvdbImageProxy();
+    case 'coverartarchive':
+      return initCoverArtArchiveImageProxy();
+    case 'archiveorg':
+      return initArchiveOrgImageProxy();
+    case 'theaudiodb':
+      return initTheAudioDbImageProxy();
+    case 'openlibrarycovers':
+      return initOpenLibraryCoversImageProxy();
+    default:
+      return null;
+  }
+};
+
+const sendProxyImage = async (
+  req: Request,
+  res: Response,
+  imageData: Awaited<ReturnType<ImageProxy['getImage']>>
+) => {
+  const etag = `"${imageData.meta.etag}"`;
+  const browserCacheHeaders = getBrowserImageResponseHeaders({
+    cacheKey: imageData.meta.cacheKey,
+    cacheMiss: imageData.meta.cacheMiss,
+    etag,
+    lastModified: imageData.meta.lastModified,
+    maxAge: imageData.meta.curRevalidate,
+  });
+
+  if (
+    shouldSendBrowserImageNotModified({
+      etag,
+      ifModifiedSince: req.headers['if-modified-since'],
+      ifNoneMatch: req.headers['if-none-match'],
+      lastModified: imageData.meta.lastModified,
+    })
+  ) {
+    return res.status(304).set(browserCacheHeaders).end();
+  }
+
+  await sendImage(res, imageData, {
+    'Content-Type': getImageResponseContentType(imageData.meta.extension),
+    ...browserCacheHeaders,
+  });
+};
+
+type PreparedImageRequest = {
+  imagePath: string;
+  imageProxy: ImageProxy;
+};
+
+const prepareImageRequest = (
+  req: Request<{ type: string; path: string[] }>,
+  res: Response,
+  next: NextFunction
+) => {
   const queryIndex = req.url.indexOf('?');
   const imagePathname = '/' + req.params.path.join('/');
   const imagePath =
@@ -143,53 +237,55 @@ router.get<{
     return res.status(403).send('Invalid URL for image proxy');
   }
 
+  const imageProxy = getImageProxy(req.params.type);
+  if (!imageProxy) {
+    logger.error('Unsupported image type', {
+      imagePath,
+      type: req.params.type,
+    });
+    return res.status(400).send('Unsupported image type');
+  }
+
+  res.locals.preparedImageRequest = {
+    imagePath,
+    imageProxy,
+  } satisfies PreparedImageRequest;
+  next();
+};
+
+const serveCachedImage = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const { imagePath, imageProxy } = res.locals
+    .preparedImageRequest as PreparedImageRequest;
+
   try {
-    let imageData;
-    if (req.params.type === 'tmdb') {
-      imageData = await initTmdbImageProxy().getImage(imagePath);
-    } else if (req.params.type === 'tvdb') {
-      imageData = await initTvdbImageProxy().getImage(imagePath);
-    } else if (req.params.type === 'coverartarchive') {
-      imageData = await initCoverArtArchiveImageProxy().getImage(imagePath);
-    } else if (req.params.type === 'archiveorg') {
-      imageData = await initArchiveOrgImageProxy().getImage(imagePath);
-    } else if (req.params.type === 'theaudiodb') {
-      imageData = await initTheAudioDbImageProxy().getImage(imagePath);
-    } else if (req.params.type === 'openlibrarycovers') {
-      imageData = await initOpenLibraryCoversImageProxy().getImage(imagePath);
-    } else {
-      logger.error('Unsupported image type', {
-        imagePath,
-        type: req.params.type,
-      });
-      res.status(400).send('Unsupported image type');
+    const imageData = await imageProxy.getCachedImage(imagePath);
+
+    if (!imageData) {
+      next();
       return;
     }
 
-    const etag = `"${imageData.meta.etag}"`;
-    const browserCacheHeaders = getBrowserImageResponseHeaders({
-      cacheKey: imageData.meta.cacheKey,
-      cacheMiss: imageData.meta.cacheMiss,
-      etag,
-      lastModified: imageData.meta.lastModified,
-      maxAge: imageData.meta.curRevalidate,
+    await sendProxyImage(req, res, imageData);
+  } catch (e) {
+    logger.error('Failed to serve cached proxy image', {
+      imagePath,
+      errorMessage: e.message,
     });
+    res.status(500).send();
+  }
+};
 
-    if (
-      shouldSendBrowserImageNotModified({
-        etag,
-        ifModifiedSince: req.headers['if-modified-since'],
-        ifNoneMatch: req.headers['if-none-match'],
-        lastModified: imageData.meta.lastModified,
-      })
-    ) {
-      return res.status(304).set(browserCacheHeaders).end();
-    }
+const fetchAndServeImage = async (req: Request, res: Response) => {
+  const { imagePath, imageProxy } = res.locals
+    .preparedImageRequest as PreparedImageRequest;
 
-    await sendImage(res, imageData, {
-      'Content-Type': getImageResponseContentType(imageData.meta.extension),
-      ...browserCacheHeaders,
-    });
+  try {
+    const imageData = await imageProxy.getImage(imagePath);
+    await sendProxyImage(req, res, imageData);
   } catch (e) {
     logger.error('Failed to proxy image', {
       imagePath,
@@ -197,7 +293,19 @@ router.get<{
     });
     res.status(500).send();
   }
-});
+};
+
+router.get<{
+  type: string;
+  path: string[];
+}>(
+  '/:type/*path',
+  prepareImageRequest,
+  proxyRequestRateLimit,
+  serveCachedImage,
+  proxyCacheMissRateLimit,
+  fetchAndServeImage
+);
 
 router.post('/warm', warmRateLimit, (req, res) => {
   if (!Array.isArray(req.body?.urls)) {
