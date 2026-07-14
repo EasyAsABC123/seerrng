@@ -178,8 +178,8 @@ describe('Theme picker and seeded discovery refresh', () => {
     });
   });
 
-  it('appends another ranked book page without reloading the first page', () => {
-    cy.viewport(1400, 900);
+  it('prefetches and appends another ranked book page before reaching the bottom', () => {
+    cy.viewport(500, 700);
 
     let firstPageRequests = 0;
     const firstPageBooks = Array.from({ length: 20 }, (_, index) =>
@@ -212,7 +212,15 @@ describe('Theme picker and seeded discovery refresh', () => {
       .should('have.length', 20)
       .first()
       .then(($firstCard) => {
-        cy.scrollTo('bottom');
+        cy.window().then((win) => {
+          const maxScrollTop =
+            win.document.documentElement.scrollHeight - win.innerHeight;
+          const prefetchScrollTop = maxScrollTop - win.innerHeight / 2;
+
+          expect(prefetchScrollTop).to.be.greaterThan(0);
+          cy.scrollTo(0, prefetchScrollTop);
+          cy.window().its('scrollY').should('be.lessThan', maxScrollTop);
+        });
         cy.wait('@books').its('request.query.page').should('eq', '2');
 
         cy.get('[data-testid=title-card]')

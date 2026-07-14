@@ -33,6 +33,7 @@ const LibraryTitleCard = ({
 }: LibraryTitleCardProps) => {
   const { hasPermission } = useUser();
   const { ref, inView } = useInView({
+    rootMargin: '100% 0px',
     triggerOnce: true,
   });
   const normalizedId = normalizeExternalTitleId(type, id).toString();

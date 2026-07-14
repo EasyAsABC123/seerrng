@@ -2,7 +2,6 @@ import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const IS_SCROLLING_CHECK_THROTTLE = 200;
-const BUFFER_HEIGHT = 200;
 const BOTTOM_RECHECK_INTERVAL = 500;
 
 /**
@@ -33,7 +32,7 @@ const useVerticalScroll = (
       );
       if (
         window.innerHeight + scrollTop >=
-        document.documentElement.offsetHeight - BUFFER_HEIGHT
+        document.documentElement.offsetHeight - window.innerHeight
       ) {
         callback();
       }
