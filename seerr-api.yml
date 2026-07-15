@@ -7745,6 +7745,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookResult'
+  /book/{bookId}/cover:
+    get:
+      summary: Get linked Bookshelf cover image
+      description: Streams a cover image from the linked Bookshelf/Readarr-compatible service for a saved book media row.
+      tags:
+        - search
+      parameters:
+        - in: path
+          name: bookId
+          required: true
+          schema:
+            type: string
+            example: OL27448W
+        - in: query
+          name: mediaId
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [ebook, audiobook]
+      responses:
+        '200':
+          description: Book cover image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Book cover not found
   /author/{authorId}:
     get:
       summary: Get author details
@@ -8491,6 +8533,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MovieDetails'
+  /movie/{movieId}/cover:
+    get:
+      summary: Get linked Radarr cover image
+      description: Streams a poster image from the linked Radarr service for a saved movie media row.
+      tags:
+        - movies
+      parameters:
+        - in: path
+          name: movieId
+          required: true
+          schema:
+            type: number
+            example: 337401
+        - in: query
+          name: mediaId
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: is4k
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Movie cover image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Movie cover not found
   /movie/{movieId}/recommendations:
     get:
       summary: Get recommended movies
@@ -8717,6 +8801,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TvDetails'
+  /tv/{tvId}/cover:
+    get:
+      summary: Get linked Sonarr cover image
+      description: Streams a poster image from the linked Sonarr service for a saved TV media row.
+      tags:
+        - tv
+      parameters:
+        - in: path
+          name: tvId
+          required: true
+          schema:
+            type: number
+            example: 76479
+        - in: query
+          name: mediaId
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: is4k
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: TV cover image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: TV cover not found
   /tv/{tvId}/season/{seasonNumber}:
     get:
       summary: Get season details and episode list
