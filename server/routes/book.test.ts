@@ -329,6 +329,67 @@ describe('GET /book/:id', () => {
     }
   });
 
+  it('prefers a linked Bookshelf cover path for available books even when Open Library has a cover', async () => {
+    mockBookDetails();
+
+    const settings = getSettings();
+    const priorReadarr = settings.readarr;
+    settings.readarr = [
+      {
+        id: 9,
+        name: 'Audiobookshelf',
+        hostname: 'bookshelf.test',
+        port: 8787,
+        apiKey: 'readarr-key',
+        useSsl: false,
+        baseUrl: '',
+        activeProfileId: 1,
+        activeProfileName: 'Any',
+        activeDirectory: '/books',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: false,
+        tagRequests: false,
+        overrideRule: [],
+        serviceType: 'audiobook',
+      },
+    ];
+
+    try {
+      const agent = await login();
+      const media = await getRepository(Media).save(
+        new Media({
+          tmdbId: 0,
+          mediaType: MediaType.BOOK,
+          status: MediaStatus.AVAILABLE,
+          audiobookServiceId: 9,
+          audiobookExternalServiceId: 44,
+          audiobookExternalServiceSlug: 'the-test-book',
+        })
+      );
+      await getRepository(MediaIdentifier).save(
+        new MediaIdentifier({
+          media,
+          provider: MediaIdentifierProvider.ISBN,
+          value: '9780000000002',
+          canonical: true,
+        })
+      );
+
+      const res = await agent.get('/book/OL45804W');
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(
+        res.body.posterPath,
+        `/api/v1/book/OL45804W/cover?mediaId=${media.id}&format=audiobook`
+      );
+    } finally {
+      settings.readarr = priorReadarr;
+    }
+  });
+
   it('serves linked Bookshelf covers through the configured Readarr-compatible API', async () => {
     const settings = getSettings();
     const priorReadarr = settings.readarr;
