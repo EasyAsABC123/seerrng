@@ -399,6 +399,7 @@ interface NotificationSettings {
 
 interface JobSettings {
   schedule: string;
+  enabled?: boolean;
 }
 
 export type JobId =
@@ -410,7 +411,9 @@ export type JobId =
   | 'sonarr-scan'
   | 'lidarr-scan'
   | 'readarr-scan'
+  | 'readarr-request-retry'
   | 'download-sync'
+  | 'download-recovery'
   | 'download-sync-reset'
   | 'jellyfin-recently-added-scan'
   | 'jellyfin-full-scan'
@@ -659,11 +662,18 @@ class Settings {
         'readarr-scan': {
           schedule: '0 45 4 * * *',
         },
+        'readarr-request-retry': {
+          schedule: '0 */5 * * * *',
+        },
         'availability-sync': {
           schedule: '0 0 5 * * *',
         },
         'download-sync': {
           schedule: '0 * * * * *',
+        },
+        'download-recovery': {
+          schedule: '0 */5 * * * *',
+          enabled: true,
         },
         'download-sync-reset': {
           schedule: '0 0 1 * * *',
@@ -1378,11 +1388,18 @@ class Settings {
         'readarr-scan': {
           schedule: '0 45 4 * * *',
         },
+        'readarr-request-retry': {
+          schedule: '0 */5 * * * *',
+        },
         'availability-sync': {
           schedule: '0 0 5 * * *',
         },
         'download-sync': {
           schedule: '0 * * * * *',
+        },
+        'download-recovery': {
+          schedule: '0 */5 * * * *',
+          enabled: true,
         },
         'download-sync-reset': {
           schedule: '0 0 1 * * *',
