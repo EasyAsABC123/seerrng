@@ -1,5 +1,6 @@
 import logger from '@server/logger';
 import { redactSecrets } from '@server/utils/security';
+import axios from 'axios';
 import ServarrBase, {
   MAX_SERVARR_CONFIGURATION_RESULTS,
   MAX_SERVARR_LIBRARY_RESULTS,
@@ -336,6 +337,20 @@ class SonarrAPI extends ServarrBase<{
     return `${this.coverBaseUrl}${path}`;
   }
 
+  private buildRemoteCoverUrl(url: string): string | undefined {
+    try {
+      const parsedUrl = new URL(url);
+
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return undefined;
+      }
+
+      return parsedUrl.toString();
+    } catch {
+      return undefined;
+    }
+  }
+
   public async getSeries(): Promise<SonarrSeries[]> {
     try {
       const response = await this.axios.get<SonarrSeries[]>('/series');
@@ -381,18 +396,28 @@ class SonarrAPI extends ServarrBase<{
       `/MediaCover/${seriesId}/poster.jpg`,
       `/MediaCover/${seriesId}/cover.jpg`,
     ];
-    const uniqueCandidatePaths = [...new Set(candidatePaths)];
+    const remoteCoverUrls = (series?.images ?? [])
+      .filter((image) => {
+        const coverType = image.coverType?.toLowerCase();
+        return !coverType || coverType === 'poster' || coverType === 'cover';
+      })
+      .map((image) => image.remoteUrl)
+      .filter((url): url is string => !!url)
+      .map((url) => this.buildRemoteCoverUrl(url))
+      .filter((url): url is string => !!url);
+    const candidateUrls = [
+      ...candidatePaths.map((path) => this.buildCoverUrl(path)),
+      ...remoteCoverUrls,
+    ].filter((url): url is string => !!url);
+    const uniqueCandidateUrls = [...new Set(candidateUrls)];
     let lastError: unknown;
 
-    for (const path of uniqueCandidatePaths) {
-      const coverUrl = this.buildCoverUrl(path);
-
-      if (!coverUrl) {
-        continue;
-      }
-
+    for (const coverUrl of uniqueCandidateUrls) {
       try {
-        const response = await this.axios.get<ArrayBuffer>(coverUrl, {
+        const isLocalCoverUrl = coverUrl.startsWith(this.coverBaseUrl);
+        const response = await (
+          isLocalCoverUrl ? this.axios : axios
+        ).get<ArrayBuffer>(coverUrl, {
           responseType: 'arraybuffer',
           headers: { Accept: 'image/*' },
         });

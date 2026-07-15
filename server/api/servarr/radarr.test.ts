@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 
 import type { RadarrMovie } from '@server/api/servarr/radarr';
+import axios from 'axios';
 import RadarrAPI, { sanitizeRadarrMovie } from './radarr';
 
 describe('Radarr response normalization', () => {
@@ -140,5 +141,52 @@ describe('RadarrAPI.getMovieCover', () => {
       )[0].arguments[0],
       'http://localhost:7878/MediaCover/42/poster.jpg'
     );
+  });
+
+  it('falls back to an advertised remote poster when local media cover is not an image', async () => {
+    const api = new RadarrAPI({
+      url: 'http://localhost:7878/api/v3',
+      apiKey: 'key',
+    });
+    mock.method(api, 'getMovie', async () =>
+      movie({
+        images: [
+          {
+            coverType: 'poster',
+            url: '/MediaCover/42/poster.jpg?lastWrite=123',
+            remoteUrl: 'https://image.tmdb.org/t/p/original/poster.jpg',
+          },
+        ],
+      })
+    );
+    const axiosGetMock = mock.fn(async () => ({
+      data: Buffer.from('login-page'),
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    }));
+    (
+      api as unknown as {
+        axios: { get: typeof axiosGetMock };
+      }
+    ).axios.get = axiosGetMock;
+    const remoteGetMock = mock.method(axios, 'get', async () => ({
+      data: Buffer.from('remote-movie-image'),
+      headers: { 'content-type': 'image/jpeg' },
+    }));
+
+    const result = await api.getMovieCover(42);
+
+    assert.deepStrictEqual(
+      result.imageBuffer,
+      Buffer.from('remote-movie-image')
+    );
+    assert.strictEqual(result.contentType, 'image/jpeg');
+    assert.strictEqual(
+      remoteGetMock.mock.calls[0].arguments[0],
+      'https://image.tmdb.org/t/p/original/poster.jpg'
+    );
+    assert.deepStrictEqual(remoteGetMock.mock.calls[0].arguments[1], {
+      responseType: 'arraybuffer',
+      headers: { Accept: 'image/*' },
+    });
   });
 });
