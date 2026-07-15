@@ -245,6 +245,7 @@ const getScheduledJobResponse = (
   type: scheduledJob.type,
   interval: scheduledJob.interval,
   cronSchedule: scheduledJob.cronSchedule,
+  enabled: getSettings().jobs[scheduledJob.id]?.enabled !== false,
   nextExecutionTime: scheduledJob.job.nextInvocation(),
   running:
     isTrackedJobRunning(scheduledJob.name) ||
@@ -2049,6 +2050,43 @@ settingsRoutes.post<{ jobId: JobId }>(
       }
     }
   )
+);
+
+settingsRoutes.post<{ jobId: JobId }>(
+  '/jobs/:jobId/enabled',
+  async (req, res, next) => {
+    const scheduledJob = findScheduledJob(req.params.jobId);
+    if (!scheduledJob) {
+      return next({ status: 404, message: 'Job not found.' });
+    }
+
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return next({ status: 400, message: 'Invalid job enabled setting.' });
+    }
+
+    const enabled = parseOptionalBodyBoolean(
+      (req.body as { enabled?: unknown }).enabled,
+      'Enabled'
+    );
+    if ('error' in enabled || enabled.value === undefined) {
+      return next({ status: 400, message: 'Invalid job enabled setting.' });
+    }
+
+    const settings = getSettings();
+    settings.jobs[scheduledJob.id].enabled = enabled.value;
+    await settings.save();
+
+    if (enabled.value) {
+      const result = rescheduleJob(scheduledJob.job, scheduledJob.cronSchedule);
+      if (!result) {
+        return next({ status: 400, message: 'Invalid job schedule.' });
+      }
+    } else {
+      scheduledJob.job.cancel();
+    }
+
+    return res.status(200).json(getScheduledJobResponse(scheduledJob));
+  }
 );
 
 settingsRoutes.get('/cache', async (_req, res) => {

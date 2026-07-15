@@ -52,7 +52,12 @@ export interface QualityProfile {
   name: string;
 }
 
-interface QueueItem {
+export interface QueueStatusMessage {
+  title?: string;
+  messages?: string[];
+}
+
+export interface QueueItem {
   size: number;
   title: string;
   sizeleft: number;
@@ -66,6 +71,7 @@ interface QueueItem {
   downloadClient: string;
   indexer: string;
   id: number;
+  statusMessages?: QueueStatusMessage[];
 }
 
 export interface Tag {
@@ -361,6 +367,32 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     } catch (e) {
       throw new Error(
         `[${this.apiName}] Failed to retrieve queue: ${e.message}`,
+        { cause: e }
+      );
+    }
+  };
+
+  public deleteQueueItem = async (
+    queueId: number,
+    options: {
+      removeFromClient?: boolean;
+      blocklist?: boolean;
+      skipRedownload?: boolean;
+      changeCategory?: boolean;
+    } = {}
+  ): Promise<void> => {
+    try {
+      await this.axios.delete(`/queue/${queueId}`, {
+        params: {
+          removeFromClient: options.removeFromClient ?? true,
+          blocklist: options.blocklist ?? true,
+          skipRedownload: options.skipRedownload ?? false,
+          changeCategory: options.changeCategory ?? false,
+        },
+      });
+    } catch (e) {
+      throw new Error(
+        `[${this.apiName}] Failed to remove queue item ${queueId}: ${e.message}`,
         { cause: e }
       );
     }
