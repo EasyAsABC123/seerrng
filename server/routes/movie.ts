@@ -197,7 +197,7 @@ movieRoutes.get('/:id/cover', async (req, res) => {
   try {
     const radarrApi = new RadarrAPI({
       apiKey: coverService.server.apiKey,
-      url: RadarrAPI.buildUrl(coverService.server, '/api/v1'),
+      url: RadarrAPI.buildUrl(coverService.server, '/api/v3'),
     });
     const cover = await radarrApi.getMovieCover(coverService.movieId);
 

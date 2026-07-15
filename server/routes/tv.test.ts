@@ -5,7 +5,7 @@ import SonarrAPI from '@server/api/servarr/sonarr';
 import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
-import { getSettings } from '@server/lib/settings';
+import { getSettings, type SonarrSettings } from '@server/lib/settings';
 import { setupTestDb } from '@server/test/db';
 import type { Express } from 'express';
 import express from 'express';
@@ -69,6 +69,12 @@ describe('GET /tv/:id/cover', () => {
         contentType: 'image/jpeg',
       })
     );
+    const originalBuildUrl = SonarrAPI.buildUrl;
+    const buildUrlMock = mock.method(
+      SonarrAPI,
+      'buildUrl',
+      (server: SonarrSettings, path?: string) => originalBuildUrl(server, path)
+    );
 
     try {
       const media = await getRepository(Media).save(
@@ -89,6 +95,9 @@ describe('GET /tv/:id/cover', () => {
       assert.strictEqual(res.headers['content-type'], 'image/jpeg');
       assert.deepStrictEqual(res.body, Buffer.from('series-cover'));
       assert.strictEqual(getSeriesCoverMock.mock.calls[0].arguments[0], 44);
+      assert(
+        buildUrlMock.mock.calls.some((call) => call.arguments[1] === '/api/v3')
+      );
     } finally {
       settings.sonarr = priorSonarr;
     }

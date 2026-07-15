@@ -214,7 +214,7 @@ tvRoutes.get('/:id/cover', async (req, res) => {
   try {
     const sonarrApi = new SonarrAPI({
       apiKey: coverService.server.apiKey,
-      url: SonarrAPI.buildUrl(coverService.server, '/api/v1'),
+      url: SonarrAPI.buildUrl(coverService.server, '/api/v3'),
     });
     const cover = await sonarrApi.getSeriesCover(coverService.seriesId);
 
