@@ -134,6 +134,7 @@ export interface RadarrMovie {
   added: string;
   hasFile: boolean;
   tags: number[];
+  images?: RadarrMovieImage[];
   movieFile?: {
     id: number;
     movieId: number;
@@ -168,9 +169,40 @@ export interface RadarrMovie {
   };
 }
 
+export interface RadarrMovieImage {
+  coverType?: string;
+  url?: string;
+  remoteUrl?: string;
+}
+
+export type RadarrCoverImage = {
+  imageBuffer: Buffer;
+  contentType: string;
+};
+
 class RadarrAPI extends ServarrBase<{ movieId: number }> {
+  private coverBaseUrl: string;
+
   constructor({ url, apiKey }: { url: string; apiKey: string }) {
     super({ url, apiKey, cacheName: 'radarr', apiName: 'Radarr' });
+    this.coverBaseUrl = RadarrAPI.buildCoverBaseUrl(url);
+  }
+
+  private static buildCoverBaseUrl(url: string): string {
+    const parsedUrl = new URL(url);
+    parsedUrl.pathname = parsedUrl.pathname.replace(/\/api\/v\d+\/?$/i, '');
+    parsedUrl.search = '';
+    parsedUrl.hash = '';
+
+    return parsedUrl.toString().replace(/\/$/, '');
+  }
+
+  private buildCoverUrl(path: string): string | undefined {
+    if (!path.startsWith('/') || path.includes('://')) {
+      return undefined;
+    }
+
+    return `${this.coverBaseUrl}${path}`;
   }
 
   public getMovies = async (): Promise<RadarrMovie[]> => {
@@ -202,6 +234,58 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
       });
     }
   };
+
+  public async getMovieCover(movieId: number): Promise<RadarrCoverImage> {
+    const movie = await this.getMovie({ id: movieId }).catch(() => undefined);
+    const advertisedCoverPaths = (movie?.images ?? [])
+      .filter((image) => {
+        const coverType = image.coverType?.toLowerCase();
+        return !coverType || coverType === 'poster' || coverType === 'cover';
+      })
+      .map((image) => image.url)
+      .filter((url): url is string => !!url && url.startsWith('/'));
+    const candidatePaths = [
+      ...advertisedCoverPaths,
+      `/MediaCover/${movieId}/poster.jpg`,
+      `/MediaCover/${movieId}/cover.jpg`,
+    ];
+    const uniqueCandidatePaths = [...new Set(candidatePaths)];
+    let lastError: unknown;
+
+    for (const path of uniqueCandidatePaths) {
+      const coverUrl = this.buildCoverUrl(path);
+
+      if (!coverUrl) {
+        continue;
+      }
+
+      try {
+        const response = await this.axios.get<ArrayBuffer>(coverUrl, {
+          responseType: 'arraybuffer',
+          headers: { Accept: 'image/*' },
+        });
+        const contentType = String(response.headers['content-type'] ?? '');
+
+        if (!contentType.toLowerCase().startsWith('image/')) {
+          throw new Error('Upstream response is not an image');
+        }
+
+        return {
+          imageBuffer: Buffer.from(response.data),
+          contentType,
+        };
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw new Error(
+      `[Radarr] Failed to retrieve cover for movie ${movieId}: ${
+        lastError instanceof Error ? lastError.message : 'No cover path worked'
+      }`,
+      { cause: lastError }
+    );
+  }
 
   public async getMovieByTmdbId(id: number): Promise<RadarrMovie> {
     try {
