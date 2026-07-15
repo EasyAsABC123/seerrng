@@ -569,6 +569,8 @@ describe('OpenID Connect', () => {
 
     const redirectUrl = new URL(loginResponse.body.redirectUrl);
     const state = redirectUrl.searchParams.get('state');
+    const nonce = redirectUrl.searchParams.get('nonce');
+    expectedNonce = nonce;
 
     const cookies = loginResponse.get('Set-Cookie');
     assert.notStrictEqual(cookies, undefined);
@@ -589,6 +591,7 @@ describe('OpenID Connect', () => {
 
   let mockJwks: { keys: object[] };
   let signIdToken: (claims?: Record<string, unknown>) => Promise<string>;
+  let expectedNonce: string | null = null;
 
   before(async () => {
     const { generateKeyPair, exportJWK, SignJWT } = await import('jose');
@@ -639,13 +642,6 @@ describe('OpenID Connect', () => {
     const wellKnown = buildMockWellKnown(options);
     const userinfo = options?.userinfoResponse ?? DEFAULT_CLAIMS;
     const idTokenClaims = options?.idTokenClaims;
-    const idToken = await signIdToken(idTokenClaims);
-    const tokenResponse = {
-      access_token: 'abcdefg',
-      token_type: 'Bearer',
-      expires_in: 3600,
-      id_token: idToken,
-    };
 
     fetchMock.mockGlobal();
     // Clear any routes from a previous setup call so re-registering with new
@@ -658,7 +654,15 @@ describe('OpenID Connect', () => {
       wellKnown
     );
     fetchMock.route('https://example.com/.well-known/jwks.json', mockJwks);
-    fetchMock.route('https://example.com/oauth/token', tokenResponse);
+    fetchMock.route('https://example.com/oauth/token', async () => ({
+      access_token: 'abcdefg',
+      token_type: 'Bearer',
+      expires_in: 3600,
+      id_token: await signIdToken({
+        ...idTokenClaims,
+        nonce: expectedNonce,
+      }),
+    }));
     fetchMock.route('https://example.com/userinfo', userinfo);
   }
 
@@ -695,6 +699,34 @@ describe('OpenID Connect', () => {
         OIDC_REDIRECT_URL
       );
       assert.ok(params.searchParams.get('state'));
+      assert.ok(params.searchParams.get('nonce'));
+    });
+
+    it('restricts redirect URIs to known callback pages', async function () {
+      const accepted = await request(app)
+        .get('/auth/oidc/login/test')
+        .query({ returnUrl: '/profile/settings/linked-accounts' });
+      const rejectedPath = await request(app)
+        .get('/auth/oidc/login/test')
+        .query({ returnUrl: '/settings/main' });
+      const rejectedOrigin = await request(app)
+        .get('/auth/oidc/login/test')
+        .query({ returnUrl: 'https://attacker.example/callback' });
+
+      assert.strictEqual(
+        new URL(accepted.body.redirectUrl).searchParams.get('redirect_uri'),
+        'https://jellyseerr.example.com/profile/settings/linked-accounts'
+      );
+      assert.strictEqual(
+        new URL(rejectedPath.body.redirectUrl).searchParams.get('redirect_uri'),
+        OIDC_REDIRECT_URL
+      );
+      assert.strictEqual(
+        new URL(rejectedOrigin.body.redirectUrl).searchParams.get(
+          'redirect_uri'
+        ),
+        OIDC_REDIRECT_URL
+      );
     });
 
     it('callback endpoint successfully authorizes existing user', async function () {
@@ -745,6 +777,7 @@ describe('OpenID Connect', () => {
 
       const params = new URL(response.body.redirectUrl);
       assert.ok(params.searchParams.get('state'));
+      assert.ok(params.searchParams.get('nonce'));
       assert.ok(params.searchParams.get('code_challenge'));
       assert.strictEqual(
         params.searchParams.get('code_challenge_method'),
@@ -958,6 +991,52 @@ describe('OpenID Connect', () => {
         .set('Accept', 'application/json')
         .set('Cookie', stateCookieOnly)
         .send({ callbackUrl: callbackUrl.toString() });
+
+      assert.strictEqual(response.status, 400);
+      assert.strictEqual(
+        response.body.error,
+        ApiErrorCode.OidcAuthorizationFailed
+      );
+    });
+
+    it('rejects a callback URL that differs from the issued redirect URI', async function () {
+      await setupFetchMock();
+
+      const loginResponse = await request(app).get('/auth/oidc/login/test');
+      const redirectUrl = new URL(loginResponse.body.redirectUrl);
+      expectedNonce = redirectUrl.searchParams.get('nonce');
+      const cookies = loginResponse.get('Set-Cookie')!;
+      const cookieHeader = cookies.map((c) => c.split(';')[0]).join('; ');
+      const callbackUrl = new URL(
+        'https://jellyseerr.example.com/settings/main'
+      );
+      callbackUrl.searchParams.set('code', '123456');
+      callbackUrl.searchParams.set(
+        'state',
+        redirectUrl.searchParams.get('state')!
+      );
+
+      const response = await request(app)
+        .post('/auth/oidc/callback/test')
+        .set('Cookie', cookieHeader)
+        .send({ callbackUrl: callbackUrl.toString() });
+
+      assert.strictEqual(response.status, 400);
+      assert.strictEqual(
+        response.body.error,
+        ApiErrorCode.OidcAuthorizationFailed
+      );
+    });
+
+    it('rejects malformed callback URLs', async function () {
+      await setupFetchMock();
+
+      const loginResponse = await request(app).get('/auth/oidc/login/test');
+      const cookies = loginResponse.get('Set-Cookie')!;
+      const response = await request(app)
+        .post('/auth/oidc/callback/test')
+        .set('Cookie', cookies.map((c) => c.split(';')[0]).join('; '))
+        .send({ callbackUrl: 'not a URL' });
 
       assert.strictEqual(response.status, 400);
       assert.strictEqual(

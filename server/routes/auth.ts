@@ -909,7 +909,13 @@ const getOidcRedirectUrl = (req: Request) => {
   // returnUrl (e.g. "https://evil.example" or "//evil.example") would
   // otherwise turn the login flow into an open redirect / authorization-code
   // leak whenever the provider's redirect allowlist is permissive.
-  if (resolved.origin !== baseUrl.origin) {
+  const allowedPaths = new Set(['/login', '/profile/settings/linked-accounts']);
+  if (
+    resolved.origin !== baseUrl.origin ||
+    !allowedPaths.has(resolved.pathname) ||
+    resolved.search ||
+    resolved.hash
+  ) {
     return new URL('/login', baseUrl);
   }
 
@@ -918,6 +924,8 @@ const getOidcRedirectUrl = (req: Request) => {
 
 const OIDC_STATE_KEY = 'oidc-state';
 const OIDC_CODE_VERIFIER_KEY = 'oidc-code-verifier';
+const OIDC_NONCE_KEY = 'oidc-nonce';
+const OIDC_REDIRECT_URI_KEY = 'oidc-redirect-uri';
 
 authRoutes.get('/oidc/login/:slug', authRateLimit, async (req, res, next) => {
   const settings = getSettings();
@@ -968,9 +976,18 @@ authRoutes.get('/oidc/login/:slug', authRateLimit, async (req, res, next) => {
     secure: req.protocol === 'https',
     signed: true,
     sameSite: 'strict',
+    maxAge: 10 * 60 * 1000,
   });
 
   const callbackUrl = getOidcRedirectUrl(req);
+
+  res.cookie(OIDC_REDIRECT_URI_KEY, callbackUrl.toString(), {
+    httpOnly: true,
+    secure: req.protocol === 'https',
+    signed: true,
+    sameSite: 'strict',
+    maxAge: 10 * 60 * 1000,
+  });
 
   const parameters: Record<string, string> = {
     redirect_uri: callbackUrl.toString(),
@@ -987,6 +1004,17 @@ authRoutes.get('/oidc/login/:slug', authRateLimit, async (req, res, next) => {
     secure: req.protocol === 'https',
     signed: true,
     sameSite: 'strict',
+    maxAge: 10 * 60 * 1000,
+  });
+
+  const nonce = openIdClient.randomNonce();
+  parameters.nonce = nonce;
+  res.cookie(OIDC_NONCE_KEY, nonce, {
+    httpOnly: true,
+    secure: req.protocol === 'https',
+    signed: true,
+    sameSite: 'strict',
+    maxAge: 10 * 60 * 1000,
   });
 
   let redirectUrl: URL;
@@ -1060,8 +1088,16 @@ authRoutes.post(
     const pkceCodeVerifier: string | undefined =
       req.signedCookies[OIDC_CODE_VERIFIER_KEY];
     const expectedState: string | undefined = req.signedCookies[OIDC_STATE_KEY];
+    const expectedNonce: string | undefined = req.signedCookies[OIDC_NONCE_KEY];
+    const expectedRedirectUri: string | undefined =
+      req.signedCookies[OIDC_REDIRECT_URI_KEY];
 
-    if (!pkceCodeVerifier || !expectedState) {
+    if (
+      !pkceCodeVerifier ||
+      !expectedState ||
+      !expectedNonce ||
+      !expectedRedirectUri
+    ) {
       logger.warn('Rejected OIDC callback without correlation cookies', {
         label: 'Auth',
         provider: provider.slug,
@@ -1075,8 +1111,31 @@ authRoutes.post(
 
     res.clearCookie(OIDC_CODE_VERIFIER_KEY);
     res.clearCookie(OIDC_STATE_KEY);
+    res.clearCookie(OIDC_NONCE_KEY);
+    res.clearCookie(OIDC_REDIRECT_URI_KEY);
 
-    const redirectUrl = new URL(req.body.callbackUrl);
+    let redirectUrl: URL;
+    try {
+      redirectUrl = new URL(req.body?.callbackUrl);
+      const expectedUrl = new URL(expectedRedirectUri);
+      if (
+        redirectUrl.origin !== expectedUrl.origin ||
+        redirectUrl.pathname !== expectedUrl.pathname
+      ) {
+        throw new Error('OIDC callback URL does not match the login request');
+      }
+    } catch (error) {
+      logger.warn('Rejected invalid OIDC callback URL', {
+        label: 'Auth',
+        provider: provider.slug,
+        ip: req.ip,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return next({
+        status: 400,
+        error: ApiErrorCode.OidcAuthorizationFailed,
+      });
+    }
 
     let tokens: openIdClient.TokenEndpointResponse &
       openIdClient.TokenEndpointResponseHelpers;
@@ -1084,6 +1143,7 @@ authRoutes.post(
       tokens = await openIdClient.authorizationCodeGrant(config, redirectUrl, {
         pkceCodeVerifier,
         expectedState,
+        expectedNonce,
       });
     } catch (error) {
       logger.error('Failed OIDC authorization code grant', {
