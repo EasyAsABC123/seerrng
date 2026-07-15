@@ -3,6 +3,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 
 import type { SonarrSeries } from '@server/api/servarr/sonarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
+import axios from 'axios';
 
 const series = (overrides: Partial<SonarrSeries> = {}): SonarrSeries => ({
   id: 42,
@@ -128,5 +129,52 @@ describe('SonarrAPI.getSeriesCover', () => {
       )[0].arguments[0],
       'http://localhost:8989/MediaCover/42/poster.jpg'
     );
+  });
+
+  it('falls back to an advertised remote poster when local media cover is not an image', async () => {
+    const api = new SonarrAPI({
+      url: 'http://localhost:8989/api/v3',
+      apiKey: 'key',
+    });
+    mock.method(api, 'getSeriesById', async () =>
+      series({
+        images: [
+          {
+            coverType: 'poster',
+            url: '/MediaCover/42/poster.jpg?lastWrite=123',
+            remoteUrl: 'https://artworks.thetvdb.com/poster.jpg',
+          },
+        ],
+      })
+    );
+    const axiosGetMock = mock.fn(async () => ({
+      data: Buffer.from('login-page'),
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    }));
+    (
+      api as unknown as {
+        axios: { get: typeof axiosGetMock };
+      }
+    ).axios.get = axiosGetMock;
+    const remoteGetMock = mock.method(axios, 'get', async () => ({
+      data: Buffer.from('remote-series-image'),
+      headers: { 'content-type': 'image/jpeg' },
+    }));
+
+    const result = await api.getSeriesCover(42);
+
+    assert.deepStrictEqual(
+      result.imageBuffer,
+      Buffer.from('remote-series-image')
+    );
+    assert.strictEqual(result.contentType, 'image/jpeg');
+    assert.strictEqual(
+      remoteGetMock.mock.calls[0].arguments[0],
+      'https://artworks.thetvdb.com/poster.jpg'
+    );
+    assert.deepStrictEqual(remoteGetMock.mock.calls[0].arguments[1], {
+      responseType: 'arraybuffer',
+      headers: { Accept: 'image/*' },
+    });
   });
 });
