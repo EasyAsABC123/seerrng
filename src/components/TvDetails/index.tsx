@@ -31,6 +31,7 @@ import globalMessages from '@app/i18n/globalMessages';
 import ErrorPage from '@app/pages/_error';
 import { sortCrewPriority } from '@app/utils/creditHelpers';
 import defineMessages from '@app/utils/defineMessages';
+import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
 import { Disclosure, Transition } from '@headlessui/react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
@@ -560,7 +561,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
             type="tmdb"
             src={
               data.posterPath
-                ? `https://image.tmdb.org/t/p/w600_and_h900_bestv2${data.posterPath}`
+                ? getTmdbPosterImageUrl(data.posterPath)
                 : '/images/seerr_poster_not_found.png'
             }
             alt=""

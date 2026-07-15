@@ -4,6 +4,7 @@ import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@app/utils/apiPath';
+import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
 
 export const nodeHref = (node: AssociationNode): string => {
   switch (node.mediaType) {
@@ -48,9 +49,7 @@ export const nodeImage = (node: AssociationNode): string | undefined => {
   switch (node.mediaType) {
     case 'movie':
     case 'tv':
-      return node.posterPath
-        ? `https://image.tmdb.org/t/p/w300_and_h450_face${node.posterPath}`
-        : undefined;
+      return getTmdbPosterImageUrl(node.posterPath, 'w300_and_h450_face');
     case 'album':
       return node.posterPath ?? undefined;
     case 'artist':

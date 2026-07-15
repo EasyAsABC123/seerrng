@@ -1,0 +1,132 @@
+import assert from 'node:assert/strict';
+import { afterEach, describe, it, mock } from 'node:test';
+
+import type { SonarrSeries } from '@server/api/servarr/sonarr';
+import SonarrAPI from '@server/api/servarr/sonarr';
+
+const series = (overrides: Partial<SonarrSeries> = {}): SonarrSeries => ({
+  id: 42,
+  title: 'Test Series',
+  sortTitle: 'test series',
+  seasonCount: 1,
+  status: 'continuing',
+  overview: 'A test series.',
+  network: 'Test Network',
+  airTime: '20:00',
+  images: [],
+  remotePoster: '',
+  seasons: [],
+  year: 2026,
+  path: '/tv/Test Series',
+  profileId: 1,
+  languageProfileId: 1,
+  seasonFolder: true,
+  monitored: true,
+  monitorNewItems: 'all',
+  useSceneNumbering: false,
+  runtime: 45,
+  tvdbId: 100,
+  tvRageId: 0,
+  tvMazeId: 0,
+  firstAired: '2026-01-01T00:00:00Z',
+  seriesType: 'standard',
+  cleanTitle: 'testseries',
+  imdbId: 'tt0000100',
+  titleSlug: 'test-series',
+  certification: 'TV-14',
+  genres: [],
+  tags: [],
+  added: '2026-01-01T00:00:00Z',
+  ratings: {
+    votes: 0,
+    value: 0,
+  },
+  qualityProfileId: 1,
+  statistics: {
+    seasonCount: 1,
+    episodeFileCount: 1,
+    episodeCount: 1,
+    totalEpisodeCount: 1,
+    sizeOnDisk: 1,
+    releaseGroups: [],
+    percentOfEpisodes: 100,
+  },
+  ...overrides,
+});
+
+describe('SonarrAPI.getSeriesCover', () => {
+  afterEach(() => {
+    mock.restoreAll();
+  });
+
+  it('fetches the first advertised relative cover path outside the API base path', async () => {
+    const api = new SonarrAPI({
+      url: 'http://localhost:8989/base/api/v3',
+      apiKey: 'key',
+    });
+    mock.method(api, 'getSeriesById', async () =>
+      series({
+        images: [
+          {
+            coverType: 'poster',
+            url: '/MediaCover/42/poster.jpg',
+          },
+        ],
+      })
+    );
+    const axiosGetMock = mock.fn(async () => ({
+      data: Buffer.from('series-image'),
+      headers: { 'content-type': 'image/jpeg' },
+    }));
+    (
+      api as unknown as {
+        axios: { get: typeof axiosGetMock };
+      }
+    ).axios.get = axiosGetMock;
+
+    const result = await api.getSeriesCover(42);
+
+    assert.deepStrictEqual(result.imageBuffer, Buffer.from('series-image'));
+    assert.strictEqual(result.contentType, 'image/jpeg');
+    assert.strictEqual(
+      (
+        axiosGetMock.mock.calls as unknown as {
+          arguments: [string];
+        }[]
+      )[0].arguments[0],
+      'http://localhost:8989/base/MediaCover/42/poster.jpg'
+    );
+  });
+
+  it('falls back to the standard Sonarr-compatible poster path', async () => {
+    const api = new SonarrAPI({
+      url: 'http://localhost:8989/api/v3',
+      apiKey: 'key',
+    });
+    mock.method(api, 'getSeriesById', async () => series());
+    const axiosGetMock = mock.fn(async () => ({
+      data: Buffer.from('fallback-series-image'),
+      headers: { 'content-type': 'image/png' },
+    }));
+    (
+      api as unknown as {
+        axios: { get: typeof axiosGetMock };
+      }
+    ).axios.get = axiosGetMock;
+
+    const result = await api.getSeriesCover(42);
+
+    assert.deepStrictEqual(
+      result.imageBuffer,
+      Buffer.from('fallback-series-image')
+    );
+    assert.strictEqual(
+      (
+        axiosGetMock.mock.calls as unknown as {
+          arguments: [string];
+        }[]
+      )[0].arguments[0],
+      'http://localhost:8989/MediaCover/42/poster.jpg'
+    );
+  });
+});

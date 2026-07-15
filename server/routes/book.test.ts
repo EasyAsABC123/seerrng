@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, before, describe, it, mock } from 'node:test';
 
 import OpenLibraryAPI from '@server/api/openlibrary';
+import ReadarrAPI from '@server/api/servarr/readarr';
 import {
   MediaRequestStatus,
   MediaStatus,
@@ -92,6 +93,32 @@ function mockBookDetails() {
     first_publish_date: '1999',
     description: 'A testable book.',
     subjects: ['Testing'],
+  }));
+
+  mock.method(OpenLibraryAPI.prototype, 'getWorkEditions', async () => ({
+    size: 1,
+    entries: [
+      {
+        key: '/books/OL1M',
+        title: 'The Test Book',
+        isbn_13: ['9780000000002'],
+        physical_format: 'Paperback',
+      },
+    ],
+  }));
+
+  mock.method(OpenLibraryAPI.prototype, 'getAuthor', async () => ({
+    key: '/authors/OL1A',
+    name: 'Test Author',
+  }));
+}
+
+function mockBookDetailsWithoutCover() {
+  mock.method(OpenLibraryAPI.prototype, 'getWork', async () => ({
+    key: '/works/OL45804W',
+    title: 'The Test Book',
+    authors: [{ author: { key: '/authors/OL1A' } }],
+    first_publish_date: '1999',
   }));
 
   mock.method(OpenLibraryAPI.prototype, 'getWorkEditions', async () => ({
@@ -239,6 +266,126 @@ describe('GET /book/:id', () => {
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.mediaInfo.id, media.id);
     assert.strictEqual(res.body.mediaInfo.status, MediaStatus.AVAILABLE);
+  });
+
+  it('uses a linked Bookshelf cover path when Open Library has no cover', async () => {
+    mockBookDetailsWithoutCover();
+
+    const settings = getSettings();
+    const priorReadarr = settings.readarr;
+    settings.readarr = [
+      {
+        id: 9,
+        name: 'Audiobookshelf',
+        hostname: 'bookshelf.test',
+        port: 8787,
+        apiKey: 'readarr-key',
+        useSsl: false,
+        baseUrl: '',
+        activeProfileId: 1,
+        activeProfileName: 'Any',
+        activeDirectory: '/books',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: false,
+        tagRequests: false,
+        overrideRule: [],
+        serviceType: 'audiobook',
+      },
+    ];
+
+    try {
+      const agent = await login();
+      const media = await getRepository(Media).save(
+        new Media({
+          tmdbId: 0,
+          mediaType: MediaType.BOOK,
+          status: MediaStatus.AVAILABLE,
+          audiobookServiceId: 9,
+          audiobookExternalServiceId: 44,
+          audiobookExternalServiceSlug: 'the-test-book',
+        })
+      );
+      await getRepository(MediaIdentifier).save(
+        new MediaIdentifier({
+          media,
+          provider: MediaIdentifierProvider.ISBN,
+          value: '9780000000002',
+          canonical: true,
+        })
+      );
+
+      const res = await agent.get('/book/OL45804W');
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(
+        res.body.posterPath,
+        `/api/v1/book/OL45804W/cover?mediaId=${media.id}&format=audiobook`
+      );
+    } finally {
+      settings.readarr = priorReadarr;
+    }
+  });
+
+  it('serves linked Bookshelf covers through the configured Readarr-compatible API', async () => {
+    const settings = getSettings();
+    const priorReadarr = settings.readarr;
+    settings.readarr = [
+      {
+        id: 9,
+        name: 'Audiobookshelf',
+        hostname: 'bookshelf.test',
+        port: 8787,
+        apiKey: 'readarr-key',
+        useSsl: false,
+        baseUrl: '',
+        activeProfileId: 1,
+        activeProfileName: 'Any',
+        activeDirectory: '/books',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: false,
+        tagRequests: false,
+        overrideRule: [],
+        serviceType: 'audiobook',
+      },
+    ];
+    const getBookCoverMock = mock.method(
+      ReadarrAPI.prototype,
+      'getBookCover',
+      async () => ({
+        imageBuffer: Buffer.from('cover-bytes'),
+        contentType: 'image/jpeg',
+      })
+    );
+
+    try {
+      const agent = await login();
+      const media = await getRepository(Media).save(
+        new Media({
+          tmdbId: 0,
+          mediaType: MediaType.BOOK,
+          audiobookServiceId: 9,
+          audiobookExternalServiceId: 44,
+          audiobookExternalServiceSlug: 'the-test-book',
+        })
+      );
+
+      const res = await agent.get(
+        `/book/OL45804W/cover?mediaId=${media.id}&format=audiobook`
+      );
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.headers['content-type'], 'image/jpeg');
+      assert.deepStrictEqual(res.body, Buffer.from('cover-bytes'));
+      assert.strictEqual(getBookCoverMock.mock.calls[0].arguments[0], 44);
+    } finally {
+      settings.readarr = priorReadarr;
+    }
   });
 
   it('still returns book details when author lookup fails', async () => {

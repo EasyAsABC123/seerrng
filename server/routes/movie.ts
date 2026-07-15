@@ -1,17 +1,22 @@
 import IMDBRadarrProxy from '@server/api/rating/imdbRadarrProxy';
 import RottenTomatoes from '@server/api/rating/rottentomatoes';
 import { type RatingResponse } from '@server/api/ratings';
+import RadarrAPI from '@server/api/servarr/radarr';
 import TheMovieDb from '@server/api/themoviedb';
 import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
+import { getSettings, type RadarrSettings } from '@server/lib/settings';
 import { rankTmdbMovieResults } from '@server/lib/tmdbRank';
 import logger from '@server/logger';
 import { mapMovieDetails } from '@server/models/Movie';
 import { mapMovieResult } from '@server/models/Search';
 import { filterEntityResponse } from '@server/utils/entityResponse';
-import { parsePositiveInt } from '@server/utils/pagination';
+import {
+  parseOptionalPositiveInt,
+  parsePositiveInt,
+} from '@server/utils/pagination';
 import { parsePositiveRouteId } from '@server/utils/routeId';
 import {
   parseOptionalBoundedString,
@@ -25,6 +30,86 @@ const maxShuffleSeedLength = 128;
 
 const parseTmdbRouteId = (id: unknown): number | undefined =>
   parsePositiveRouteId(id, maxTmdbId);
+
+const getMovieCoverService = (
+  media?: Media,
+  is4k?: boolean
+): { server: RadarrSettings; movieId: number; is4k: boolean } | undefined => {
+  if (!media) {
+    return undefined;
+  }
+
+  const settings = getSettings();
+  const candidates =
+    is4k === true
+      ? [
+          {
+            serviceId: media.serviceId4k,
+            externalServiceId: media.externalServiceId4k,
+            is4k: true,
+          },
+        ]
+      : is4k === false
+        ? [
+            {
+              serviceId: media.serviceId,
+              externalServiceId: media.externalServiceId,
+              is4k: false,
+            },
+          ]
+        : [
+            {
+              serviceId: media.serviceId,
+              externalServiceId: media.externalServiceId,
+              is4k: false,
+            },
+            {
+              serviceId: media.serviceId4k,
+              externalServiceId: media.externalServiceId4k,
+              is4k: true,
+            },
+          ];
+
+  for (const candidate of candidates) {
+    if (
+      candidate.serviceId === null ||
+      candidate.serviceId === undefined ||
+      candidate.externalServiceId === null ||
+      candidate.externalServiceId === undefined
+    ) {
+      continue;
+    }
+
+    const server = settings.radarr.find(
+      (radarr) => radarr.id === candidate.serviceId
+    );
+
+    if (server) {
+      return {
+        server,
+        movieId: candidate.externalServiceId,
+        is4k: candidate.is4k,
+      };
+    }
+  }
+
+  return undefined;
+};
+
+const getMovieCoverFallbackPath = (
+  tmdbId: number,
+  media?: Media
+): string | undefined => {
+  const coverService = getMovieCoverService(media);
+
+  if (!coverService || !media?.id) {
+    return undefined;
+  }
+
+  return `/api/v1/movie/${tmdbId}/cover?mediaId=${media.id}&is4k=${
+    coverService.is4k ? 'true' : 'false'
+  }`;
+};
 
 movieRoutes.get('/:id', async (req, res, next) => {
   const tmdb = new TheMovieDb();
@@ -58,6 +143,10 @@ movieRoutes.get('/:id', async (req, res, next) => {
 
     const data = mapMovieDetails(tmdbMovie, media, onUserWatchlist);
 
+    if (!data.posterPath) {
+      data.posterPath = getMovieCoverFallbackPath(movieId, media);
+    }
+
     // TMDB issue where it doesnt fallback to English when no overview is available in requested locale.
     if (!data.overview) {
       const tvEnglish = await tmdb.getMovie({ movieId });
@@ -75,6 +164,56 @@ movieRoutes.get('/:id', async (req, res, next) => {
       status: 500,
       message: 'Unable to retrieve movie.',
     });
+  }
+});
+
+movieRoutes.get('/:id/cover', async (req, res) => {
+  const movieId = parseTmdbRouteId(req.params.id);
+  if (!movieId) {
+    return res.status(404).send('Movie cover not found');
+  }
+
+  const mediaId = parseOptionalPositiveInt(req.query.mediaId, 1_000_000_000);
+  const is4k =
+    req.query.is4k === 'true'
+      ? true
+      : req.query.is4k === 'false'
+        ? false
+        : undefined;
+
+  if (!mediaId) {
+    return res.status(404).send('Movie cover not found');
+  }
+
+  const media = await getRepository(Media).findOne({
+    where: { id: mediaId, mediaType: MediaType.MOVIE, tmdbId: movieId },
+  });
+  const coverService = getMovieCoverService(media ?? undefined, is4k);
+
+  if (!coverService) {
+    return res.status(404).send('Movie cover not found');
+  }
+
+  try {
+    const radarrApi = new RadarrAPI({
+      apiKey: coverService.server.apiKey,
+      url: RadarrAPI.buildUrl(coverService.server, '/api/v1'),
+    });
+    const cover = await radarrApi.getMovieCover(coverService.movieId);
+
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Content-Type', cover.contentType);
+    res.setHeader('Content-Length', cover.imageBuffer.length);
+    return res.status(200).send(cover.imageBuffer);
+  } catch (e) {
+    logger.warn('Failed to retrieve Radarr cover fallback', {
+      label: 'Movie',
+      movieId,
+      mediaId,
+      is4k: coverService.is4k,
+      errorMessage: e instanceof Error ? e.message : 'Unknown error',
+    });
+    return res.status(404).send('Movie cover not found');
   }
 });
 

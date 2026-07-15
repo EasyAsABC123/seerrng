@@ -1,19 +1,25 @@
 import OpenLibraryAPI from '@server/api/openlibrary';
+import ReadarrAPI from '@server/api/servarr/readarr';
 import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
+import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
 import {
   findBookMediaForSearchDocs,
   findBookMediaForWork,
 } from '@server/lib/bookMediaMatcher';
 import { normalizeOpenLibraryWorkId } from '@server/lib/externalIds';
+import { getSettings, type ReadarrSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import {
   mapOpenLibrarySearchDoc,
   mapOpenLibraryWork,
 } from '@server/models/Book';
 import { filterEntityResponse } from '@server/utils/entityResponse';
-import { parsePositiveInt } from '@server/utils/pagination';
+import {
+  parseOptionalPositiveInt,
+  parsePositiveInt,
+} from '@server/utils/pagination';
 import { parseBoundedString } from '@server/utils/validation';
 import { Router } from 'express';
 
@@ -32,6 +38,88 @@ const parseOpenLibraryWorkId = (value: unknown) =>
     fieldName: 'Book ID',
     maxLength: MAX_OPENLIBRARY_WORK_ID_LENGTH,
   });
+
+const getBookCoverService = (
+  media?: Media,
+  format?: 'ebook' | 'audiobook'
+):
+  | { server: ReadarrSettings; bookId: number; format: 'ebook' | 'audiobook' }
+  | undefined => {
+  if (!media) {
+    return undefined;
+  }
+
+  const settings = getSettings();
+  const candidates =
+    format === 'ebook'
+      ? [
+          {
+            serviceId: media.serviceId,
+            externalServiceId: media.externalServiceId,
+            format: 'ebook' as const,
+          },
+        ]
+      : format === 'audiobook'
+        ? [
+            {
+              serviceId: media.audiobookServiceId,
+              externalServiceId: media.audiobookExternalServiceId,
+              format: 'audiobook' as const,
+            },
+          ]
+        : [
+            {
+              serviceId: media.audiobookServiceId,
+              externalServiceId: media.audiobookExternalServiceId,
+              format: 'audiobook' as const,
+            },
+            {
+              serviceId: media.serviceId,
+              externalServiceId: media.externalServiceId,
+              format: 'ebook' as const,
+            },
+          ];
+
+  for (const candidate of candidates) {
+    if (
+      candidate.serviceId === null ||
+      candidate.serviceId === undefined ||
+      candidate.externalServiceId === null ||
+      candidate.externalServiceId === undefined
+    ) {
+      continue;
+    }
+
+    const server = settings.readarr.find(
+      (readarr) => readarr.id === candidate.serviceId
+    );
+
+    if (server) {
+      return {
+        server,
+        bookId: candidate.externalServiceId,
+        format: candidate.format,
+      };
+    }
+  }
+
+  return undefined;
+};
+
+const getBookCoverFallbackPath = (
+  bookId: string,
+  media?: Media
+): string | undefined => {
+  const coverService = getBookCoverService(media);
+
+  if (!coverService || !media?.id) {
+    return undefined;
+  }
+
+  return `/api/v1/book/${encodeURIComponent(bookId)}/cover?mediaId=${
+    media.id
+  }&format=${coverService.format}`;
+};
 
 bookRoutes.get('/search', async (req, res, next) => {
   const parsedQuery = parseBookSearchQuery(req.query.query);
@@ -110,20 +198,19 @@ bookRoutes.get('/:id', async (req, res, next) => {
     const author = authorId
       ? await openLibrary.getAuthor(authorId).catch(() => undefined)
       : undefined;
+    const bookDetails = mapOpenLibraryWork(
+      work,
+      media,
+      editions.entries,
+      onUserWatchlist,
+      author?.name
+    );
 
-    return res
-      .status(200)
-      .json(
-        filterEntityResponse(
-          mapOpenLibraryWork(
-            work,
-            media,
-            editions.entries,
-            onUserWatchlist,
-            author?.name
-          )
-        )
-      );
+    if (!bookDetails.posterPath) {
+      bookDetails.posterPath = getBookCoverFallbackPath(bookId, media);
+    }
+
+    return res.status(200).json(filterEntityResponse(bookDetails));
   } catch (e) {
     logger.error('Failed to retrieve book details', {
       label: 'Book',
@@ -131,6 +218,54 @@ bookRoutes.get('/:id', async (req, res, next) => {
       bookId,
     });
     return next({ status: 500, message: 'Unable to retrieve book details.' });
+  }
+});
+
+bookRoutes.get('/:id/cover', async (req, res) => {
+  const parsedBookId = parseOpenLibraryWorkId(req.params.id);
+  if ('error' in parsedBookId) {
+    return res.status(404).send('Book cover not found');
+  }
+
+  const mediaId = parseOptionalPositiveInt(req.query.mediaId, 1_000_000_000);
+  const format =
+    req.query.format === 'ebook' || req.query.format === 'audiobook'
+      ? req.query.format
+      : undefined;
+
+  if (!mediaId) {
+    return res.status(404).send('Book cover not found');
+  }
+
+  const media = await getRepository(Media).findOne({
+    where: { id: mediaId, mediaType: MediaType.BOOK },
+  });
+  const coverService = getBookCoverService(media ?? undefined, format);
+
+  if (!coverService) {
+    return res.status(404).send('Book cover not found');
+  }
+
+  try {
+    const readarrApi = new ReadarrAPI({
+      apiKey: coverService.server.apiKey,
+      url: ReadarrAPI.buildUrl(coverService.server, '/api/v1'),
+    });
+    const cover = await readarrApi.getBookCover(coverService.bookId);
+
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Content-Type', cover.contentType);
+    res.setHeader('Content-Length', cover.imageBuffer.length);
+    return res.status(200).send(cover.imageBuffer);
+  } catch (e) {
+    logger.warn('Failed to retrieve Bookshelf cover fallback', {
+      label: 'Book',
+      bookId: normalizeOpenLibraryWorkId(parsedBookId.value),
+      mediaId,
+      format: coverService.format,
+      errorMessage: e instanceof Error ? e.message : 'Unknown error',
+    });
+    return res.status(404).send('Book cover not found');
   }
 });
 

@@ -15,6 +15,10 @@ import {
   normalizeExternalTitleId,
 } from '@app/utils/apiPath';
 import defineMessages from '@app/utils/defineMessages';
+import {
+  getTmdbPosterImageUrl,
+  isResolvedImageUrl,
+} from '@app/utils/imageCache';
 import { withProperties } from '@app/utils/typeHelpers';
 import { Transition } from '@headlessui/react';
 import {
@@ -390,16 +394,11 @@ const TitleCard = ({
             : mediaType === 'book'
               ? `/book/${encodeApiPathSegment(canonicalId)}`
               : `/artist/${encodeApiPathSegment(canonicalId)}`;
-  const displayImage =
-    image?.startsWith('http') || image?.startsWith('/images/')
-      ? image
-      : image
-        ? `https://image.tmdb.org/t/p/w300_and_h450_face${image}`
-        : undefined;
+  const displayImage = getTmdbPosterImageUrl(image, 'w300_and_h450_face');
   const imageCacheType =
-    displayImage?.startsWith('http') && isBook
+    isResolvedImageUrl(displayImage) && isBook
       ? 'book'
-      : displayImage?.startsWith('http') && isAlbum
+      : isResolvedImageUrl(displayImage) && isAlbum
         ? 'music'
         : 'tmdb';
 

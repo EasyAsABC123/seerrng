@@ -11,6 +11,7 @@ import {
   normalizeOpenLibraryWorkId,
 } from '@app/utils/apiPath';
 import defineMessages from '@app/utils/defineMessages';
+import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
 import { EyeIcon } from '@heroicons/react/24/solid';
 import { IssueStatus } from '@server/constants/issue';
 import { MediaType } from '@server/constants/media';
@@ -225,7 +226,7 @@ const IssueItem = ({ issue }: IssueItemProps) => {
                 (isMusic(title) || isBook(title)) && title.posterPath
                   ? title.posterPath
                   : !isMusic(title) && !isBook(title) && title.posterPath
-                    ? `https://image.tmdb.org/t/p/w600_and_h900_bestv2${title.posterPath}`
+                    ? getTmdbPosterImageUrl(title.posterPath)
                     : '/images/seerr_poster_not_found.png'
               }
               alt=""
