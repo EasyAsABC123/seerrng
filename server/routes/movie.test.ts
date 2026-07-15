@@ -5,7 +5,7 @@ import RadarrAPI from '@server/api/servarr/radarr';
 import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
-import { getSettings } from '@server/lib/settings';
+import { getSettings, type RadarrSettings } from '@server/lib/settings';
 import { setupTestDb } from '@server/test/db';
 import type { Express } from 'express';
 import express from 'express';
@@ -66,6 +66,12 @@ describe('GET /movie/:id/cover', () => {
         contentType: 'image/jpeg',
       })
     );
+    const originalBuildUrl = RadarrAPI.buildUrl;
+    const buildUrlMock = mock.method(
+      RadarrAPI,
+      'buildUrl',
+      (server: RadarrSettings, path?: string) => originalBuildUrl(server, path)
+    );
 
     try {
       const media = await getRepository(Media).save(
@@ -86,6 +92,9 @@ describe('GET /movie/:id/cover', () => {
       assert.strictEqual(res.headers['content-type'], 'image/jpeg');
       assert.deepStrictEqual(res.body, Buffer.from('movie-cover'));
       assert.strictEqual(getMovieCoverMock.mock.calls[0].arguments[0], 44);
+      assert(
+        buildUrlMock.mock.calls.some((call) => call.arguments[1] === '/api/v3')
+      );
     } finally {
       settings.radarr = priorRadarr;
     }
