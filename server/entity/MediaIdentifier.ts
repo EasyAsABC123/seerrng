@@ -1,8 +1,12 @@
-import { DbAwareColumn } from '@server/utils/DbColumnHelper';
+import {
+  currentTimestampDefault,
+  DbAwareColumn,
+} from '@server/utils/DbColumnHelper';
 import {
   Column,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
@@ -27,7 +31,11 @@ export enum MediaIdentifierProvider {
 
 @Entity()
 @Unique('UNIQUE_MEDIA_IDENTIFIER', ['media', 'provider', 'value'])
-@Index(['provider', 'value'])
+@Index('IDX_media_identifier_provider_value', ['provider', 'value'])
+@Index('UQ_media_identifier_canonical_book', ['provider', 'value'], {
+  unique: true,
+  where: `"provider" IN ('isbn', 'openlibrary', 'openlibrary_edition')`,
+})
 class MediaIdentifier {
   @PrimaryGeneratedColumn()
   public id: number;
@@ -35,7 +43,11 @@ class MediaIdentifier {
   @ManyToOne(() => Media, (media) => media.identifiers, {
     onDelete: 'CASCADE',
   })
-  @Index()
+  @JoinColumn({
+    name: 'mediaId',
+    foreignKeyConstraintName: 'FK_media_identifier_media',
+  })
+  @Index('IDX_media_identifier_mediaId')
   public media: Media;
 
   @Column({ type: 'varchar' })
@@ -47,7 +59,7 @@ class MediaIdentifier {
   @Column({ type: 'boolean', default: false })
   public canonical: boolean;
 
-  @DbAwareColumn({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
+  @DbAwareColumn({ type: 'datetime', default: currentTimestampDefault })
   public createdAt: Date;
 
   constructor(init?: Partial<MediaIdentifier>) {

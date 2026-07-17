@@ -4,10 +4,18 @@ import { afterEach, before, describe, it, mock } from 'node:test';
 import ExternalAPI from '@server/api/externalapi';
 import ListenBrainzAPI from '@server/api/listenbrainz';
 import TmdbPersonMapper from '@server/api/themoviedb/personMapper';
+import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
+import MediaIdentifier, {
+  MediaIdentifierProvider,
+} from '@server/entity/MediaIdentifier';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import type { User } from '@server/entity/User';
+import {
+  MAX_ASSOCIATION_PROVIDER_SIMILAR_ARTISTS,
+  prepareAssociationSimilarArtists,
+} from '@server/lib/associations';
 import cacheManager from '@server/lib/cache';
 import { getSettings } from '@server/lib/settings';
 import { checkUser } from '@server/middleware/auth';
@@ -16,10 +24,52 @@ import type { Express } from 'express';
 import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
-import associationRoutes from './association';
+import associationRoutes, { ASSOCIATION_RATE_LIMIT } from './association';
 import authRoutes from './auth';
 
 let app: Express;
+
+describe('association provider bounds', () => {
+  it('bounds authenticated association fan-out', () => {
+    assert.deepStrictEqual(ASSOCIATION_RATE_LIMIT, {
+      windowMs: 60_000,
+      limit: 30,
+    });
+  });
+
+  it('validates, deduplicates, and caps similar artist candidates', () => {
+    const artists = prepareAssociationSimilarArtists([
+      null,
+      { artist_mbid: 123, name: 'Invalid', score: 1 },
+      { artist_mbid: ' DUPLICATE ', name: 'First', score: 10, type: 'Group' },
+      { artist_mbid: 'duplicate', name: 'Second', score: 9 },
+      ...Array.from(
+        { length: MAX_ASSOCIATION_PROVIDER_SIMILAR_ARTISTS + 100 },
+        (_, index) => ({
+          artist_mbid: `artist-${index}`,
+          name: `Artist ${index}`,
+          score: index,
+          type: 'Person',
+        })
+      ),
+    ]);
+
+    assert.strictEqual(
+      artists.length,
+      MAX_ASSOCIATION_PROVIDER_SIMILAR_ARTISTS - 3
+    );
+    assert.deepStrictEqual(artists[0], {
+      artist_mbid: 'duplicate',
+      name: 'First',
+      score: 10,
+      type: 'Group',
+      comment: '',
+      gender: null,
+      reference_mbid: '',
+    });
+    assert.ok(!artists.some((artist) => artist.artist_mbid === 'artist-500'));
+  });
+});
 
 function createApp() {
   const app = express();
@@ -354,6 +404,36 @@ describe('GET /association/:mediaType/:id', () => {
     assert.strictEqual(res.status, 400);
   });
 
+  it('rejects malformed external association ids before provider lookup', async () => {
+    const externalGet = mockPrivate(ExternalAPI.prototype, 'get', async () => {
+      throw new Error('Provider should not be called for malformed IDs');
+    });
+    const externalPost = mockPrivate(
+      ExternalAPI.prototype,
+      'post',
+      async () => {
+        throw new Error('Provider should not be called for malformed IDs');
+      }
+    );
+    const agent = await login();
+
+    const artistRes = await agent.get('/association/artist/invalid!id');
+    const albumRes = await agent.get('/association/album/invalid%3Fid');
+    const bookRes = await agent.get('/association/book/invalid%23id');
+
+    assert.strictEqual(artistRes.status, 400);
+    assert.strictEqual(albumRes.status, 400);
+    assert.strictEqual(bookRes.status, 400);
+    assert.strictEqual(
+      (externalGet as { mock: { callCount: () => number } }).mock.callCount(),
+      0
+    );
+    assert.strictEqual(
+      (externalPost as { mock: { callCount: () => number } }).mock.callCount(),
+      0
+    );
+  });
+
   it('rejects malformed includeWeak query values', async () => {
     const agent = await login();
     const res = await agent.get('/association/movie/123?includeWeak=yes');
@@ -559,7 +639,25 @@ describe('GET /association/:mediaType/:id', () => {
   it('returns same-author book associations', async () => {
     mockOpenLibraryBook();
 
-    const agent = await login();
+    const relatedMedia = await getRepository(Media).save(
+      new Media({
+        tmdbId: 0,
+        mediaType: MediaType.BOOK,
+        serviceUrl: 'http://readarr.internal/book/2',
+        externalServiceSlug: 'related-book',
+        ratingKey: 'plex-related-book',
+      })
+    );
+    await getRepository(MediaIdentifier).save(
+      new MediaIdentifier({
+        media: relatedMedia,
+        provider: MediaIdentifierProvider.OPENLIBRARY,
+        value: 'OLRELATEDW',
+        canonical: true,
+      })
+    );
+
+    const agent = await login('friend@seerr.dev');
     const res = await agent.get('/association/book/OLROOTW');
 
     assert.strictEqual(res.status, 200);
@@ -580,9 +678,15 @@ describe('GET /association/:mediaType/:id', () => {
         },
       ]
     );
+    assert.strictEqual(res.body.edges[0].node.mediaInfo.serviceUrl, undefined);
+    assert.strictEqual(
+      res.body.edges[0].node.mediaInfo.externalServiceSlug,
+      undefined
+    );
+    assert.strictEqual(res.body.edges[0].node.mediaInfo.ratingKey, undefined);
   });
 
-  it('keeps association cache entries separate by limit', async () => {
+  it('applies the requested association limit independently', async () => {
     mockTmdb();
     const agent = await login();
     const limitedRes = await agent.get('/association/movie/123?limit=1');
@@ -593,11 +697,11 @@ describe('GET /association/:mediaType/:id', () => {
     assert.strictEqual(limitedRes.body.edges.length, 1);
     assert.ok(
       fullRes.body.edges.length > limitedRes.body.edges.length,
-      'expected full response not to reuse the limited cache entry'
+      'expected full response to include more results'
     );
   });
 
-  it('keeps association cache entries separate by user', async () => {
+  it('hydrates association state separately for each user', async () => {
     mockTmdb();
     mock.method(Media, 'getRelatedMedia', async (user: User | undefined) => [
       {
@@ -619,5 +723,28 @@ describe('GET /association/:mediaType/:id', () => {
       adminRes.body.edges[0].node.mediaInfo.id,
       friendRes.body.edges[0].node.mediaInfo.id
     );
+  });
+
+  it('rehydrates mutable media state on consecutive requests', async () => {
+    mockTmdb();
+    let mediaId = 1;
+    mock.method(Media, 'getRelatedMedia', async () => [
+      {
+        id: mediaId,
+        tmdbId: 200,
+        mediaType: 'movie',
+        status: 2,
+      } as Media,
+    ]);
+
+    const agent = await login();
+    const first = await agent.get('/association/movie/123');
+    mediaId = 2;
+    const second = await agent.get('/association/movie/123');
+
+    assert.strictEqual(first.status, 200);
+    assert.strictEqual(second.status, 200);
+    assert.strictEqual(first.body.edges[0].node.mediaInfo.id, 1);
+    assert.strictEqual(second.body.edges[0].node.mediaInfo.id, 2);
   });
 });

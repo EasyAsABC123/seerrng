@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 
+import ImageProxy from '@server/lib/imageproxy';
+import { getSettings } from '@server/lib/settings';
+import { waitForBackgroundTasks } from '@server/utils/backgroundTasks';
 import {
+  enqueueImageCacheWarm,
   getImageCacheWarmPath,
   getImageCacheWarmProvider,
+  getQueuedImageCacheWarmCount,
   isImageCacheWarmUrl,
+  maxQueuedWarmUrls,
 } from './imageCacheWarmer';
+
+afterEach(() => {
+  mock.restoreAll();
+});
 
 describe('getImageCacheWarmProvider', () => {
   it('maps all proxied image providers to warmable cache providers', () => {
@@ -100,5 +110,80 @@ describe('isImageCacheWarmUrl', () => {
       isImageCacheWarmUrl(`https://image.tmdb.org/${'x'.repeat(2049)}`),
       false
     );
+  });
+});
+
+describe('enqueueImageCacheWarm', () => {
+  it('registers cache writes for graceful shutdown draining', async () => {
+    const settings = getSettings();
+    const previousCacheImages = settings.main.cacheImages;
+    settings.main.cacheImages = true;
+    let releaseWrite: (() => void) | undefined;
+    const heldWrite = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    mock.method(ImageProxy.prototype, 'getImage', () => heldWrite);
+
+    try {
+      assert.strictEqual(
+        enqueueImageCacheWarm([
+          'https://image.tmdb.org/t/p/w300/shutdown-drain.jpg',
+        ]),
+        1
+      );
+
+      let drained = false;
+      const drain = waitForBackgroundTasks().then(() => {
+        drained = true;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      assert.strictEqual(drained, false);
+      assert.strictEqual(getQueuedImageCacheWarmCount(), 1);
+
+      releaseWrite?.();
+      await drain;
+      assert.strictEqual(getQueuedImageCacheWarmCount(), 0);
+    } finally {
+      releaseWrite?.();
+      await waitForBackgroundTasks();
+      settings.main.cacheImages = previousCacheImages;
+    }
+  });
+
+  it('bounds the global warm queue under distinct-URL floods', async () => {
+    const settings = getSettings();
+    const previousCacheImages = settings.main.cacheImages;
+    settings.main.cacheImages = true;
+    mock.method(ImageProxy.prototype, 'getImage', async () => {
+      throw new Error('Expected test cache miss');
+    });
+
+    try {
+      let accepted = 0;
+      for (let batch = 0; batch < 20; batch++) {
+        accepted += enqueueImageCacheWarm(
+          Array.from(
+            { length: 80 },
+            (_, index) =>
+              `https://image.tmdb.org/t/p/w300/${batch}-${index}.jpg`
+          )
+        );
+      }
+
+      assert.strictEqual(accepted, maxQueuedWarmUrls);
+      assert.strictEqual(getQueuedImageCacheWarmCount(), maxQueuedWarmUrls);
+
+      for (
+        let attempt = 0;
+        attempt < 20 && getQueuedImageCacheWarmCount() > 0;
+        attempt++
+      ) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      assert.strictEqual(getQueuedImageCacheWarmCount(), 0);
+    } finally {
+      settings.main.cacheImages = previousCacheImages;
+    }
   });
 });

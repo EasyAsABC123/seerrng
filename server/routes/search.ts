@@ -29,10 +29,38 @@ import {
   parseOptionalLanguage,
 } from '@server/utils/validation';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { In } from 'typeorm';
 
 const searchRoutes = Router();
 const MAX_SEARCH_QUERY_LENGTH = 256;
+export const SEARCH_RATE_LIMIT = {
+  windowMs: 60 * 1000,
+  limit: 30,
+} as const;
+export const MAX_SEARCH_RESULTS_PER_PROVIDER = 20;
+export const MAX_COMBINED_SEARCH_RESULTS = 100;
+const searchRateLimit = rateLimit({
+  ...SEARCH_RATE_LIMIT,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+  keyGenerator: (req) => `user:${req.user?.id ?? 'anonymous'}`,
+});
+
+searchRoutes.use(searchRateLimit);
+
+export const capSearchProviderResults = <T>(
+  value: unknown,
+  limit = MAX_SEARCH_RESULTS_PER_PROVIDER
+): T[] => {
+  const maxResults =
+    Number.isSafeInteger(limit) && limit > 0
+      ? Math.min(limit, MAX_COMBINED_SEARCH_RESULTS)
+      : MAX_SEARCH_RESULTS_PER_PROVIDER;
+  return Array.isArray(value) ? value.slice(0, maxResults) : [];
+};
 
 const searchTypes = [
   'movie',
@@ -170,18 +198,33 @@ searchRoutes.get('/', async (req, res, next) => {
         }),
       ]);
 
-      const tmdbResults =
+      const rawTmdbResults =
         responses[0].status === 'fulfilled'
           ? responses[0].value
           : { page: 1, results: [], total_pages: 1, total_results: 0 };
+      const tmdbResults = {
+        ...rawTmdbResults,
+        results: rawTmdbResults.results.slice(
+          0,
+          MAX_SEARCH_RESULTS_PER_PROVIDER
+        ),
+      };
       const albumResults =
-        responses[1].status === 'fulfilled' ? responses[1].value : [];
+        responses[1].status === 'fulfilled'
+          ? responses[1].value.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER)
+          : [];
       const artistResults =
-        responses[2].status === 'fulfilled' ? responses[2].value : [];
-      const bookResults =
+        responses[2].status === 'fulfilled'
+          ? responses[2].value.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER)
+          : [];
+      const rawBookResults =
         responses[3].status === 'fulfilled'
           ? responses[3].value
           : { numFound: 0, start: 0, docs: [] };
+      const bookResults = {
+        ...rawBookResults,
+        docs: rawBookResults.docs.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER),
+      };
 
       const personIds = tmdbResults.results
         .filter(
@@ -404,7 +447,7 @@ searchRoutes.get('/', async (req, res, next) => {
 
       const bookMediaMap = await findBookMediaForSearchDocs(
         dedupedBookDocs,
-        req.user?.id
+        req.user
       );
       const mappedBookResults = dedupedBookDocs.map((doc) =>
         mapOpenLibrarySearchDoc(
@@ -426,6 +469,10 @@ searchRoutes.get('/', async (req, res, next) => {
         results: combinedResults,
       };
     }
+
+    results.results = capSearchProviderResults<
+      (typeof results.results)[number]
+    >(results.results, MAX_COMBINED_SEARCH_RESULTS);
 
     const movieTvIds = results.results
       .filter(
@@ -455,7 +502,7 @@ searchRoutes.get('/', async (req, res, next) => {
       movieTvIds.length > 0 ? Media.getRelatedMedia(req.user, movieTvIds) : [],
       musicIds.length > 0 ? Media.getRelatedMedia(req.user, musicIds) : [],
       bookIds.length > 0
-        ? findBookMediaForBookResults(bookResults, req.user?.id)
+        ? findBookMediaForBookResults(bookResults, req.user)
         : new Map<string, Media>(),
     ]);
 

@@ -5,6 +5,11 @@ import useSWR from 'swr';
 
 const MANIFEST_URL = '/api/v1/discover/home/manifest';
 const MANIFEST_CACHE_PREFIX = 'seerr-discover-manifest-v1:';
+const MAX_MANIFEST_ROWS = 500;
+const MAX_MANIFEST_FRESHNESS_SECONDS = 24 * 60 * 60;
+const MAX_MANIFEST_TEXT_LENGTH = 4096;
+const MAX_MANIFEST_REVISION_LENGTH = 128;
+const MAX_MANIFEST_ETAG_LENGTH = 512;
 
 interface ManifestCacheRecord {
   contextKey: string;
@@ -24,18 +29,97 @@ const getStorage = () => {
 const getManifestCacheKey = (contextKey: string) =>
   `${MANIFEST_CACHE_PREFIX}${encodeURIComponent(contextKey)}`;
 
+const isBoundedString = (value: unknown, maxLength: number): value is string =>
+  typeof value === 'string' && value.length <= maxLength;
+
+const isFreshnessSeconds = (value: unknown): value is number =>
+  typeof value === 'number' &&
+  Number.isSafeInteger(value) &&
+  value > 0 &&
+  value <= MAX_MANIFEST_FRESHNESS_SECONDS;
+
+export const parseDiscoverHomeManifest = (
+  value: unknown
+): DiscoverHomeManifest | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const manifest = value as Partial<DiscoverHomeManifest>;
+  const freshness = manifest.freshness;
+  if (
+    manifest.version !== 1 ||
+    !isBoundedString(manifest.layoutRevision, MAX_MANIFEST_REVISION_LENGTH) ||
+    !isBoundedString(
+      manifest.userStateRevision,
+      MAX_MANIFEST_REVISION_LENGTH
+    ) ||
+    !isBoundedString(manifest.generatedAt, 128) ||
+    !Number.isFinite(Date.parse(manifest.generatedAt)) ||
+    !freshness ||
+    !isFreshnessSeconds(freshness.manifestMaxAgeSeconds) ||
+    !isFreshnessSeconds(freshness.rowMaxAgeSeconds) ||
+    !isFreshnessSeconds(freshness.stateMaxAgeSeconds) ||
+    !Array.isArray(manifest.rows) ||
+    manifest.rows.length > MAX_MANIFEST_ROWS
+  ) {
+    return undefined;
+  }
+
+  for (const row of manifest.rows) {
+    if (
+      !row ||
+      typeof row !== 'object' ||
+      !isBoundedString(row.key, 256) ||
+      !Number.isSafeInteger(row.sliderId) ||
+      row.sliderId <= 0 ||
+      !Number.isSafeInteger(row.type) ||
+      row.type < 0 ||
+      !isBoundedString(row.descriptorRevision, MAX_MANIFEST_REVISION_LENGTH) ||
+      (row.title !== undefined &&
+        !isBoundedString(row.title, MAX_MANIFEST_TEXT_LENGTH)) ||
+      (row.data !== undefined &&
+        !isBoundedString(row.data, MAX_MANIFEST_TEXT_LENGTH)) ||
+      (row.endpoint !== undefined &&
+        (!isBoundedString(row.endpoint, 2048) ||
+          !row.endpoint.startsWith('/api/v1/') ||
+          row.endpoint.startsWith('//')))
+    ) {
+      return undefined;
+    }
+  }
+
+  return manifest as DiscoverHomeManifest;
+};
+
 export const readManifestCache = (
   storage: Pick<Storage, 'getItem'>,
-  contextKey: string
+  contextKey: string,
+  now = Date.now()
 ): ManifestCacheRecord | undefined => {
   try {
     const rawRecord = storage.getItem(getManifestCacheKey(contextKey));
-    const record = rawRecord
-      ? (JSON.parse(rawRecord) as Partial<ManifestCacheRecord>)
-      : undefined;
+    const parsed: unknown = rawRecord ? JSON.parse(rawRecord) : undefined;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return undefined;
+    }
 
-    return record?.contextKey === contextKey && record.manifest?.version === 1
-      ? (record as ManifestCacheRecord)
+    const record = parsed as Partial<ManifestCacheRecord>;
+    const manifest = parseDiscoverHomeManifest(record.manifest);
+    return record.contextKey === contextKey &&
+      typeof record.checkedAt === 'number' &&
+      Number.isFinite(record.checkedAt) &&
+      record.checkedAt >= 0 &&
+      record.checkedAt <= now &&
+      (record.etag === undefined ||
+        isBoundedString(record.etag, MAX_MANIFEST_ETAG_LENGTH)) &&
+      manifest
+      ? {
+          contextKey,
+          checkedAt: record.checkedAt,
+          etag: record.etag,
+          manifest,
+        }
       : undefined;
   } catch {
     return undefined;
@@ -96,14 +180,20 @@ const useDiscoverHomeManifest = (contextKey: string | undefined) => {
             : undefined,
           validateStatus: (status) => status === 200 || status === 304,
         });
+        const responseManifest =
+          response.status === 304 && currentRecord
+            ? currentRecord.manifest
+            : parseDiscoverHomeManifest(response.data);
+        if (!responseManifest) {
+          throw new Error('Invalid Discover manifest response.');
+        }
         const record: ManifestCacheRecord = {
           contextKey: contextKey!,
           checkedAt: Date.now(),
-          etag: response.headers.etag ?? currentRecord?.etag,
-          manifest:
-            response.status === 304 && currentRecord
-              ? currentRecord.manifest
-              : response.data,
+          etag: isBoundedString(response.headers.etag, MAX_MANIFEST_ETAG_LENGTH)
+            ? response.headers.etag
+            : currentRecord?.etag,
+          manifest: responseManifest,
         };
 
         if (storage) {

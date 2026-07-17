@@ -59,7 +59,7 @@ tvRoutes.get('/:id', async (req, res, next) => {
       tvId,
       language,
     });
-    const media = await Media.getMedia(tv.id, MediaType.TV);
+    const media = await Media.getMedia(tv.id, MediaType.TV, req.user);
 
     const onUserWatchlist = await getRepository(Watchlist).exist({
       where: {
@@ -81,7 +81,7 @@ tvRoutes.get('/:id', async (req, res, next) => {
       data.overview = tvEnglish.overview;
     }
 
-    return res.status(200).json(filterEntityResponse(data));
+    return res.status(200).json(filterEntityResponse(data, req.user));
   } catch (e) {
     logger.debug('Something went wrong retrieving series', {
       label: 'API',

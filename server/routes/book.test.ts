@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { afterEach, before, describe, it, mock } from 'node:test';
 
 import OpenLibraryAPI from '@server/api/openlibrary';
+import { IssueStatus, IssueType } from '@server/constants/issue';
 import {
   MediaRequestStatus,
   MediaStatus,
   MediaType,
 } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
+import Issue from '@server/entity/Issue';
+import IssueComment from '@server/entity/IssueComment';
 import Media from '@server/entity/Media';
 import MediaIdentifier, {
   MediaIdentifierProvider,
@@ -66,7 +69,7 @@ afterEach(() => {
 
 setupTestDb();
 
-async function login() {
+async function login(email = 'admin@seerr.dev') {
   const settings = getSettings();
   const priorLocalLogin = settings.main.localLogin;
   settings.main.localLogin = true;
@@ -75,7 +78,7 @@ async function login() {
     const agent = request.agent(app);
     const res = await agent
       .post('/auth/local')
-      .send({ email: 'admin@seerr.dev', password: 'test1234' });
+      .send({ email, password: 'test1234' });
     assert.strictEqual(res.status, 200);
     return agent;
   } finally {
@@ -121,9 +124,15 @@ describe('GET /book/:id', () => {
     );
 
     const agent = await login();
-    const res = await agent.get(`/book/${'x'.repeat(129)}`);
+    const responses = await Promise.all([
+      agent.get(`/book/${'x'.repeat(129)}`),
+      agent.get(`/book/${encodeURIComponent('../../search')}`),
+    ]);
 
-    assert.strictEqual(res.status, 404);
+    assert.deepStrictEqual(
+      responses.map((response) => response.status),
+      [404, 404]
+    );
     assert.strictEqual(getWork.mock.callCount(), 0);
     assert.strictEqual(getWorkEditions.mock.callCount(), 0);
   });
@@ -204,6 +213,7 @@ describe('GET /book/:id', () => {
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.mediaInfo.requests[0].requestedBy.id, user.id);
+    assert.strictEqual(res.body.mediaInfo.requests[0].media, undefined);
     assert.strictEqual(
       res.body.mediaInfo.requests[0].requestedBy.email,
       undefined
@@ -211,6 +221,115 @@ describe('GET /book/:id', () => {
     assert.strictEqual(
       res.body.mediaInfo.requests[0].modifiedBy.email,
       undefined
+    );
+  });
+
+  it("does not expose another user's embedded issue details", async () => {
+    mockBookDetails();
+
+    const friend = await getRepository(User).findOneByOrFail({
+      email: 'friend@seerr.dev',
+    });
+    const admin = await getRepository(User).findOneByOrFail({
+      email: 'admin@seerr.dev',
+    });
+    const media = await getRepository(Media).save(
+      new Media({ tmdbId: 0, mediaType: MediaType.BOOK })
+    );
+    await getRepository(MediaIdentifier).save(
+      new MediaIdentifier({
+        media,
+        provider: MediaIdentifierProvider.OPENLIBRARY,
+        value: 'OL45804W',
+        canonical: true,
+      })
+    );
+    const [ownIssue, foreignIssue] = await getRepository(Issue).save([
+      new Issue({
+        createdBy: friend,
+        issueType: IssueType.VIDEO,
+        status: IssueStatus.OPEN,
+        media,
+        comments: [
+          new IssueComment({ user: friend, message: 'Own issue details' }),
+        ],
+      }),
+      new Issue({
+        createdBy: admin,
+        issueType: IssueType.AUDIO,
+        status: IssueStatus.OPEN,
+        media,
+        comments: [
+          new IssueComment({
+            user: admin,
+            message: 'Foreign private issue details',
+          }),
+        ],
+      }),
+    ]);
+
+    const agent = await login('friend@seerr.dev');
+    const res = await agent.get('/book/OL45804W');
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(
+      res.body.mediaInfo.issues.map((issue: { id: number }) => issue.id),
+      [ownIssue.id]
+    );
+    assert.doesNotMatch(JSON.stringify(res.body), /Foreign private issue/);
+    assert.notStrictEqual(ownIssue.id, foreignIssue.id);
+  });
+
+  it('projects foreign embedded requests without routing or ownership data', async () => {
+    mockBookDetails();
+
+    const admin = await getRepository(User).findOneByOrFail({
+      email: 'admin@seerr.dev',
+    });
+    const media = await getRepository(Media).save(
+      new Media({ tmdbId: 0, mediaType: MediaType.BOOK })
+    );
+    await getRepository(MediaIdentifier).save(
+      new MediaIdentifier({
+        media,
+        provider: MediaIdentifierProvider.OPENLIBRARY,
+        value: 'OL45804W',
+        canonical: true,
+      })
+    );
+    await getRepository(MediaRequest).save(
+      new MediaRequest({
+        type: MediaType.BOOK,
+        status: MediaRequestStatus.PENDING,
+        media,
+        requestedBy: admin,
+        modifiedBy: admin,
+        is4k: false,
+        bookFormat: 'audiobook',
+        serverId: 71,
+        profileId: 72,
+        rootFolder: '/private/books',
+        tags: [73],
+      })
+    );
+
+    const agent = await login('friend@seerr.dev');
+    const res = await agent.get('/book/OL45804W');
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(res.body.mediaInfo.requests, [
+      {
+        status: MediaRequestStatus.PENDING,
+        type: MediaType.BOOK,
+        seasons: [],
+        is4k: false,
+        bookFormat: 'audiobook',
+        createdAt: res.body.mediaInfo.requests[0].createdAt,
+      },
+    ]);
+    assert.doesNotMatch(
+      JSON.stringify(res.body.mediaInfo.requests),
+      /private|requestedBy|modifiedBy|serverId|profileId|tags/
     );
   });
 
@@ -282,6 +401,9 @@ describe('GET /book/search', () => {
     }));
 
     const agent = await login();
+    const user = await getRepository(User).findOneByOrFail({
+      email: 'admin@seerr.dev',
+    });
     const media = await getRepository(Media).save(
       new Media({
         tmdbId: 0,
@@ -297,6 +419,20 @@ describe('GET /book/search', () => {
         canonical: true,
       })
     );
+    await getRepository(Issue).save(
+      new Issue({
+        createdBy: user,
+        issueType: IssueType.OTHER,
+        status: IssueStatus.OPEN,
+        media,
+        comments: [
+          new IssueComment({
+            user,
+            message: 'Detail-only issue tree',
+          }),
+        ],
+      })
+    );
 
     const res = await agent.get('/book/search').query({ query: 'test book' });
 
@@ -307,6 +443,8 @@ describe('GET /book/search', () => {
       res.body.results[0].mediaInfo.status,
       MediaStatus.AVAILABLE
     );
+    assert.strictEqual(res.body.results[0].mediaInfo.issues, undefined);
+    assert.doesNotMatch(JSON.stringify(res.body), /Detail-only issue tree/);
   });
 });
 

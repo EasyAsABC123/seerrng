@@ -18,9 +18,10 @@ import axios from 'axios';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR, { mutate } from 'swr';
+import { completeSetupRequests } from './setupCompletion';
 
 const SettingsJellyfin = dynamic(
   () => import('@app/components/Settings/SettingsJellyfin')
@@ -49,6 +50,9 @@ const messages = defineMessages('components.Setup', {
   configureservices: 'Configure Services',
   librarieserror:
     'Validation failed. Please toggle the libraries again to continue.',
+  finisherror: 'Something went wrong while finishing setup.',
+  localesaveerror:
+    'Setup completed, but the selected language could not be saved.',
 });
 
 const Setup = () => {
@@ -64,23 +68,72 @@ const Setup = () => {
   const { locale } = useLocale();
   const settings = useSettings();
   const toasts = useToasts();
+  const libraryValidationController = useRef<AbortController | undefined>(
+    undefined
+  );
+  const setupCompletionController = useRef<AbortController | undefined>(
+    undefined
+  );
 
   const finishSetup = async () => {
+    if (setupCompletionController.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+    setupCompletionController.current = controller;
     setIsUpdating(true);
-    const response = await axios.post<{ initialized: boolean }>(
-      '/api/v1/settings/initialize'
-    );
+    try {
+      const result = await completeSetupRequests({
+        initialize: async () => {
+          const response = await axios.post<{ initialized: boolean }>(
+            '/api/v1/settings/initialize',
+            undefined,
+            { signal: controller.signal }
+          );
+          return response.data.initialized;
+        },
+        saveLocale: async () => {
+          await axios.post(
+            '/api/v1/settings/main',
+            { locale },
+            { signal: controller.signal }
+          );
+        },
+        isCancellation: axios.isCancel,
+      });
 
-    setIsUpdating(false);
-    if (response.data.initialized) {
-      await axios.post('/api/v1/settings/main', { locale });
-      mutate('/api/v1/settings/public');
+      if (!result.initialized) {
+        throw new Error('Setup initialization was not persisted.');
+      }
+      if (!result.localeSaved) {
+        toasts.addToast(intl.formatMessage(messages.localesaveerror), {
+          autoDismiss: true,
+          appearance: 'error',
+        });
+      }
 
-      router.push('/');
+      void mutate('/api/v1/settings/public').catch(() => undefined);
+      await router.push('/');
+    } catch (error) {
+      if (!axios.isCancel(error)) {
+        toasts.addToast(intl.formatMessage(messages.finisherror), {
+          autoDismiss: true,
+          appearance: 'error',
+        });
+      }
+    } finally {
+      if (setupCompletionController.current === controller) {
+        setupCompletionController.current = undefined;
+        setIsUpdating(false);
+      }
     }
   };
 
   const validateLibraries = useCallback(async () => {
+    libraryValidationController.current?.abort();
+    const controller = new AbortController();
+    libraryValidationController.current = controller;
     try {
       const endpointMap: Record<MediaServerType, string> = {
         [MediaServerType.JELLYFIN]: '/api/v1/settings/jellyfin',
@@ -92,20 +145,29 @@ const Setup = () => {
       const endpoint = endpointMap[mediaServerType];
       if (!endpoint) return;
 
-      const response = await axios.get(endpoint);
+      const response = await axios.get(endpoint, { signal: controller.signal });
 
       const hasEnabledLibraries = response.data?.libraries?.some(
         (library: Library) => library.enabled
       );
 
-      setMediaServerSettingsComplete(hasEnabledLibraries);
-    } catch {
+      if (!controller.signal.aborted) {
+        setMediaServerSettingsComplete(hasEnabledLibraries);
+      }
+    } catch (error) {
+      if (axios.isCancel(error)) {
+        return;
+      }
       toasts.addToast(intl.formatMessage(messages.librarieserror), {
         autoDismiss: true,
         appearance: 'error',
       });
 
       setMediaServerSettingsComplete(false);
+    } finally {
+      if (libraryValidationController.current === controller) {
+        libraryValidationController.current = undefined;
+      }
     }
   }, [intl, mediaServerType, toasts]);
 
@@ -133,22 +195,25 @@ const Setup = () => {
     settings.currentSettings.mediaServerType,
     settings.currentSettings.initialized,
     router,
-    toasts,
-    intl,
     currentStep,
-    mediaServerType,
-    validateLibraries,
   ]);
 
   useEffect(() => {
     if (currentStep === 3) {
-      validateLibraries();
+      void validateLibraries();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep]);
+  }, [currentStep, validateLibraries]);
+
+  useEffect(
+    () => () => {
+      libraryValidationController.current?.abort();
+      setupCompletionController.current?.abort();
+    },
+    []
+  );
 
   const handleComplete = () => {
-    validateLibraries();
+    void validateLibraries();
   };
 
   if (settings.currentSettings.initialized) return <></>;
@@ -308,7 +373,7 @@ const Setup = () => {
                   <span className="ml-3 inline-flex rounded-md shadow-sm">
                     <Button
                       buttonType="primary"
-                      onClick={() => finishSetup()}
+                      onClick={() => void finishSetup()}
                       disabled={isUpdating}
                     >
                       {isUpdating

@@ -1,6 +1,6 @@
 import useSettings from '@app/hooks/useSettings';
 import PlexOAuth from '@app/utils/plex';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const plexOAuth = new PlexOAuth();
 
@@ -12,27 +12,49 @@ function usePlexLogin({
   onError?: (err: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const attemptRef = useRef<number | undefined>(undefined);
+  const mountedRef = useRef(true);
   const { currentSettings } = useSettings();
 
-  const getPlexLogin = async () => {
-    setLoading(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (attemptRef.current !== undefined) {
+        plexOAuth.cancelLogin(attemptRef.current);
+      }
+    };
+  }, []);
+
+  const getPlexLogin = async (attemptId: number) => {
     try {
       const authToken = await plexOAuth.login(
-        currentSettings.plexClientIdentifier
+        currentSettings.plexClientIdentifier,
+        attemptId
       );
-      setLoading(false);
-      onAuthToken(authToken);
+      if (mountedRef.current && attemptRef.current === attemptId) {
+        onAuthToken(authToken);
+      }
     } catch (e) {
-      if (onError) {
+      if (mountedRef.current && attemptRef.current === attemptId && onError) {
         onError(e.message);
       }
-      setLoading(false);
+    } finally {
+      if (mountedRef.current && attemptRef.current === attemptId) {
+        attemptRef.current = undefined;
+        setLoading(false);
+      }
     }
   };
 
   const login = () => {
-    plexOAuth.preparePopup();
-    setTimeout(() => getPlexLogin(), 1500);
+    if (attemptRef.current !== undefined) {
+      return;
+    }
+    setLoading(true);
+    const attemptId = plexOAuth.preparePopup();
+    attemptRef.current = attemptId;
+    void getPlexLogin(attemptId);
   };
 
   return { loading, login };

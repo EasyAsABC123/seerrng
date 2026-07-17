@@ -8,6 +8,7 @@ import ImageProxy, {
   sendImage,
 } from '@server/lib/imageproxy';
 import logger from '@server/logger';
+import { isAuthenticated } from '@server/middleware/auth';
 import { getRateLimitKey } from '@server/utils/security';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
@@ -65,7 +66,7 @@ const proxyCacheMissRateLimit = rateLimit({
   handler: createRateLimitHandler('cache-miss'),
 });
 
-const warmRateLimit = rateLimit({
+export const imageCacheWarmRateLimit = rateLimit({
   windowMs: 60 * 1000,
   limit: 10,
   standardHeaders: true,
@@ -215,6 +216,7 @@ const sendProxyImage = async (
 
 type PreparedImageRequest = {
   imagePath: string;
+  imageLogPath: string;
   imageProxy: ImageProxy;
 };
 
@@ -231,16 +233,17 @@ const prepareImageRequest = (
   if (
     imagePath.length > maxProxyImagePathLength ||
     imagePathname.startsWith('//') ||
+    imagePathname.includes('\\') ||
     imagePathname.includes('://')
   ) {
-    logger.error('Invalid URL for image proxy', { imagePath });
+    logger.error('Invalid URL for image proxy', { imagePath: imagePathname });
     return res.status(403).send('Invalid URL for image proxy');
   }
 
   const imageProxy = getImageProxy(req.params.type);
   if (!imageProxy) {
     logger.error('Unsupported image type', {
-      imagePath,
+      imagePath: imagePathname,
       type: req.params.type,
     });
     return res.status(400).send('Unsupported image type');
@@ -248,6 +251,7 @@ const prepareImageRequest = (
 
   res.locals.preparedImageRequest = {
     imagePath,
+    imageLogPath: imagePathname,
     imageProxy,
   } satisfies PreparedImageRequest;
   next();
@@ -258,7 +262,7 @@ const serveCachedImage = async (
   res: Response,
   next: NextFunction
 ) => {
-  const { imagePath, imageProxy } = res.locals
+  const { imagePath, imageLogPath, imageProxy } = res.locals
     .preparedImageRequest as PreparedImageRequest;
 
   try {
@@ -272,7 +276,7 @@ const serveCachedImage = async (
     await sendProxyImage(req, res, imageData);
   } catch (e) {
     logger.error('Failed to serve cached proxy image', {
-      imagePath,
+      imagePath: imageLogPath,
       errorMessage: e.message,
     });
     res.status(500).send();
@@ -280,7 +284,7 @@ const serveCachedImage = async (
 };
 
 const fetchAndServeImage = async (req: Request, res: Response) => {
-  const { imagePath, imageProxy } = res.locals
+  const { imagePath, imageLogPath, imageProxy } = res.locals
     .preparedImageRequest as PreparedImageRequest;
 
   try {
@@ -288,7 +292,7 @@ const fetchAndServeImage = async (req: Request, res: Response) => {
     await sendProxyImage(req, res, imageData);
   } catch (e) {
     logger.error('Failed to proxy image', {
-      imagePath,
+      imagePath: imageLogPath,
       errorMessage: e.message,
     });
     res.status(500).send();
@@ -307,7 +311,7 @@ router.get<{
   fetchAndServeImage
 );
 
-router.post('/warm', warmRateLimit, (req, res) => {
+export const warmImageCache = (req: Request, res: Response) => {
   if (!Array.isArray(req.body?.urls)) {
     return res.status(400).json({ error: 'urls must be an array.' });
   }
@@ -336,6 +340,13 @@ router.post('/warm', warmRateLimit, (req, res) => {
   enqueueImageCacheWarm(urls);
 
   return res.status(202).json({ accepted: true });
-});
+};
+
+router.post(
+  '/warm',
+  isAuthenticated(),
+  imageCacheWarmRateLimit,
+  warmImageCache
+);
 
 export default router;

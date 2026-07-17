@@ -20,7 +20,7 @@ concurrency:
 jobs:
   test-build:
     name: Test build
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:

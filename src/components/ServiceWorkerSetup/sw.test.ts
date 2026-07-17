@@ -34,6 +34,8 @@ const createHarness = () => {
   const listeners = new Map<string, Listener>();
   const cacheStores = new Map<string, MemoryCache>();
   const networkResponses: (Response | Error)[] = [];
+  const shownNotifications: { subject: string; options: unknown }[] = [];
+  const openedWindows: string[] = [];
 
   const caches = {
     delete: async (name: string) => cacheStores.delete(name),
@@ -49,7 +51,12 @@ const createHarness = () => {
     addEventListener: (type: string, listener: Listener) =>
       listeners.set(type, listener),
     location: { origin: 'https://seerr.test' },
-    registration: { navigationPreload: { enable: async () => undefined } },
+    registration: {
+      navigationPreload: { enable: async () => undefined },
+      showNotification: async (subject: string, options: unknown) => {
+        shownNotifications.push({ subject, options });
+      },
+    },
     skipWaiting: () => undefined,
   };
 
@@ -57,7 +64,12 @@ const createHarness = () => {
     readFileSync(resolve(__dirname, '../../../public/sw.js'), 'utf8'),
     {
       caches,
-      clients: { claim: () => undefined, openWindow: () => undefined },
+      clients: {
+        claim: () => undefined,
+        openWindow: async (url: string) => {
+          openedWindows.push(url);
+        },
+      },
       console,
       encodeURIComponent,
       fetch: async () => {
@@ -79,10 +91,15 @@ const createHarness = () => {
     }
   );
 
-  const setUser = async (userId: number | null) => {
+  const setUser = async (
+    userId: number | null,
+    permissions = 0,
+    userType = 2
+  ) => {
     const lifetimes: Promise<unknown>[] = [];
     listeners.get('message')?.({
-      data: { type: 'SET_CACHE_USER', userId },
+      data: { type: 'SET_CACHE_USER', userId, permissions, userType },
+      origin: self.location.origin,
       source: { id: 'client-1' },
       waitUntil: (promise: Promise<unknown>) => lifetimes.push(promise),
     });
@@ -115,28 +132,56 @@ const createHarness = () => {
     return response;
   };
 
+  const dispatchPush = async (payload: unknown) => {
+    const lifetimes: Promise<unknown>[] = [];
+    listeners.get('push')?.({
+      data: { json: () => payload },
+      waitUntil: (promise: Promise<unknown>) => lifetimes.push(promise),
+    });
+    await Promise.all(lifetimes);
+  };
+
+  const clickNotification = async (actionUrl: unknown) => {
+    const lifetimes: Promise<unknown>[] = [];
+    listeners.get('notificationclick')?.({
+      action: 'view',
+      notification: {
+        close: () => undefined,
+        data: { actionUrl },
+      },
+      waitUntil: (promise: Promise<unknown>) => lifetimes.push(promise),
+    });
+    await Promise.all(lifetimes);
+  };
+
   return {
     activate,
     cacheNames: () => [...cacheStores.keys()],
+    clickNotification,
+    dispatchPush,
     fetchRequest,
     networkResponses,
+    openedWindows,
     seedCache: (name: string) => caches.open(name),
     setUser,
+    shownNotifications,
   };
 };
 
 describe('service worker runtime cache', () => {
-  it('preserves compatible and unrelated caches during activation', async () => {
+  it('retires incompatible caches and preserves unrelated caches', async () => {
     const harness = createHarness();
     await Promise.all([
       harness.seedCache('seerrng-data-v1'),
+      harness.seedCache('seerrng-data-v2'),
       harness.seedCache('runtime-v3'),
       harness.seedCache('third-party-cache'),
     ]);
 
     await harness.activate();
 
-    assert.equal(harness.cacheNames().includes('seerrng-data-v1'), true);
+    assert.equal(harness.cacheNames().includes('seerrng-data-v1'), false);
+    assert.equal(harness.cacheNames().includes('seerrng-data-v2'), true);
     assert.equal(harness.cacheNames().includes('runtime-v3'), false);
     assert.equal(harness.cacheNames().includes('third-party-cache'), true);
   });
@@ -159,6 +204,30 @@ describe('service worker runtime cache', () => {
     assert.equal(response, undefined);
   });
 
+  it('never classifies file-like API routes as shared static assets', async () => {
+    const harness = createHarness();
+    const response = await harness.fetchRequest(
+      new Request('https://seerr.test/api/v1/user/export.json')
+    );
+
+    assert.equal(response, undefined);
+  });
+
+  it('does not override server policy for operational API responses', async () => {
+    const harness = createHarness();
+
+    for (const path of [
+      '/api/v1/media?filter=allavailable',
+      '/api/v1/request',
+      '/api/v1/request/count',
+    ]) {
+      assert.equal(
+        await harness.fetchRequest(new Request(`https://seerr.test${path}`)),
+        undefined
+      );
+    }
+  });
+
   it('honors Discover freshness headers before using cached data', async () => {
     const harness = createHarness();
     const request = new Request(
@@ -175,10 +244,50 @@ describe('service worker runtime cache', () => {
     assert.equal(await (await harness.fetchRequest(request))?.text(), 'second');
   });
 
+  it('never stores responses marked no-store', async () => {
+    const harness = createHarness();
+    const request = new Request(
+      'https://seerr.test/api/v1/discover/home/state'
+    );
+
+    await harness.setUser(1);
+    harness.networkResponses.push(
+      new Response('private-state', {
+        headers: { 'Cache-Control': 'private, no-store' },
+      })
+    );
+    assert.equal(
+      await (await harness.fetchRequest(request))?.text(),
+      'private-state'
+    );
+
+    harness.networkResponses.push(new Error('offline'));
+    assert.notEqual(
+      await (await harness.fetchRequest(request))?.text(),
+      'private-state'
+    );
+  });
+
+  it('revalidates responses marked no-cache before reuse', async () => {
+    const harness = createHarness();
+    const request = new Request('https://seerr.test/api/v1/discover/movies');
+
+    await harness.setUser(1);
+    harness.networkResponses.push(
+      new Response('first', {
+        headers: { 'Cache-Control': 'private, no-cache' },
+      })
+    );
+    assert.equal(await (await harness.fetchRequest(request))?.text(), 'first');
+
+    harness.networkResponses.push(new Response('second'));
+    assert.equal(await (await harness.fetchRequest(request))?.text(), 'second');
+  });
+
   it('isolates personalized data and retains stale data on network failure', async () => {
     const harness = createHarness();
     const request = new Request(
-      'https://seerr.test/api/v1/media?filter=allavailable'
+      'https://seerr.test/api/v1/discover/movies?sortBy=popularity'
     );
 
     await harness.setUser(1);
@@ -201,5 +310,83 @@ describe('service worker runtime cache', () => {
       await (await harness.fetchRequest(request))?.text(),
       'user-one'
     );
+  });
+
+  it('does not reuse privileged data after permissions are revoked', async () => {
+    const harness = createHarness();
+    const request = new Request('https://seerr.test/api/v1/discover/movies');
+
+    await harness.setUser(1, 2);
+    harness.networkResponses.push(new Response('manager-data'));
+    assert.equal(
+      await (await harness.fetchRequest(request))?.text(),
+      'manager-data'
+    );
+
+    await harness.setUser(1, 0);
+    harness.networkResponses.push(new Error('offline'));
+    const response = await harness.fetchRequest(request);
+    assert.notEqual(await response?.text(), 'manager-data');
+  });
+
+  it('evicts fresh personalized data after an authorization failure', async () => {
+    const harness = createHarness();
+    const request = new Request('https://seerr.test/api/v1/discover/movies');
+
+    await harness.setUser(1, 2);
+    harness.networkResponses.push(new Response('manager-data'));
+    assert.equal(
+      await (await harness.fetchRequest(request))?.text(),
+      'manager-data'
+    );
+
+    harness.networkResponses.push(new Response('forbidden', { status: 403 }));
+    assert.equal(
+      await (await harness.fetchRequest(request))?.text(),
+      'manager-data'
+    );
+
+    harness.networkResponses.push(new Error('offline'));
+    assert.notEqual(
+      await (await harness.fetchRequest(request))?.text(),
+      'manager-data'
+    );
+  });
+});
+
+describe('service worker notification actions', () => {
+  it('offers navigation without state-changing approve or decline actions', async () => {
+    const harness = createHarness();
+    await harness.dispatchPush({
+      notificationType: 'MEDIA_PENDING',
+      subject: 'Request pending',
+      message: 'Review request',
+      requestId: 12,
+      actionUrl: '/movie/42',
+      actionUrlTitle: 'Review',
+    });
+
+    const options = harness.shownNotifications[0].options as {
+      actions: { action: string }[];
+      data: Record<string, unknown>;
+    };
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(options.actions)), [
+      { action: 'view', title: 'Review' },
+    ]);
+    assert.strictEqual('requestId' in options.data, false);
+  });
+
+  it('opens only validated same-origin paths and waits for navigation', async () => {
+    const harness = createHarness();
+
+    await harness.clickNotification('//evil.example/path');
+    await harness.clickNotification('/movie/../settings');
+    await harness.clickNotification('/movie/%2e%2e/settings');
+    await harness.clickNotification('/movie\\..\\settings');
+    await harness.clickNotification('/requests?filter=pending');
+
+    assert.deepStrictEqual(harness.openedWindows, [
+      'https://seerr.test/requests?filter=pending',
+    ]);
   });
 });

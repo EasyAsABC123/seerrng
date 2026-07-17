@@ -1,12 +1,12 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
-import { getRepository } from '@server/datasource';
-import { User } from '@server/entity/User';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentDiscord } from '@server/lib/settings';
 import { NotificationAgentKey, getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
+import { normalizeDiscordSnowflake } from '@server/utils/discord';
 import { isSafeHttpUrl, redactSecrets } from '@server/utils/security';
 import axios from 'axios';
 import {
@@ -17,9 +17,18 @@ import {
 import type { NotificationAgent, NotificationPayload } from './agent';
 import {
   BaseAgent,
-  NOTIFICATION_HTTP_OPTIONS,
+  CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS,
   getNotificationActionUrl,
+  truncateNotificationText,
 } from './agent';
+
+const MAX_DISCORD_MENTION_CONTENT_LENGTH = 1_800;
+export const DISCORD_EMBED_TITLE_LIMIT = 256;
+export const DISCORD_EMBED_DESCRIPTION_LIMIT = 4_096;
+export const DISCORD_EMBED_FIELD_NAME_LIMIT = 256;
+export const DISCORD_EMBED_FIELD_VALUE_LIMIT = 1_024;
+export const DISCORD_EMBED_FIELD_COUNT_LIMIT = 25;
+export const DISCORD_EMBED_TOTAL_TEXT_LIMIT = 6_000;
 
 enum EmbedColors {
   DEFAULT = 0,
@@ -99,6 +108,42 @@ interface DiscordWebhookPayload {
   };
 }
 
+export const boundDiscordEmbed = (
+  embed: DiscordRichEmbed
+): DiscordRichEmbed => {
+  let remaining = DISCORD_EMBED_TOTAL_TEXT_LIMIT;
+  const take = (value: string | undefined, limit: number) => {
+    if (!value || remaining <= 0) {
+      return undefined;
+    }
+    const bounded = truncateNotificationText(value, Math.min(limit, remaining));
+    remaining -= bounded.length;
+    return bounded || undefined;
+  };
+
+  const title = take(embed.title, DISCORD_EMBED_TITLE_LIMIT);
+  const description = take(embed.description, DISCORD_EMBED_DESCRIPTION_LIMIT);
+  const fields: Field[] = [];
+  for (const field of (embed.fields ?? []).slice(
+    0,
+    DISCORD_EMBED_FIELD_COUNT_LIMIT
+  )) {
+    const name = take(field.name, DISCORD_EMBED_FIELD_NAME_LIMIT);
+    const value = take(field.value, DISCORD_EMBED_FIELD_VALUE_LIMIT);
+    if (!name || !value) {
+      break;
+    }
+    fields.push({ ...field, name, value });
+  }
+
+  return {
+    ...embed,
+    title,
+    description,
+    fields: fields.length ? fields : undefined,
+  };
+};
+
 class DiscordAgent
   extends BaseAgent<NotificationAgentDiscord>
   implements NotificationAgent
@@ -121,7 +166,7 @@ class DiscordAgent
     const intl = getIntl(locale);
     const settings = getSettings();
     const { applicationUrl } = settings.main;
-    const { embedPoster } = settings.notifications.agents.discord;
+    const { embedPoster } = this.getSettings();
 
     const appUrl =
       applicationUrl || `http://localhost:${process.env.port || 5055}`;
@@ -221,7 +266,7 @@ class DiscordAgent
 
     const url = getNotificationActionUrl(payload, applicationUrl);
 
-    return {
+    return boundDiscordEmbed({
       title: payload.event
         ? `${payload.event}: ${payload.subject}`
         : payload.subject,
@@ -235,7 +280,7 @@ class DiscordAgent
             url: payload.image,
           }
         : undefined,
-    };
+    });
   }
 
   public shouldSend(): boolean {
@@ -282,6 +327,29 @@ class DiscordAgent
     }
 
     const userMentions: string[] = [];
+    const userMentionSet = new Set<string>();
+    const allowedUserIds: string[] = [];
+    const allowedRoleIds: string[] = [];
+    const addUserMention = (id: unknown, role = false): boolean => {
+      const normalized = normalizeDiscordSnowflake(id);
+      if (!normalized) {
+        return true;
+      }
+
+      const mention = role ? `<@&${normalized}>` : `<@${normalized}>`;
+      if (userMentionSet.has(mention)) {
+        return true;
+      }
+      const nextLength = userMentions.join(' ').length + mention.length + 1;
+      if (nextLength > MAX_DISCORD_MENTION_CONTENT_LENGTH) {
+        return false;
+      }
+
+      userMentionSet.add(mention);
+      userMentions.push(mention);
+      (role ? allowedRoleIds : allowedUserIds).push(normalized);
+      return true;
+    };
 
     try {
       if (settings.options.enableMentions) {
@@ -293,32 +361,30 @@ class DiscordAgent
             ) &&
             payload.notifyUser.settings.discordId
           ) {
-            userMentions.push(`<@${payload.notifyUser.settings.discordId}>`);
+            addUserMention(payload.notifyUser.settings.discordId);
           }
         }
 
         if (payload.notifyAdmin) {
-          const userRepository = getRepository(User);
-          const users = await userRepository.find();
-
-          userMentions.push(
-            ...users
-              .filter(
-                (user) =>
-                  user.settings?.hasNotificationType(
-                    NotificationAgentKey.DISCORD,
-                    type
-                  ) &&
-                  user.settings.discordId &&
-                  shouldSendAdminNotification(type, user, payload)
-              )
-              .map((user) => `<@${user.settings?.discordId}>`)
-          );
+          await forEachNotificationUserBatch(async (users) => {
+            for (const user of users) {
+              if (
+                user.settings?.hasNotificationType(
+                  NotificationAgentKey.DISCORD,
+                  type
+                ) &&
+                shouldSendAdminNotification(type, user, payload) &&
+                !addUserMention(user.settings.discordId)
+              ) {
+                return false;
+              }
+            }
+          });
         }
       }
 
       if (settings.options.webhookRoleId) {
-        userMentions.push(`<@&${settings.options.webhookRoleId}>`);
+        addUserMention(settings.options.webhookRoleId, true);
       }
 
       // Discord webhooks go to a channel, not per-user,
@@ -336,9 +402,15 @@ class DiscordAgent
             : getSettings().main.applicationTitle,
           avatar_url: settings.options.botAvatarUrl,
           embeds: [this.buildEmbed(type, payload, locale)],
+          tts: false,
           content: userMentions.join(' '),
+          allowed_mentions: {
+            parse: [],
+            users: allowedUserIds,
+            roles: allowedRoleIds,
+          },
         } as DiscordWebhookPayload,
-        NOTIFICATION_HTTP_OPTIONS
+        CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS
       );
 
       return true;

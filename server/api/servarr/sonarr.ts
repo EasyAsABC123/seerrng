@@ -1,6 +1,178 @@
 import logger from '@server/logger';
 import { redactSecrets } from '@server/utils/security';
-import ServarrBase from './base';
+import ServarrBase, {
+  MAX_SERVARR_CONFIGURATION_RESULTS,
+  MAX_SERVARR_LIBRARY_RESULTS,
+  MAX_SERVARR_LOOKUP_RESULTS,
+  sanitizeServarrRecordArray,
+} from './base';
+
+const MAX_SONARR_TEXT_LENGTH = 10_000;
+const MAX_SONARR_NESTED_RESULTS = 1_000;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const text = (value: unknown): string =>
+  typeof value === 'string' ? value.slice(0, MAX_SONARR_TEXT_LENGTH) : '';
+const finiteNumber = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+const integer = (value: unknown): number =>
+  Number.isSafeInteger(value) ? (value as number) : 0;
+const boolean = (value: unknown): boolean => value === true;
+const textArray = (value: unknown): string[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_SONARR_NESTED_RESULTS)
+    .flatMap((item) => (typeof item === 'string' ? [text(item)] : []));
+const integerArray = (value: unknown): number[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_SONARR_NESTED_RESULTS)
+    .filter((item): item is number => Number.isSafeInteger(item));
+
+const sanitizeSonarrSeason = (value: unknown): SonarrSeason | undefined => {
+  if (!isRecord(value) || !Number.isSafeInteger(value.seasonNumber)) {
+    return undefined;
+  }
+  const stats = isRecord(value.statistics) ? value.statistics : undefined;
+  return {
+    seasonNumber: value.seasonNumber as number,
+    monitored: boolean(value.monitored),
+    statistics: stats
+      ? {
+          previousAiring: text(stats.previousAiring) || undefined,
+          episodeFileCount: integer(stats.episodeFileCount),
+          episodeCount: integer(stats.episodeCount),
+          totalEpisodeCount: integer(stats.totalEpisodeCount),
+          sizeOnDisk: finiteNumber(stats.sizeOnDisk),
+          percentOfEpisodes: finiteNumber(stats.percentOfEpisodes),
+        }
+      : undefined,
+  };
+};
+
+export const sanitizeSonarrSeries = (
+  value: unknown
+): SonarrSeries | undefined => {
+  if (!isRecord(value)) return undefined;
+  const tvdbId = integer(value.tvdbId);
+  const title = text(value.title);
+  if (tvdbId <= 0 || !title) return undefined;
+  const stats = isRecord(value.statistics) ? value.statistics : {};
+  const ratings = isRecord(value.ratings) ? value.ratings : {};
+  const seriesType = ['standard', 'daily', 'anime'].includes(
+    String(value.seriesType)
+  )
+    ? (value.seriesType as SonarrSeries['seriesType'])
+    : 'standard';
+  const monitorNewItems = value.monitorNewItems === 'none' ? 'none' : 'all';
+
+  return {
+    title,
+    sortTitle: text(value.sortTitle),
+    seasonCount: integer(value.seasonCount),
+    status: text(value.status),
+    overview: text(value.overview),
+    network: text(value.network),
+    airTime: text(value.airTime),
+    images: (Array.isArray(value.images) ? value.images : [])
+      .slice(0, MAX_SONARR_NESTED_RESULTS)
+      .flatMap((image) =>
+        isRecord(image)
+          ? [{ coverType: text(image.coverType), url: text(image.url) }]
+          : []
+      ),
+    remotePoster: text(value.remotePoster),
+    seasons: (Array.isArray(value.seasons) ? value.seasons : [])
+      .slice(0, MAX_SONARR_NESTED_RESULTS)
+      .flatMap((season) => {
+        const normalized = sanitizeSonarrSeason(season);
+        return normalized ? [normalized] : [];
+      }),
+    year: integer(value.year),
+    path: text(value.path),
+    profileId: integer(value.profileId),
+    languageProfileId: integer(value.languageProfileId),
+    seasonFolder: boolean(value.seasonFolder),
+    monitored: boolean(value.monitored),
+    monitorNewItems,
+    useSceneNumbering: boolean(value.useSceneNumbering),
+    runtime: integer(value.runtime),
+    tvdbId,
+    tvRageId: integer(value.tvRageId),
+    tvMazeId: integer(value.tvMazeId),
+    firstAired: text(value.firstAired),
+    lastInfoSync: text(value.lastInfoSync) || undefined,
+    seriesType,
+    cleanTitle: text(value.cleanTitle),
+    imdbId: text(value.imdbId),
+    titleSlug: text(value.titleSlug),
+    certification: text(value.certification),
+    genres: textArray(value.genres),
+    tags: integerArray(value.tags),
+    added: text(value.added),
+    ratings: {
+      votes: integer(ratings.votes),
+      value: finiteNumber(ratings.value),
+    },
+    qualityProfileId: integer(value.qualityProfileId),
+    id:
+      Number.isSafeInteger(value.id) && (value.id as number) > 0
+        ? (value.id as number)
+        : undefined,
+    rootFolderPath: text(value.rootFolderPath) || undefined,
+    addOptions: isRecord(value.addOptions)
+      ? {
+          ignoreEpisodesWithFiles:
+            typeof value.addOptions.ignoreEpisodesWithFiles === 'boolean'
+              ? value.addOptions.ignoreEpisodesWithFiles
+              : undefined,
+          ignoreEpisodesWithoutFiles:
+            typeof value.addOptions.ignoreEpisodesWithoutFiles === 'boolean'
+              ? value.addOptions.ignoreEpisodesWithoutFiles
+              : undefined,
+          searchForMissingEpisodes:
+            typeof value.addOptions.searchForMissingEpisodes === 'boolean'
+              ? value.addOptions.searchForMissingEpisodes
+              : undefined,
+        }
+      : undefined,
+    statistics: {
+      seasonCount: integer(stats.seasonCount),
+      episodeFileCount: integer(stats.episodeFileCount),
+      episodeCount: integer(stats.episodeCount),
+      totalEpisodeCount: integer(stats.totalEpisodeCount),
+      sizeOnDisk: finiteNumber(stats.sizeOnDisk),
+      releaseGroups: textArray(stats.releaseGroups),
+      percentOfEpisodes: finiteNumber(stats.percentOfEpisodes),
+    },
+  };
+};
+
+const requireSonarrSeries = (value: unknown): SonarrSeries => {
+  const series = sanitizeSonarrSeries(value);
+  if (!series) throw new Error('Sonarr returned an invalid series');
+  return series;
+};
+
+const sanitizeSonarrEpisode = (value: unknown): EpisodeResult | undefined => {
+  if (!isRecord(value)) return undefined;
+  const id = integer(value.id);
+  const seasonNumber = integer(value.seasonNumber);
+  if (id <= 0 || seasonNumber < 0) return undefined;
+  return {
+    seriesId: integer(value.seriesId),
+    episodeFileId: integer(value.episodeFileId),
+    seasonNumber,
+    episodeNumber: integer(value.episodeNumber),
+    title: text(value.title),
+    airDate: text(value.airDate),
+    airDateUtc: text(value.airDateUtc),
+    overview: text(value.overview),
+    hasFile: boolean(value.hasFile),
+    monitored: boolean(value.monitored),
+    absoluteEpisodeNumber: integer(value.absoluteEpisodeNumber),
+    unverifiedSceneNumbering: boolean(value.unverifiedSceneNumbering),
+    id,
+  };
+};
 
 const isConflictError = (error: unknown): boolean =>
   (typeof error === 'object' &&
@@ -115,6 +287,20 @@ export interface LanguageProfile {
   name: string;
 }
 
+export const sanitizeSonarrLanguageProfiles = (
+  value: unknown
+): LanguageProfile[] =>
+  sanitizeServarrRecordArray<Record<string, unknown>>(
+    value,
+    MAX_SERVARR_CONFIGURATION_RESULTS
+  ).flatMap((profile) =>
+    Number.isSafeInteger(profile.id) &&
+    typeof profile.name === 'string' &&
+    profile.name.length > 0
+      ? [{ id: profile.id as number, name: profile.name.slice(0, 10_000) }]
+      : []
+  );
+
 class SonarrAPI extends ServarrBase<{
   seriesId: number;
   episodeId: number;
@@ -128,7 +314,13 @@ class SonarrAPI extends ServarrBase<{
     try {
       const response = await this.axios.get<SonarrSeries[]>('/series');
 
-      return response.data;
+      return sanitizeServarrRecordArray<Record<string, unknown>>(
+        response.data,
+        MAX_SERVARR_LIBRARY_RESULTS
+      ).flatMap((series) => {
+        const normalized = sanitizeSonarrSeries(series);
+        return normalized ? [normalized] : [];
+      });
     } catch (e) {
       throw new Error(`[Sonarr] Failed to retrieve series: ${e.message}`, {
         cause: e,
@@ -140,7 +332,7 @@ class SonarrAPI extends ServarrBase<{
     try {
       const response = await this.axios.get<SonarrSeries>(`/series/${id}`);
 
-      return response.data;
+      return requireSonarrSeries(response.data);
     } catch (e) {
       throw new Error(
         `[Sonarr] Failed to retrieve series by ID: ${e.message}`,
@@ -157,11 +349,18 @@ class SonarrAPI extends ServarrBase<{
         },
       });
 
-      if (!response.data[0]) {
+      const series = sanitizeServarrRecordArray<Record<string, unknown>>(
+        response.data,
+        MAX_SERVARR_LOOKUP_RESULTS
+      ).flatMap((item) => {
+        const normalized = sanitizeSonarrSeries(item);
+        return normalized ? [normalized] : [];
+      });
+      if (!series[0]) {
         throw new Error('No series found');
       }
 
-      return response.data;
+      return series;
     } catch (e) {
       logger.error('Error retrieving series by series title', {
         label: 'Sonarr API',
@@ -180,11 +379,18 @@ class SonarrAPI extends ServarrBase<{
         },
       });
 
-      if (!response.data[0]) {
+      const series = sanitizeServarrRecordArray<Record<string, unknown>>(
+        response.data,
+        MAX_SERVARR_LOOKUP_RESULTS
+      ).flatMap((item) => {
+        const normalized = sanitizeSonarrSeries(item);
+        return normalized ? [normalized] : [];
+      });
+      if (!series[0]) {
         throw new Error('Series not found');
       }
 
-      return response.data[0];
+      return series[0];
     } catch (e) {
       logger.error('Error retrieving series by tvdb ID', {
         label: 'Sonarr API',
@@ -211,20 +417,25 @@ class SonarrAPI extends ServarrBase<{
           '/series',
           series
         );
+        const updatedSeries = requireSonarrSeries(
+          isRecord(newSeriesResponse.data)
+            ? { ...series, ...newSeriesResponse.data }
+            : newSeriesResponse.data
+        );
 
-        if (newSeriesResponse.data.id) {
+        if (updatedSeries.id) {
           logger.info('Updated existing series in Sonarr.', {
             label: 'Sonarr',
-            seriesId: newSeriesResponse.data.id,
-            seriesTitle: newSeriesResponse.data.title,
+            seriesId: updatedSeries.id,
+            seriesTitle: updatedSeries.title,
           });
           logger.debug('Sonarr update details', {
             label: 'Sonarr',
-            series: newSeriesResponse.data,
+            series: updatedSeries,
           });
 
           try {
-            const episodes = await this.getEpisodes(newSeriesResponse.data.id);
+            const episodes = await this.getEpisodes(updatedSeries.id);
             const episodeIdsToMonitor = episodes
               .filter(
                 (ep) =>
@@ -237,7 +448,7 @@ class SonarrAPI extends ServarrBase<{
                 'Re-monitoring unmonitored episodes for requested seasons.',
                 {
                   label: 'Sonarr',
-                  seriesId: newSeriesResponse.data.id,
+                  seriesId: updatedSeries.id,
                   episodeCount: episodeIdsToMonitor.length,
                 }
               );
@@ -247,15 +458,15 @@ class SonarrAPI extends ServarrBase<{
             logger.warn('Failed to re-monitor episodes', {
               label: 'Sonarr',
               errorMessage: e.message,
-              seriesId: newSeriesResponse.data.id,
+              seriesId: updatedSeries.id,
             });
           }
 
           if (options.searchNow) {
-            this.searchSeries(newSeriesResponse.data.id);
+            await this.searchSeries(updatedSeries.id);
           }
 
-          return newSeriesResponse.data;
+          return updatedSeries;
         } else {
           logger.error('Failed to update series in Sonarr', {
             label: 'Sonarr',
@@ -292,12 +503,24 @@ class SonarrAPI extends ServarrBase<{
           },
         } as Partial<SonarrSeries>
       );
+      const createdSeries = requireSonarrSeries(
+        isRecord(createdSeriesResponse.data)
+          ? {
+              tvdbId: options.tvdbid,
+              title: options.title,
+              ...(createdSeriesResponse.data as unknown as Record<
+                string,
+                unknown
+              >),
+            }
+          : createdSeriesResponse.data
+      );
 
-      if (createdSeriesResponse.data.id) {
+      if (createdSeries.id) {
         logger.info('Sonarr accepted request', { label: 'Sonarr' });
         logger.debug('Sonarr add details', {
           label: 'Sonarr',
-          series: createdSeriesResponse.data,
+          series: createdSeries,
         });
       } else {
         logger.error('Failed to add series to Sonarr', {
@@ -307,7 +530,7 @@ class SonarrAPI extends ServarrBase<{
         throw new Error('Failed to add series to Sonarr');
       }
 
-      return createdSeriesResponse.data;
+      return createdSeries;
     } catch (e) {
       if (isConflictError(e)) {
         const existingSeries = await this.recoverExistingSeries(options).catch(
@@ -369,11 +592,14 @@ class SonarrAPI extends ServarrBase<{
 
     const response = await this.axios.put<SonarrSeries>('/series', series);
 
-    if (options.searchNow && response.data.id) {
-      this.searchSeries(response.data.id);
+    const updatedSeries = requireSonarrSeries(
+      isRecord(response.data) ? { ...series, ...response.data } : response.data
+    );
+    if (options.searchNow && updatedSeries.id) {
+      await this.searchSeries(updatedSeries.id);
     }
 
-    return response.data;
+    return updatedSeries;
   }
 
   public async getLanguageProfiles(): Promise<LanguageProfile[]> {
@@ -384,7 +610,7 @@ class SonarrAPI extends ServarrBase<{
         3600
       );
 
-      return data;
+      return sanitizeSonarrLanguageProfiles(data);
     } catch (e) {
       logger.error(
         'Something went wrong while retrieving Sonarr language profiles.',
@@ -423,7 +649,13 @@ class SonarrAPI extends ServarrBase<{
       const response = await this.axios.get<EpisodeResult[]>('/episode', {
         params: { seriesId },
       });
-      return response.data;
+      return sanitizeServarrRecordArray<Record<string, unknown>>(
+        response.data,
+        MAX_SERVARR_LIBRARY_RESULTS
+      ).flatMap((episode) => {
+        const normalized = sanitizeSonarrEpisode(episode);
+        return normalized ? [normalized] : [];
+      });
     } catch (e) {
       logger.error('Failed to retrieve episodes', {
         label: 'Sonarr API',
@@ -436,8 +668,20 @@ class SonarrAPI extends ServarrBase<{
 
   public async monitorEpisodes(episodeIds: number[]): Promise<void> {
     try {
+      const normalizedEpisodeIds = Array.from(
+        new Set(
+          episodeIds
+            .slice(0, MAX_SERVARR_LIBRARY_RESULTS)
+            .filter(
+              (id) => Number.isSafeInteger(id) && id > 0 && id <= 1_000_000_000
+            )
+        )
+      );
+      if (normalizedEpisodeIds.length === 0) {
+        return;
+      }
       await this.axios.put('/episode/monitor', {
-        episodeIds,
+        episodeIds: normalizedEpisodeIds,
         monitored: true,
       });
     } catch (e) {

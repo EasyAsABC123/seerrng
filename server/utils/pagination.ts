@@ -10,6 +10,8 @@ const parseScalarNumber = (value: unknown): number => {
   return Number.NaN;
 };
 
+export const MAX_PAGINATION_OFFSET = 100_000;
+
 export const parsePositiveInt = (
   value: unknown,
   fallback: number,
@@ -64,7 +66,11 @@ export const parsePageParams = (
     defaults.take,
     defaults.maxTake ?? 100
   );
-  const skip = parseNonNegativeInt(query.skip, 0, defaults.maxSkip);
+  const boundedSkip = parseNonNegativeInt(
+    query.skip,
+    0,
+    defaults.maxSkip ?? MAX_PAGINATION_OFFSET
+  );
 
-  return { pageSize, skip };
+  return { pageSize, skip: boundedSkip };
 };

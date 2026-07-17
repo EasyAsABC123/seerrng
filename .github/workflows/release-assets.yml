@@ -8,12 +8,50 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  resolve:
+    name: Validate release tag
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Resolve version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          [[ "$tag" =~ ^v[0-9][0-9A-Za-z._+-]{0,127}$ ]] || { echo "Invalid release tag: $tag" >&2; exit 2; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release tag is on main
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git show-ref --verify --quiet "refs/tags/$TAG"
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          git merge-base --is-ancestor HEAD refs/remotes/origin/main || {
+            echo "Release tag $TAG is not reachable from main." >&2
+            exit 1
+          }
+
   build:
     name: Build ${{ matrix.os }} ${{ matrix.arch }}
+    needs: resolve
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -33,8 +71,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
+          ref: ${{ needs.resolve.outputs.tag }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Pnpm Setup
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -48,16 +87,30 @@ jobs:
         shell: bash
         run: ./scripts/build-release-assets.sh "${TAG}" dist-release
         env:
-          TAG: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
-
-      - name: Upload to release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
-        with:
-          tag_name: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
-          files: |
-            dist-release/seerrng-*
+          TAG: ${{ needs.resolve.outputs.tag }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: seerrng-${{ matrix.os }}-${{ matrix.arch }}
           path: dist-release/seerrng-*
+
+  publish:
+    name: Upload release assets
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: seerrng-*
+          path: dist-release
+          merge-multiple: true
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+        with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          files: |
+            dist-release/seerrng-*

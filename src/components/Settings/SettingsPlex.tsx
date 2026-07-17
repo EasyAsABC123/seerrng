@@ -250,9 +250,7 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
       params.enable = activeLibraries.join(',');
     }
 
-    await axios.get('/api/v1/settings/plex/library', {
-      params,
-    });
+    await axios.post('/api/v1/settings/plex/library', params);
     setIsSyncing(false);
     revalidate();
   };
@@ -322,14 +320,10 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
           .join(',');
       }
 
-      await axios.get('/api/v1/settings/plex/library', {
-        params,
-      });
+      await axios.post('/api/v1/settings/plex/library', params);
     } else {
-      await axios.get('/api/v1/settings/plex/library', {
-        params: {
-          enable: [...activeLibraries, libraryId].join(','),
-        },
+      await axios.post('/api/v1/settings/plex/library', {
+        enable: [...activeLibraries, libraryId].join(','),
       });
     }
 

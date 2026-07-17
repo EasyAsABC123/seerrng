@@ -75,6 +75,20 @@ Space-separated list of boolean claims that are required to log in
 
 Create accounts for new users logging in with this provider
 
+## Network Security
+
+Seerr blocks server-side OIDC requests to loopback, private, link-local, and
+reserved network addresses by default. This applies to the issuer and to token
+or user-info endpoints returned by provider discovery.
+
+If the identity provider is intentionally hosted on a private network, set
+`OIDC_ALLOW_PRIVATE_ADDRESSES=true` in the Seerr process environment. This
+widens OIDC access to internal services, so configure the issuer URL only from
+a trusted settings file.
+
+HTTP endpoints remain disabled separately. Set `OIDC_ALLOW_INSECURE=true` only
+when an intentionally non-HTTPS identity provider requires it.
+
 ## Provider Setup
 
 Most OpenID Connect providers follow the same basic setup pattern:

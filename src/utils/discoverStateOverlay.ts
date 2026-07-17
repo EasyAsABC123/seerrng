@@ -55,6 +55,17 @@ export const getDiscoverStateInputs = (pages: CatalogPage[]) => {
   return [...inputs.values()];
 };
 
+export const getDiscoverOverlayRequestKey = (
+  contextKey: string,
+  userStateRevision: string,
+  inputs: readonly { mediaType: MediaType; id: number | string }[]
+): string =>
+  JSON.stringify([
+    contextKey,
+    userStateRevision,
+    inputs.map(({ mediaType, id }) => [mediaType, id]),
+  ]);
+
 const applyState = (
   item: CatalogItem,
   state: DiscoverHomeStateItem

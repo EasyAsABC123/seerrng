@@ -259,10 +259,51 @@ describe('notification media URLs', () => {
       undefined
     );
     assert.equal(
+      getNotificationMediaUrl({ mediaUrl: '/movie/../settings' }),
+      undefined
+    );
+    assert.equal(
+      getNotificationMediaUrl({ mediaUrl: '/movie/%2e%2e/settings' }),
+      undefined
+    );
+    assert.equal(
+      getNotificationMediaUrl({ mediaUrl: '/movie\\..\\settings' }),
+      undefined
+    );
+    assert.equal(
       getNotificationActionUrl(
         { mediaUrl: 'javascript:alert(1)' },
         'https://seerr.example'
       ),
+      undefined
+    );
+  });
+
+  it('encodes media IDs and rejects malformed legacy book IDs', () => {
+    assert.equal(
+      getNotificationMediaUrl({
+        media: new Media({
+          mediaType: MediaType.MUSIC,
+          tmdbId: 0,
+          mbId: 'release?redirect=/settings',
+        }),
+      }),
+      '/music/release%3Fredirect%3D%2Fsettings'
+    );
+    assert.equal(
+      getNotificationMediaUrl({
+        media: new Media({
+          mediaType: MediaType.BOOK,
+          tmdbId: 0,
+          identifiers: [
+            new MediaIdentifier({
+              provider: MediaIdentifierProvider.OPENLIBRARY,
+              value: '../../settings',
+              canonical: true,
+            }),
+          ],
+        }),
+      }),
       undefined
     );
   });

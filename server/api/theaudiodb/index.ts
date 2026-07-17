@@ -2,15 +2,50 @@ import ExternalAPI from '@server/api/externalapi';
 import { getRepository } from '@server/datasource';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import cacheManager from '@server/lib/cache';
-import { normalizeMusicBrainzId } from '@server/lib/externalIds';
+import {
+  normalizeMusicBrainzId,
+  prepareMusicBrainzBatchIds,
+} from '@server/lib/externalIds';
 import logger from '@server/logger';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import { In } from 'typeorm';
 import type { TadbArtistResponse } from './interfaces';
+
+const MAX_THEAUDIODB_IMAGE_URL_LENGTH = 2048;
+
+export const sanitizeTheAudioDbImageUrl = (value: unknown): string | null => {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > MAX_THEAUDIODB_IMAGE_URL_LENGTH
+  ) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    if (
+      url.protocol !== 'https:' ||
+      (url.port && url.port !== '443') ||
+      url.username ||
+      url.password ||
+      (hostname !== 'theaudiodb.com' && !hostname.endsWith('.theaudiodb.com'))
+    ) {
+      return null;
+    }
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
 
 class TheAudioDb extends ExternalAPI {
   private readonly apiKey = '195003';
   private readonly CACHE_TTL = 43200;
   private readonly STALE_THRESHOLD = 30 * 24 * 60 * 60 * 1000;
+  static readonly BATCH_FETCH_CONCURRENCY = 5;
 
   constructor() {
     super(
@@ -53,8 +88,8 @@ class TheAudioDb extends ExternalAPI {
 
       if (metadata) {
         return {
-          artistThumb: metadata.tadbThumb,
-          artistBackground: metadata.tadbCover,
+          artistThumb: sanitizeTheAudioDbImageUrl(metadata.tadbThumb),
+          artistBackground: sanitizeTheAudioDbImageUrl(metadata.tadbCover),
         };
       }
       return undefined;
@@ -81,8 +116,8 @@ class TheAudioDb extends ExternalAPI {
 
       if (metadata?.tadbThumb || metadata?.tadbCover) {
         return {
-          artistThumb: metadata.tadbThumb,
-          artistBackground: metadata.tadbCover,
+          artistThumb: sanitizeTheAudioDbImageUrl(metadata.tadbThumb),
+          artistBackground: sanitizeTheAudioDbImageUrl(metadata.tadbCover),
         };
       }
 
@@ -115,8 +150,16 @@ class TheAudioDb extends ExternalAPI {
       );
 
       const result = {
-        artistThumb: data.artists?.[0]?.strArtistThumb || null,
-        artistBackground: data.artists?.[0]?.strArtistFanart || null,
+        artistThumb: sanitizeTheAudioDbImageUrl(
+          Array.isArray(data?.artists)
+            ? data.artists[0]?.strArtistThumb
+            : undefined
+        ),
+        artistBackground: sanitizeTheAudioDbImageUrl(
+          Array.isArray(data?.artists)
+            ? data.artists[0]?.strArtistFanart
+            : undefined
+        ),
       };
 
       const metadataRepository = getRepository(MetadataArtist);
@@ -166,7 +209,8 @@ class TheAudioDb extends ExternalAPI {
     >
   > {
     if (!ids.length) return {};
-    const normalizedIds = [...new Set(ids.map(normalizeMusicBrainzId))];
+    const normalizedIds = prepareMusicBrainzBatchIds(ids);
+    if (!normalizedIds.length) return {};
 
     const metadataRepository = getRepository(MetadataArtist);
     const existingMetadata = await metadataRepository.find({
@@ -190,8 +234,8 @@ class TheAudioDb extends ExternalAPI {
 
       if (metadata?.tadbThumb || metadata?.tadbCover) {
         results[id] = {
-          artistThumb: metadata.tadbThumb,
-          artistBackground: metadata.tadbCover,
+          artistThumb: sanitizeTheAudioDbImageUrl(metadata.tadbThumb),
+          artistBackground: sanitizeTheAudioDbImageUrl(metadata.tadbCover),
         };
       } else if (metadata && !this.isMetadataStale(metadata)) {
         results[id] = {
@@ -204,22 +248,23 @@ class TheAudioDb extends ExternalAPI {
     });
 
     if (idsToFetch.length > 0) {
-      const batchPromises = idsToFetch.map((id) =>
-        this.fetchArtistImages(id)
-          .then((response) => {
-            results[id] = response;
-            return true;
-          })
-          .catch(() => {
-            results[id] = {
-              artistThumb: null,
-              artistBackground: null,
-            };
-            return false;
-          })
+      await mapWithConcurrency(
+        idsToFetch,
+        TheAudioDb.BATCH_FETCH_CONCURRENCY,
+        async (id) =>
+          this.fetchArtistImages(id)
+            .then((response) => {
+              results[id] = response;
+              return true;
+            })
+            .catch(() => {
+              results[id] = {
+                artistThumb: null,
+                artistBackground: null,
+              };
+              return false;
+            })
       );
-
-      await Promise.all(batchPromises);
     }
 
     return results;

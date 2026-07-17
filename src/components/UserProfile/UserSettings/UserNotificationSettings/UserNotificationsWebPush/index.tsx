@@ -4,6 +4,10 @@ import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import NotificationTypeSelector, {
   ALL_NOTIFICATIONS,
 } from '@app/components/NotificationTypeSelector';
+import {
+  getPushNotificationsEnabledStorageKey,
+  hasCurrentPushSubscription,
+} from '@app/components/ServiceWorkerSetup/registration';
 import DeviceItem from '@app/components/UserProfile/UserSettings/UserNotificationSettings/UserNotificationsWebPush/DeviceItem';
 import useSettings from '@app/hooks/useSettings';
 import useToasts from '@app/hooks/useToasts';
@@ -11,6 +15,10 @@ import { getPositiveQueryParamNumber } from '@app/hooks/useUpdateQueryParams';
 import { useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import {
+  readLocalStorageValue,
+  writeLocalStorageValue,
+} from '@app/utils/localStorage';
 import {
   getPushSubscription,
   subscribeToPushNotifications,
@@ -59,6 +67,7 @@ const UserWebPushSettings = () => {
   const userId = getPositiveQueryParamNumber(router.query.userId);
   const { user } = useUser({ id: userId });
   const { currentSettings } = useSettings();
+  const pushPreferenceKey = getPushNotificationsEnabledStorageKey(user?.id);
   const [webPushEnabled, setWebPushEnabled] = useState(false);
   const [subEndpoint, setSubEndpoint] = useState<string | null>(null);
   const {
@@ -74,7 +83,9 @@ const UserWebPushSettings = () => {
       userAgent: string | null;
       createdAt: string;
     }[]
-  >(`/api/v1/user/${user?.id}/pushSubscriptions`, { revalidateOnMount: true });
+  >(user ? `/api/v1/user/${user.id}/pushSubscriptions` : null, {
+    revalidateOnMount: true,
+  });
 
   // Subscribes to the push manager
   // Will only add to the database if subscribing for the first time
@@ -86,7 +97,9 @@ const UserWebPushSettings = () => {
       );
 
       if (isSubscribed) {
-        localStorage.setItem('pushNotificationsEnabled', 'true');
+        if (pushPreferenceKey) {
+          writeLocalStorageValue(pushPreferenceKey, 'true');
+        }
         setWebPushEnabled(true);
         addToast(intl.formatMessage(messages.webpushhasbeenenabled), {
           appearance: 'success',
@@ -114,7 +127,9 @@ const UserWebPushSettings = () => {
         endpoint
       );
 
-      localStorage.setItem('pushNotificationsEnabled', 'false');
+      if (pushPreferenceKey) {
+        writeLocalStorageValue(pushPreferenceKey, 'false');
+      }
       setWebPushEnabled(false);
 
       // Only delete the current browser's subscription, not all devices
@@ -168,56 +183,74 @@ const UserWebPushSettings = () => {
   };
 
   useEffect(() => {
+    let active = true;
     const verifyWebPush = async () => {
       const enabled = await verifyPushSubscription(user?.id, currentSettings);
+      if (!active) {
+        return;
+      }
       let isEnabled = enabled;
+      let subscriptionEndpoint: string | undefined;
 
       if (!enabled && 'serviceWorker' in navigator) {
         const { subscription } = await getPushSubscription();
-        if (subscription) {
-          isEnabled = true;
+        if (!active) {
+          return;
         }
+        subscriptionEndpoint = subscription?.endpoint;
       }
 
-      if (!isEnabled && dataDevices && dataDevices.length > 0) {
-        const currentUserAgent = navigator.userAgent;
-        const hasMatchingDevice = dataDevices.some(
-          (device) => device.userAgent === currentUserAgent
+      if (!isEnabled) {
+        isEnabled = hasCurrentPushSubscription(
+          subscriptionEndpoint,
+          dataDevices
         );
-
-        if (hasMatchingDevice) {
-          isEnabled = true;
-        }
       }
 
       setWebPushEnabled(isEnabled);
-      if (localStorage.getItem('pushNotificationsEnabled') === null) {
-        localStorage.setItem(
-          'pushNotificationsEnabled',
-          isEnabled ? 'true' : 'false'
-        );
+      if (
+        pushPreferenceKey &&
+        readLocalStorageValue(pushPreferenceKey) == null
+      ) {
+        writeLocalStorageValue(pushPreferenceKey, isEnabled ? 'true' : 'false');
       }
     };
 
     if (user?.id) {
-      verifyWebPush();
+      void verifyWebPush();
     }
-  }, [user?.id, currentSettings, dataDevices]);
+    return () => {
+      active = false;
+    };
+  }, [user?.id, currentSettings, dataDevices, pushPreferenceKey]);
 
   useEffect(() => {
+    let active = true;
     const getSubscriptionEndpoint = async () => {
-      if ('serviceWorker' in navigator && 'PushManager' in window) {
-        const { subscription } = await getPushSubscription();
+      try {
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+          const { subscription } = await getPushSubscription();
+          if (!active) {
+            return;
+          }
 
-        if (subscription) {
-          setSubEndpoint(subscription.endpoint);
-        } else {
+          if (subscription) {
+            setSubEndpoint(subscription.endpoint);
+          } else {
+            setSubEndpoint(null);
+          }
+        }
+      } catch {
+        if (active) {
           setSubEndpoint(null);
         }
       }
     };
 
-    getSubscriptionEndpoint();
+    void getSubscriptionEndpoint();
+    return () => {
+      active = false;
+    };
   }, [webPushEnabled]);
 
   const sortedDevices = useMemo(() => {

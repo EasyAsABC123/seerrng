@@ -5,6 +5,8 @@ import { availableLanguages } from '@app/context/LanguageContext';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { isRedactedSecret } from '@app/utils/secret';
+import { isValidURL } from '@app/utils/urlValidationHelper';
 import { ArrowDownOnSquareIcon, BeakerIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import { Field, Form, Formik } from 'formik';
@@ -51,7 +53,11 @@ const NotificationsSlack = () => {
             .required(intl.formatMessage(messages.validationWebhookUrl)),
         otherwise: (schema) => schema.nullable(),
       })
-      .url(intl.formatMessage(messages.validationWebhookUrl)),
+      .test(
+        'valid-url',
+        intl.formatMessage(messages.validationWebhookUrl),
+        (value) => !value || isRedactedSecret(value) || isValidURL(value)
+      ),
   });
 
   if (!data && !error) {

@@ -10,12 +10,19 @@ import type {
 import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
+import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import type {
   ProcessableSeason,
   RunnableScanner,
   StatusBase,
 } from '@server/lib/scanners/baseScanner';
 import BaseScanner from '@server/lib/scanners/baseScanner';
+import { forEachMediaCleanupBatch } from '@server/lib/scanners/mediaCleanupBatches';
+import {
+  ServarrServiceAuthorityChangedError,
+  runWithServarrServiceSnapshot,
+  runWithServarrServiceSnapshots,
+} from '@server/lib/serviceAdmission';
 import type { SonarrSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import { uniqWith } from 'lodash';
@@ -54,19 +61,22 @@ class SonarrScanner
   public async run(): Promise<void> {
     const settings = getSettings();
     const sessionId = this.startRun();
+    if (!sessionId) {
+      return;
+    }
     this.scannedTvdbIds.clear();
     this.scanned4kTvdbIds.clear();
     this.didScanStandard = false;
     this.didScan4k = false;
 
     try {
-      this.servers = uniqWith(settings.sonarr, (sonarrA, sonarrB) => {
-        return (
+      this.servers = uniqWith(
+        structuredClone(settings.sonarr),
+        (sonarrA, sonarrB) =>
           sonarrA.hostname === sonarrB.hostname &&
           sonarrA.port === sonarrB.port &&
           sonarrA.baseUrl === sonarrB.baseUrl
-        );
-      });
+      );
 
       for (const server of this.servers) {
         this.currentServer = server;
@@ -76,12 +86,17 @@ class SonarrScanner
             'info'
           );
 
-          this.sonarrApi = new SonarrAPI({
-            apiKey: server.apiKey,
-            url: SonarrAPI.buildUrl(server, '/api/v3'),
-          });
-
-          this.items = await this.sonarrApi.getSeries();
+          this.items = await runWithServarrServiceSnapshot(
+            'sonarr',
+            server,
+            async (current) => {
+              this.sonarrApi = new SonarrAPI({
+                apiKey: current.apiKey,
+                url: SonarrAPI.buildUrl(current, '/api/v3'),
+              });
+              return this.sonarrApi.getSeries();
+            }
+          );
 
           const server4k = this.enable4kShow && server.is4k;
           if (server4k) {
@@ -185,8 +200,11 @@ class SonarrScanner
         externalServiceSlug: sonarrSeries.titleSlug,
         title: sonarrSeries.title,
         is4k: server4k,
+        mutationGuard: (callback) =>
+          runWithServarrServiceSnapshot('sonarr', this.currentServer, callback),
       });
     } catch (e) {
+      if (e instanceof ServarrServiceAuthorityChangedError) throw e;
       this.log('Failed to process Sonarr media', 'error', {
         errorMessage: e.message,
         title: sonarrSeries.title,
@@ -198,26 +216,50 @@ class SonarrScanner
     const mediaRepository = getRepository(Media);
 
     if (this.didScanStandard) {
-      const processingShows = await mediaRepository.find({
-        where: { mediaType: MediaType.TV, status: MediaStatus.PROCESSING },
-        relations: ['seasons'],
-      });
-
-      for (const media of processingShows) {
-        if (media.tvdbId && !this.scannedTvdbIds.has(media.tvdbId)) {
-          media.status = MediaStatus.UNKNOWN;
-          for (const season of media.seasons) {
-            if (season.status === MediaStatus.PROCESSING) {
-              season.status = MediaStatus.UNKNOWN;
+      await forEachMediaCleanupBatch(
+        { mediaType: MediaType.TV, status: MediaStatus.PROCESSING },
+        async (media) => {
+          if (media.tvdbId && !this.scannedTvdbIds.has(media.tvdbId)) {
+            const changed = await runMediaEntityMutation(media, () =>
+              runWithServarrServiceSnapshots(
+                'sonarr',
+                this.servers.filter(
+                  (server) => server.syncEnabled && !server.is4k
+                ),
+                async () => {
+                  const current = await mediaRepository.findOne({
+                    where: { id: media.id },
+                    relations: { seasons: true },
+                  });
+                  if (!current || current.status !== MediaStatus.PROCESSING) {
+                    return false;
+                  }
+                  current.status = MediaStatus.UNKNOWN;
+                  for (const season of current.seasons) {
+                    if (season.status === MediaStatus.PROCESSING) {
+                      season.status = MediaStatus.UNKNOWN;
+                    }
+                  }
+                  await mediaRepository.save(current);
+                  return true;
+                },
+                {
+                  requireExactAuthoritySet: true,
+                  includeCurrent: (server) =>
+                    server.syncEnabled && !server.is4k,
+                }
+              )
+            );
+            if (changed) {
+              this.log(
+                `Show ${media.tmdbId} (tvdb: ${media.tvdbId}) not found in any Sonarr server. Status reset to UNKNOWN.`,
+                'info'
+              );
             }
           }
-          await mediaRepository.save(media);
-          this.log(
-            `Show ${media.tmdbId} (tvdb: ${media.tvdbId}) not found in any Sonarr server. Status reset to UNKNOWN.`,
-            'info'
-          );
-        }
-      }
+        },
+        { relations: { seasons: true } }
+      );
     } else {
       this.log(
         'Skipping orphaned show cleanup: no standard Sonarr servers were scanned.',
@@ -226,26 +268,49 @@ class SonarrScanner
     }
 
     if (this.didScan4k) {
-      const processing4kShows = await mediaRepository.find({
-        where: { mediaType: MediaType.TV, status4k: MediaStatus.PROCESSING },
-        relations: ['seasons'],
-      });
-
-      for (const media of processing4kShows) {
-        if (media.tvdbId && !this.scanned4kTvdbIds.has(media.tvdbId)) {
-          media.status4k = MediaStatus.UNKNOWN;
-          for (const season of media.seasons) {
-            if (season.status4k === MediaStatus.PROCESSING) {
-              season.status4k = MediaStatus.UNKNOWN;
+      await forEachMediaCleanupBatch(
+        { mediaType: MediaType.TV, status4k: MediaStatus.PROCESSING },
+        async (media) => {
+          if (media.tvdbId && !this.scanned4kTvdbIds.has(media.tvdbId)) {
+            const changed = await runMediaEntityMutation(media, () =>
+              runWithServarrServiceSnapshots(
+                'sonarr',
+                this.servers.filter(
+                  (server) => server.syncEnabled && server.is4k
+                ),
+                async () => {
+                  const current = await mediaRepository.findOne({
+                    where: { id: media.id },
+                    relations: { seasons: true },
+                  });
+                  if (!current || current.status4k !== MediaStatus.PROCESSING) {
+                    return false;
+                  }
+                  current.status4k = MediaStatus.UNKNOWN;
+                  for (const season of current.seasons) {
+                    if (season.status4k === MediaStatus.PROCESSING) {
+                      season.status4k = MediaStatus.UNKNOWN;
+                    }
+                  }
+                  await mediaRepository.save(current);
+                  return true;
+                },
+                {
+                  requireExactAuthoritySet: true,
+                  includeCurrent: (server) => server.syncEnabled && server.is4k,
+                }
+              )
+            );
+            if (changed) {
+              this.log(
+                `Show ${media.tmdbId} (tvdb: ${media.tvdbId}) not found in any 4K Sonarr server. 4K status reset to UNKNOWN.`,
+                'info'
+              );
             }
           }
-          await mediaRepository.save(media);
-          this.log(
-            `Show ${media.tmdbId} (tvdb: ${media.tvdbId}) not found in any 4K Sonarr server. 4K status reset to UNKNOWN.`,
-            'info'
-          );
-        }
-      }
+        },
+        { relations: { seasons: true } }
+      );
     } else if (this.enable4kShow) {
       this.log(
         'Skipping orphaned 4K show cleanup: no 4K Sonarr servers were scanned.',

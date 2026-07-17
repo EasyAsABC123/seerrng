@@ -43,6 +43,14 @@ export interface DiscoverPayloadStore {
 
 type StorageLike = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
 
+const removeStoredSnapshotValue = (storage: StorageLike, key: string): void => {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // Browser storage is optional and can become unavailable between calls.
+  }
+};
+
 const getBrowserStorage = (): StorageLike | undefined => {
   if (typeof window === 'undefined') {
     return undefined;
@@ -56,13 +64,40 @@ const getBrowserStorage = (): StorageLike | undefined => {
 };
 
 let databasePromise: Promise<IDBDatabase> | undefined;
+const snapshotOperationTails = new Map<string, Promise<void>>();
+
+const runSnapshotOperation = <T>(
+  key: string,
+  operation: () => Promise<T>
+): Promise<T> => {
+  const previous = snapshotOperationTails.get(key) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(operation);
+  const tail = current.then(
+    () => undefined,
+    () => undefined
+  );
+  snapshotOperationTails.set(key, tail);
+  void tail.finally(() => {
+    if (snapshotOperationTails.get(key) === tail) {
+      snapshotOperationTails.delete(key);
+    }
+  });
+  return current;
+};
 
 const getDatabase = (): Promise<IDBDatabase> => {
   if (!databasePromise) {
-    databasePromise = new Promise((resolve, reject) => {
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DISCOVER_DATABASE_NAME, 1);
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const database = request.result;
+        database.onversionchange = () => {
+          database.close();
+          databasePromise = undefined;
+        };
+        resolve(database);
+      };
       request.onupgradeneeded = () => {
         if (
           !request.result.objectStoreNames.contains(DISCOVER_DATABASE_STORE)
@@ -70,6 +105,12 @@ const getDatabase = (): Promise<IDBDatabase> => {
           request.result.createObjectStore(DISCOVER_DATABASE_STORE);
         }
       };
+    });
+    databasePromise = opening.catch((error) => {
+      // A transient denial or failed open must not poison every later cache
+      // operation until the page is reloaded.
+      databasePromise = undefined;
+      throw error;
     });
   }
 
@@ -83,13 +124,38 @@ const runDatabaseRequest = async <T>(
   const database = await getDatabase();
 
   return new Promise((resolve, reject) => {
-    const request = operation(
-      database
-        .transaction(DISCOVER_DATABASE_STORE, mode)
-        .objectStore(DISCOVER_DATABASE_STORE)
-    );
+    const transaction = database.transaction(DISCOVER_DATABASE_STORE, mode);
+    let request: IDBRequest<T>;
+    try {
+      request = operation(transaction.objectStore(DISCOVER_DATABASE_STORE));
+    } catch (error) {
+      transaction.abort();
+      reject(error);
+      return;
+    }
+
+    let result: T;
+    let requestCompleted = false;
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      result = request.result;
+      requestCompleted = true;
+    };
+    transaction.oncomplete = () => {
+      if (requestCompleted) {
+        resolve(result);
+      } else {
+        reject(new Error('IndexedDB transaction completed without a result.'));
+      }
+    };
+    transaction.onerror = () =>
+      reject(
+        transaction.error ?? request.error ?? new Error('IndexedDB error')
+      );
+    transaction.onabort = () =>
+      reject(
+        transaction.error ?? request.error ?? new Error('IndexedDB aborted')
+      );
   });
 };
 
@@ -176,8 +242,13 @@ const isSnapshotMetadata = (
     metadata.schemaVersion === DISCOVER_SNAPSHOT_SCHEMA_VERSION &&
     typeof metadata.contextKey === 'string' &&
     typeof metadata.createdAt === 'number' &&
+    Number.isFinite(metadata.createdAt) &&
     typeof metadata.freshUntil === 'number' &&
-    typeof metadata.expiresAt === 'number'
+    Number.isFinite(metadata.freshUntil) &&
+    typeof metadata.expiresAt === 'number' &&
+    Number.isFinite(metadata.expiresAt) &&
+    metadata.createdAt <= metadata.freshUntil &&
+    metadata.freshUntil <= metadata.expiresAt
   );
 };
 
@@ -190,89 +261,99 @@ export const readDiscoverSnapshot = async <T>(
   key: string,
   contextKey: string,
   now = Date.now()
-): Promise<DiscoverSnapshot<T> | undefined> => {
-  const metadataKey = getMetadataKey(key);
+): Promise<DiscoverSnapshot<T> | undefined> =>
+  runSnapshotOperation(key, async () => {
+    const metadataKey = getMetadataKey(key);
 
-  try {
-    const rawMetadata = storage.getItem(metadataKey);
-    const metadata: unknown = rawMetadata ? JSON.parse(rawMetadata) : undefined;
-
-    if (!rawMetadata) {
-      const legacyKey = key.replace(
-        DISCOVER_SNAPSHOT_PREFIX,
-        LEGACY_DISCOVER_SNAPSHOT_PREFIX
-      );
-      const rawLegacySnapshot = storage.getItem(legacyKey);
-      const legacySnapshot = rawLegacySnapshot
-        ? (JSON.parse(rawLegacySnapshot) as {
-            metadata?: Omit<DiscoverSnapshotMetadata, 'schemaVersion'> & {
-              schemaVersion?: number;
-            };
-            data?: T;
-          })
+    try {
+      const rawMetadata = storage.getItem(metadataKey);
+      const metadata: unknown = rawMetadata
+        ? JSON.parse(rawMetadata)
         : undefined;
-      const legacyMetadata = legacySnapshot?.metadata;
+
+      if (!rawMetadata) {
+        const legacyKey = key.replace(
+          DISCOVER_SNAPSHOT_PREFIX,
+          LEGACY_DISCOVER_SNAPSHOT_PREFIX
+        );
+        const rawLegacySnapshot = storage.getItem(legacyKey);
+        const legacySnapshot = rawLegacySnapshot
+          ? (JSON.parse(rawLegacySnapshot) as {
+              metadata?: Omit<DiscoverSnapshotMetadata, 'schemaVersion'> & {
+                schemaVersion?: number;
+              };
+              data?: T;
+            })
+          : undefined;
+        const legacyMetadata = legacySnapshot?.metadata;
+
+        if (
+          legacyMetadata?.schemaVersion === 1 &&
+          legacyMetadata.contextKey === contextKey &&
+          typeof legacyMetadata.createdAt === 'number' &&
+          Number.isFinite(legacyMetadata.createdAt) &&
+          typeof legacyMetadata.freshUntil === 'number' &&
+          Number.isFinite(legacyMetadata.freshUntil) &&
+          typeof legacyMetadata.expiresAt === 'number' &&
+          Number.isFinite(legacyMetadata.expiresAt) &&
+          legacyMetadata.createdAt <= legacyMetadata.freshUntil &&
+          legacyMetadata.freshUntil <= legacyMetadata.expiresAt &&
+          legacyMetadata.expiresAt > now &&
+          legacySnapshot?.data !== undefined
+        ) {
+          const migratedSnapshot = createDiscoverSnapshot(
+            contextKey,
+            legacySnapshot.data,
+            {
+              now: legacyMetadata.createdAt,
+              freshAgeMs: Math.max(
+                0,
+                legacyMetadata.freshUntil - legacyMetadata.createdAt
+              ),
+              seed: legacyMetadata.seed,
+              layoutRevision: legacyMetadata.layoutRevision,
+              userStateRevision: legacyMetadata.userStateRevision,
+            }
+          );
+          migratedSnapshot.metadata.expiresAt = legacyMetadata.expiresAt;
+
+          await writeDiscoverSnapshotUnlocked(
+            storage,
+            payloadStore,
+            key,
+            migratedSnapshot
+          );
+          removeStoredSnapshotValue(storage, legacyKey);
+          return migratedSnapshot;
+        }
+      }
 
       if (
-        legacyMetadata?.schemaVersion === 1 &&
-        legacyMetadata.contextKey === contextKey &&
-        typeof legacyMetadata.expiresAt === 'number' &&
-        legacyMetadata.expiresAt > now &&
-        legacySnapshot?.data !== undefined
+        !isSnapshotMetadata(metadata) ||
+        metadata.contextKey !== contextKey ||
+        metadata.expiresAt <= now
       ) {
-        const migratedSnapshot = createDiscoverSnapshot(
-          contextKey,
-          legacySnapshot.data,
-          {
-            now: legacyMetadata.createdAt,
-            freshAgeMs: Math.max(
-              0,
-              legacyMetadata.freshUntil - legacyMetadata.createdAt
-            ),
-            seed: legacyMetadata.seed,
-            layoutRevision: legacyMetadata.layoutRevision,
-            userStateRevision: legacyMetadata.userStateRevision,
-          }
-        );
-        migratedSnapshot.metadata.expiresAt = legacyMetadata.expiresAt;
-
-        await writeDiscoverSnapshot(
-          storage,
-          payloadStore,
-          key,
-          migratedSnapshot
-        );
-        storage.removeItem(legacyKey);
-        return migratedSnapshot;
+        removeStoredSnapshotValue(storage, metadataKey);
+        await payloadStore.delete(key);
+        return undefined;
       }
-    }
 
-    if (
-      !isSnapshotMetadata(metadata) ||
-      metadata.contextKey !== contextKey ||
-      metadata.expiresAt <= now
-    ) {
-      storage.removeItem(metadataKey);
-      await payloadStore.delete(key);
+      const data = await payloadStore.get<T>(key);
+
+      if (data === undefined) {
+        removeStoredSnapshotValue(storage, metadataKey);
+        return undefined;
+      }
+
+      return { metadata, data };
+    } catch {
+      removeStoredSnapshotValue(storage, metadataKey);
+      await payloadStore.delete(key).catch(() => undefined);
       return undefined;
     }
+  });
 
-    const data = await payloadStore.get<T>(key);
-
-    if (data === undefined) {
-      storage.removeItem(metadataKey);
-      return undefined;
-    }
-
-    return { metadata, data };
-  } catch {
-    storage.removeItem(metadataKey);
-    await payloadStore.delete(key).catch(() => undefined);
-    return undefined;
-  }
-};
-
-export const writeDiscoverSnapshot = async <T>(
+const writeDiscoverSnapshotUnlocked = async <T>(
   storage: StorageLike,
   payloadStore: DiscoverPayloadStore,
   key: string,
@@ -282,10 +363,20 @@ export const writeDiscoverSnapshot = async <T>(
     await payloadStore.set(key, snapshot.data);
     storage.setItem(getMetadataKey(key), JSON.stringify(snapshot.metadata));
   } catch {
-    storage.removeItem(getMetadataKey(key));
+    removeStoredSnapshotValue(storage, getMetadataKey(key));
     await payloadStore.delete(key).catch(() => undefined);
   }
 };
+
+export const writeDiscoverSnapshot = <T>(
+  storage: StorageLike,
+  payloadStore: DiscoverPayloadStore,
+  key: string,
+  snapshot: DiscoverSnapshot<T>
+): Promise<void> =>
+  runSnapshotOperation(key, () =>
+    writeDiscoverSnapshotUnlocked(storage, payloadStore, key, snapshot)
+  );
 
 export const isDiscoverSnapshotFresh = (
   snapshot: DiscoverSnapshot<unknown>,

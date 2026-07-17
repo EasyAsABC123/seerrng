@@ -6,7 +6,10 @@ import {
   findBookMediaForSearchDocs,
   findBookMediaForWork,
 } from '@server/lib/bookMediaMatcher';
-import { normalizeOpenLibraryWorkId } from '@server/lib/externalIds';
+import {
+  isValidOpenLibraryResourceId,
+  normalizeOpenLibraryWorkId,
+} from '@server/lib/externalIds';
 import logger from '@server/logger';
 import {
   mapOpenLibrarySearchDoc,
@@ -16,10 +19,25 @@ import { filterEntityResponse } from '@server/utils/entityResponse';
 import { parsePositiveInt } from '@server/utils/pagination';
 import { parseBoundedString } from '@server/utils/validation';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 
 const bookRoutes = Router();
 const MAX_BOOK_SEARCH_QUERY_LENGTH = 256;
 const MAX_OPENLIBRARY_WORK_ID_LENGTH = 128;
+export const BOOK_RATE_LIMIT = {
+  windowMs: 60 * 1000,
+  limit: 30,
+} as const;
+const bookRateLimit = rateLimit({
+  ...BOOK_RATE_LIMIT,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+  keyGenerator: (req) => `user:${req.user?.id ?? 'anonymous'}`,
+});
+
+bookRoutes.use(bookRateLimit);
 
 const parseBookSearchQuery = (value: unknown) =>
   parseBoundedString(value, {
@@ -27,11 +45,20 @@ const parseBookSearchQuery = (value: unknown) =>
     maxLength: MAX_BOOK_SEARCH_QUERY_LENGTH,
   });
 
-const parseOpenLibraryWorkId = (value: unknown) =>
-  parseBoundedString(value, {
+const parseOpenLibraryWorkId = (value: unknown) => {
+  const parsed = parseBoundedString(value, {
     fieldName: 'Book ID',
     maxLength: MAX_OPENLIBRARY_WORK_ID_LENGTH,
   });
+  if ('error' in parsed) {
+    return parsed;
+  }
+
+  const normalized = normalizeOpenLibraryWorkId(parsed.value);
+  return isValidOpenLibraryResourceId(normalized)
+    ? { value: normalized }
+    : { error: 'Book ID is invalid.' };
+};
 
 bookRoutes.get('/search', async (req, res, next) => {
   const parsedQuery = parseBookSearchQuery(req.query.query);
@@ -52,7 +79,7 @@ bookRoutes.get('/search', async (req, res, next) => {
     });
     const mediaByOpenLibraryId = await findBookMediaForSearchDocs(
       response.docs,
-      req.user?.id
+      req.user
     );
 
     return res.status(200).json({
@@ -82,7 +109,7 @@ bookRoutes.get('/:id', async (req, res, next) => {
     return res.status(404).json({ status: 404, message: 'Book not found' });
   }
 
-  const bookId = normalizeOpenLibraryWorkId(parsedBookId.value);
+  const bookId = parsedBookId.value;
 
   try {
     const openLibrary = new OpenLibraryAPI();
@@ -104,7 +131,7 @@ bookRoutes.get('/:id', async (req, res, next) => {
     const media = await findBookMediaForWork(
       bookId,
       editions.entries,
-      req.user?.id
+      req.user
     );
     const authorId = work.authors?.[0]?.author.key.replace('/authors/', '');
     const author = authorId
@@ -121,7 +148,8 @@ bookRoutes.get('/:id', async (req, res, next) => {
             editions.entries,
             onUserWatchlist,
             author?.name
-          )
+          ),
+          req.user
         )
       );
   } catch (e) {

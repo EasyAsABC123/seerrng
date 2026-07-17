@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+umask 077
 
 usage() {
   cat >&2 <<'USAGE'
@@ -28,6 +29,57 @@ json_escape() {
     }
   ' <<<"$1"
 }
+xml_escape() {
+  awk '
+    BEGIN { ORS = "" }
+    {
+      gsub(/&/, "\\&amp;")
+      gsub(/</, "\\&lt;")
+      gsub(/>/, "\\&gt;")
+      gsub(/"/, "\\&quot;")
+      gsub(/\047/, "\\&apos;")
+      printf "%s%s", sep, $0
+      sep = "&#10;"
+    }
+  ' <<<"$1"
+}
+reject_control_characters() {
+  local name="$1" value="$2"
+  [[ "$value" != *[$'\x01'-$'\x1f'$'\x7f']* ]] || die "$name contains control characters"
+}
+prepare_private_directory() {
+  local requested="$1" path parent
+  reject_control_characters "artifact directory" "$requested"
+  path="$(realpath -ms -- "$requested")"
+  parent="$path"
+  while [[ "$parent" != "/" ]]; do
+    [[ ! -L "$parent" ]] || die "artifact directory contains a symlink: $parent"
+    [[ ! -e "$parent" || -d "$parent" ]] || die "artifact directory component is not a directory: $parent"
+    parent="$(dirname -- "$parent")"
+  done
+  mkdir -p -- "$path/logs"
+  chmod 700 -- "$path" "$path/logs"
+  printf '%s' "$path"
+}
+atomic_write() {
+  local destination="$1" directory base temporary
+  directory="$(dirname -- "$destination")"
+  base="$(basename -- "$destination")"
+  [[ ! -L "$destination" ]] || die "refusing symlink evidence file: $destination"
+  [[ ! -e "$destination" || -f "$destination" ]] || die "evidence path is not a regular file: $destination"
+  if [[ -e "$destination" ]]; then
+    [[ "$(stat -c %h -- "$destination" 2>/dev/null || stat -f %l -- "$destination")" == "1" ]] ||
+      die "refusing multiply linked evidence file: $destination"
+  fi
+  temporary="$(mktemp "$directory/.${base}.tmp.XXXXXX")"
+  chmod 600 -- "$temporary"
+  cat >"$temporary"
+  mv -f -- "$temporary" "$destination"
+}
+require_manifest_value() {
+  local name="$1"
+  [[ -n "${!name:-}" ]] || die "manifest variable $name is required for channel $channel"
+}
 strip_v() { local v="$1"; printf '%s' "${v#v}"; }
 normalized_version() { strip_v "$1" | sed 's/-/./g'; }
 assert_version_reported() {
@@ -54,18 +106,58 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+reject_control_characters "project" "$project"
+reject_control_characters "channel" "$channel"
+reject_control_characters "version" "$version"
+reject_control_characters "architecture" "$arch"
+reject_control_characters "registry tag" "$registry_tag"
+case "$channel" in
+  github-archive|github-binary|deb|rpm|container-ghcr|container-dockerhub|aur|aur-bin|copr|ppa|snap|chocolatey|winget|homebrew|nix|flatpak|helm|unraid|proxmox-lxc|synology-spk) ;;
+  *) die "unsupported channel: $channel" ;;
+esac
+case "$arch" in
+  amd64|x86_64|arm64|aarch64|armv7|arm/v7) ;;
+  *) die "unsupported architecture: $arch" ;;
+esac
+[[ ${#version} -le 128 && "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._/+~-]*$ ]] || die "invalid version: $version"
+if [[ "$channel" == container-* ]]; then
+  [[ ${#registry_tag} -le 128 && "$registry_tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] || die "invalid container registry tag: $registry_tag"
+fi
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 # shellcheck disable=SC1091
 source "$script_dir/project.env"
+# PROJECT is required from project.env.
+# shellcheck disable=SC2153
 [[ "$PROJECT" == "$project" ]] || die "manifest PROJECT=$PROJECT does not match requested project=$project"
+version_args=()
+if [[ -n "${VERSION_ARGS:-}" ]]; then
+  read -r -a version_args <<<"$VERSION_ARGS"
+fi
+case "$channel" in
+  chocolatey) require_manifest_value CHOCO_PACKAGE ;;
+  flatpak) require_manifest_value FLATPAK_MANIFEST ;;
+  helm) require_manifest_value HELM_CHART ;;
+  homebrew) require_manifest_value HOMEBREW_FORMULA ;;
+  nix) require_manifest_value NIX_FLAKE ;;
+  proxmox-lxc) require_manifest_value PROXMOX_SCRIPT ;;
+  synology-spk) require_manifest_value SYNOLOGY_SPK_DIR ;;
+  unraid) require_manifest_value UNRAID_TEMPLATE ;;
+  winget) require_manifest_value WINGET_ID ;;
+esac
 
-evidence_root="${PACKAGE_SMOKE_ARTIFACT_DIR:-$repo_root/artifacts/package-smoke/$project/$channel/$arch}"
-mkdir -p "$evidence_root/logs"
+arch_path="${arch//\//-}"
+evidence_root="$(prepare_private_directory "${PACKAGE_SMOKE_ARTIFACT_DIR:-$repo_root/artifacts/package-smoke/$project/$channel/$arch_path}")"
 log_file="$evidence_root/logs/package-smoke.log"
 junit_file="$evidence_root/junit.xml"
 json_file="$evidence_root/evidence.json"
-tmp_dir="$(mktemp -d)"
+[[ ! -L "$log_file" ]] || die "refusing symlink log file: $log_file"
+[[ ! -e "$log_file" || -f "$log_file" ]] || die "log path is not a regular file: $log_file"
+if [[ -e "$log_file" ]]; then
+  [[ "$(stat -c %h -- "$log_file" 2>/dev/null || stat -f %l -- "$log_file")" == "1" ]] || die "refusing multiply linked log file: $log_file"
+fi
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/package-smoke.XXXXXX")"
 cleanup_cmds=()
 started_container=""
 started_process=""
@@ -99,14 +191,14 @@ cleanup() {
   rm -rf "$tmp_dir"
   local end_time; end_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   local escaped_failure; escaped_failure="$(json_escape "$failure")"
-  cat >"$json_file" <<JSON
+  atomic_write "$json_file" <<JSON
 {
-  "project": "$project",
-  "channel": "$channel",
-  "requested_version": "$version",
-  "normalized_version": "$(normalized_version "$version")",
-  "arch": "$arch",
-  "registry_tag": "$registry_tag",
+  "project": "$(json_escape "$project")",
+  "channel": "$(json_escape "$channel")",
+  "requested_version": "$(json_escape "$version")",
+  "normalized_version": "$(json_escape "$(normalized_version "$version")")",
+  "arch": "$(json_escape "$arch")",
+  "registry_tag": "$(json_escape "$registry_tag")",
   "status": "$status",
   "failure": "$escaped_failure",
   "resolved_version": "$(json_escape "$resolved_version")",
@@ -121,12 +213,12 @@ JSON
   local failures=0 message=""
   if [[ "$status" != "passed" ]]; then
     failures=1
-    message="<failure message=\"$(json_escape "$failure")\" />"
+    message="<failure message=\"$(xml_escape "$failure")\" />"
   fi
-  cat >"$junit_file" <<XML
+  atomic_write "$junit_file" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="package-smoke.$project" tests="1" failures="$failures">
-  <testcase classname="package-smoke.$project" name="$channel.$arch">$message</testcase>
+<testsuite name="package-smoke.$(xml_escape "$project")" tests="1" failures="$failures">
+  <testcase classname="package-smoke.$(xml_escape "$project")" name="$(xml_escape "$channel.$arch")">$message</testcase>
 </testsuite>
 XML
   exit "$rc"
@@ -142,7 +234,7 @@ run() {
 wait_for_url() {
   local url="$1" attempts="${2:-30}" sleep_s="${3:-20}"
   for ((i=1; i<=attempts; i++)); do
-    if curl -fsSL "$url" -o "$tmp_dir/download" -D "$tmp_dir/headers"; then
+    if curl -fsSL --connect-timeout 10 --max-time 60 "$url" -o "$tmp_dir/download" -D "$tmp_dir/headers"; then
       echo "Resolved $url"
       return 0
     fi
@@ -161,7 +253,7 @@ find_release_asset() {
   local pattern="$1"
   local api="https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$version"
   have jq || die "jq is required to resolve release asset patterns"
-  curl -fsSL "$api" | jq -r --arg pattern "$pattern" '.assets[].name | select(test($pattern))' | head -1
+  curl -fsSL --connect-timeout 10 --max-time 60 "$api" | jq -r --arg pattern "$pattern" '.assets[].name | select(test($pattern))' | head -1
 }
 
 smoke_binary() {
@@ -171,13 +263,13 @@ smoke_binary() {
   if [[ -x "$bin" ]]; then
     binary_path="$bin"
   fi
-  if [[ -z "${VERSION_ARGS:-}" ]]; then
+  if [[ ${#version_args[@]} -eq 0 ]]; then
     resolved_version="executable present: $binary_path"
     return 0
   fi
   set +e
   local out
-  out="$("$binary_path" $VERSION_ARGS 2>&1)"
+  out="$("$binary_path" "${version_args[@]}" 2>&1)"
   local rc=$?
   set -e
   echo "$out"
@@ -196,10 +288,11 @@ smoke_http_process() {
     endpoint_status="skipped: PACKAGE_SMOKE_START_SERVICE not set"
     return 0
   fi
-  "$bin" --url "http://127.0.0.1:$port" >/tmp/package-smoke-process.log 2>&1 &
+  [[ "$port" =~ ^[0-9]+$ && "$port" -ge 1 && "$port" -le 65535 ]] || die "invalid service port: $port"
+  "$bin" --url "http://127.0.0.1:$port" >"$tmp_dir/process.log" 2>&1 &
   started_process="$!"
   sleep 5
-  endpoint_status="$(curl -fsS -o "$tmp_dir/endpoint" -w "%{http_code}" "http://127.0.0.1:$port$HEALTH_PATH" || true)"
+  endpoint_status="$(curl -fsS --connect-timeout 2 --max-time 10 -o "$tmp_dir/endpoint" -w "%{http_code}" "http://127.0.0.1:$port$HEALTH_PATH" || true)"
   [[ "$endpoint_status" =~ ^2|3 ]] || die "HTTP smoke failed with status $endpoint_status"
 }
 
@@ -221,8 +314,8 @@ install_github_archive() {
   esac
   local bin
   bin="$(find "$tmp_dir/archive" -type f \( -name "$BINARY" -o -name "$BINARY.exe" -o -name "$BINARY.cmd" \) | head -1)"
-  [[ "$bin" == *.cmd ]] || chmod +x "$bin" 2>/dev/null || true
   [[ -n "$bin" ]] || die "archive did not contain executable $BINARY"
+  [[ "$bin" == *.cmd ]] || chmod +x "$bin" 2>/dev/null || true
   smoke_binary "$bin"
   uninstall_status="removed extracted archive"
 }
@@ -275,7 +368,7 @@ install_container() {
   run docker pull --platform "$platform" "$image:$registry_tag"
   set +e
   local version_out
-  version_out="$(docker run --rm --platform "$platform" "$image:$registry_tag" $VERSION_ARGS 2>&1)"
+  version_out="$(docker run --rm --platform "$platform" "$image:$registry_tag" "${version_args[@]}" 2>&1)"
   local version_rc=$?
   set -e
   echo "$version_out"
@@ -424,7 +517,7 @@ case "$channel" in
   unraid) install_unraid ;;
   proxmox-lxc) install_proxmox_lxc ;;
   synology-spk) install_synology_spk ;;
-  *) die "unsupported channel: $channel" ;;
+  *) die "internal error: unhandled channel: $channel" ;;
 esac
 
 status="passed"

@@ -4,6 +4,9 @@ import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import Modal from '@app/components/Common/Modal';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import type { SafeGithubRelease } from '@app/utils/githubRelease';
+import { sanitizeGithubReleaseResponse } from '@app/utils/githubRelease';
+import { getSafeHttpsHref, getSafeMarkdownHref } from '@app/utils/safeUrl';
 import { Transition } from '@headlessui/react';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
 import dynamic from 'next/dynamic';
@@ -31,40 +34,8 @@ const messages = defineMessages('components.Settings.SettingsAbout.Releases', {
 const REPO_RELEASE_API =
   'https://api.github.com/repos/snapetech/seerrng/releases?per_page=20';
 
-const safeMarkdownUrl = (value: string): string => {
-  if (value.startsWith('#') || value.startsWith('/')) {
-    return value;
-  }
-
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' ? value : '';
-  } catch {
-    return '';
-  }
-};
-
-interface GitHubRelease {
-  url: string;
-  assets_url: string;
-  upload_url: string;
-  html_url: string;
-  id: number;
-  node_id: string;
-  tag_name: string;
-  target_commitish: string;
-  name: string;
-  draft: boolean;
-  prerelease: boolean;
-  created_at: string;
-  published_at: string;
-  tarball_url: string;
-  zipball_url: string;
-  body: string;
-}
-
 interface ReleaseProps {
-  release: GitHubRelease;
+  release: SafeGithubRelease;
   isLatest: boolean;
   currentVersion: string;
 }
@@ -93,11 +64,14 @@ const Release = ({ currentVersion, release, isLatest }: ReleaseProps) => {
           cancelText={intl.formatMessage(globalMessages.close)}
           okText={intl.formatMessage(messages.viewongithub)}
           onOk={() => {
-            window.open(release.html_url, '_blank', 'noopener,noreferrer');
+            const releaseUrl = getSafeHttpsHref(release.html_url);
+            if (releaseUrl) {
+              window.open(releaseUrl, '_blank', 'noopener,noreferrer');
+            }
           }}
         >
           <div className="prose">
-            <ReactMarkdown skipHtml urlTransform={safeMarkdownUrl}>
+            <ReactMarkdown skipHtml urlTransform={getSafeMarkdownHref}>
               {release.body}
             </ReactMarkdown>
           </div>
@@ -141,13 +115,14 @@ interface ReleasesProps {
 
 const Releases = ({ currentVersion }: ReleasesProps) => {
   const intl = useIntl();
-  const { data, error } = useSWR<GitHubRelease[]>(REPO_RELEASE_API);
+  const { data: rawData, error } = useSWR<unknown>(REPO_RELEASE_API);
+  const data = sanitizeGithubReleaseResponse(rawData);
 
-  if (!data && !error) {
+  if (rawData === undefined && !error) {
     return <LoadingSpinner />;
   }
 
-  if (!data) {
+  if (data.length === 0) {
     return (
       <div className="text-gray-300">
         {intl.formatMessage(messages.releasedataMissing)}

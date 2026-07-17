@@ -7,6 +7,7 @@ import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { ApiError } from '@server/types/error';
 import { getAppVersion } from '@server/utils/appVersion';
+import { normalizeJellyfinGuid } from '@server/utils/jellyfin';
 
 export interface JellyfinUserResponse {
   Name: string;
@@ -46,13 +47,6 @@ export interface JellyfinLoginResponse {
 
 export interface JellyfinUserListResponse {
   users: JellyfinUserResponse[];
-}
-
-interface JellyfinMediaFolder {
-  Name: string;
-  Id: string;
-  Type: string;
-  CollectionType: string;
 }
 
 export interface JellyfinLibrary {
@@ -123,6 +117,248 @@ export interface JellyfinItemsReponse {
   StartIndex: number;
 }
 
+export const MAX_JELLYFIN_USERS = 1_000;
+export const MAX_JELLYFIN_LIBRARIES = 10_000;
+export const MAX_JELLYFIN_LIBRARY_ITEMS = 100_000;
+export const MAX_JELLYFIN_EPISODES = 10_000;
+export const MAX_JELLYFIN_SEASONS = 1_000;
+export const MAX_JELLYFIN_MEDIA_SOURCES = 100;
+export const MAX_JELLYFIN_MEDIA_STREAMS = 1_000;
+const MAX_JELLYFIN_TEXT_LENGTH = 2_048;
+const MAX_JELLYFIN_TOKEN_LENGTH = 4_096;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const boundedJellyfinText = (
+  value: unknown,
+  maximum = MAX_JELLYFIN_TEXT_LENGTH
+) => (typeof value === 'string' ? value.slice(0, maximum) : '');
+
+const optionalJellyfinInteger = (value: unknown): number | undefined =>
+  typeof value === 'number' &&
+  Number.isSafeInteger(value) &&
+  value >= 0 &&
+  value <= 10_000_000
+    ? value
+    : undefined;
+
+const jellyfinItemTypes = ['Movie', 'Episode', 'Season', 'Series'] as const;
+const jellyfinLocationTypes = [
+  'FileSystem',
+  'Offline',
+  'Remote',
+  'Virtual',
+] as const;
+const jellyfinStreamTypes = ['Video', 'Audio', 'Subtitle'] as const;
+
+const sanitizeJellyfinMediaStream = (
+  value: unknown
+): JellyfinMediaStream | undefined => {
+  if (!isRecord(value) || !jellyfinStreamTypes.includes(value.Type as never)) {
+    return undefined;
+  }
+
+  return {
+    Codec: boundedJellyfinText(value.Codec, 128),
+    Type: value.Type as JellyfinMediaStream['Type'],
+    Height: optionalJellyfinInteger(value.Height),
+    Width: optionalJellyfinInteger(value.Width),
+    AverageFrameRate:
+      typeof value.AverageFrameRate === 'number' &&
+      Number.isFinite(value.AverageFrameRate) &&
+      value.AverageFrameRate >= 0 &&
+      value.AverageFrameRate <= 10_000
+        ? value.AverageFrameRate
+        : undefined,
+    RealFrameRate:
+      typeof value.RealFrameRate === 'number' &&
+      Number.isFinite(value.RealFrameRate) &&
+      value.RealFrameRate >= 0 &&
+      value.RealFrameRate <= 10_000
+        ? value.RealFrameRate
+        : undefined,
+    Language: boundedJellyfinText(value.Language, 128) || undefined,
+    DisplayTitle: boundedJellyfinText(value.DisplayTitle, 512),
+  };
+};
+
+const sanitizeJellyfinMediaSource = (
+  value: unknown
+): JellyfinMediaSource | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    Protocol: boundedJellyfinText(value.Protocol, 128),
+    Id: boundedJellyfinText(value.Id, 128),
+    Path: boundedJellyfinText(value.Path),
+    Type: boundedJellyfinText(value.Type, 128),
+    VideoType: boundedJellyfinText(value.VideoType, 128),
+    MediaStreams: (Array.isArray(value.MediaStreams) ? value.MediaStreams : [])
+      .slice(0, MAX_JELLYFIN_MEDIA_STREAMS)
+      .flatMap((stream) => {
+        const normalized = sanitizeJellyfinMediaStream(stream);
+        return normalized ? [normalized] : [];
+      }),
+  };
+};
+
+export const sanitizeJellyfinLibraryItem = (
+  value: unknown,
+  includeExtended = false
+): JellyfinLibraryItem | JellyfinLibraryItemExtended | undefined => {
+  if (
+    !isRecord(value) ||
+    !jellyfinItemTypes.includes(value.Type as never) ||
+    (value.LocationType !== undefined &&
+      !jellyfinLocationTypes.includes(value.LocationType as never))
+  ) {
+    return undefined;
+  }
+
+  const id = boundedJellyfinText(value.Id, 128);
+  if (!id) {
+    return undefined;
+  }
+
+  const base: JellyfinLibraryItem = {
+    Id: id,
+    Name: boundedJellyfinText(value.Name, 512),
+    HasSubtitles: value.HasSubtitles === true,
+    Type: value.Type as JellyfinLibraryItem['Type'],
+    LocationType:
+      value.LocationType === undefined
+        ? 'FileSystem'
+        : (value.LocationType as JellyfinLibraryItem['LocationType']),
+    SeriesName: boundedJellyfinText(value.SeriesName, 512) || undefined,
+    SeriesId: boundedJellyfinText(value.SeriesId, 128) || undefined,
+    SeasonId: boundedJellyfinText(value.SeasonId, 128) || undefined,
+    SeasonName: boundedJellyfinText(value.SeasonName, 512) || undefined,
+    IndexNumber: optionalJellyfinInteger(value.IndexNumber),
+    IndexNumberEnd: optionalJellyfinInteger(value.IndexNumberEnd),
+    ParentIndexNumber: optionalJellyfinInteger(value.ParentIndexNumber),
+    MediaType: boundedJellyfinText(value.MediaType, 128),
+  };
+
+  if (!includeExtended) {
+    return base;
+  }
+
+  const providerIds = isRecord(value.ProviderIds) ? value.ProviderIds : {};
+  return {
+    ...base,
+    ProviderIds: {
+      Tmdb: boundedJellyfinText(providerIds.Tmdb, 128) || undefined,
+      TheMovieDb: boundedJellyfinText(providerIds.TheMovieDb, 128) || undefined,
+      Imdb: boundedJellyfinText(providerIds.Imdb, 128) || undefined,
+      Tvdb: boundedJellyfinText(providerIds.Tvdb, 128) || undefined,
+      AniDB: boundedJellyfinText(providerIds.AniDB, 128) || undefined,
+    },
+    MediaSources: (Array.isArray(value.MediaSources) ? value.MediaSources : [])
+      .slice(0, MAX_JELLYFIN_MEDIA_SOURCES)
+      .flatMap((source) => {
+        const normalized = sanitizeJellyfinMediaSource(source);
+        return normalized ? [normalized] : [];
+      }),
+    Width: optionalJellyfinInteger(value.Width),
+    Height: optionalJellyfinInteger(value.Height),
+    IsHD: typeof value.IsHD === 'boolean' ? value.IsHD : undefined,
+    DateCreated: boundedJellyfinText(value.DateCreated, 128) || undefined,
+  };
+};
+
+export const sanitizeJellyfinLibraryItems = (
+  value: unknown,
+  maximum: number,
+  options: { includeExtended?: boolean; excludeVirtual?: boolean } = {}
+): JellyfinLibraryItem[] | JellyfinLibraryItemExtended[] =>
+  (Array.isArray(value) ? value : []).slice(0, maximum).flatMap((item) => {
+    const normalized = sanitizeJellyfinLibraryItem(
+      item,
+      options.includeExtended
+    );
+    return normalized &&
+      !(options.excludeVirtual && normalized.LocationType === 'Virtual')
+      ? [normalized]
+      : [];
+  }) as JellyfinLibraryItem[] | JellyfinLibraryItemExtended[];
+
+export const sanitizeJellyfinUser = (
+  value: unknown
+): JellyfinUserResponse | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const id = boundedJellyfinText(value.Id, 128);
+  const name = boundedJellyfinText(value.Name, 512);
+  if (!id || !name) {
+    return undefined;
+  }
+  const configuration = isRecord(value.Configuration)
+    ? value.Configuration
+    : {};
+  const policy = isRecord(value.Policy) ? value.Policy : {};
+
+  return {
+    Id: id,
+    Name: name,
+    ServerId: boundedJellyfinText(value.ServerId, 128),
+    ServerName: boundedJellyfinText(value.ServerName, 512),
+    Configuration: {
+      GroupedFolders: (Array.isArray(configuration.GroupedFolders)
+        ? configuration.GroupedFolders
+        : []
+      )
+        .slice(0, 1_000)
+        .filter((folder): folder is string => typeof folder === 'string')
+        .map((folder) => folder.slice(0, 512)),
+    },
+    Policy: { IsAdministrator: policy.IsAdministrator === true },
+    PrimaryImageTag:
+      boundedJellyfinText(value.PrimaryImageTag, 512) || undefined,
+  };
+};
+
+export const sanitizeJellyfinUsers = (value: unknown): JellyfinUserResponse[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_JELLYFIN_USERS)
+    .flatMap((user) => {
+      const normalized = sanitizeJellyfinUser(user);
+      return normalized ? [normalized] : [];
+    });
+
+export const sanitizeJellyfinLoginResponse = (
+  value: unknown
+): JellyfinLoginResponse => {
+  if (!isRecord(value)) {
+    throw new Error('Jellyfin returned an invalid authentication response');
+  }
+  const user = sanitizeJellyfinUser(value.User);
+  const accessToken = value.AccessToken;
+  if (
+    !user ||
+    typeof accessToken !== 'string' ||
+    !accessToken ||
+    accessToken.length > MAX_JELLYFIN_TOKEN_LENGTH
+  ) {
+    throw new Error('Jellyfin returned an invalid authentication response');
+  }
+  return { User: user, AccessToken: accessToken };
+};
+
+export const sanitizeJellyfinSystemInfo = (
+  value: unknown
+): { Id: string; ServerName: string } | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const id = boundedJellyfinText(value.Id, 128);
+  const serverName = boundedJellyfinText(value.ServerName, 512);
+  return id && serverName ? { Id: id, ServerName: serverName } : undefined;
+};
+
 class JellyfinAPI extends ExternalAPI {
   private userId?: string;
   private mediaServerType: MediaServerType;
@@ -130,7 +366,8 @@ class JellyfinAPI extends ExternalAPI {
   constructor(
     jellyfinHost: string,
     authToken?: string | null,
-    deviceId?: string | null
+    deviceId?: string | null,
+    allowPrivateAddresses = true
   ) {
     const settings = getSettings();
     const safeDeviceId =
@@ -152,6 +389,7 @@ class JellyfinAPI extends ExternalAPI {
       jellyfinHost,
       {},
       {
+        allowPrivateAddresses,
         headers: {
           Authorization: authHeaderVal,
           'Content-Type': 'application/json',
@@ -172,13 +410,15 @@ class JellyfinAPI extends ExternalAPI {
       const headers =
         useHeaders && ClientIP ? { 'X-Forwarded-For': ClientIP } : {};
 
-      return this.post<JellyfinLoginResponse>(
-        '/Users/AuthenticateByName',
-        {
-          Username,
-          Pw: Password,
-        },
-        { headers }
+      return sanitizeJellyfinLoginResponse(
+        await this.post<unknown>(
+          '/Users/AuthenticateByName',
+          {
+            Username,
+            Pw: Password,
+          },
+          { headers }
+        )
       );
     };
 
@@ -221,14 +461,19 @@ class JellyfinAPI extends ExternalAPI {
   }
 
   public setUserId(userId: string): void {
-    this.userId = userId;
+    this.userId = normalizeJellyfinGuid(userId) ?? undefined;
     return;
   }
 
-  public async getSystemInfo(): Promise<any> {
+  public async getSystemInfo(): Promise<{ Id: string; ServerName: string }> {
     try {
-      const systemInfoResponse = await this.get<any>('/System/Info');
+      const systemInfoResponse = sanitizeJellyfinSystemInfo(
+        await this.get<unknown>('/System/Info')
+      );
 
+      if (!systemInfoResponse) {
+        throw new Error('Jellyfin returned invalid system information');
+      }
       return systemInfoResponse;
     } catch (e) {
       throw new ApiError(e.response?.status, ApiErrorCode.InvalidAuthToken);
@@ -241,7 +486,11 @@ class JellyfinAPI extends ExternalAPI {
         '/System/Info/Public'
       );
 
-      return serverResponse.ServerName;
+      const serverName = boundedJellyfinText(serverResponse?.ServerName, 512);
+      if (!serverName) {
+        throw new Error('Jellyfin returned an invalid server name');
+      }
+      return serverName;
     } catch (e) {
       logger.error(
         `Something went wrong while getting the server name from the Jellyfin server: ${e.message}`,
@@ -254,9 +503,9 @@ class JellyfinAPI extends ExternalAPI {
 
   public async getUsers(): Promise<JellyfinUserListResponse> {
     try {
-      const userReponse = await this.get<JellyfinUserResponse[]>(`/Users`);
+      const userReponse = await this.get<unknown>(`/Users`);
 
-      return { users: userReponse };
+      return { users: sanitizeJellyfinUsers(userReponse) };
     } catch (e) {
       logger.error(
         `Something went wrong while getting the account from the Jellyfin server: ${e.message}`,
@@ -269,9 +518,12 @@ class JellyfinAPI extends ExternalAPI {
 
   public async getUser(): Promise<JellyfinUserResponse> {
     try {
-      const userReponse = await this.get<JellyfinUserResponse>(
-        `/Users/${this.userId ?? 'Me'}`
+      const userReponse = sanitizeJellyfinUser(
+        await this.get<unknown>(`/Users/${this.userId ?? 'Me'}`)
       );
+      if (!userReponse) {
+        throw new Error('Jellyfin returned an invalid user');
+      }
       return userReponse;
     } catch (e) {
       logger.error(
@@ -293,7 +545,7 @@ class JellyfinAPI extends ExternalAPI {
       // this only and maybe/depending on factors affects LDAP users
       try {
         const mediaFolderResponse = await this.get<any>(
-          `/Users/${this.userId ?? 'Me'}/Views`
+          `/Users/${encodeURIComponent(this.userId ?? 'Me')}/Views`
         );
 
         return this.mapLibraries(mediaFolderResponse.Items);
@@ -311,7 +563,7 @@ class JellyfinAPI extends ExternalAPI {
     }
   }
 
-  private mapLibraries(mediaFolders: JellyfinMediaFolder[]): JellyfinLibrary[] {
+  private mapLibraries(mediaFolders: unknown): JellyfinLibrary[] {
     const excludedTypes = [
       'music',
       'books',
@@ -320,32 +572,54 @@ class JellyfinAPI extends ExternalAPI {
       'boxsets',
     ];
 
-    return mediaFolders
-      .filter((Item: JellyfinMediaFolder) => {
-        return (
-          Item.Type === 'CollectionFolder' &&
-          !excludedTypes.includes(Item.CollectionType)
-        );
-      })
-      .map((Item: JellyfinMediaFolder) => {
-        return <JellyfinLibrary>{
-          key: Item.Id,
-          title: Item.Name,
-          type: Item.CollectionType === 'movies' ? 'movie' : 'show',
-          agent: 'jellyfin',
-        };
+    return (Array.isArray(mediaFolders) ? mediaFolders : [])
+      .slice(0, MAX_JELLYFIN_LIBRARIES)
+      .flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const collectionType = boundedJellyfinText(item.CollectionType, 128);
+        const key = boundedJellyfinText(item.Id, 128);
+        const title = boundedJellyfinText(item.Name, 512);
+        if (
+          item.Type !== 'CollectionFolder' ||
+          excludedTypes.includes(collectionType) ||
+          !key ||
+          !title
+        ) {
+          return [];
+        }
+        return [
+          {
+            key,
+            title,
+            type:
+              collectionType === 'movies'
+                ? ('movie' as const)
+                : ('show' as const),
+            agent: 'jellyfin',
+          },
+        ];
       });
   }
 
   public async getLibraryContents(id: string): Promise<JellyfinLibraryItem[]> {
     try {
-      const libraryItemsResponse = await this.get<any>(
-        `/Items?SortBy=SortName&SortOrder=Ascending&IncludeItemTypes=Series,Movie,Others&Recursive=true&StartIndex=0&ParentId=${id}&collapseBoxSetItems=false`
-      );
+      const libraryItemsResponse = await this.get<any>('/Items', {
+        params: {
+          SortBy: 'SortName',
+          SortOrder: 'Ascending',
+          IncludeItemTypes: 'Series,Movie,Others',
+          Recursive: true,
+          StartIndex: 0,
+          ParentId: boundedJellyfinText(id, 128),
+          collapseBoxSetItems: false,
+        },
+      });
 
-      return libraryItemsResponse.Items.filter(
-        (item: JellyfinLibraryItem) => item.LocationType !== 'Virtual'
-      );
+      return sanitizeJellyfinLibraryItems(
+        libraryItemsResponse?.Items,
+        MAX_JELLYFIN_LIBRARY_ITEMS,
+        { excludeVirtual: true }
+      ) as JellyfinLibraryItem[];
     } catch (e) {
       logger.error(
         `Something went wrong while getting library content from the Jellyfin server: ${e.message}`,
@@ -362,15 +636,19 @@ class JellyfinAPI extends ExternalAPI {
         this.mediaServerType === MediaServerType.JELLYFIN
           ? `/Items/Latest`
           : `/Users/${this.userId}/Items/Latest`;
-      const itemResponse = await this.get<any>(
-        `${endpoint}?Limit=12&ParentId=${id}${
-          this.mediaServerType === MediaServerType.JELLYFIN
-            ? `&userId=${this.userId ?? 'Me'}`
-            : ''
-        }`
-      );
+      const itemResponse = await this.get<unknown>(endpoint, {
+        params: {
+          Limit: 12,
+          ParentId: boundedJellyfinText(id, 128),
+          ...(this.mediaServerType === MediaServerType.JELLYFIN
+            ? { userId: this.userId ?? 'Me' }
+            : {}),
+        },
+      });
 
-      return itemResponse;
+      return sanitizeJellyfinLibraryItems(itemResponse, 100, {
+        excludeVirtual: true,
+      }) as JellyfinLibraryItem[];
     } catch (e) {
       logger.error(
         `Something went wrong while getting library content from the Jellyfin server: ${e.message}`,
@@ -392,7 +670,10 @@ class JellyfinAPI extends ExternalAPI {
         },
       });
 
-      return itemResponse.Items?.[0];
+      return sanitizeJellyfinLibraryItem(
+        Array.isArray(itemResponse?.Items) ? itemResponse.Items[0] : undefined,
+        true
+      ) as JellyfinLibraryItemExtended | undefined;
     } catch (e) {
       if (availabilitySync.running) {
         if (e.response?.status === 500) {
@@ -410,9 +691,14 @@ class JellyfinAPI extends ExternalAPI {
 
   public async getSeasons(seriesID: string): Promise<JellyfinLibraryItem[]> {
     try {
-      const seasonResponse = await this.get<any>(`/Shows/${seriesID}/Seasons`);
+      const seasonResponse = await this.get<any>(
+        `/Shows/${encodeURIComponent(boundedJellyfinText(seriesID, 128))}/Seasons`
+      );
 
-      return seasonResponse.Items;
+      return sanitizeJellyfinLibraryItems(
+        seasonResponse?.Items,
+        MAX_JELLYFIN_SEASONS
+      ) as JellyfinLibraryItem[];
     } catch (e) {
       logger.error(
         `Something went wrong while getting the list of seasons from the Jellyfin server: ${e.message}`,
@@ -432,18 +718,23 @@ class JellyfinAPI extends ExternalAPI {
   ): Promise<EpisodeReturn<T>> {
     try {
       const episodeResponse = await this.get<any>(
-        `/Shows/${seriesID}/Episodes`,
+        `/Shows/${encodeURIComponent(boundedJellyfinText(seriesID, 128))}/Episodes`,
         {
           params: {
-            seasonId: seasonID,
+            seasonId: boundedJellyfinText(seasonID, 128),
             ...(options?.includeMediaInfo && { fields: 'MediaSources' }),
           },
         }
       );
 
-      return episodeResponse.Items.filter(
-        (item: JellyfinLibraryItem) => item.LocationType !== 'Virtual'
-      );
+      return sanitizeJellyfinLibraryItems(
+        episodeResponse?.Items,
+        MAX_JELLYFIN_EPISODES,
+        {
+          includeExtended: options?.includeMediaInfo === true,
+          excludeVirtual: true,
+        }
+      ) as EpisodeReturn<T>;
     } catch (e) {
       logger.error(
         `Something went wrong while getting the list of episodes from the Jellyfin server: ${e.message}`,
@@ -456,11 +747,32 @@ class JellyfinAPI extends ExternalAPI {
 
   public async createApiToken(appName: string): Promise<string> {
     try {
-      await this.post(`/Auth/Keys?App=${appName}`);
-      const apiKeys = await this.get<any>(`/Auth/Keys`);
-      return apiKeys.Items.reverse().find(
-        (item: any) => item.AppName === appName
-      ).AccessToken;
+      const normalizedAppName = boundedJellyfinText(appName, 128);
+      if (!normalizedAppName) {
+        throw new Error('Jellyfin API key application name is invalid');
+      }
+      await this.post('/Auth/Keys', undefined, {
+        params: { App: normalizedAppName },
+      });
+      const apiKeys = await this.get<unknown>(`/Auth/Keys`);
+      const items =
+        isRecord(apiKeys) && Array.isArray(apiKeys.Items)
+          ? apiKeys.Items.slice(0, 1_000)
+          : [];
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        const item = items[index];
+        if (!isRecord(item) || item.AppName !== normalizedAppName) {
+          continue;
+        }
+        if (
+          typeof item.AccessToken === 'string' &&
+          item.AccessToken &&
+          item.AccessToken.length <= MAX_JELLYFIN_TOKEN_LENGTH
+        ) {
+          return item.AccessToken;
+        }
+      }
+      throw new Error('Jellyfin did not return the created API key');
     } catch (e) {
       logger.error(
         `Something went wrong while creating an API key from the Jellyfin server: ${e.message}`,

@@ -144,10 +144,22 @@ const CoreApp = ({ Component, pageProps, router }: AppProps) => {
       return;
     }
 
-    loadLocaleData(currentLocale).then((localeMessages) => {
-      loadedLocale.current = currentLocale;
-      setMessages(localeMessages);
-    });
+    let active = true;
+    void loadLocaleData(currentLocale)
+      .then((localeMessages) => {
+        if (!active) {
+          return;
+        }
+        loadedLocale.current = currentLocale;
+        setMessages(localeMessages);
+      })
+      .catch(() => {
+        // Keep the last complete locale when a chunk fails to load.
+      });
+
+    return () => {
+      active = false;
+    };
   }, [currentLocale]);
 
   if (

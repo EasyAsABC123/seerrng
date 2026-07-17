@@ -11,14 +11,39 @@ import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import MediaRequest from '@server/entity/MediaRequest';
 import type Season from '@server/entity/Season';
-import { User } from '@server/entity/User';
-import type { RadarrSettings, SonarrSettings } from '@server/lib/settings';
+import {
+  ConfigurationAuthorityChangedError,
+  captureConfigurationAuthority,
+  runWithConfigurationAdmissions,
+  runWithConfigurationSnapshot,
+  type ConfigurationAuthoritySnapshot,
+} from '@server/lib/configurationAdmission';
+import { runMediaEntityMutation } from '@server/lib/mediaMutation';
+import {
+  MediaServerUserAuthorityChangedError,
+  captureMediaServerUserAuthority,
+  runWithMediaServerUserAuthority,
+  type MediaServerUserAuthoritySnapshot,
+} from '@server/lib/mediaServerUserAuthority';
+import {
+  ServarrServiceAuthorityChangedError,
+  runWithServarrServiceSnapshots,
+} from '@server/lib/serviceAdmission';
+import type {
+  JellyfinSettings,
+  PlexSettings,
+  RadarrSettings,
+  SonarrSettings,
+} from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { getHostname } from '@server/utils/getHostname';
+import { getHttpErrorDetails, hasHttpStatus } from '@server/utils/httpError';
+import { MoreThan } from 'typeorm';
 
 class AvailabilitySync {
   public running = false;
+  private activeRun = false;
   private plexClient: PlexAPI;
   private plexSeasonsCache: Record<string, PlexMetadata[]>;
   private plexEpisodeExistsCache: Record<string, boolean>;
@@ -30,65 +55,88 @@ class AvailabilitySync {
   private sonarrSeasonsCache: Record<string, SonarrSeason[]>;
   private radarrServers: RadarrSettings[];
   private sonarrServers: SonarrSettings[];
+  private configurationSnapshot: ConfigurationAuthoritySnapshot;
+  private plexSettingsSnapshot: PlexSettings;
+  private jellyfinSettingsSnapshot: JellyfinSettings;
+  private ownerAuthoritySnapshot: MediaServerUserAuthoritySnapshot;
 
   async run() {
-    const settings = getSettings();
-    const mediaServerType = getSettings().main.mediaServerType;
-    this.running = true;
-    this.plexSeasonsCache = {};
-    this.plexEpisodeExistsCache = {};
-    this.jellyfinSeasonsCache = {};
-    this.jellyfinEpisodeExistsCache = {};
-    this.sonarrSeasonsCache = {};
-    this.radarrServers = settings.radarr.filter((server) => server.syncEnabled);
-    this.sonarrServers = settings.sonarr.filter((server) => server.syncEnabled);
+    if (this.activeRun) {
+      logger.warn('Availability sync is already running; skipping overlap.', {
+        label: 'Availability Sync',
+      });
+      return;
+    }
 
+    this.activeRun = true;
     try {
+      let mediaServerType!: MediaServerType;
+      await runWithConfigurationAdmissions(['jellyfin', 'plex'], async () => {
+        const settings = getSettings();
+        mediaServerType = settings.main.mediaServerType;
+        const configurationSection =
+          mediaServerType === MediaServerType.PLEX ? 'plex' : 'jellyfin';
+        this.configurationSnapshot = captureConfigurationAuthority(
+          configurationSection,
+          settings
+        );
+        this.plexSettingsSnapshot = structuredClone(settings.plex);
+        this.jellyfinSettingsSnapshot = structuredClone(settings.jellyfin);
+        this.radarrServers = structuredClone(
+          settings.radarr.filter((server) => server.syncEnabled)
+        );
+        this.sonarrServers = structuredClone(
+          settings.sonarr.filter((server) => server.syncEnabled)
+        );
+      });
+      this.running = true;
+      this.plexSeasonsCache = {};
+      this.plexEpisodeExistsCache = {};
+      this.jellyfinSeasonsCache = {};
+      this.jellyfinEpisodeExistsCache = {};
+      this.sonarrSeasonsCache = {};
+
       logger.info(`Starting availability sync...`, {
         label: 'Availability Sync',
       });
       const pageSize = 50;
 
-      const userRepository = getRepository(User);
-
-      // If it is plex admin is selected using plexToken if jellyfin admin is selected using jellyfinUserID
-
-      let admin = null;
-
-      if (mediaServerType === MediaServerType.PLEX) {
-        admin = await userRepository.findOne({
-          select: { id: true, plexToken: true },
-          where: { id: 1 },
-        });
-      } else if (
-        mediaServerType === MediaServerType.JELLYFIN ||
-        mediaServerType === MediaServerType.EMBY
-      ) {
-        admin = await userRepository.findOne({
-          where: { id: 1 },
-          select: ['id', 'jellyfinUserId', 'jellyfinDeviceId'],
-          order: { id: 'ASC' },
-        });
-      }
-
       switch (mediaServerType) {
         case MediaServerType.PLEX:
-          if (admin && admin.plexToken) {
-            this.plexClient = new PlexAPI({ plexToken: admin.plexToken });
+          this.ownerAuthoritySnapshot = await captureMediaServerUserAuthority(
+            1,
+            'plex'
+          );
+          if (this.ownerAuthoritySnapshot.plexToken) {
+            this.plexClient = new PlexAPI({
+              plexToken: this.ownerAuthoritySnapshot.plexToken,
+              plexSettings: this.plexSettingsSnapshot,
+            });
           } else {
             logger.error('Plex admin is not configured.');
+            this.running = false;
+            return;
           }
           break;
         case MediaServerType.JELLYFIN:
         case MediaServerType.EMBY:
-          if (admin) {
+          this.ownerAuthoritySnapshot = await captureMediaServerUserAuthority(
+            1,
+            'jellyfin'
+          );
+          if (
+            this.ownerAuthoritySnapshot.jellyfinUserId &&
+            this.ownerAuthoritySnapshot.jellyfinDeviceId
+          ) {
             this.jellyfinClient = new JellyfinAPI(
-              getHostname(),
-              settings.jellyfin.apiKey,
-              admin.jellyfinDeviceId
+              getHostname(this.jellyfinSettingsSnapshot),
+              this.jellyfinSettingsSnapshot.apiKey,
+              this.ownerAuthoritySnapshot.jellyfinDeviceId
             );
 
-            this.jellyfinClient.setUserId(admin.jellyfinUserId ?? '');
+            this.jellyfinClient.setUserId(
+              this.ownerAuthoritySnapshot.jellyfinUserId
+            );
 
             try {
               await this.jellyfinClient.getSystemInfo();
@@ -119,7 +167,7 @@ class AvailabilitySync {
 
       for await (const media of this.loadAvailableMediaPaginated(pageSize)) {
         if (!this.running) {
-          throw new Error('Job aborted');
+          break;
         }
 
         // Check plex, radarr, and sonarr for that specific media and
@@ -412,6 +460,7 @@ class AvailabilitySync {
         label: 'Availability Sync',
       });
       this.running = false;
+      this.activeRun = false;
     }
   }
 
@@ -420,7 +469,7 @@ class AvailabilitySync {
   }
 
   private async *loadAvailableMediaPaginated(pageSize: number) {
-    let offset = 0;
+    let lastMediaId = 0;
     const mediaRepository = getRepository(Media);
     const whereOptions = [
       { status: MediaStatus.AVAILABLE },
@@ -433,16 +482,23 @@ class AvailabilitySync {
       { seasons: { status4k: MediaStatus.PARTIALLY_AVAILABLE } },
     ];
 
-    let mediaPage: Media[];
-
-    do {
-      yield* (mediaPage = await mediaRepository.find({
-        where: whereOptions,
-        skip: offset,
+    while (true) {
+      const mediaPage = await mediaRepository.find({
+        where: whereOptions.map((where) => ({
+          ...where,
+          id: MoreThan(lastMediaId),
+        })),
+        order: { id: 'ASC' },
         take: pageSize,
-      }));
-      offset += pageSize;
-    } while (mediaPage.length > 0);
+      });
+
+      if (!mediaPage.length) {
+        return;
+      }
+
+      lastMediaId = mediaPage[mediaPage.length - 1].id;
+      yield* mediaPage;
+    }
   }
 
   private async mediaUpdater(
@@ -453,78 +509,114 @@ class AvailabilitySync {
     const mediaRepository = getRepository(Media);
 
     try {
-      // If media type is tv, check if a season is processing
-      // to see if we need to keep the external metadata
-      let isMediaProcessing = false;
+      const changed = await runWithMediaServerUserAuthority(
+        this.ownerAuthoritySnapshot,
+        () =>
+          runMediaEntityMutation(media, () =>
+            this.withAuthoritySnapshot(media.mediaType, async () => {
+              const current = await mediaRepository.findOne({
+                where: { id: media.id },
+                relations: { seasons: true },
+              });
+              if (!current) return false;
 
-      if (media.mediaType === 'tv') {
-        const requestRepository = getRepository(MediaRequest);
+              const statusField = is4k ? 'status4k' : 'status';
+              const identityFields = is4k
+                ? ([
+                    'serviceId4k',
+                    'externalServiceId4k',
+                    'externalServiceSlug4k',
+                    'ratingKey4k',
+                    'jellyfinMediaId4k',
+                  ] as const)
+                : ([
+                    'serviceId',
+                    'externalServiceId',
+                    'externalServiceSlug',
+                    'ratingKey',
+                    'jellyfinMediaId',
+                  ] as const);
+              if (
+                current[statusField] !== media[statusField] ||
+                identityFields.some((field) => current[field] !== media[field])
+              ) {
+                return false;
+              }
 
-        const request = await requestRepository
-          .createQueryBuilder('request')
-          .leftJoinAndSelect('request.media', 'media')
-          .where('(media.id = :id)', {
-            id: media.id,
-          })
-          .andWhere(
-            '(request.is4k = :is4k AND request.status = :requestStatus)',
-            {
-              requestStatus: MediaRequestStatus.APPROVED,
-              is4k: is4k,
-            }
+              let isMediaProcessing = false;
+              if (current.mediaType === 'tv') {
+                const request = await getRepository(MediaRequest)
+                  .createQueryBuilder('request')
+                  .leftJoinAndSelect('request.media', 'media')
+                  .where('(media.id = :id)', { id: current.id })
+                  .andWhere(
+                    '(request.is4k = :is4k AND request.status = :requestStatus)',
+                    {
+                      requestStatus: MediaRequestStatus.APPROVED,
+                      is4k,
+                    }
+                  )
+                  .getOne();
+                isMediaProcessing = Boolean(request);
+              }
+
+              current[statusField] = MediaStatus.DELETED;
+              current[is4k ? 'serviceId4k' : 'serviceId'] = isMediaProcessing
+                ? current[is4k ? 'serviceId4k' : 'serviceId']
+                : null;
+              current[is4k ? 'externalServiceId4k' : 'externalServiceId'] =
+                isMediaProcessing
+                  ? current[is4k ? 'externalServiceId4k' : 'externalServiceId']
+                  : null;
+              current[is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'] =
+                isMediaProcessing
+                  ? current[
+                      is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'
+                    ]
+                  : null;
+              if (mediaServerType === MediaServerType.PLEX) {
+                current[is4k ? 'ratingKey4k' : 'ratingKey'] = isMediaProcessing
+                  ? current[is4k ? 'ratingKey4k' : 'ratingKey']
+                  : null;
+              } else if (
+                mediaServerType === MediaServerType.JELLYFIN ||
+                mediaServerType === MediaServerType.EMBY
+              ) {
+                current[is4k ? 'jellyfinMediaId4k' : 'jellyfinMediaId'] =
+                  isMediaProcessing
+                    ? current[is4k ? 'jellyfinMediaId4k' : 'jellyfinMediaId']
+                    : null;
+              }
+              await mediaRepository.save(current);
+              return true;
+            })
           )
-          .getOne();
-
-        if (request) {
-          isMediaProcessing = true;
-        }
-      }
-
-      // Set the non-4K or 4K media to deleted
-      // and change related columns to null if media
-      // is not processing
-      media[is4k ? 'status4k' : 'status'] = MediaStatus.DELETED;
-      media[is4k ? 'serviceId4k' : 'serviceId'] = isMediaProcessing
-        ? media[is4k ? 'serviceId4k' : 'serviceId']
-        : null;
-      media[is4k ? 'externalServiceId4k' : 'externalServiceId'] =
-        isMediaProcessing
-          ? media[is4k ? 'externalServiceId4k' : 'externalServiceId']
-          : null;
-      media[is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'] =
-        isMediaProcessing
-          ? media[is4k ? 'externalServiceSlug4k' : 'externalServiceSlug']
-          : null;
-      if (mediaServerType === MediaServerType.PLEX) {
-        media[is4k ? 'ratingKey4k' : 'ratingKey'] = isMediaProcessing
-          ? media[is4k ? 'ratingKey4k' : 'ratingKey']
-          : null;
-      } else if (
-        mediaServerType === MediaServerType.JELLYFIN ||
-        mediaServerType === MediaServerType.EMBY
-      ) {
-        media[is4k ? 'jellyfinMediaId4k' : 'jellyfinMediaId'] =
-          isMediaProcessing
-            ? media[is4k ? 'jellyfinMediaId4k' : 'jellyfinMediaId']
-            : null;
-      }
-      logger.info(
-        `The ${is4k ? '4K' : 'non-4K'} ${
-          media.mediaType === 'movie' ? 'movie' : 'show'
-        } [TMDB ID ${media.tmdbId}] was not found in any ${
-          media.mediaType === 'movie' ? 'Radarr' : 'Sonarr'
-        } and ${
-          mediaServerType === MediaServerType.PLEX
-            ? 'plex'
-            : mediaServerType === MediaServerType.JELLYFIN
-              ? 'jellyfin'
-              : 'emby'
-        } instance. Status will be changed to deleted.`,
-        { label: 'AvailabilitySync' }
       );
 
-      await mediaRepository.save(media);
+      if (changed) {
+        logger.info(
+          `The ${is4k ? '4K' : 'non-4K'} ${
+            media.mediaType === 'movie' ? 'movie' : 'show'
+          } [TMDB ID ${media.tmdbId}] was not found in any ${
+            media.mediaType === 'movie' ? 'Radarr' : 'Sonarr'
+          } and ${
+            mediaServerType === MediaServerType.PLEX
+              ? 'plex'
+              : mediaServerType === MediaServerType.JELLYFIN
+                ? 'jellyfin'
+                : 'emby'
+          } instance. Status will be changed to deleted.`,
+          { label: 'AvailabilitySync' }
+        );
+      }
     } catch (ex) {
+      if (
+        ex instanceof ConfigurationAuthorityChangedError ||
+        ex instanceof ServarrServiceAuthorityChangedError ||
+        ex instanceof MediaServerUserAuthorityChangedError
+      ) {
+        throw ex;
+      }
       logger.debug(
         `Failure updating the ${is4k ? '4K' : 'non-4K'} ${
           media.mediaType === 'tv' ? 'show' : 'movie'
@@ -558,46 +650,85 @@ class AvailabilitySync {
     // let isSeasonRemoved = false;
 
     try {
-      for (const mediaSeason of media.seasons) {
-        if (seasonsPendingRemoval.has(mediaSeason.seasonNumber)) {
-          mediaSeason[is4k ? 'status4k' : 'status'] = MediaStatus.DELETED;
-        }
-      }
+      const changed = await runWithMediaServerUserAuthority(
+        this.ownerAuthoritySnapshot,
+        () =>
+          runMediaEntityMutation(media, () =>
+            this.withAuthoritySnapshot(media.mediaType, async () => {
+              const current = await mediaRepository.findOne({
+                where: { id: media.id },
+                relations: { seasons: true },
+              });
+              if (!current) return false;
 
-      if (media.status === MediaStatus.AVAILABLE && !is4k) {
-        media.status = MediaStatus.PARTIALLY_AVAILABLE;
+              let changedSeason = false;
+              for (const currentSeason of current.seasons) {
+                const snapshotSeason = media.seasons.find(
+                  (season) => season.seasonNumber === currentSeason.seasonNumber
+                );
+                if (
+                  snapshotSeason &&
+                  seasonsPendingRemoval.has(currentSeason.seasonNumber) &&
+                  currentSeason[is4k ? 'status4k' : 'status'] ===
+                    snapshotSeason[is4k ? 'status4k' : 'status']
+                ) {
+                  currentSeason[is4k ? 'status4k' : 'status'] =
+                    MediaStatus.DELETED;
+                  changedSeason = true;
+                }
+              }
+              if (!changedSeason) return false;
+
+              if (current.status === MediaStatus.AVAILABLE && !is4k) {
+                current.status = MediaStatus.PARTIALLY_AVAILABLE;
+              }
+              if (current.status4k === MediaStatus.AVAILABLE && is4k) {
+                current.status4k = MediaStatus.PARTIALLY_AVAILABLE;
+              }
+              current.lastSeasonChange = new Date();
+              await mediaRepository.save(current);
+              return true;
+            })
+          )
+      );
+
+      if (changed && media.status === MediaStatus.AVAILABLE && !is4k) {
         logger.info(
           `Marking the non-4K show [TMDB ID ${media.tmdbId}] as PARTIALLY_AVAILABLE because season removal has occurred.`,
           { label: 'Availability Sync' }
         );
       }
 
-      if (media.status4k === MediaStatus.AVAILABLE && is4k) {
-        media.status4k = MediaStatus.PARTIALLY_AVAILABLE;
+      if (changed && media.status4k === MediaStatus.AVAILABLE && is4k) {
         logger.info(
           `Marking the 4K show [TMDB ID ${media.tmdbId}] as PARTIALLY_AVAILABLE because season removal has occurred.`,
           { label: 'Availability Sync' }
         );
       }
 
-      media.lastSeasonChange = new Date();
-      await mediaRepository.save(media);
-
-      logger.info(
-        `The ${is4k ? '4K' : 'non-4K'} season(s) [${seasonKeys}] [TMDB ID ${
-          media.tmdbId
-        }] was not found in any ${
-          media.mediaType === 'tv' ? 'Sonarr' : 'Radarr'
-        } and ${
-          mediaServerType === MediaServerType.PLEX
-            ? 'plex'
-            : mediaServerType === MediaServerType.JELLYFIN
-              ? 'jellyfin'
-              : 'emby'
-        } instance. Status will be changed to deleted.`,
-        { label: 'AvailabilitySync' }
-      );
+      if (changed)
+        logger.info(
+          `The ${is4k ? '4K' : 'non-4K'} season(s) [${seasonKeys}] [TMDB ID ${
+            media.tmdbId
+          }] was not found in any ${
+            media.mediaType === 'tv' ? 'Sonarr' : 'Radarr'
+          } and ${
+            mediaServerType === MediaServerType.PLEX
+              ? 'plex'
+              : mediaServerType === MediaServerType.JELLYFIN
+                ? 'jellyfin'
+                : 'emby'
+          } instance. Status will be changed to deleted.`,
+          { label: 'AvailabilitySync' }
+        );
     } catch (ex) {
+      if (
+        ex instanceof ConfigurationAuthorityChangedError ||
+        ex instanceof ServarrServiceAuthorityChangedError ||
+        ex instanceof MediaServerUserAuthorityChangedError
+      ) {
+        throw ex;
+      }
       logger.debug(
         `Failure updating the ${
           is4k ? '4K' : 'non-4K'
@@ -608,6 +739,37 @@ class AvailabilitySync {
         }
       );
     }
+  }
+
+  private withAuthoritySnapshot<Result>(
+    mediaType: string,
+    callback: () => Promise<Result>
+  ): Promise<Result> {
+    return runWithConfigurationSnapshot(this.configurationSnapshot, () => {
+      if (mediaType === 'movie' && this.radarrServers.length > 0) {
+        return runWithServarrServiceSnapshots(
+          'radarr',
+          this.radarrServers,
+          callback,
+          {
+            requireExactAuthoritySet: true,
+            includeCurrent: (server) => server.syncEnabled,
+          }
+        );
+      }
+      if (mediaType === 'tv' && this.sonarrServers.length > 0) {
+        return runWithServarrServiceSnapshots(
+          'sonarr',
+          this.sonarrServers,
+          callback,
+          {
+            requireExactAuthoritySet: true,
+            includeCurrent: (server) => server.syncEnabled,
+          }
+        );
+      }
+      return callback();
+    });
   }
 
   private async mediaExistsInRadarr(
@@ -663,14 +825,15 @@ class AvailabilitySync {
           }
         }
       } catch (ex) {
-        if (!ex.message.includes('404')) {
+        const { errorMessage } = getHttpErrorDetails(ex);
+        if (!hasHttpStatus(ex, 404)) {
           existsInRadarr = true;
           logger.debug(
             `Failure retrieving the ${is4k ? '4K' : 'non-4K'} movie [TMDB ID ${
               media.tmdbId
             }] from Radarr.`,
             {
-              errorMessage: ex.message,
+              errorMessage,
               label: 'Availability Sync',
             }
           );
@@ -719,7 +882,8 @@ class AvailabilitySync {
           existsInSonarr = true;
         }
       } catch (ex) {
-        if (!ex.message.includes('404')) {
+        const { errorMessage } = getHttpErrorDetails(ex);
+        if (!hasHttpStatus(ex, 404)) {
           existsInSonarr = true;
           preventSeasonSearch = true;
           logger.debug(
@@ -727,7 +891,7 @@ class AvailabilitySync {
               media.tmdbId
             }] from Sonarr.`,
             {
-              errorMessage: ex.message,
+              errorMessage,
               label: 'Availability Sync',
             }
           );
@@ -886,7 +1050,8 @@ class AvailabilitySync {
         existsInPlex = true;
       }
     } catch (ex) {
-      if (!ex.message.includes('404')) {
+      const { errorMessage } = getHttpErrorDetails(ex);
+      if (!hasHttpStatus(ex, 404)) {
         existsInPlex = true;
         preventSeasonSearch = true;
         logger.debug(
@@ -894,7 +1059,7 @@ class AvailabilitySync {
             media.mediaType === 'tv' ? 'show' : 'movie'
           } [TMDB ID ${media.tmdbId}] from Plex.`,
           {
-            errorMessage: ex.message,
+            errorMessage,
             label: 'Availability Sync',
           }
         );
@@ -1023,7 +1188,8 @@ class AvailabilitySync {
         existsInJellyfin = true;
       }
     } catch (ex) {
-      if (!ex.message.includes('404') && !ex.message.includes('500')) {
+      const { errorMessage } = getHttpErrorDetails(ex);
+      if (!hasHttpStatus(ex, 404)) {
         existsInJellyfin = true;
         preventSeasonSearch = true;
         logger.debug(
@@ -1031,7 +1197,7 @@ class AvailabilitySync {
             media.mediaType === 'tv' ? 'show' : 'movie'
           } [TMDB ID ${media.tmdbId}] from Jellyfin.`,
           {
-            errorMessage: ex.message,
+            errorMessage,
             label: 'AvailabilitySync',
           }
         );

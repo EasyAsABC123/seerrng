@@ -44,7 +44,7 @@ movieRoutes.get('/:id', async (req, res, next) => {
       language,
     });
 
-    const media = await Media.getMedia(tmdbMovie.id, MediaType.MOVIE);
+    const media = await Media.getMedia(tmdbMovie.id, MediaType.MOVIE, req.user);
 
     const onUserWatchlist = await getRepository(Watchlist).exist({
       where: {
@@ -64,7 +64,7 @@ movieRoutes.get('/:id', async (req, res, next) => {
       data.overview = tvEnglish.overview;
     }
 
-    return res.status(200).json(filterEntityResponse(data));
+    return res.status(200).json(filterEntityResponse(data, req.user));
   } catch (e) {
     logger.debug('Something went wrong retrieving movie', {
       label: 'API',

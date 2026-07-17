@@ -50,8 +50,14 @@ if [[ -z "$principal" || -z "$keytab" ]]; then
   exit 2
 fi
 
-if [[ ! "$principal" =~ @FEDORAPROJECT\.ORG$ ]]; then
+if [[ ! "$principal" =~ ^[A-Za-z0-9._/-]+@FEDORAPROJECT\.ORG$ ]]; then
   echo "principal must include the FEDORAPROJECT.ORG realm, for example user@FEDORAPROJECT.ORG" >&2
+  exit 2
+fi
+
+if [[ ! "$secret_path" =~ ^[A-Za-z0-9][A-Za-z0-9_./-]{0,255}$ ]] ||
+  [[ "/$secret_path/" == *"/../"* ]] || [[ "$secret_path" == *"//"* ]]; then
+  echo "secret path contains invalid characters or path components" >&2
   exit 2
 fi
 
@@ -65,8 +71,8 @@ if [[ ! -r "$keytab" ]]; then
   exit 1
 fi
 
-bao kv patch "$secret_path" \
+base64 "$keytab" | tr -d '\r\n' | bao kv patch "$secret_path" \
   copr_kerberos_principal="$principal" \
-  copr_kerberos_keytab_b64="$(base64 -w0 "$keytab")"
+  copr_kerberos_keytab_b64=-
 
 echo "stored Copr Kerberos credentials in $secret_path"

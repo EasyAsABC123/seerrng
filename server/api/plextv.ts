@@ -2,19 +2,140 @@ import type { PlexDevice } from '@server/interfaces/api/plexInterfaces';
 import cacheManager from '@server/lib/cache';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import {
   getHttpErrorDetails,
   withTransientHttpRetry,
 } from '@server/utils/httpError';
 import { randomUUID } from 'node:crypto';
 import xml2js from 'xml2js';
-import ExternalAPI from './externalapi';
+import ExternalAPI, { createExternalApiCacheKeySuffix } from './externalapi';
 
 export const PLEXTV_HTTP_OPTIONS = {
   timeout: 10_000,
   maxContentLength: 1024 * 1024,
   maxBodyLength: 1024,
 } as const;
+export const MAX_PLEX_SHARED_USERS = 250;
+export const MAX_PLEX_WATCHLIST_PAGE_SIZE = 100;
+export const PLEX_WATCHLIST_HYDRATION_CONCURRENCY = 10;
+const MAX_PLEX_WATCHLIST_OFFSET = 1_000_000;
+const MAX_PLEX_WATCHLIST_TOTAL = 1_000_000;
+const MAX_PLEX_METADATA_GUIDS = 100;
+const MAX_PLEX_METADATA_TITLE_LENGTH = 512;
+const MAX_PLEX_PROVIDER_ID = 1_000_000_000;
+export const MAX_PLEX_RESOURCE_DEVICES = 250;
+export const MAX_PLEX_RESOURCE_CONNECTIONS = 100;
+const MAX_PLEX_RESOURCE_SERVERS_PER_USER = 100;
+const MAX_PLEX_RESOURCE_TEXT_LENGTH = 2048;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const boundedPlexText = (
+  value: unknown,
+  maximum = MAX_PLEX_RESOURCE_TEXT_LENGTH
+) => (typeof value === 'string' ? value.slice(0, maximum) : '');
+
+const parsePlexTimestamp = (value: unknown): Date => {
+  if (typeof value !== 'string' || !/^\d{1,15}$/.test(value)) {
+    return new Date(0);
+  }
+  const milliseconds = Number(value) * 1000;
+  return Number.isSafeInteger(milliseconds)
+    ? new Date(milliseconds)
+    : new Date(0);
+};
+
+export const parsePlexDevices = (value: unknown): PlexDevice[] => {
+  if (!isRecord(value) || !isRecord(value.MediaContainer)) {
+    return [];
+  }
+  const devices = value.MediaContainer.Device;
+  if (!Array.isArray(devices)) {
+    return [];
+  }
+
+  return devices.slice(0, MAX_PLEX_RESOURCE_DEVICES).flatMap((device) => {
+    if (!isRecord(device) || !isRecord(device.$)) {
+      return [];
+    }
+    const attributes = device.$;
+    const name = boundedPlexText(attributes.name);
+    const product = boundedPlexText(attributes.product);
+    const clientIdentifier = boundedPlexText(attributes.clientIdentifier, 512);
+    if (!name || !product || !clientIdentifier) {
+      return [];
+    }
+    const rawConnections = Array.isArray(device.Connection)
+      ? device.Connection
+      : [];
+    const connection = rawConnections
+      .slice(0, MAX_PLEX_RESOURCE_CONNECTIONS)
+      .flatMap((rawConnection) => {
+        if (!isRecord(rawConnection) || !isRecord(rawConnection.$)) {
+          return [];
+        }
+        const connectionAttributes = rawConnection.$;
+        const protocol = boundedPlexText(connectionAttributes.protocol, 16);
+        const address = boundedPlexText(connectionAttributes.address, 512);
+        const uri = boundedPlexText(connectionAttributes.uri);
+        const port = Number(connectionAttributes.port);
+        if (
+          !['http', 'https'].includes(protocol) ||
+          !address ||
+          !uri ||
+          !Number.isSafeInteger(port) ||
+          port < 1 ||
+          port > 65_535
+        ) {
+          return [];
+        }
+        return [
+          {
+            protocol,
+            address,
+            port,
+            uri,
+            local: connectionAttributes.local === '1',
+          },
+        ];
+      });
+
+    return [
+      {
+        name,
+        product,
+        productVersion: boundedPlexText(attributes.productVersion, 512),
+        platform: boundedPlexText(attributes.platform, 512),
+        platformVersion: boundedPlexText(attributes.platformVersion, 512),
+        device: boundedPlexText(attributes.device, 512),
+        clientIdentifier,
+        createdAt: parsePlexTimestamp(attributes.createdAt),
+        lastSeenAt: parsePlexTimestamp(attributes.lastSeenAt),
+        provides: boundedPlexText(attributes.provides, 512)
+          .split(',')
+          .slice(0, 50)
+          .map((entry) => entry.trim())
+          .filter(Boolean),
+        owned: attributes.owned === '1',
+        publicAddress:
+          boundedPlexText(attributes.publicAddress, 512) || undefined,
+        httpsRequired: attributes.httpsRequired === '1',
+        synced: attributes.synced === '1',
+        relay: attributes.relay === '1',
+        dnsRebindingProtection: attributes.dnsRebindingProtection === '1',
+        natLoopbackSupported: attributes.natLoopbackSupported === '1',
+        publicAddressMatches: attributes.publicAddressMatches === '1',
+        presence: attributes.presence === '1',
+        ownerID: boundedPlexText(attributes.ownerID, 512) || undefined,
+        home: attributes.home === '1',
+        sourceTitle: boundedPlexText(attributes.sourceTitle, 512) || undefined,
+        connection,
+      },
+    ];
+  });
+};
 
 interface PlexAccountResponse {
   user: PlexUser;
@@ -42,45 +163,6 @@ interface PlexUser {
   entitlements: string[];
 }
 
-interface ConnectionResponse {
-  $: {
-    protocol: string;
-    address: string;
-    port: string;
-    uri: string;
-    local: string;
-  };
-}
-
-interface DeviceResponse {
-  $: {
-    name: string;
-    product: string;
-    productVersion: string;
-    platform: string;
-    platformVersion: string;
-    device: string;
-    clientIdentifier: string;
-    createdAt: string;
-    lastSeenAt: string;
-    provides: string;
-    owned: string;
-    accessToken?: string;
-    publicAddress?: string;
-    httpsRequired?: string;
-    synced?: string;
-    relay?: string;
-    dnsRebindingProtection?: string;
-    natLoopbackSupported?: string;
-    publicAddressMatches?: string;
-    presence?: string;
-    ownerID?: string;
-    home?: string;
-    sourceTitle?: string;
-  };
-  Connection: ConnectionResponse[];
-}
-
 interface ServerResponse {
   $: {
     id: string;
@@ -93,20 +175,88 @@ interface ServerResponse {
   };
 }
 
+export interface PlexSharedUser {
+  $: {
+    id: string;
+    title: string;
+    username: string;
+    email: string;
+    thumb: string;
+  };
+  Server?: ServerResponse[];
+}
+
 interface UsersResponse {
   MediaContainer: {
-    User: {
-      $: {
-        id: string;
-        title: string;
-        username: string;
-        email: string;
-        thumb: string;
-      };
-      Server: ServerResponse[];
-    }[];
+    User: PlexSharedUser[];
   };
 }
+
+export const parsePlexSharedUsers = (value: unknown): UsersResponse => {
+  const mediaContainer = isRecord(value) ? value.MediaContainer : undefined;
+  const rawUsers = isRecord(mediaContainer) ? mediaContainer.User : undefined;
+  const users = (Array.isArray(rawUsers) ? rawUsers : [])
+    .slice(0, MAX_PLEX_SHARED_USERS)
+    .flatMap((rawUser) => {
+      if (!isRecord(rawUser) || !isRecord(rawUser.$)) {
+        return [];
+      }
+      const attributes = rawUser.$;
+      const id = boundedPlexText(attributes.id, 32);
+      if (!/^\d{1,20}$/.test(id)) {
+        return [];
+      }
+      const servers = (Array.isArray(rawUser.Server) ? rawUser.Server : [])
+        .slice(0, MAX_PLEX_RESOURCE_SERVERS_PER_USER)
+        .flatMap((rawServer) => {
+          if (!isRecord(rawServer) || !isRecord(rawServer.$)) {
+            return [];
+          }
+          const server = rawServer.$;
+          const machineIdentifier = boundedPlexText(
+            server.machineIdentifier,
+            512
+          );
+          if (!machineIdentifier) {
+            return [];
+          }
+          return [
+            {
+              $: {
+                id: boundedPlexText(server.id, 32),
+                serverId: boundedPlexText(server.serverId, 32),
+                machineIdentifier,
+                name: boundedPlexText(server.name, 512),
+                lastSeenAt: boundedPlexText(server.lastSeenAt, 32),
+                numLibraries: boundedPlexText(server.numLibraries, 32),
+                owned: boundedPlexText(server.owned, 8),
+              },
+            },
+          ];
+        });
+      return [
+        {
+          $: {
+            id,
+            title: boundedPlexText(attributes.title, 512),
+            username: boundedPlexText(attributes.username, 512),
+            email: boundedPlexText(attributes.email, 512),
+            thumb: boundedPlexText(attributes.thumb),
+          },
+          Server: servers,
+        },
+      ];
+    });
+
+  return { MediaContainer: { User: users } };
+};
+
+export const plexUserHasServerAccess = (
+  user: PlexSharedUser,
+  machineId: string | undefined
+): boolean =>
+  !!machineId &&
+  !!user.Server?.some((server) => server.$.machineIdentifier === machineId);
 
 interface WatchlistResponse {
   MediaContainer: {
@@ -145,14 +295,120 @@ export interface PlexWatchlistCache {
   response: WatchlistResponse;
 }
 
+export const normalizePlexWatchlistPage = (offset: number, size: number) => ({
+  offset:
+    Number.isSafeInteger(offset) && offset >= 0
+      ? Math.min(offset, MAX_PLEX_WATCHLIST_OFFSET)
+      : 0,
+  size:
+    Number.isSafeInteger(size) && size > 0
+      ? Math.min(size, MAX_PLEX_WATCHLIST_PAGE_SIZE)
+      : 20,
+});
+
+export const preparePlexWatchlistRatingKeys = (
+  value: unknown,
+  limit = MAX_PLEX_WATCHLIST_PAGE_SIZE
+): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const ratingKeys = new Set<string>();
+  const maxItems =
+    Number.isSafeInteger(limit) && limit > 0
+      ? Math.min(limit, MAX_PLEX_WATCHLIST_PAGE_SIZE)
+      : MAX_PLEX_WATCHLIST_PAGE_SIZE;
+  for (const item of value) {
+    const ratingKey =
+      item && typeof item === 'object' && 'ratingKey' in item
+        ? (item as { ratingKey?: unknown }).ratingKey
+        : undefined;
+    if (typeof ratingKey === 'string' && /^\d{1,20}$/.test(ratingKey)) {
+      ratingKeys.add(ratingKey);
+    }
+    if (ratingKeys.size >= maxItems) {
+      break;
+    }
+  }
+
+  return [...ratingKeys];
+};
+
+export const createPlexWatchlistPageCacheKey = (
+  cacheKeyPrefix: string,
+  offset: number,
+  size: number
+) => `${cacheKeyPrefix}:${offset}:${size}`;
+
+const parsePlexGuidId = (
+  value: unknown,
+  provider: 'tmdb' | 'tvdb'
+): number | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const match = new RegExp(`^${provider}:\\/\\/(\\d{1,10})$`).exec(value);
+  const id = match ? Number(match[1]) : undefined;
+  return typeof id === 'number' &&
+    Number.isSafeInteger(id) &&
+    id > 0 &&
+    id <= MAX_PLEX_PROVIDER_ID
+    ? id
+    : undefined;
+};
+
+const parsePlexWatchlistMetadata = (
+  metadata: PlexMetadataItem | undefined
+): PlexWatchlistItem | undefined => {
+  if (
+    !metadata ||
+    typeof metadata.ratingKey !== 'string' ||
+    !/^\d{1,20}$/.test(metadata.ratingKey) ||
+    (metadata.type !== 'movie' && metadata.type !== 'show') ||
+    typeof metadata.title !== 'string'
+  ) {
+    return undefined;
+  }
+
+  const title = metadata.title.trim();
+  if (!title || title.length > MAX_PLEX_METADATA_TITLE_LENGTH) {
+    return undefined;
+  }
+
+  const guids = Array.isArray(metadata.Guid)
+    ? metadata.Guid.slice(0, MAX_PLEX_METADATA_GUIDS)
+    : [];
+  const tmdbId = guids
+    .map((guid) => parsePlexGuidId(guid?.id, 'tmdb'))
+    .find((id) => id !== undefined);
+  if (tmdbId === undefined) {
+    return undefined;
+  }
+
+  const tvdbId = guids
+    .map((guid) => parsePlexGuidId(guid?.id, 'tvdb'))
+    .find((id) => id !== undefined);
+
+  return {
+    ratingKey: metadata.ratingKey,
+    tmdbId,
+    tvdbId,
+    title,
+    type: metadata.type,
+  };
+};
+
 class PlexTvAPI extends ExternalAPI {
-  private authToken: string;
+  private watchlistCacheKeyPrefix: string;
 
   constructor(authToken: string) {
     super(
       'https://plex.tv',
       {},
       {
+        allowedBaseUrls: ['https://discover.provider.plex.tv'],
         headers: {
           'X-Plex-Token': authToken,
           'Content-Type': 'application/json',
@@ -163,7 +419,9 @@ class PlexTvAPI extends ExternalAPI {
       }
     );
 
-    this.authToken = authToken;
+    this.watchlistCacheKeyPrefix = createExternalApiCacheKeySuffix({
+      authToken,
+    });
   }
 
   public async getDevices(): Promise<PlexDevice[]> {
@@ -175,44 +433,8 @@ class PlexTvAPI extends ExternalAPI {
           responseType: 'text',
         }
       );
-      const parsedXml = await xml2js.parseStringPromise(
-        devicesResp.data as DeviceResponse
-      );
-      return parsedXml?.MediaContainer?.Device?.map((pxml: DeviceResponse) => ({
-        name: pxml.$.name,
-        product: pxml.$.product,
-        productVersion: pxml.$.productVersion,
-        platform: pxml.$?.platform,
-        platformVersion: pxml.$?.platformVersion,
-        device: pxml.$?.device,
-        clientIdentifier: pxml.$.clientIdentifier,
-        createdAt: new Date(parseInt(pxml.$?.createdAt, 10) * 1000),
-        lastSeenAt: new Date(parseInt(pxml.$?.lastSeenAt, 10) * 1000),
-        provides: pxml.$.provides.split(','),
-        owned: pxml.$.owned == '1' ? true : false,
-        accessToken: pxml.$?.accessToken,
-        publicAddress: pxml.$?.publicAddress,
-        publicAddressMatches:
-          pxml.$?.publicAddressMatches == '1' ? true : false,
-        httpsRequired: pxml.$?.httpsRequired == '1' ? true : false,
-        synced: pxml.$?.synced == '1' ? true : false,
-        relay: pxml.$?.relay == '1' ? true : false,
-        dnsRebindingProtection:
-          pxml.$?.dnsRebindingProtection == '1' ? true : false,
-        natLoopbackSupported:
-          pxml.$?.natLoopbackSupported == '1' ? true : false,
-        presence: pxml.$?.presence == '1' ? true : false,
-        ownerID: pxml.$?.ownerID,
-        home: pxml.$?.home == '1' ? true : false,
-        sourceTitle: pxml.$?.sourceTitle,
-        connection: pxml?.Connection?.map((conn: ConnectionResponse) => ({
-          protocol: conn.$.protocol,
-          address: conn.$.address,
-          port: parseInt(conn.$.port, 10),
-          uri: conn.$.uri,
-          local: conn.$.local == '1' ? true : false,
-        })),
-      }));
+      const parsedXml = await xml2js.parseStringPromise(devicesResp.data);
+      return parsePlexDevices(parsedXml);
     } catch (e) {
       logger.error('Something went wrong getting the devices from plex.tv', {
         label: 'Plex.tv API',
@@ -258,9 +480,7 @@ class PlexTvAPI extends ExternalAPI {
         );
       }
 
-      return !!user.Server?.find(
-        (server) => server.$.machineIdentifier === settings.plex.machineId
-      );
+      return plexUserHasServerAccess(user, settings.plex.machineId);
     } catch (e) {
       logger.error(`Error checking user access: ${e.message}`);
       return false;
@@ -273,10 +493,8 @@ class PlexTvAPI extends ExternalAPI {
       responseType: 'text',
     });
 
-    const parsedXml = (await xml2js.parseStringPromise(
-      response.data
-    )) as UsersResponse;
-    return parsedXml;
+    const parsedXml = await xml2js.parseStringPromise(response.data);
+    return parsePlexSharedUsers(parsedXml);
   }
 
   public async getWatchlist({
@@ -288,11 +506,19 @@ class PlexTvAPI extends ExternalAPI {
     totalSize: number;
     items: PlexWatchlistItem[];
   }> {
+    const page = normalizePlexWatchlistPage(offset, size);
+    offset = page.offset;
+    size = page.size;
+
     try {
       const watchlistCache = cacheManager.getCache('plexwatchlist');
-      let cachedWatchlist = watchlistCache.data.get<PlexWatchlistCache>(
-        this.authToken
+      const watchlistCacheKey = createPlexWatchlistPageCacheKey(
+        this.watchlistCacheKeyPrefix,
+        offset,
+        size
       );
+      let cachedWatchlist =
+        watchlistCache.data.get<PlexWatchlistCache>(watchlistCacheKey);
 
       const response = await withTransientHttpRetry(
         () =>
@@ -326,76 +552,74 @@ class PlexTvAPI extends ExternalAPI {
         };
 
         watchlistCache.data.set<PlexWatchlistCache>(
-          this.authToken,
+          watchlistCacheKey,
           cachedWatchlist
         );
       }
 
-      const watchlistDetails = await Promise.all(
-        (cachedWatchlist?.response.MediaContainer.Metadata ?? []).map(
-          async (watchlistItem) => {
-            let detailedResponse: MetadataResponse;
-            try {
-              detailedResponse = await this.getRolling<MetadataResponse>(
-                `/library/metadata/${watchlistItem.ratingKey}`,
-                {
-                  baseURL: 'https://discover.provider.plex.tv',
-                }
-              );
-            } catch (e) {
-              if (e.response?.status === 404) {
-                logger.warn(
-                  `Item with ratingKey ${watchlistItem.ratingKey} not found, it may have been removed from the server.`,
-                  { label: 'Plex.TV Metadata API' }
-                );
-                return null;
-              } else {
-                throw e;
+      const ratingKeys = preparePlexWatchlistRatingKeys(
+        cachedWatchlist?.response?.MediaContainer?.Metadata,
+        size
+      );
+      const watchlistDetails = await mapWithConcurrency(
+        ratingKeys,
+        PLEX_WATCHLIST_HYDRATION_CONCURRENCY,
+        async (ratingKey) => {
+          let detailedResponse: MetadataResponse;
+          try {
+            detailedResponse = await this.getRolling<MetadataResponse>(
+              `/library/metadata/${ratingKey}`,
+              {
+                baseURL: 'https://discover.provider.plex.tv',
               }
-            }
-
-            const metadata =
-              detailedResponse.MediaContainer.Metadata?.[0] ??
-              detailedResponse.MediaContainer.Video?.[0];
-
-            if (!metadata) {
+            );
+          } catch (e) {
+            if (e.response?.status === 404) {
               logger.warn(
-                `Item with ratingKey ${watchlistItem.ratingKey} returned no metadata, skipping.`,
+                `Item with ratingKey ${ratingKey} not found, it may have been removed from the server.`,
                 { label: 'Plex.TV Metadata API' }
               );
-              return null;
+              return undefined;
+            } else {
+              throw e;
             }
-
-            const tmdbString = metadata.Guid?.find((guid) =>
-              guid.id.startsWith('tmdb')
-            );
-            const tvdbString = metadata.Guid?.find((guid) =>
-              guid.id.startsWith('tvdb')
-            );
-
-            return {
-              ratingKey: metadata.ratingKey,
-              // This should always be set? But I guess it also cannot be?
-              // We will filter out the 0's afterwards
-              tmdbId: tmdbString ? Number(tmdbString.id.split('//')[1]) : 0,
-              tvdbId: tvdbString
-                ? Number(tvdbString.id.split('//')[1])
-                : undefined,
-              title: metadata.title,
-              type: metadata.type,
-            };
           }
-        )
+
+          const metadata =
+            detailedResponse?.MediaContainer?.Metadata?.[0] ??
+            detailedResponse?.MediaContainer?.Video?.[0];
+
+          if (!metadata) {
+            logger.warn(
+              `Item with ratingKey ${ratingKey} returned no metadata, skipping.`,
+              { label: 'Plex.TV Metadata API' }
+            );
+            return undefined;
+          }
+
+          return parsePlexWatchlistMetadata(metadata);
+        }
       );
 
       const filteredList = watchlistDetails.filter(
-        (detail) => detail?.tmdbId
-      ) as PlexWatchlistItem[];
+        (detail): detail is PlexWatchlistItem => detail !== undefined
+      );
+      const totalSizeCandidate =
+        cachedWatchlist?.response?.MediaContainer?.totalSize;
+      const totalSize =
+        typeof totalSizeCandidate === 'number' &&
+        Number.isSafeInteger(totalSizeCandidate) &&
+        totalSizeCandidate >= 0
+          ? Math.min(
+              Math.max(totalSizeCandidate, filteredList.length),
+              MAX_PLEX_WATCHLIST_TOTAL
+            )
+          : filteredList.length;
 
       return {
         offset,
         size,
-        totalSize: cachedWatchlist?.response.MediaContainer.totalSize ?? 0,
+        totalSize,
         items: filteredList,
       };
     } catch (error) {

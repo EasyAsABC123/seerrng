@@ -1,14 +1,18 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { MediaStatus } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
-import { User } from '@server/entity/User';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentPushover } from '@server/lib/settings';
 import { NotificationAgentKey, getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
-import { isSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import { mapWithConcurrency } from '@server/utils/concurrency';
+import {
+  createSafeHttpRequestOptions,
+  isSafeHttpUrl,
+  redactSecrets,
+} from '@server/utils/security';
 import axios from 'axios';
 import {
   Notification,
@@ -18,8 +22,10 @@ import {
 import type { NotificationAgent, NotificationPayload } from './agent';
 import {
   BaseAgent,
+  NOTIFICATION_DELIVERY_CONCURRENCY,
   NOTIFICATION_HTTP_OPTIONS,
   getNotificationActionUrl,
+  truncateNotificationText,
 } from './agent';
 
 interface PushoverImagePayload {
@@ -39,6 +45,27 @@ interface PushoverPayload extends PushoverImagePayload {
 }
 
 const maxPushoverAttachmentBytes = 5 * 1024 * 1024;
+export const PUSHOVER_MESSAGE_LIMIT = 1_024;
+export const PUSHOVER_TITLE_LIMIT = 250;
+export const PUSHOVER_URL_LIMIT = 512;
+export const PUSHOVER_URL_TITLE_LIMIT = 100;
+
+export const escapePushoverHtmlText = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const pushoverHtmlToPlainText = (value: string): string =>
+  value
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
 
 class PushoverAgent
   extends BaseAgent<NotificationAgentPushover>
@@ -80,6 +107,7 @@ class PushoverAgent
       }
 
       const response = await axios.get(imageUrl, {
+        ...createSafeHttpRequestOptions(false, true, true),
         maxContentLength: maxPushoverAttachmentBytes,
         maxRedirects: 3,
         responseType: 'arraybuffer',
@@ -104,7 +132,7 @@ class PushoverAgent
     }
   }
 
-  private async getNotificationPayload(
+  public async buildPayload(
     type: Notification,
     payload: NotificationPayload,
     locale?: AvailableLocale
@@ -112,18 +140,26 @@ class PushoverAgent
     const intl = getIntl(locale);
     const settings = getSettings();
     const { applicationUrl, applicationTitle } = settings.main;
-    const { embedPoster } = settings.notifications.agents.pushover;
+    const { embedPoster } = this.getSettings();
+    const escape = escapePushoverHtmlText;
 
-    const title = payload.event ?? payload.subject;
-    let message = payload.event ? `<b>${payload.subject}</b>` : '';
+    const title = truncateNotificationText(
+      payload.event ?? payload.subject,
+      PUSHOVER_TITLE_LIMIT
+    );
+    let message = payload.event ? `<b>${escape(payload.subject)}</b>` : '';
     let priority = 0;
 
-    if (payload.message) {
-      message += `<small>${message ? '\n' : ''}${payload.message}</small>`;
+    if (payload.message && !payload.comment) {
+      message += `<small>${message ? '\n' : ''}${escape(
+        payload.message
+      )}</small>`;
     }
 
     if (payload.request) {
-      message += `<small>\n\n<b>${intl.formatMessage(globalMessages.requestedBy)}:</b> ${payload.request.requestedBy.displayName}</small>`;
+      message += `<small>\n\n<b>${escape(
+        intl.formatMessage(globalMessages.requestedBy)
+      )}:</b> ${escape(payload.request.requestedBy.displayName)}</small>`;
 
       let status = '';
       switch (type) {
@@ -154,18 +190,30 @@ class PushoverAgent
       }
 
       if (status) {
-        message += `<small>\n<b>${intl.formatMessage(globalMessages.requestStatus)}:</b> ${status}</small>`;
+        message += `<small>\n<b>${escape(
+          intl.formatMessage(globalMessages.requestStatus)
+        )}:</b> ${escape(status)}</small>`;
       }
     } else if (payload.comment) {
-      message += `<small>\n\n<b>${intl.formatMessage(globalMessages.commentFrom, { userName: payload.comment.user.displayName })}:</b> ${payload.comment.message}</small>`;
+      message += `<small>\n\n<b>${escape(
+        intl.formatMessage(globalMessages.commentFrom, {
+          userName: payload.comment.user.displayName,
+        })
+      )}:</b> ${escape(payload.comment.message)}</small>`;
     } else if (payload.issue) {
-      message += `<small>\n\n<b>${intl.formatMessage(globalMessages.reportedBy)}:</b> ${payload.issue.createdBy.displayName}</small>`;
-      message += `<small>\n<b>${intl.formatMessage(globalMessages.issueType)}:</b> ${IssueTypeName[payload.issue.issueType]}</small>`;
-      message += `<small>\n<b>${intl.formatMessage(globalMessages.issueStatus)}:</b> ${
+      message += `<small>\n\n<b>${escape(
+        intl.formatMessage(globalMessages.reportedBy)
+      )}:</b> ${escape(payload.issue.createdBy.displayName)}</small>`;
+      message += `<small>\n<b>${escape(
+        intl.formatMessage(globalMessages.issueType)
+      )}:</b> ${escape(IssueTypeName[payload.issue.issueType])}</small>`;
+      message += `<small>\n<b>${escape(
+        intl.formatMessage(globalMessages.issueStatus)
+      )}:</b> ${escape(
         payload.issue.status === IssueStatus.OPEN
           ? intl.formatMessage(globalMessages.open)
           : intl.formatMessage(globalMessages.resolved)
-      }</small>`;
+      )}</small>`;
 
       if (type === Notification.ISSUE_CREATED) {
         priority = 1;
@@ -173,14 +221,30 @@ class PushoverAgent
     }
 
     for (const extra of payload.extra ?? []) {
-      message += `<small>\n<b>${extra.name}:</b> ${extra.value}</small>`;
+      message += `<small>\n<b>${escape(extra.name)}:</b> ${escape(
+        extra.value
+      )}</small>`;
+    }
+
+    let html = 1;
+    if (message.length > PUSHOVER_MESSAGE_LIMIT) {
+      message = truncateNotificationText(
+        pushoverHtmlToPlainText(message),
+        PUSHOVER_MESSAGE_LIMIT
+      );
+      html = 0;
     }
 
     const url = getNotificationActionUrl(payload, applicationUrl);
-    const url_title = url
-      ? intl.formatMessage(
-          payload.issue ? globalMessages.viewIssue : globalMessages.viewMedia,
-          { applicationTitle }
+    const boundedUrl =
+      url && url.length <= PUSHOVER_URL_LIMIT ? url : undefined;
+    const url_title = boundedUrl
+      ? truncateNotificationText(
+          intl.formatMessage(
+            payload.issue ? globalMessages.viewIssue : globalMessages.viewMedia,
+            { applicationTitle }
+          ),
+          PUSHOVER_URL_TITLE_LIMIT
         )
       : undefined;
 
@@ -197,10 +261,10 @@ class PushoverAgent
     return {
       title,
       message,
-      url,
+      url: boundedUrl,
       url_title,
       priority,
-      html: 1,
+      html,
       attachment_base64,
       attachment_type,
     };
@@ -228,10 +292,7 @@ class PushoverAgent
       });
 
       try {
-        const notificationPayload = await this.getNotificationPayload(
-          type,
-          payload
-        );
+        const notificationPayload = await this.buildPayload(type, payload);
 
         await axios.post(
           endpoint,
@@ -277,7 +338,7 @@ class PushoverAgent
         });
 
         try {
-          const notificationPayload = await this.getNotificationPayload(
+          const notificationPayload = await this.buildPayload(
             type,
             payload,
             payload.notifyUser.settings?.locale as AvailableLocale
@@ -309,19 +370,18 @@ class PushoverAgent
     }
 
     if (payload.notifyAdmin) {
-      const userRepository = getRepository(User);
-      const users = await userRepository.find();
-
-      await Promise.all(
-        users
-          .filter(
+      let adminDeliveryFailed = false;
+      await forEachNotificationUserBatch(async (users) => {
+        const adminDeliveries = await mapWithConcurrency(
+          users.filter(
             (user) =>
               user.settings?.hasNotificationType(
                 NotificationAgentKey.PUSHOVER,
                 type
               ) && shouldSendAdminNotification(type, user, payload)
-          )
-          .map(async (user) => {
+          ),
+          NOTIFICATION_DELIVERY_CONCURRENCY,
+          async (user) => {
             if (
               user.settings?.pushoverApplicationToken &&
               user.settings?.pushoverUserKey &&
@@ -337,7 +397,7 @@ class PushoverAgent
               });
 
               try {
-                const notificationPayload = await this.getNotificationPayload(
+                const notificationPayload = await this.buildPayload(
                   type,
                   payload,
                   user.settings?.locale as AvailableLocale
@@ -365,8 +425,15 @@ class PushoverAgent
                 return false;
               }
             }
-          })
-      );
+          }
+        );
+        adminDeliveryFailed ||= adminDeliveries.some(
+          (delivered) => delivered === false
+        );
+      });
+      if (adminDeliveryFailed) {
+        return false;
+      }
     }
 
     return true;

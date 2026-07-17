@@ -151,12 +151,14 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
 
   const testConnection = useCallback(
     async ({
+      id,
       hostname,
       port,
       apiKey,
       baseUrl,
       useSsl = false,
     }: {
+      id?: number;
       hostname: string;
       port: number;
       apiKey: string;
@@ -168,6 +170,7 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
         const response = await axios.post<RadarrTestResponse>(
           '/api/v1/settings/radarr/test',
           {
+            id,
             hostname,
             apiKey,
             port: Number(port),
@@ -203,6 +206,7 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
   useEffect(() => {
     if (radarr) {
       testConnection({
+        id: radarr.id,
         apiKey: radarr.apiKey,
         hostname: radarr.hostname,
         port: radarr.port,
@@ -313,6 +317,7 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
               onSecondary={() => {
                 if (values.apiKey && values.hostname && values.port) {
                   testConnection({
+                    id: radarr?.id,
                     apiKey: values.apiKey,
                     baseUrl: values.baseUrl,
                     hostname: values.hostname,

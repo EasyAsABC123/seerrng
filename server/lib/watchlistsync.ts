@@ -1,4 +1,7 @@
-import PlexTvAPI from '@server/api/plextv';
+import PlexTvAPI, {
+  MAX_PLEX_WATCHLIST_PAGE_SIZE,
+  type PlexWatchlistItem,
+} from '@server/api/plextv';
 import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
@@ -11,12 +14,45 @@ import {
   RequestPermissionError,
 } from '@server/entity/MediaRequest';
 import { User } from '@server/entity/User';
+import { runUserSecurityMutation } from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
+import type { MediaServerUserAuthoritySnapshot } from './mediaServerUserAuthority';
 import { Permission } from './permissions';
+import { forEachPlexTokenUser } from './plexTokenUserBatches';
 
-type PlexWatchlistItem = Awaited<
-  ReturnType<PlexTvAPI['getWatchlist']>
->['items'][number];
+export const MAX_PLEX_WATCHLIST_SYNC_ITEMS = 200;
+
+export const fetchPlexWatchlistForSync = async (
+  plexTv: Pick<PlexTvAPI, 'getWatchlist'>
+): Promise<{
+  items: PlexWatchlistItem[];
+  totalSize: number;
+  truncated: boolean;
+}> => {
+  const items: PlexWatchlistItem[] = [];
+  let offset = 0;
+  let totalSize = 0;
+
+  do {
+    const size = Math.min(
+      MAX_PLEX_WATCHLIST_PAGE_SIZE,
+      MAX_PLEX_WATCHLIST_SYNC_ITEMS - offset
+    );
+    const page = await plexTv.getWatchlist({ offset, size });
+    totalSize = Math.max(totalSize, page.totalSize);
+    items.push(...page.items.slice(0, size));
+    offset += size;
+  } while (offset < totalSize && offset < MAX_PLEX_WATCHLIST_SYNC_ITEMS);
+
+  return {
+    items: dedupePlexWatchlistItems(items).slice(
+      0,
+      MAX_PLEX_WATCHLIST_SYNC_ITEMS
+    ),
+    totalSize,
+    truncated: totalSize > MAX_PLEX_WATCHLIST_SYNC_ITEMS,
+  };
+};
 
 const dedupePlexWatchlistItems = (
   items: PlexWatchlistItem[]
@@ -38,59 +74,73 @@ const dedupePlexWatchlistItems = (
 
 class WatchlistSync {
   public async syncWatchlist() {
-    const userRepository = getRepository(User);
-
-    // Get users who actually have plex tokens
-    const users = await userRepository
-      .createQueryBuilder('user')
-      .addSelect('user.plexToken')
-      .leftJoinAndSelect('user.settings', 'settings')
-      .where("user.plexToken != ''")
-      .getMany();
-
-    for (const user of users) {
-      await this.syncUserWatchlist(user);
-    }
+    await forEachPlexTokenUser((user) => this.syncUserWatchlist(user));
   }
 
   private async syncUserWatchlist(user: User) {
-    if (!user.plexToken) {
-      logger.warn('Skipping user watchlist sync for user without plex token', {
+    const admitted = await runUserSecurityMutation(user.id, async () => {
+      const activeUser = await getRepository(User)
+        .createQueryBuilder('user')
+        .addSelect('user.plexToken')
+        .leftJoinAndSelect('user.settings', 'settings')
+        .where('user.id = :userId', { userId: user.id })
+        .getOne();
+      if (!activeUser?.plexToken) {
+        logger.warn(
+          'Skipping user watchlist sync for user without plex token',
+          {
+            label: 'Plex Watchlist Sync',
+            userId: user.id,
+          }
+        );
+        return undefined;
+      }
+
+      if (
+        !activeUser.hasPermission(
+          [
+            Permission.AUTO_REQUEST,
+            Permission.AUTO_REQUEST_MOVIE,
+            Permission.AUTO_REQUEST_TV,
+            Permission.AUTO_REQUEST_MUSIC,
+            Permission.AUTO_REQUEST_BOOK,
+          ],
+          { type: 'or' }
+        ) ||
+        (!activeUser.settings?.watchlistSyncMovies &&
+          !activeUser.settings?.watchlistSyncTv &&
+          !activeUser.settings?.watchlistSyncMusic &&
+          !activeUser.settings?.watchlistSyncBooks)
+      ) {
+        return undefined;
+      }
+
+      return {
+        user: activeUser,
+        authoritySnapshot: {
+          userId: activeUser.id,
+          type: 'plex',
+          plexToken: activeUser.plexToken,
+        } satisfies MediaServerUserAuthoritySnapshot,
+        response: await fetchPlexWatchlistForSync(
+          new PlexTvAPI(activeUser.plexToken)
+        ),
+      };
+    });
+    if (!admitted) return;
+
+    user = admitted.user;
+    const authoritySnapshot = admitted.authoritySnapshot;
+    const response = admitted.response;
+    if (response.truncated) {
+      logger.warn('Plex watchlist sync reached its per-user item limit', {
         label: 'Plex Watchlist Sync',
-        user: user.displayName,
+        userId: user.id,
+        totalSize: response.totalSize,
+        itemLimit: MAX_PLEX_WATCHLIST_SYNC_ITEMS,
       });
-      return;
     }
-
-    if (
-      !user.hasPermission(
-        [
-          Permission.AUTO_REQUEST,
-          Permission.AUTO_REQUEST_MOVIE,
-          Permission.AUTO_REQUEST_TV,
-          Permission.AUTO_REQUEST_MUSIC,
-          Permission.AUTO_REQUEST_BOOK,
-        ],
-        { type: 'or' }
-      )
-    ) {
-      return;
-    }
-
-    if (
-      !user.settings?.watchlistSyncMovies &&
-      !user.settings?.watchlistSyncTv &&
-      !user.settings?.watchlistSyncMusic &&
-      !user.settings?.watchlistSyncBooks
-    ) {
-      // Skip sync if user settings have it disabled
-      return;
-    }
-
-    const plexTvApi = new PlexTvAPI(user.plexToken);
-
-    const response = await plexTvApi.getWatchlist({ size: 20 });
-    const watchlistItems = dedupePlexWatchlistItems(response.items);
+    const watchlistItems = response.items;
 
     const mediaItems = await Media.getRelatedMedia(
       user,
@@ -175,7 +225,10 @@ class WatchlistSync {
             is4k: false,
           },
           user,
-          { isAutoRequest: true }
+          {
+            expectedMediaServerUserAuthority: authoritySnapshot,
+            isAutoRequest: true,
+          }
         );
 
         logger.info("Created media request from user's Plex Watchlist", {

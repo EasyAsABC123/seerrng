@@ -20,6 +20,7 @@ const createApp = (authenticated = true) => {
   app.get('/settings/public', (_req, res) => res.json({ initialized: true }));
   app.get('/settings/discover', (_req, res) => res.json([]));
   app.get('/request/count', (_req, res) => res.json({ pending: 0 }));
+  app.post('/auth/local', (_req, res) => res.json({ id: 1 }));
   app.get('/discover/fails', (_req, res) =>
     res.status(500).json({ message: 'failed' })
   );
@@ -56,6 +57,28 @@ describe('apiResponseCache', () => {
     assert.match(res.headers['cache-control'], /max-age=300/);
   });
 
+  it('never stores responses authenticated by API key headers', async () => {
+    const res = await request(createApp())
+      .get('/book/OL1W')
+      .set('X-API-Key', 'service-credential');
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['cache-control'], 'private, no-store');
+    assert.equal(
+      res.headers.vary,
+      'Cookie, Authorization, X-API-Key, Accept-Encoding'
+    );
+  });
+
+  it('never stores responses authenticated by Authorization headers', async () => {
+    const res = await request(createApp())
+      .get('/book/OL1W')
+      .set('Authorization', 'Bearer credential');
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['cache-control'], 'private, no-store');
+  });
+
   it('prevents stale public settings from being reused', async () => {
     const app = createApp(false);
     const res = await request(app).get('/settings/public');
@@ -76,7 +99,7 @@ describe('apiResponseCache', () => {
     assert.match(res.headers['cache-control'], /no-cache/);
   });
 
-  it('does not cache errors or unrelated operational routes', async () => {
+  it('never caches errors or unrelated operational routes', async () => {
     const app = createApp();
     const [failure, requestCount] = await Promise.all([
       request(app).get('/discover/fails'),
@@ -84,8 +107,19 @@ describe('apiResponseCache', () => {
     ]);
 
     assert.equal(failure.status, 500);
-    assert.equal(failure.headers['cache-control'], undefined);
+    assert.equal(failure.headers['cache-control'], 'private, no-store');
     assert.equal(requestCount.status, 200);
-    assert.equal(requestCount.headers['cache-control'], undefined);
+    assert.equal(requestCount.headers['cache-control'], 'private, no-store');
+  });
+
+  it('never caches authentication mutations', async () => {
+    const res = await request(createApp(false)).post('/auth/local');
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['cache-control'], 'private, no-store');
+    assert.equal(
+      res.headers.vary,
+      'Cookie, Authorization, X-API-Key, Accept-Encoding'
+    );
   });
 });

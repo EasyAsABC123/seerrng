@@ -39,6 +39,19 @@ const enum TvdbIdStatus {
 const MAX_TVDB_TOKEN_LENGTH = 8 * 1024;
 const MAX_TVDB_TOKEN_PAYLOAD_LENGTH = 4 * 1024;
 const TVDB_TOKEN_REFRESH_WINDOW_SECONDS = 604_800;
+export const MAX_TVDB_EPISODES_PER_SEASON = 2_500;
+export const MAX_TVDB_EPISODE_PAGES = 50;
+
+export const hasTvdbSeasonTranslation = (
+  translations: unknown,
+  wantedLanguage: string,
+  fallbackLanguage: string
+): boolean =>
+  Array.isArray(translations) &&
+  translations.some(
+    (translation) =>
+      translation === wantedLanguage || translation === fallbackLanguage
+  );
 
 type TvdbId = number;
 type ValidTvdbId = Exclude<TvdbId, TvdbIdStatus.INVALID>;
@@ -71,8 +84,26 @@ export const tvdbTokenNeedsRefresh = (
   }
 };
 
+export const sanitizeTvdbLoginResponse = (
+  value: unknown
+): TvdbLoginResponse => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('TVDB returned an invalid login response');
+  }
+  const token = (value as Record<string, unknown>).token;
+  if (
+    typeof token !== 'string' ||
+    token.length === 0 ||
+    token.length > MAX_TVDB_TOKEN_LENGTH
+  ) {
+    throw new Error('TVDB returned an invalid login response');
+  }
+  return { token };
+};
+
 class Tvdb extends ExternalAPI implements TvShowProvider {
-  static instance: Tvdb;
+  private static instance: Tvdb | undefined;
+  private static initialization: Promise<Tvdb> | undefined;
   private readonly tmdb: TheMovieDb;
   private static readonly DEFAULT_CACHE_TTL = 43200;
   private static readonly DEFAULT_LANGUAGE = 'eng';
@@ -97,12 +128,27 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
   }
 
   public static async getInstance(): Promise<Tvdb> {
-    if (!this.instance) {
-      this.instance = new Tvdb();
-      await this.instance.login();
+    if (this.instance) {
+      return this.instance;
+    }
+    if (this.initialization) {
+      return this.initialization;
     }
 
-    return this.instance;
+    const instance = new Tvdb();
+    const initialization = instance.login().then(() => {
+      this.instance = instance;
+      return instance;
+    });
+    this.initialization = initialization;
+
+    try {
+      return await initialization;
+    } finally {
+      if (this.initialization === initialization) {
+        this.initialization = undefined;
+      }
+    }
   }
 
   private async refreshToken(): Promise<void> {
@@ -136,16 +182,14 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
       };
     }
 
-    const response = await this.post<TvdbBaseResponse<TvdbLoginResponse>>(
-      '/login',
-      {
-        ...body,
-      }
-    );
+    const response = await this.post<TvdbBaseResponse<unknown>>('/login', {
+      ...body,
+    });
 
-    this.token = response.data.token;
+    const loginResponse = sanitizeTvdbLoginResponse(response.data);
+    this.token = loginResponse.token;
 
-    return response.data;
+    return loginResponse;
   }
 
   public async getShowByTvdbId({
@@ -369,13 +413,13 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
     );
 
     // check if translation is available for the season
-    const availableTranslation = season.nameTranslations.filter(
-      (translation) =>
-        translation === wantedTranslation ||
-        translation === Tvdb.DEFAULT_LANGUAGE
-    );
-
-    if (!availableTranslation) {
+    if (
+      !hasTvdbSeasonTranslation(
+        season.nameTranslations,
+        wantedTranslation,
+        Tvdb.DEFAULT_LANGUAGE
+      )
+    ) {
       return this.getSeasonWithOriginalLanguage(
         tvdbId,
         tvId,
@@ -408,12 +452,13 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
     }
 
     const allEpisodes = [] as TvdbEpisode[];
+    const episodeIds = new Set<number>();
     let page = 0;
-    // Limit to max 50 pages to avoid infinite loops.
-    // 50 pages with 500 items per page = 25_000 episodes in a series which should be more than enough
-    const maxPages = 50;
 
-    while (page < maxPages) {
+    while (
+      page < MAX_TVDB_EPISODE_PAGES &&
+      allEpisodes.length < MAX_TVDB_EPISODES_PER_SEASON
+    ) {
       const resp = await this.get<TvdbBaseResponse<TvdbSeasonDetails>>(
         `/series/${tvdbId}/episodes/default/${language}`,
         {
@@ -442,9 +487,22 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
         break;
       }
 
-      allEpisodes.push(...episodes);
+      const previousEpisodeCount = allEpisodes.length;
+      for (const episode of episodes) {
+        if (!episodeIds.has(episode.id)) {
+          episodeIds.add(episode.id);
+          allEpisodes.push(episode);
+        }
 
-      const hasNextPage = resp.links?.next && episodes.length > 0;
+        if (allEpisodes.length >= MAX_TVDB_EPISODES_PER_SEASON) {
+          break;
+        }
+      }
+
+      const hasNextPage =
+        resp.links?.next &&
+        episodes.length > 0 &&
+        allEpisodes.length > previousEpisodeCount;
 
       if (!hasNextPage) {
         break;
@@ -453,9 +511,12 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
       page++;
     }
 
-    if (page >= maxPages) {
+    if (
+      page >= MAX_TVDB_EPISODE_PAGES ||
+      allEpisodes.length >= MAX_TVDB_EPISODES_PER_SEASON
+    ) {
       logger.warn(
-        `Reached max pages (${maxPages}) for TVDB ID: ${tvdbId} on season ${seasonNumber} with language ${language}. There might be more episodes available.`
+        `Reached the TVDB episode retrieval limit for TVDB ID: ${tvdbId} on season ${seasonNumber} with language ${language}. There might be more episodes available.`
       );
     }
 
@@ -472,7 +533,7 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
       overview: '',
       id: season.id,
       air_date: season.firstAired,
-      season_number: episodes.length,
+      season_number: seasonNumber,
     };
   }
 
@@ -509,7 +570,7 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
       overview: '',
       id: seasons.id,
       air_date: seasons.firstAired,
-      season_number: episodes.length,
+      season_number: seasonNumber,
     };
   }
 
@@ -525,6 +586,7 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
 
     return tvdbSeason.episodes
       .filter((episode) => episode.seasonNumber === seasonNumber)
+      .slice(0, MAX_TVDB_EPISODES_PER_SEASON)
       .map((episode, index) => this.createEpisodeData(episode, index, tvId));
   }
 

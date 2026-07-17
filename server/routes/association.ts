@@ -1,5 +1,10 @@
 import { getAssociations } from '@server/lib/associations';
 import type { AssociationMediaType } from '@server/lib/associations/types';
+import {
+  isValidMusicBrainzResourceId,
+  isValidOpenLibraryResourceId,
+  normalizeMusicBrainzId,
+} from '@server/lib/externalIds';
 import { extractImageCacheUrls } from '@server/lib/imageCacheUrls';
 import { enqueueImageCacheWarm } from '@server/lib/imageCacheWarmer';
 import logger from '@server/logger';
@@ -11,8 +16,23 @@ import {
 } from '@server/utils/validation';
 import type { Response } from 'express';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 
 const associationRoutes = Router();
+export const ASSOCIATION_RATE_LIMIT = {
+  windowMs: 60 * 1000,
+  limit: 30,
+} as const;
+const associationRateLimit = rateLimit({
+  ...ASSOCIATION_RATE_LIMIT,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+  keyGenerator: (req) => `user:${req.user?.id ?? 'anonymous'}`,
+});
+
+associationRoutes.use(associationRateLimit);
 
 associationRoutes.use((_req, res, next) => {
   const json = res.json.bind(res);
@@ -56,7 +76,18 @@ const parseAssociationId = (
     maxLength: MAX_ASSOCIATION_EXTERNAL_ID_LENGTH,
   });
 
-  return 'error' in parsed ? undefined : parsed.value;
+  if ('error' in parsed) {
+    return undefined;
+  }
+
+  if (mediaType === 'artist' || mediaType === 'album') {
+    const normalizedId = normalizeMusicBrainzId(parsed.value);
+    return isValidMusicBrainzResourceId(normalizedId)
+      ? normalizedId
+      : undefined;
+  }
+
+  return isValidOpenLibraryResourceId(parsed.value) ? parsed.value : undefined;
 };
 
 associationRoutes.get('/:mediaType/:id', async (req, res, next) => {

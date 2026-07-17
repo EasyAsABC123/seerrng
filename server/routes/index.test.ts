@@ -1,25 +1,33 @@
 import assert from 'node:assert/strict';
 import { afterEach, before, describe, it, mock } from 'node:test';
 
+import PushoverAPI from '@server/api/pushover';
 import { DiscoverSliderType } from '@server/constants/discover';
 import {
   MediaRequestStatus,
   MediaStatus,
   MediaType,
 } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
+import dataSource, { getRepository } from '@server/datasource';
 import DiscoverSlider from '@server/entity/DiscoverSlider';
 import Media from '@server/entity/Media';
 import { MediaRequest } from '@server/entity/MediaRequest';
 import { User } from '@server/entity/User';
+import { UserSettings } from '@server/entity/UserSettings';
 import { Watchlist } from '@server/entity/Watchlist';
+import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
+import { runUserSecurityMutation } from '@server/lib/userSecurityMutation';
 import { setupTestDb } from '@server/test/db';
 import type { Express } from 'express';
 import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
-import router from './index';
+import router, {
+  EXTERNAL_METADATA_RATE_LIMIT,
+  PUBLIC_BACKDROPS_RATE_LIMIT,
+  getCommitUpdateStatus,
+} from './index';
 
 let app: Express;
 
@@ -60,6 +68,60 @@ afterEach(() => {
 
 setupTestDb();
 
+describe('Public endpoint resource boundaries', () => {
+  it('bounds unauthenticated backdrop provider requests', () => {
+    assert.deepStrictEqual(PUBLIC_BACKDROPS_RATE_LIMIT, {
+      windowMs: 60 * 1000,
+      limit: 30,
+    });
+  });
+
+  it('reports readiness only while the database responds', async () => {
+    const ready = await request(app).get('/api/v1/status/ready');
+    assert.strictEqual(ready.status, 204);
+
+    mock.method(dataSource, 'query', async () => {
+      throw new Error('database unavailable');
+    });
+    const unavailable = await request(app).get('/api/v1/status/ready');
+    assert.strictEqual(unavailable.status, 503);
+    assert.strictEqual(unavailable.text, '');
+  });
+});
+
+describe('Authenticated metadata resource boundaries', () => {
+  it('shares a bounded upstream request budget across detail route families', () => {
+    assert.deepStrictEqual(EXTERNAL_METADATA_RATE_LIMIT, {
+      windowMs: 60 * 1000,
+      limit: 60,
+    });
+  });
+
+  it('cannot reset the metadata budget by switching route families', async () => {
+    const agent = await login();
+    const environment = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = environment.NODE_ENV;
+    environment.NODE_ENV = 'production';
+
+    try {
+      for (let index = 0; index < EXTERNAL_METADATA_RATE_LIMIT.limit; index++) {
+        const route = index % 2 === 0 ? '/movie/0' : '/tv/0';
+        const response = await agent.get(`/api/v1${route}`);
+        assert.notStrictEqual(response.status, 429);
+      }
+
+      const limited = await agent.get('/api/v1/person/0');
+      assert.strictEqual(limited.status, 429);
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete environment.NODE_ENV;
+      } else {
+        environment.NODE_ENV = previousNodeEnv;
+      }
+    }
+  });
+});
+
 async function login() {
   return loginAs('admin@seerr.dev');
 }
@@ -80,6 +142,40 @@ async function loginAs(email: string) {
     settings.main.localLogin = priorLocalLogin;
   }
 }
+
+describe('commit update status', () => {
+  const commit = (sha: string, message = 'change') => ({
+    sha,
+    commit: { message },
+  });
+
+  it('handles pages containing only skipped commits', () => {
+    assert.deepEqual(
+      getCommitUpdateStatus(
+        [commit('a', '[skip ci] docs'), commit('b', 'build [skip ci]')],
+        'older'
+      ),
+      { updateAvailable: false, commitsBehind: 0 }
+    );
+  });
+
+  it('reports the exact index when the current commit is in the window', () => {
+    assert.deepEqual(
+      getCommitUpdateStatus(
+        [commit('latest'), commit('skipped', '[skip ci]'), commit('current')],
+        'current'
+      ),
+      { updateAvailable: true, commitsBehind: 1 }
+    );
+  });
+
+  it('uses the fetched count as a lower bound for older commits', () => {
+    assert.deepEqual(
+      getCommitUpdateStatus([commit('a'), commit('b')], 'older'),
+      { updateAvailable: true, commitsBehind: 2 }
+    );
+  });
+});
 
 describe('Discover homepage synchronization API', () => {
   it('requires authentication for manifest and state endpoints', async () => {
@@ -227,6 +323,22 @@ describe('Discover homepage synchronization API', () => {
 });
 
 describe('Top-level API route validation', () => {
+  it('exposes cache warming only to authenticated API clients', async () => {
+    const body = {
+      urls: ['https://image.tmdb.org/t/p/w300/poster.jpg'],
+    };
+    const anonymous = await request(app)
+      .post('/api/v1/imageproxy/warm')
+      .send(body);
+    const agent = await login();
+    const authenticated = await agent
+      .post('/api/v1/imageproxy/warm')
+      .send(body);
+
+    assert.strictEqual(anonymous.status, 403);
+    assert.strictEqual(authenticated.status, 202);
+  });
+
   it('allows unauthenticated login backdrop requests', async () => {
     const res = await request(app).get('/api/v1/backdrops');
 
@@ -248,6 +360,79 @@ describe('Top-level API route validation', () => {
 
     assert.strictEqual(res.status, 400);
     assert.match(res.body.message, /Pushover application token/);
+  });
+
+  it('loads Pushover sounds from the authenticated user stored token', async () => {
+    const userRepository = getRepository(User);
+    const target = await userRepository.findOneByOrFail({ id: 2 });
+    target.settings = new UserSettings({
+      ...target.settings,
+      user: target,
+      pushoverApplicationToken: 'a'.repeat(30),
+      notificationTypes: target.settings?.notificationTypes ?? {},
+    });
+    await userRepository.save(target);
+
+    mock.method(PushoverAPI.prototype, 'getSounds', async (token: string) => {
+      assert.strictEqual(token, 'a'.repeat(30));
+      return [{ name: 'pushover', description: 'Pushover' }];
+    });
+
+    const agent = await loginAs('friend@seerr.dev');
+    const res = await agent
+      .get('/api/v1/settings/notifications/pushover/sounds')
+      .query({ userId: 2 });
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(res.body, [
+      { name: 'pushover', description: 'Pushover' },
+    ]);
+  });
+
+  it("prevents users from loading another user's Pushover sounds", async () => {
+    const agent = await loginAs('friend@seerr.dev');
+    const res = await agent
+      .get('/api/v1/settings/notifications/pushover/sounds')
+      .query({ userId: 1 });
+
+    assert.strictEqual(res.status, 403);
+  });
+
+  it('revalidates administrator authority before using the global Pushover token', async () => {
+    const settings = getSettings();
+    settings.notifications.agents.pushover.options.accessToken = 'a'.repeat(30);
+    const userRepository = getRepository(User);
+    const agent = await login();
+    const provider = mock.method(
+      PushoverAPI.prototype,
+      'getSounds',
+      async () => []
+    );
+    let revocationStarted!: () => void;
+    let releaseRevocation!: () => void;
+    const revocationStartedPromise = new Promise<void>((resolve) => {
+      revocationStarted = resolve;
+    });
+    const releaseRevocationPromise = new Promise<void>((resolve) => {
+      releaseRevocation = resolve;
+    });
+    const revocation = runUserSecurityMutation(1, async () => {
+      await userRepository.update(1, { permissions: Permission.REQUEST });
+      revocationStarted();
+      await releaseRevocationPromise;
+    });
+    await revocationStartedPromise;
+
+    const responsePromise = agent
+      .get('/api/v1/settings/notifications/pushover/sounds')
+      .then((response) => response);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    releaseRevocation();
+    await revocation;
+
+    const response = await responsePromise;
+    assert.strictEqual(response.status, 403);
+    assert.strictEqual(provider.mock.callCount(), 0);
   });
 
   it('rejects oversized watch provider regions before provider lookup', async () => {

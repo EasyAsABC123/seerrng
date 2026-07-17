@@ -1,9 +1,15 @@
 import { MAX_ISSUE_MESSAGE_LENGTH } from '@server/constants/issue';
 import { getRepository } from '@server/datasource';
 import IssueComment from '@server/entity/IssueComment';
+import issueMutationCoordinator from '@server/lib/issueMutation';
 import { Permission } from '@server/lib/permissions';
+import {
+  UserMutationActorUnauthorizedError,
+  runAuthorizedUserSecurityMutation,
+} from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
+import { authorizedRouteScope } from '@server/middleware/authorizedMutation';
 import { filterEntityResponse } from '@server/utils/entityResponse';
 import { parsePositiveRouteId } from '@server/utils/routeId';
 import { parseBoundedString } from '@server/utils/validation';
@@ -37,6 +43,11 @@ issueCommentRoutes.get<{ commentId: string }, IssueComment>(
       type: 'or',
     }
   ),
+  authorizedRouteScope([
+    Permission.MANAGE_ISSUES,
+    Permission.VIEW_ISSUES,
+    Permission.CREATE_ISSUES,
+  ]),
   async (req, res, next) => {
     const issueCommentRepository = getRepository(IssueComment);
 
@@ -48,6 +59,7 @@ issueCommentRoutes.get<{ commentId: string }, IssueComment>(
 
       const comment = await issueCommentRepository.findOneOrFail({
         where: { id: commentId },
+        relations: { issue: { createdBy: true } },
       });
 
       if (
@@ -55,7 +67,7 @@ issueCommentRoutes.get<{ commentId: string }, IssueComment>(
           [Permission.MANAGE_ISSUES, Permission.VIEW_ISSUES],
           { type: 'or' }
         ) &&
-        comment.user.id !== req.user?.id
+        comment.issue.createdBy.id !== req.user?.id
       ) {
         return next({
           status: 403,
@@ -63,7 +75,11 @@ issueCommentRoutes.get<{ commentId: string }, IssueComment>(
         });
       }
 
-      return res.status(200).json(filterEntityResponse(comment));
+      // The issue relation is loaded only to enforce ownership and is not part
+      // of the direct comment response contract.
+      delete (comment as Partial<IssueComment>).issue;
+
+      return res.status(200).json(filterEntityResponse(comment, req.user));
     } catch (e) {
       logger.debug('Request for unknown issue comment failed', {
         label: 'API',
@@ -104,23 +120,46 @@ issueCommentRoutes.put<
         return next({ status: 404, message: 'Issue comment not found.' });
       }
 
-      const comment = await issueCommentRepository.findOneOrFail({
+      const locatedComment = await issueCommentRepository.findOneOrFail({
         where: { id: commentId },
+        relations: { issue: true },
       });
+      const actorId = req.user!.id;
+      const comment = await runAuthorizedUserSecurityMutation(
+        actorId,
+        actorId,
+        [Permission.MANAGE_ISSUES, Permission.CREATE_ISSUES],
+        (actor) =>
+          issueMutationCoordinator.run(
+            locatedComment.issue.id,
+            async (manager) => {
+              const transactionRepository = manager.getRepository(IssueComment);
+              const activeComment = await transactionRepository.findOneOrFail({
+                where: { id: commentId },
+                relations: { issue: true },
+              });
 
-      if (comment.user.id !== req.user?.id) {
+              if (activeComment.user.id !== actor.id) {
+                throw Object.assign(new Error('Issue comment edit forbidden'), {
+                  status: 403,
+                });
+              }
+
+              activeComment.message = parsedMessage.value;
+              return transactionRepository.save(activeComment);
+            }
+          )
+      );
+
+      delete (comment as Partial<IssueComment>).issue;
+      return res.status(200).json(filterEntityResponse(comment, req.user));
+    } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError || e.status === 403) {
         return next({
           status: 403,
           message: 'You can only edit your own comments.',
         });
       }
-
-      comment.message = parsedMessage.value;
-
-      await issueCommentRepository.save(comment);
-
-      return res.status(200).json(filterEntityResponse(comment));
-    } catch (e) {
       logger.debug('Put request for issue comment failed', {
         label: 'API',
         errorMessage: e.message,
@@ -144,24 +183,48 @@ issueCommentRoutes.delete<{ commentId: string }, IssueComment>(
         return next({ status: 404, message: 'Issue comment not found.' });
       }
 
-      const comment = await issueCommentRepository.findOneOrFail({
+      const locatedComment = await issueCommentRepository.findOneOrFail({
         where: { id: commentId },
+        relations: { issue: true },
       });
+      const actorId = req.user!.id;
+      await runAuthorizedUserSecurityMutation(
+        actorId,
+        actorId,
+        [Permission.MANAGE_ISSUES, Permission.CREATE_ISSUES],
+        (actor) =>
+          issueMutationCoordinator.run(
+            locatedComment.issue.id,
+            async (manager) => {
+              const transactionRepository = manager.getRepository(IssueComment);
+              const activeComment = await transactionRepository.findOneOrFail({
+                where: { id: commentId },
+                relations: { issue: true },
+              });
 
-      if (
-        !req.user?.hasPermission([Permission.MANAGE_ISSUES], { type: 'or' }) &&
-        comment.user.id !== req.user?.id
-      ) {
+              if (
+                !actor.hasPermission(Permission.MANAGE_ISSUES) &&
+                activeComment.user.id !== actor.id
+              ) {
+                throw Object.assign(
+                  new Error('Issue comment deletion forbidden'),
+                  { status: 403 }
+                );
+              }
+
+              await transactionRepository.remove(activeComment);
+            }
+          )
+      );
+
+      return res.status(204).send();
+    } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError || e.status === 403) {
         return next({
           status: 403,
           message: 'You do not have permission to delete this comment.',
         });
       }
-
-      await issueCommentRepository.remove(comment);
-
-      return res.status(204).send();
-    } catch (e) {
       logger.debug('Delete request for issue comment failed', {
         label: 'API',
         errorMessage: e.message,

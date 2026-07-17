@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_COMPOSE="${SCRIPT_DIR}/compose.bookshelf.yml"
+DEFAULT_BOOKSHELF_HARDCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2"
+DEFAULT_BOOKSHELF_SOFTCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97"
 
 DRY_RUN=false
 VALIDATE_ONLY=false
@@ -168,6 +170,128 @@ run() {
   "$@"
 }
 
+ensure_private_directory() {
+  local directory="$1"
+  local owner_id
+
+  if [ "$DRY_RUN" = "true" ]; then
+    run mkdir -p "$directory"
+    return
+  fi
+
+  if [ -L "$directory" ]; then
+    echo "Refusing to use a symlinked private directory: ${directory}" >&2
+    exit 1
+  fi
+
+  mkdir -p "$directory"
+  if [ ! -d "$directory" ] || [ -L "$directory" ]; then
+    echo "Private path is not a regular directory: ${directory}" >&2
+    exit 1
+  fi
+
+  owner_id="$(stat -c '%u' "$directory")"
+  if [ "$owner_id" != "$(id -u)" ]; then
+    echo "Private directory is owned by another user: ${directory}" >&2
+    exit 1
+  fi
+  if find "$directory" -maxdepth 0 -perm /022 -print -quit | grep -q .; then
+    echo "Private directory is group- or world-writable: ${directory}" >&2
+    exit 1
+  fi
+
+  chmod 700 "$directory"
+}
+
+atomic_write_private_file() {
+  local output_file="$1"
+  local output_mode="${2:-600}"
+  local output_directory
+  local output_name
+  local temporary_file
+
+  output_directory="$(dirname "$output_file")"
+  output_name="$(basename "$output_file")"
+  temporary_file="$(mktemp "${output_directory}/.${output_name}.XXXXXX.tmp")"
+
+  if ! cat >"$temporary_file"; then
+    rm -f -- "$temporary_file"
+    return 1
+  fi
+  if ! chmod "$output_mode" "$temporary_file" || ! mv -Tf -- "$temporary_file" "$output_file"; then
+    rm -f -- "$temporary_file"
+    return 1
+  fi
+}
+
+validate_no_control_characters() {
+  local name="$1"
+  local value="$2"
+
+  if [[ "$value" == *$'\n'* ]] || [[ "$value" == *$'\r'* ]] ||
+    printf '%s' "$value" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+    echo "${name} must not contain control characters." >&2
+    exit 2
+  fi
+}
+
+validate_port() {
+  local name="$1"
+  local value="$2"
+
+  if ! printf '%s' "$value" | grep -Eq '^[0-9]{1,5}$' ||
+    [ "$((10#$value))" -lt 1 ] || [ "$((10#$value))" -gt 65535 ]; then
+    echo "${name} must be an integer from 1 through 65535." >&2
+    exit 2
+  fi
+}
+
+validate_user_id() {
+  local name="$1"
+  local value="$2"
+
+  if ! printf '%s' "$value" | grep -Eq '^[0-9]{1,10}$' ||
+    [ "$((10#$value))" -gt 4294967294 ]; then
+    echo "${name} must be an integer from 0 through 4294967294." >&2
+    exit 2
+  fi
+}
+
+validate_boolean() {
+  local name="$1"
+  local value="$2"
+
+  if [ "$value" != "true" ] && [ "$value" != "false" ]; then
+    echo "${name} must be true or false." >&2
+    exit 2
+  fi
+}
+
+validate_configuration() {
+  local name
+
+  validate_port BOOKSHELF_EBOOKS_PORT "$BOOKSHELF_EBOOKS_PORT"
+  validate_port BOOKSHELF_AUDIOBOOKS_PORT "$BOOKSHELF_AUDIOBOOKS_PORT"
+  validate_port RREADING_GLASSES_PORT "$RREADING_GLASSES_PORT"
+  validate_port RREADING_GLASSES_POSTGRES_PORT "$RREADING_GLASSES_POSTGRES_PORT"
+  validate_user_id PUID "$PUID"
+  validate_user_id PGID "$PGID"
+
+  validate_boolean ALLOW_INCOMPLETE_HARDCOVER_CUTOVER "$ALLOW_INCOMPLETE_HARDCOVER_CUTOVER"
+  validate_boolean APPLY_HARDCOVER_REBUILD "$APPLY_HARDCOVER_REBUILD"
+  validate_boolean CLONE_EBOOKS_CONFIG_TO_AUDIOBOOKS "$CLONE_EBOOKS_CONFIG_TO_AUDIOBOOKS"
+  validate_boolean HARDCOVER_LOCAL_DB_IMPORT "$HARDCOVER_LOCAL_DB_IMPORT"
+
+  for name in \
+    INSTALL_DIR BACKUP_DIR BOOKSHELF_EBOOKS_CONFIG_DIR \
+    BOOKSHELF_AUDIOBOOKS_CONFIG_DIR RREADING_GLASSES_POSTGRES_DIR \
+    MEDIA_ROOT DOWNLOAD_ROOT PLEX_ROOT TZ BOOKSHELF_IMAGE \
+    BOOKSHELF_METADATA_URL COMPOSE_PROFILES STOP_OLD_READARR_CONTAINER \
+    RREADING_GLASSES_POSTGRES_PASSWORD; do
+    validate_no_control_characters "$name" "${!name:-}"
+  done
+}
+
 compose_cmd() {
   docker compose "$@"
 }
@@ -203,9 +327,9 @@ resolve_backend() {
 
   if [ -z "$BOOKSHELF_IMAGE" ]; then
     if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
-      BOOKSHELF_IMAGE="ghcr.io/snapetech/bookshelfng:softcover"
+      BOOKSHELF_IMAGE="$DEFAULT_BOOKSHELF_SOFTCOVER_IMAGE"
     else
-      BOOKSHELF_IMAGE="ghcr.io/snapetech/bookshelfng:hardcover"
+      BOOKSHELF_IMAGE="$DEFAULT_BOOKSHELF_HARDCOVER_IMAGE"
     fi
   fi
 
@@ -244,11 +368,32 @@ env_file_value() {
 backup_path() {
   local path="$1"
   local label="$2"
+  local archive_path="${BACKUP_DIR}/${label}.tgz"
+  local temporary_archive
 
   if [ -e "$path" ]; then
-    run mkdir -p "$BACKUP_DIR"
-    run tar -C "$(dirname "$path")" -czf "${BACKUP_DIR}/${label}.tgz" "$(basename "$path")"
-    echo "Backed up $path to ${BACKUP_DIR}/${label}.tgz"
+    ensure_private_directory "$BACKUP_DIR"
+    if [ "$DRY_RUN" = "true" ]; then
+      run tar -C "$(dirname "$path")" -czf "$archive_path" "$(basename "$path")"
+    else
+      if [ -e "$archive_path" ] || [ -L "$archive_path" ]; then
+        echo "Backup archive already exists: ${archive_path}" >&2
+        exit 1
+      fi
+      temporary_archive="$(mktemp "${BACKUP_DIR}/.${label}.XXXXXX.tmp")"
+      if ! tar -C "$(dirname "$path")" -czf "$temporary_archive" "$(basename "$path")"; then
+        rm -f -- "$temporary_archive"
+        exit 1
+      fi
+      chmod 600 "$temporary_archive"
+      if ! ln -- "$temporary_archive" "$archive_path"; then
+        rm -f -- "$temporary_archive"
+        echo "Failed to publish backup archive without overwriting a path: ${archive_path}" >&2
+        exit 1
+      fi
+      rm -f -- "$temporary_archive"
+    fi
+    echo "Backed up $path to ${archive_path}"
   else
     echo "No existing $label path at $path; skipping backup"
   fi
@@ -334,12 +479,29 @@ validate_migration_sources() {
   fi
 }
 
-restore_path() {
+restore_path() (
   local archive="$1"
   local target_path="$2"
   local label="$3"
+  local archive_listing
+  local archive_root=""
+  local member
+  local normalized_member
   local parent_dir
-  local restore_name
+  local pre_restore_path
+  local staging_dir=""
+
+  # Invoked by the RETURN trap below.
+  # shellcheck disable=SC2329
+  cleanup_restore_staging() {
+    if [ -n "$staging_dir" ]; then
+      rm -rf -- "$staging_dir"
+    fi
+    if [ -n "${archive_listing:-}" ]; then
+      rm -f -- "$archive_listing"
+    fi
+  }
+  trap cleanup_restore_staging EXIT
 
   if [ ! -f "$archive" ]; then
     echo "No ${label} archive at ${archive}; skipping restore"
@@ -347,27 +509,87 @@ restore_path() {
   fi
 
   parent_dir="$(dirname "$target_path")"
-  restore_name="$(tar -tzf "$archive" | head -n 1 | cut -d / -f 1)"
+  archive_listing="$(mktemp)"
+  if ! tar -tzf "$archive" >"$archive_listing"; then
+    echo "Cannot read restore archive: ${archive}" >&2
+    exit 1
+  fi
 
-  if [ -z "$restore_name" ]; then
+  while IFS= read -r member; do
+    normalized_member="${member%/}"
+    if [ -z "$normalized_member" ] ||
+      [ "${normalized_member#/}" != "$normalized_member" ] ||
+      [ "${normalized_member#./}" != "$normalized_member" ] ||
+      [ "${normalized_member%/.}" != "$normalized_member" ] ||
+      [ "${normalized_member%/..}" != "$normalized_member" ] ||
+      [[ "/${normalized_member}/" == *"/./"* ]] ||
+      [[ "/${normalized_member}/" == *"/../"* ]] ||
+      [[ "$normalized_member" == *"//"* ]]; then
+      echo "Unsafe path in restore archive ${archive}: ${member}" >&2
+      exit 1
+    fi
+
+    if [ -z "$archive_root" ]; then
+      archive_root="${normalized_member%%/*}"
+      if [ -z "$archive_root" ] || [ "$(basename "$archive_root")" != "$archive_root" ]; then
+        echo "Invalid restore root in ${archive}: ${archive_root}" >&2
+        exit 1
+      fi
+    elif [ "${normalized_member%%/*}" != "$archive_root" ]; then
+      echo "Restore archive must contain exactly one top-level directory: ${archive}" >&2
+      exit 1
+    fi
+  done <"$archive_listing"
+
+  if [ -z "$archive_root" ]; then
     echo "Cannot determine restore root for ${archive}" >&2
     exit 1
   fi
 
-  run mkdir -p "$parent_dir"
-
-  if [ -e "$target_path" ]; then
-    run mv "$target_path" "${target_path}.pre-restore-$(date +%Y%m%d-%H%M%S)"
+  if [ "$DRY_RUN" = "true" ]; then
+    run mkdir -p "$parent_dir"
+    run tar -C "$parent_dir" --no-same-owner --no-same-permissions -xzf "$archive"
+    echo "Would restore ${label} from ${archive} to ${target_path}"
+    return
   fi
 
-  run tar -C "$parent_dir" -xzf "$archive"
+  run mkdir -p "$parent_dir"
+  staging_dir="$(mktemp -d "${parent_dir}/.seerr-restore.XXXXXX")"
+  chmod 700 "$staging_dir"
+  tar -C "$staging_dir" \
+    --no-same-owner \
+    --no-same-permissions \
+    --delay-directory-restore \
+    -xzf "$archive"
 
-  if [ "$restore_name" != "$(basename "$target_path")" ]; then
-    run mv "${parent_dir}/${restore_name}" "$target_path"
+  if [ ! -d "${staging_dir}/${archive_root}" ] ||
+    [ -L "${staging_dir}/${archive_root}" ] ||
+    find "$staging_dir" -mindepth 1 \( -type l -o -type p -o -type b -o -type c -o -type s \) -print -quit | grep -q . ||
+    find "$staging_dir" -type f -links +1 -print -quit | grep -q .; then
+    echo "Restore archive contains unsafe filesystem entries: ${archive}" >&2
+    exit 1
+  fi
+
+  pre_restore_path="${target_path}.pre-restore-$(date +%Y%m%d-%H%M%S)-$$"
+
+  if [ -e "$target_path" ] || [ -L "$target_path" ]; then
+    if [ -e "$pre_restore_path" ] || [ -L "$pre_restore_path" ]; then
+      echo "Pre-restore destination already exists: ${pre_restore_path}" >&2
+      exit 1
+    fi
+    mv -T -- "$target_path" "$pre_restore_path"
+  fi
+
+  if ! mv -T -- "${staging_dir}/${archive_root}" "$target_path"; then
+    if [ -e "$pre_restore_path" ] || [ -L "$pre_restore_path" ]; then
+      mv -T -- "$pre_restore_path" "$target_path"
+    fi
+    echo "Failed to install restored ${label} at ${target_path}" >&2
+    exit 1
   fi
 
   echo "Restored ${label} from ${archive} to ${target_path}"
-}
+)
 
 restore_backup() {
   if [ ! -d "$BACKUP_DIR" ]; then
@@ -403,8 +625,8 @@ write_backup_manifest() {
     return
   fi
 
-  mkdir -p "$BACKUP_DIR"
-  cat >"$manifest_file" <<EOF
+  ensure_private_directory "$BACKUP_DIR"
+  atomic_write_private_file "$manifest_file" <<EOF
 {
   "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "installDir": "$(json_escape "$INSTALL_DIR")",
@@ -436,6 +658,11 @@ ensure_bookshelf_config() {
 
   run mkdir -p "$config_dir"
 
+  if [ -L "$config_file" ] || { [ -e "$config_file" ] && [ ! -f "$config_file" ]; }; then
+    echo "Refusing to write a non-regular Bookshelf config: ${config_file}" >&2
+    exit 1
+  fi
+
   if [ ! -f "$config_file" ]; then
     if [ "$DRY_RUN" = "true" ]; then
       echo "Would create ${label} Bookshelf config.xml with port ${port}."
@@ -443,7 +670,7 @@ ensure_bookshelf_config() {
     fi
 
     api_key="$(generate_password | cut -c 1-32)"
-    cat >"$config_file" <<EOF
+    atomic_write_private_file "$config_file" <<EOF
 <Config>
   <LogLevel>info</LogLevel>
   <Port>${port}</Port>
@@ -458,6 +685,9 @@ ensure_bookshelf_config() {
   <UpdateMechanism>Docker</UpdateMechanism>
 </Config>
 EOF
+    if [ "$(id -u)" = "0" ]; then
+      chown "$PUID:$PGID" "$config_file"
+    fi
     echo "Created ${label} Bookshelf config.xml with port ${port}."
     return
   fi
@@ -473,11 +703,17 @@ EOF
     run sed -i "s#</Config>#  <ApiKey>${api_key}</ApiKey>\\n</Config>#" "$config_file"
   fi
 
+  chmod 600 "$config_file"
+  if [ "$(id -u)" = "0" ]; then
+    chown "$PUID:$PGID" "$config_file"
+  fi
+
   echo "Ensured ${label} Bookshelf config.xml uses port ${port}."
 }
 
 write_env_file() {
   local env_file="${INSTALL_DIR}/.env"
+  local env_backup
   local existing_postgres_password
 
   if [ "$DRY_RUN" = "true" ]; then
@@ -487,12 +723,14 @@ write_env_file() {
 
   existing_postgres_password="$(env_file_value "$env_file" "RREADING_GLASSES_POSTGRES_PASSWORD")"
   RREADING_GLASSES_POSTGRES_PASSWORD="${RREADING_GLASSES_POSTGRES_PASSWORD:-${existing_postgres_password:-$(generate_password)}}"
+  validate_no_control_characters RREADING_GLASSES_POSTGRES_PASSWORD "$RREADING_GLASSES_POSTGRES_PASSWORD"
 
   if [ -f "$env_file" ]; then
-    cp "$env_file" "${env_file}.bak-$(date +%Y%m%d-%H%M%S)"
+    env_backup="${env_file}.bak-$(date +%Y%m%d-%H%M%S)-$$"
+    atomic_write_private_file "$env_backup" <"$env_file"
   fi
 
-  cat >"$env_file" <<EOF
+  atomic_write_private_file "$env_file" <<EOF
 PUID=${PUID}
 PGID=${PGID}
 TZ=${TZ}
@@ -521,7 +759,6 @@ RREADING_GLASSES_POSTGRES_DB=rreading-glasses
 RREADING_GLASSES_POSTGRES_USER=rreading
 RREADING_GLASSES_POSTGRES_PASSWORD=${RREADING_GLASSES_POSTGRES_PASSWORD}
 EOF
-  chmod 600 "$env_file"
   echo "Wrote ${env_file}"
 }
 
@@ -594,7 +831,7 @@ write_bookshelf_inventory() {
   indexers_json="$(sqlite_table_json "$db_file" "Indexers")"
   download_clients_json="$(sqlite_table_json "$db_file" "DownloadClients")"
 
-  cat >"$output_file" <<EOF
+  atomic_write_private_file "$output_file" <<EOF
 {
   "serviceType": "$(json_escape "$service_type")",
   "configDir": "$(json_escape "$config_dir")",
@@ -623,15 +860,19 @@ write_bookshelf_inventory() {
 EOF
 }
 
-migrate_to_hardcover() {
+migrate_to_hardcover() (
   local migration_dir="${BACKUP_DIR}/hardcover-migration"
+
+  # Migration inventories include complete source database rows and may carry
+  # indexer, download-client, and API credentials.
+  umask 077
 
   echo "Preparing Hardcover migration inventory."
   backup_path "$BOOKSHELF_EBOOKS_CONFIG_DIR" "bookshelf-ebooks-config"
   backup_path "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR" "bookshelf-audiobooks-config"
   backup_path "$RREADING_GLASSES_POSTGRES_DIR" "rreading-glasses-postgres"
   write_backup_manifest
-  run mkdir -p "$migration_dir"
+  ensure_private_directory "$migration_dir"
 
   write_bookshelf_inventory "ebook" "$BOOKSHELF_EBOOKS_CONFIG_DIR" "${migration_dir}/ebook-inventory.json"
   write_bookshelf_inventory "audiobook" "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR" "${migration_dir}/audiobook-inventory.json"
@@ -641,7 +882,7 @@ migrate_to_hardcover() {
     return
   fi
 
-  cat >"${migration_dir}/migration-report.json" <<EOF
+  atomic_write_private_file "${migration_dir}/migration-report.json" <<EOF
 {
   "backendTarget": "hardcover",
   "status": "inventory_ready",
@@ -666,16 +907,20 @@ migrate_to_hardcover() {
   }
 }
 EOF
-  printf '[]\n' >"${migration_dir}/matched-books.json"
-  printf '[]\n' >"${migration_dir}/unmatched-books.json"
-  printf '[]\n' >"${migration_dir}/ambiguous-books.json"
-  printf '[]\n' >"${migration_dir}/rebuild-payload.json"
-  printf '[]\n' >"${migration_dir}/rebuild-blocked.json"
-  printf '[]\n' >"${migration_dir}/applied-books.json"
-  printf '[]\n' >"${migration_dir}/apply-failures.json"
-  printf '[]\n' >"${migration_dir}/apply-failure-summary.json"
-  printf '[]\n' >"${migration_dir}/validation-report.json"
-  printf '{"ok":false,"reasons":["validation_not_run"]}\n' >"${migration_dir}/cutover-decision.json"
+  for empty_output in \
+    matched-books.json \
+    unmatched-books.json \
+    ambiguous-books.json \
+    rebuild-payload.json \
+    rebuild-blocked.json \
+    applied-books.json \
+    apply-failures.json \
+    apply-failure-summary.json \
+    validation-report.json; do
+    printf '[]\n' | atomic_write_private_file "${migration_dir}/${empty_output}"
+  done
+  printf '{"ok":false,"reasons":["validation_not_run"]}\n' |
+    atomic_write_private_file "${migration_dir}/cutover-decision.json"
 
   if command -v node >/dev/null 2>&1; then
       BOOKSHELF_EBOOKS_PORT="$BOOKSHELF_EBOOKS_PORT" \
@@ -712,7 +957,7 @@ EOF
   fi
 
   echo "Wrote Hardcover migration report files to ${migration_dir}"
-}
+)
 
 preflight() {
   require_command docker
@@ -757,7 +1002,11 @@ preflight() {
 
 render_compose_inputs() {
   run mkdir -p "$INSTALL_DIR"
-  run cp "$SOURCE_COMPOSE" "${INSTALL_DIR}/compose.yml"
+  if [ "$DRY_RUN" = "true" ]; then
+    run cp "$SOURCE_COMPOSE" "${INSTALL_DIR}/compose.yml"
+  else
+    atomic_write_private_file "${INSTALL_DIR}/compose.yml" 644 <"$SOURCE_COMPOSE"
+  fi
   write_env_file
 }
 
@@ -863,6 +1112,7 @@ if [ "$RESTORE_BACKUP" = "true" ]; then
   exit 0
 fi
 
+validate_configuration
 preflight
 render_compose_inputs
 validate_compose

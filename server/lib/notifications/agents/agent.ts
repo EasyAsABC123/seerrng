@@ -4,10 +4,12 @@ import type Media from '@server/entity/Media';
 import type { MediaRequest } from '@server/entity/MediaRequest';
 import type { User } from '@server/entity/User';
 import {
+  isValidOpenLibraryResourceId,
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
 import type { NotificationAgentConfig } from '@server/lib/settings';
+import { createSafeHttpRequestOptions } from '@server/utils/security';
 import type { Notification } from '..';
 
 export interface NotificationPayload {
@@ -29,16 +31,94 @@ export interface NotificationPayload {
 }
 
 export const NOTIFICATION_HTTP_OPTIONS = {
+  ...createSafeHttpRequestOptions(
+    () => process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
+    false
+  ),
   timeout: 10_000,
   maxBodyLength: 128 * 1024,
   maxContentLength: 128 * 1024,
 };
+export const CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS = {
+  ...NOTIFICATION_HTTP_OPTIONS,
+  ...createSafeHttpRequestOptions(
+    () => process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
+    false,
+    true
+  ),
+};
+export const NOTIFICATION_DELIVERY_CONCURRENCY = 10;
 
-const isSafeRelativeNotificationPath = (value: string): boolean =>
-  value.startsWith('/') &&
-  !value.startsWith('//') &&
-  !/[\r\n]/.test(value) &&
-  !/^[a-z][a-z0-9+.-]*:/i.test(value);
+export const truncateNotificationText = (
+  value: string,
+  maxLength: number
+): string => {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  if (maxLength <= 0) {
+    return '';
+  }
+
+  let output = '';
+  for (const character of value) {
+    if (output.length + character.length + 1 > maxLength) {
+      break;
+    }
+    output += character;
+  }
+  return `${output}…`;
+};
+
+export const truncateNotificationUtf8 = (
+  value: string,
+  maxBytes: number
+): string => {
+  if (Buffer.byteLength(value, 'utf8') <= maxBytes) {
+    return value;
+  }
+  if (maxBytes <= 0) {
+    return '';
+  }
+
+  const omission = '…';
+  const omissionBytes = Buffer.byteLength(omission, 'utf8');
+  if (omissionBytes > maxBytes) {
+    return '';
+  }
+  let output = '';
+  let outputBytes = 0;
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, 'utf8');
+    if (outputBytes + characterBytes + omissionBytes > maxBytes) {
+      break;
+    }
+    output += character;
+    outputBytes += characterBytes;
+  }
+  return `${output}${omission}`;
+};
+
+const isSafeRelativeNotificationPath = (value: string): boolean => {
+  if (
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    /[\r\n]/.test(value) ||
+    /^[a-z][a-z0-9+.-]*:/i.test(value)
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value, 'https://seerr.invalid');
+    const path = value.split(/[?#]/, 1)[0];
+    return (
+      parsed.origin === 'https://seerr.invalid' && parsed.pathname === path
+    );
+  } catch {
+    return false;
+  }
+};
 
 export const getNotificationMediaUrl = (
   payload: Pick<NotificationPayload, 'media' | 'mediaUrl'>
@@ -54,8 +134,11 @@ export const getNotificationMediaUrl = (
   }
 
   if (payload.media.mediaType === 'music') {
-    return payload.media.mbId
-      ? `/music/${normalizeMusicBrainzId(payload.media.mbId)}`
+    const musicBrainzId = payload.media.mbId
+      ? normalizeMusicBrainzId(payload.media.mbId)
+      : undefined;
+    return musicBrainzId
+      ? `/music/${encodeURIComponent(musicBrainzId)}`
       : undefined;
   }
 
@@ -64,8 +147,12 @@ export const getNotificationMediaUrl = (
       (identifier) => identifier.provider === 'openlibrary'
     )?.value;
 
-    return openLibraryId
-      ? `/book/${normalizeOpenLibraryWorkId(openLibraryId)}`
+    const normalizedOpenLibraryId = openLibraryId
+      ? normalizeOpenLibraryWorkId(openLibraryId)
+      : undefined;
+    return normalizedOpenLibraryId &&
+      isValidOpenLibraryResourceId(normalizedOpenLibraryId)
+      ? `/book/${encodeURIComponent(normalizedOpenLibraryId)}`
       : undefined;
   }
 

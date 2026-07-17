@@ -1,13 +1,13 @@
 import OpenLibraryAPI, {
   type OpenLibraryAuthorWork,
 } from '@server/api/openlibrary';
-import { MediaType } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
-import type Media from '@server/entity/Media';
-import MediaIdentifier, {
-  MediaIdentifierProvider,
-} from '@server/entity/MediaIdentifier';
-import { normalizeOpenLibraryWorkId } from '@server/lib/externalIds';
+import type { User } from '@server/entity/User';
+import { findBookMediaByOpenLibraryIds } from '@server/lib/bookMediaMatcher';
+import {
+  isValidOpenLibraryResourceId,
+  normalizeOpenLibraryAuthorId,
+  normalizeOpenLibraryWorkId,
+} from '@server/lib/externalIds';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import {
@@ -15,6 +15,7 @@ import {
   type AuthorDetails,
 } from '@server/models/Book';
 import {
+  MAX_PAGINATION_OFFSET,
   parseNonNegativeInt,
   parsePositiveInt,
 } from '@server/utils/pagination';
@@ -22,7 +23,6 @@ import { getRateLimitKey } from '@server/utils/security';
 import { parseBoundedString } from '@server/utils/validation';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { In } from 'typeorm';
 
 const authorRoutes = Router();
 const MAX_OPENLIBRARY_AUTHOR_ID_LENGTH = 128;
@@ -75,11 +75,20 @@ const ISO_639_1_TO_OPENLIBRARY: Record<string, string> = {
   zh: 'chi',
 };
 
-const parseOpenLibraryAuthorId = (value: unknown) =>
-  parseBoundedString(value, {
+const parseOpenLibraryAuthorId = (value: unknown) => {
+  const parsed = parseBoundedString(value, {
     fieldName: 'Author ID',
     maxLength: MAX_OPENLIBRARY_AUTHOR_ID_LENGTH,
   });
+  if ('error' in parsed) {
+    return parsed;
+  }
+
+  const normalized = normalizeOpenLibraryAuthorId(parsed.value);
+  return isValidOpenLibraryResourceId(normalized)
+    ? { value: normalized }
+    : { error: 'Author ID is invalid.' };
+};
 
 const normalizeTitleForDedupe = (title: string) =>
   title
@@ -139,48 +148,18 @@ const filterAuthorWorks = (
   });
 };
 
-const findBookMediaByOpenLibraryIds = async (
-  ids: string[],
-  userId?: number
-): Promise<Map<string, Media>> => {
-  if (!ids.length) {
-    return new Map();
-  }
-
-  const identifiers = await getRepository(MediaIdentifier).find({
-    where: {
-      provider: MediaIdentifierProvider.OPENLIBRARY,
-      value: In(ids),
-    },
-    relations: { media: { requests: true, watchlists: true } },
-  });
-
-  return new Map(
-    identifiers
-      .filter((identifier) => identifier.media.mediaType === MediaType.BOOK)
-      .map((identifier) => {
-        identifier.media.watchlists =
-          identifier.media.watchlists?.filter(
-            (watchlist) => watchlist.requestedBy.id === userId
-          ) ?? [];
-
-        return [identifier.value, identifier.media];
-      })
-  );
-};
-
 const getAuthorWorksPayload = async (
   authorId: string,
   limit: number,
   offset: number,
-  userId?: number
+  user?: User
 ) => {
   const openLibrary = new OpenLibraryAPI();
   const works = await openLibrary.getAuthorWorks(authorId, { limit, offset });
   const preferredLanguage = getPreferredOpenLibraryLanguage();
   const filteredWorks = filterAuthorWorks(works.entries, preferredLanguage);
   const ids = filteredWorks.map((work) => normalizeOpenLibraryWorkId(work.key));
-  const mediaByOpenLibraryId = await findBookMediaByOpenLibraryIds(ids, userId);
+  const mediaByOpenLibraryId = await findBookMediaByOpenLibraryIds(ids, user);
 
   return {
     works: filteredWorks.map((work) =>
@@ -211,13 +190,17 @@ authorRoutes.get<
 
   const authorId = parsedAuthorId.value;
   const limit = parsePositiveInt(req.query.limit, 20, 100);
-  const offset = parseNonNegativeInt(req.query.offset);
+  const offset = parseNonNegativeInt(
+    req.query.offset,
+    0,
+    MAX_PAGINATION_OFFSET
+  );
   const openLibrary = new OpenLibraryAPI();
 
   try {
     const [author, worksPayload] = await Promise.all([
       openLibrary.getAuthor(authorId),
-      getAuthorWorksPayload(authorId, limit, offset, req.user?.id),
+      getAuthorWorksPayload(authorId, limit, offset, req.user),
     ]);
     const biography =
       typeof author.bio === 'string' ? author.bio : author.bio?.value;
@@ -260,12 +243,16 @@ authorRoutes.get<{ id: string }>('/:id/works', async (req, res, next) => {
 
   const authorId = parsedAuthorId.value;
   const limit = parsePositiveInt(req.query.limit, 20, 100);
-  const offset = parseNonNegativeInt(req.query.offset);
+  const offset = parseNonNegativeInt(
+    req.query.offset,
+    0,
+    MAX_PAGINATION_OFFSET
+  );
 
   try {
     const [author, worksPayload] = await Promise.all([
       new OpenLibraryAPI().getAuthor(authorId).catch(() => undefined),
-      getAuthorWorksPayload(authorId, limit, offset, req.user?.id),
+      getAuthorWorksPayload(authorId, limit, offset, req.user),
     ]);
 
     return res.status(200).json({

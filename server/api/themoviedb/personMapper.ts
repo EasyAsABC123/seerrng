@@ -1,9 +1,15 @@
 import ExternalAPI from '@server/api/externalapi';
-import TheMovieDb from '@server/api/themoviedb';
+import TheMovieDb, {
+  MAX_TMDB_PAGE_RESULTS,
+  sanitizeTmdbPagedResponse,
+} from '@server/api/themoviedb';
 import { getRepository } from '@server/datasource';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import cacheManager from '@server/lib/cache';
-import { normalizeMusicBrainzId } from '@server/lib/externalIds';
+import {
+  MAX_MUSICBRAINZ_BATCH_IDS,
+  normalizeMusicBrainzId,
+} from '@server/lib/externalIds';
 import logger from '@server/logger';
 import { In } from 'typeorm';
 import { getTmdbAuthHeaders, getTmdbAuthParams } from './auth';
@@ -15,6 +21,89 @@ interface SearchPersonOptions {
   includeAdult?: boolean;
   language?: string;
 }
+
+export const prepareArtistMappingBatch = (
+  value: unknown
+): { artistId: string; artistName: string }[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const artists = new Map<string, string>();
+  for (const rawArtist of value) {
+    if (!rawArtist || typeof rawArtist !== 'object') {
+      continue;
+    }
+    const { artistId, artistName } = rawArtist as {
+      artistId?: unknown;
+      artistName?: unknown;
+    };
+    if (
+      typeof artistId !== 'string' ||
+      artistId.length > 128 ||
+      typeof artistName !== 'string' ||
+      artistName.length > 512
+    ) {
+      continue;
+    }
+    const normalizedId = normalizeMusicBrainzId(artistId);
+    const normalizedName = artistName.trim();
+    if (normalizedId && normalizedName && !artists.has(normalizedId)) {
+      artists.set(normalizedId, normalizedName);
+    }
+    if (artists.size >= MAX_MUSICBRAINZ_BATCH_IDS) {
+      break;
+    }
+  }
+
+  return [...artists].map(([artistId, artistName]) => ({
+    artistId,
+    artistName,
+  }));
+};
+
+export const preparePersonSearchResults = (
+  value: unknown
+): TmdbSearchPersonResponse['results'] => {
+  const response = sanitizeTmdbPagedResponse<TmdbSearchPersonResponse>(value);
+
+  return response.results
+    .slice(0, MAX_TMDB_PAGE_RESULTS)
+    .flatMap((rawPerson) => {
+      if (!rawPerson || typeof rawPerson !== 'object') {
+        return [];
+      }
+      const person = rawPerson as unknown as Record<string, unknown>;
+      const name =
+        typeof person.name === 'string' ? person.name.slice(0, 512) : '';
+      if (!name.trim() || !Number.isSafeInteger(person.id)) {
+        return [];
+      }
+
+      return [
+        {
+          id: person.id as number,
+          known_for_department:
+            typeof person.known_for_department === 'string'
+              ? person.known_for_department.slice(0, 128)
+              : undefined,
+          name,
+          popularity:
+            typeof person.popularity === 'number' &&
+            Number.isFinite(person.popularity)
+              ? person.popularity
+              : 0,
+          profile_path:
+            typeof person.profile_path === 'string'
+              ? person.profile_path.slice(0, 2000)
+              : undefined,
+          adult: person.adult === true,
+          media_type: 'person' as const,
+          known_for: [],
+        },
+      ];
+    });
+};
 
 class TmdbPersonMapper extends ExternalAPI {
   private readonly CACHE_TTL = 43200;
@@ -131,21 +220,24 @@ class TmdbPersonMapper extends ExternalAPI {
       }
 
       const cleanArtistName = artistName
+        .slice(0, 512)
         .split(/(?:(?:feat|ft)\.?\s+|&\s*|,\s+)/i)[0]
         .trim()
         .replace(/['′]/g, "'");
 
-      const searchResults = await this.get<TmdbSearchPersonResponse>(
-        '/search/person',
-        {
-          params: {
-            query: cleanArtistName,
-            page: '1',
-            include_adult: 'false',
-            language: 'en',
+      const searchResults = preparePersonSearchResults(
+        await this.get<TmdbSearchPersonResponse>(
+          '/search/person',
+          {
+            params: {
+              query: cleanArtistName,
+              page: '1',
+              include_adult: 'false',
+              language: 'en',
+            },
           },
-        },
-        this.CACHE_TTL
+          this.CACHE_TTL
+        )
       );
 
       const normalizeName = (name: string): string => {
@@ -158,7 +250,7 @@ class TmdbPersonMapper extends ExternalAPI {
           .trim();
       };
 
-      const exactMatches = searchResults.results.filter((person) => {
+      const exactMatches = searchResults.filter((person) => {
         const normalizedPersonName = normalizeName(person.name);
         const normalizedArtistName = normalizeName(cleanArtistName);
 
@@ -262,11 +354,9 @@ class TmdbPersonMapper extends ExternalAPI {
     if (!artists.length) return {};
 
     const metadataRepository = getRepository(MetadataArtist);
-    const normalizedArtists = artists.map((artist) => ({
-      ...artist,
-      artistId: normalizeMusicBrainzId(artist.artistId),
-    }));
-    const artistIds = [...new Set(normalizedArtists.map((a) => a.artistId))];
+    const normalizedArtists = prepareArtistMappingBatch(artists);
+    if (!normalizedArtists.length) return {};
+    const artistIds = normalizedArtists.map((artist) => artist.artistId);
 
     const existingMetadata = await metadataRepository.find({
       where: { mbArtistId: In(artistIds) },

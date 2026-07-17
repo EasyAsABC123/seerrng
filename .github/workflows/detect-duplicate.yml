@@ -10,12 +10,72 @@ permissions: {}
 env:
   EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
   GROQ_MODEL: ${{ vars.GROQ_MODEL }}
-  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.user.login }}
+  cancel-in-progress: true
 
 jobs:
+  admission:
+    name: Admit issue triage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: read
+    outputs:
+      run: ${{ steps.admit.outputs.run }}
+    steps:
+      - name: Enforce bounded per-author admission
+        id: admit
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issue = context.payload.issue;
+            if (!issue || issue.pull_request || issue.user?.type === 'Bot') {
+              core.setOutput('run', 'false');
+              return;
+            }
+
+            const cutoff = Date.now() - 60 * 60 * 1000;
+            let recentIssueCount = 0;
+            let reachedOlderIssue = false;
+            for (let page = 1; page <= 10 && !reachedOlderIssue; page += 1) {
+              const { data } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                creator: issue.user.login,
+                state: 'all',
+                sort: 'created',
+                direction: 'desc',
+                per_page: 100,
+                page,
+              });
+              for (const candidate of data) {
+                const createdAt = Date.parse(candidate.created_at);
+                if (!Number.isFinite(createdAt) || createdAt < cutoff) {
+                  reachedOlderIssue = true;
+                  break;
+                }
+                if (!candidate.pull_request) {
+                  recentIssueCount += 1;
+                  if (recentIssueCount > 10) {
+                    core.setOutput('run', 'false');
+                    return;
+                  }
+                }
+              }
+              if (data.length < 100) {
+                break;
+              }
+            }
+            core.setOutput('run', 'true');
+
   detect-duplicate:
-    runs-on: [self-hosted, Linux, X64, seerrng]
-    if: ${{ !github.event.issue.pull_request }}
+    needs: admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: needs.admission.outputs.run == 'true'
     permissions:
       issues: write
       actions: read
@@ -24,6 +84,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Pnpm Setup
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -56,7 +118,9 @@ jobs:
         with:
           name: issue-index
           workflow: rebuild-issue-index.yml
-          path: bin/duplicate-detector
+          branch: main
+          workflow_conclusion: success
+          path: ${{ runner.temp }}/issue-index-artifact
           search_artifacts: true
           if_no_artifact_found: warn
 
@@ -65,10 +129,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          INDEX_PATH: issue_index.json
+          INDEX_PATH: ${{ runner.temp }}/issue-index-artifact/issue_index.json
         run: |
-          if [ ! -f issue_index.json ]; then
-            echo "No index found — building from scratch..."
+          set -euo pipefail
+          index_directory="$(dirname -- "$INDEX_PATH")"
+          if [[ -L "$index_directory" ]] ||
+             [[ -e "$index_directory" && ! -d "$index_directory" ]] ||
+             [[ -L "$INDEX_PATH" ]]; then
+            echo 'Issue index artifact path is unsafe.' >&2
+            exit 1
+          fi
+          if [[ ! -f "$INDEX_PATH" ]]; then
+            echo 'No index found — building from scratch...'
+            mkdir -p -- "$index_directory"
             node build-index.mjs
           fi
 
@@ -76,8 +149,9 @@ jobs:
         working-directory: bin/duplicate-detector
         continue-on-error: true
         env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          INDEX_PATH: issue_index.json
+          INDEX_PATH: ${{ runner.temp }}/issue-index-artifact/issue_index.json
         run: node detect.mjs

@@ -2682,9 +2682,125 @@ components:
           type: string
     OverrideRule:
       type: object
+      additionalProperties: false
+      required:
+        - id
+        - createdAt
+        - updatedAt
       properties:
         id:
+          type: integer
+          minimum: 1
+          maximum: 1000000000
+        radarrServiceId:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          nullable: true
+        sonarrServiceId:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          nullable: true
+        lidarrServiceId:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          nullable: true
+        users:
           type: string
+          maxLength: 500
+          pattern: '^\d+(,\d+)*$'
+          nullable: true
+        genre:
+          type: string
+          maxLength: 500
+          pattern: '^\d+(,\d+)*$'
+          nullable: true
+        language:
+          type: string
+          maxLength: 500
+          pattern: '^[a-z]{2}(\|[a-z]{2})*$'
+          nullable: true
+        keywords:
+          type: string
+          maxLength: 500
+          pattern: '^\d+(,\d+)*$'
+          nullable: true
+        profileId:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          nullable: true
+        rootFolder:
+          type: string
+          maxLength: 500
+          nullable: true
+        tags:
+          type: string
+          maxLength: 500
+          pattern: '^\d+(,\d+)*$'
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    OverrideRuleWrite:
+      type: object
+      additionalProperties: false
+      description: Exactly one service, at least one condition, and at least one setting must be configured. Lidarr rules support only the users condition.
+      properties:
+        radarrServiceId:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          nullable: true
+        sonarrServiceId:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          nullable: true
+        lidarrServiceId:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          nullable: true
+        users:
+          type: string
+          maxLength: 500
+          pattern: '^\d+(,\d+)*$'
+          nullable: true
+        genre:
+          type: string
+          maxLength: 500
+          pattern: '^\d+(,\d+)*$'
+          nullable: true
+        language:
+          type: string
+          maxLength: 500
+          pattern: '^[a-z]{2}(\|[a-z]{2})*$'
+          nullable: true
+        keywords:
+          type: string
+          maxLength: 500
+          pattern: '^\d+(,\d+)*$'
+          nullable: true
+        profileId:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          nullable: true
+        rootFolder:
+          type: string
+          maxLength: 500
+          nullable: true
+        tags:
+          type: string
+          maxLength: 500
+          pattern: '^\d+(,\d+)*$'
+          nullable: true
     Certification:
       type: object
       properties:
@@ -2798,13 +2914,24 @@ paths:
                     type: number
                   restartRequired:
                     type: boolean
+  /status/ready:
+    get:
+      summary: Check Seerr readiness
+      description: Returns success only when the application database is reachable.
+      security: []
+      tags:
+        - public
+      responses:
+        '204':
+          description: Application is ready to receive traffic
+        '503':
+          description: Application database is unavailable
   /status/appdata:
     get:
       summary: Get application data volume status
       description: For Docker installs, returns whether or not the volume mount was configured properly. Always returns true for non-Docker installs.
-      security: []
       tags:
-        - public
+        - settings
       responses:
         '200':
           description: Application data volume status and path
@@ -2934,24 +3061,35 @@ paths:
       description: Returns a list of Jellyfin libraries in a JSON array.
       tags:
         - settings
-      parameters:
-        - in: query
-          name: sync
-          description: Syncs the current libraries with the current Jellyfin server
-          schema:
-            type: string
-            nullable: true
-        - in: query
-          name: enable
-          explode: false
-          allowReserved: true
-          description: Comma separated list of libraries to enable. Any libraries not passed will be disabled!
-          schema:
-            type: string
-            nullable: true
       responses:
         '200':
           description: 'Jellyfin libraries returned'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JellyfinLibrary'
+    post:
+      summary: Update Jellyfin libraries
+      description: Optionally synchronizes libraries and updates which libraries are enabled.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sync:
+                  type: boolean
+                enable:
+                  type: string
+                  description: Comma-separated library IDs. Omitted or empty disables all libraries.
+      responses:
+        '200':
+          description: 'Jellyfin libraries updated'
           content:
             application/json:
               schema:
@@ -3089,24 +3227,35 @@ paths:
       description: Returns a list of Plex libraries in a JSON array.
       tags:
         - settings
-      parameters:
-        - in: query
-          name: sync
-          description: Syncs the current libraries with the current Plex server
-          schema:
-            type: string
-            nullable: true
-        - in: query
-          name: enable
-          explode: false
-          allowReserved: true
-          description: Comma separated list of libraries to enable. Any libraries not passed will be disabled!
-          schema:
-            type: string
-            nullable: true
       responses:
         '200':
           description: 'Plex libraries returned'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlexLibrary'
+    post:
+      summary: Update Plex libraries
+      description: Optionally synchronizes libraries and updates which libraries are enabled.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sync:
+                  type: boolean
+                enable:
+                  type: string
+                  description: Comma-separated library IDs. Omitted or empty disables all libraries.
+      responses:
+        '200':
+          description: 'Plex libraries updated'
           content:
             application/json:
               schema:
@@ -4511,7 +4660,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DiscoverSlider'
   /settings/discover/reset:
-    get:
+    post:
       summary: Reset all discover sliders
       description: Resets all discovery sliders to the default values. Requires the `ADMIN` permission.
       tags:
@@ -8109,7 +8258,7 @@ paths:
     get:
       summary: Gets request counts
       description: |
-        Returns the number of requests by status including pending, approved, available, and completed requests.
+        Returns the number of requests by status including pending, approved, declined, failed, available, and completed requests.
       tags:
         - request
       responses:
@@ -8135,6 +8284,8 @@ paths:
                   approved:
                     type: number
                   declined:
+                    type: number
+                  failed:
                     type: number
                   processing:
                     type: number
@@ -9703,15 +9854,19 @@ paths:
       description: Creates a new Override Rule from the request body.
       tags:
         - overriderule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideRuleWrite'
       responses:
         '200':
           description: 'Values were successfully created'
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/OverrideRule'
+                $ref: '#/components/schemas/OverrideRule'
   /overrideRule/{ruleId}:
     put:
       summary: Update override rule
@@ -9723,16 +9878,22 @@ paths:
           name: ruleId
           required: true
           schema:
-            type: number
+            type: integer
+            minimum: 1
+            maximum: 1000000000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideRuleWrite'
       responses:
         '200':
           description: 'Values were successfully updated'
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/OverrideRule'
+                $ref: '#/components/schemas/OverrideRule'
     delete:
       summary: Delete override rule by ID
       description: Deletes the override rule with the provided ruleId.
@@ -9743,7 +9904,9 @@ paths:
           name: ruleId
           required: true
           schema:
-            type: number
+            type: integer
+            minimum: 1
+            maximum: 1000000000
       responses:
         '200':
           description: Override rule successfully deleted

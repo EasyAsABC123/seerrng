@@ -152,7 +152,7 @@ const MusicDetails = () => {
     ) ?? [];
   const activeMusicRequest =
     activeMusicRequests.find(
-      (request) => request.requestedBy.id === user?.id
+      (request) => request.requestedBy?.id === user?.id
     ) ??
     (hasPermission(Permission.MANAGE_REQUESTS) &&
     activeMusicRequests.length === 1
@@ -287,7 +287,7 @@ const MusicDetails = () => {
   return (
     <>
       <PageTitle title={data.title} />
-      {showManager && (
+      {showManager && canManage && (
         <ExternalMediaManageSlideOver
           data={data}
           mediaType={MediaType.MUSIC}

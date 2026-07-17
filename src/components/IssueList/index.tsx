@@ -10,6 +10,12 @@ import {
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
 import {
+  isStoredOption,
+  isStoredPageSize,
+  readLocalStoredRecord,
+  writeLocalStoredRecord,
+} from '@app/utils/localStorage';
+import {
   BarsArrowDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -35,6 +41,8 @@ enum Filter {
 }
 
 type Sort = 'added' | 'modified';
+const ISSUE_FILTER_OPTIONS = Object.values(Filter);
+const ISSUE_SORT_OPTIONS: readonly Sort[] = ['added', 'modified'];
 
 const IssueList = () => {
   const intl = useIntl();
@@ -55,14 +63,17 @@ const IssueList = () => {
 
   // Restore last set filter values on component mount
   useEffect(() => {
-    const filterString = window.localStorage.getItem('il-filter-settings');
-
-    if (filterString) {
-      const filterSettings = JSON.parse(filterString);
-
-      setCurrentFilter(filterSettings.currentFilter);
-      setCurrentSort(filterSettings.currentSort);
-      setCurrentPageSize(filterSettings.currentPageSize);
+    const filterSettings = readLocalStoredRecord('il-filter-settings');
+    if (filterSettings) {
+      if (isStoredOption(filterSettings.currentFilter, ISSUE_FILTER_OPTIONS)) {
+        setCurrentFilter(filterSettings.currentFilter);
+      }
+      if (isStoredOption(filterSettings.currentSort, ISSUE_SORT_OPTIONS)) {
+        setCurrentSort(filterSettings.currentSort);
+      }
+      if (isStoredPageSize(filterSettings.currentPageSize)) {
+        setCurrentPageSize(filterSettings.currentPageSize);
+      }
     }
 
     // If filter value is provided in query, use that instead
@@ -73,14 +84,11 @@ const IssueList = () => {
 
   // Set filter values to local storage any time they are changed
   useEffect(() => {
-    window.localStorage.setItem(
-      'il-filter-settings',
-      JSON.stringify({
-        currentFilter,
-        currentSort,
-        currentPageSize,
-      })
-    );
+    writeLocalStoredRecord('il-filter-settings', {
+      currentFilter,
+      currentSort,
+      currentPageSize,
+    });
   }, [currentFilter, currentSort, currentPageSize]);
 
   if (!data && !error) {

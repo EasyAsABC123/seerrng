@@ -17,6 +17,7 @@ import {
 } from '@app/utils/discoverSnapshot';
 import {
   applyDiscoverStateOverlay,
+  getDiscoverOverlayRequestKey,
   getDiscoverStateInputs,
 } from '@app/utils/discoverStateOverlay';
 import {
@@ -138,7 +139,7 @@ const MediaSlider = ({
     MixedResult[]
   >(snapshotKey, cacheContextKey);
   const { manifest } = useDiscoverHomeManifest(cacheContextKey);
-  const appliedUserStateRevision = useRef<string | undefined>(undefined);
+  const appliedUserStateRequest = useRef<string | undefined>(undefined);
   const [seedOverride, setSeedOverride] = useState<{
     snapshotKey?: string;
     seed: string;
@@ -211,27 +212,45 @@ const MediaSlider = ({
       !manifest ||
       !cacheContextKey ||
       !snapshotKey ||
-      snapshot?.metadata.userStateRevision === manifest.userStateRevision ||
-      appliedUserStateRevision.current === manifest.userStateRevision
+      snapshot?.metadata.userStateRevision === manifest.userStateRevision
     ) {
       return;
     }
 
     const inputs = getDiscoverStateInputs(data);
+    const overlayRequestKey = getDiscoverOverlayRequestKey(
+      cacheContextKey,
+      manifest.userStateRevision,
+      inputs
+    );
 
-    if (!inputs.length) {
-      appliedUserStateRevision.current = manifest.userStateRevision;
+    if (appliedUserStateRequest.current === overlayRequestKey) {
       return;
     }
 
-    appliedUserStateRevision.current = manifest.userStateRevision;
+    if (!inputs.length) {
+      appliedUserStateRequest.current = overlayRequestKey;
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+    appliedUserStateRequest.current = overlayRequestKey;
     void axios
-      .post<DiscoverHomeStateResponse>('/api/v1/discover/home/state', {
-        items: inputs,
-      })
+      .post<DiscoverHomeStateResponse>(
+        '/api/v1/discover/home/state',
+        { items: inputs },
+        { signal: controller.signal }
+      )
       .then(async (response) => {
+        if (!active) {
+          return;
+        }
         const updatedData = applyDiscoverStateOverlay(data, response.data);
         await revalidate(updatedData, false);
+        if (!active) {
+          return;
+        }
         await setDiscoverSnapshot(
           snapshotKey,
           createDiscoverSnapshot(cacheContextKey, updatedData, {
@@ -244,8 +263,15 @@ const MediaSlider = ({
         );
       })
       .catch(() => {
-        appliedUserStateRevision.current = undefined;
+        if (active && appliedUserStateRequest.current === overlayRequestKey) {
+          appliedUserStateRequest.current = undefined;
+        }
       });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [
     cacheContextKey,
     data,

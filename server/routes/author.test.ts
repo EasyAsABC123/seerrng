@@ -17,6 +17,7 @@ import { User } from '@server/entity/User';
 import { getSettings } from '@server/lib/settings';
 import { checkUser } from '@server/middleware/auth';
 import { setupTestDb } from '@server/test/db';
+import { MAX_PAGINATION_OFFSET } from '@server/utils/pagination';
 import type { Express } from 'express';
 import express from 'express';
 import session from 'express-session';
@@ -69,7 +70,7 @@ afterEach(() => {
 
 setupTestDb();
 
-async function login() {
+async function login(email = 'admin@seerr.dev') {
   const settings = getSettings();
   const priorLocalLogin = settings.main.localLogin;
   settings.main.localLogin = true;
@@ -78,7 +79,7 @@ async function login() {
     const agent = request.agent(app);
     const res = await agent
       .post('/auth/local')
-      .send({ email: 'admin@seerr.dev', password: 'test1234' });
+      .send({ email, password: 'test1234' });
     assert.strictEqual(res.status, 200);
     return agent;
   } finally {
@@ -95,9 +96,15 @@ describe('GET /author/:id', () => {
     );
 
     const agent = await login();
-    const res = await agent.get(`/author/${'x'.repeat(129)}`);
+    const responses = await Promise.all([
+      agent.get(`/author/${'x'.repeat(129)}`),
+      agent.get(`/author/${encodeURIComponent('../../search')}`),
+    ]);
 
-    assert.strictEqual(res.status, 404);
+    assert.deepStrictEqual(
+      responses.map((response) => response.status),
+      [404, 404]
+    );
     assert.strictEqual(getAuthor.mock.callCount(), 0);
     assert.strictEqual(getAuthorWorks.mock.callCount(), 0);
   });
@@ -143,6 +150,9 @@ describe('GET /author/:id', () => {
         tmdbId: 0,
         status: MediaStatus.PENDING,
         status4k: MediaStatus.UNKNOWN,
+        serviceUrl: 'http://readarr.internal/book/1',
+        externalServiceSlug: 'existing-work',
+        ratingKey: 'plex-existing-work',
       })
     );
     await getRepository(MediaIdentifier).save(
@@ -164,7 +174,7 @@ describe('GET /author/:id', () => {
       })
     );
 
-    const agent = await login();
+    const agent = await login('friend@seerr.dev');
     const res = await agent.get('/author/OL1A?limit=1&offset=0');
 
     assert.strictEqual(res.status, 200);
@@ -182,6 +192,12 @@ describe('GET /author/:id', () => {
     assert.strictEqual(res.body.works[0].author, 'Test Author');
     assert.strictEqual(res.body.works[0].mediaInfo.status, MediaStatus.PENDING);
     assert.strictEqual(res.body.works[0].mediaInfo.requests.length, 1);
+    assert.strictEqual(res.body.works[0].mediaInfo.serviceUrl, undefined);
+    assert.strictEqual(
+      res.body.works[0].mediaInfo.externalServiceSlug,
+      undefined
+    );
+    assert.strictEqual(res.body.works[0].mediaInfo.ratingKey, undefined);
   });
 });
 
@@ -240,5 +256,33 @@ describe('GET /author/:id/works', () => {
     assert.strictEqual(res.body.works.length, 1);
     assert.strictEqual(res.body.works[0].id, 'OL2W');
     assert.strictEqual(res.body.works[0].author, 'Test Author');
+  });
+
+  it('caps provider offsets before fetching author works', async () => {
+    mock.method(OpenLibraryAPI.prototype, 'getAuthor', async () => ({
+      key: '/authors/OL1A',
+      name: 'Test Author',
+    }));
+    let providerOffset: number | undefined;
+    mock.method(
+      OpenLibraryAPI.prototype,
+      'getAuthorWorks',
+      async (
+        _authorId: string,
+        { offset }: { limit: number; offset: number }
+      ) => {
+        providerOffset = offset;
+        return { size: 0, entries: [] };
+      }
+    );
+
+    const agent = await login();
+    const res = await agent.get(
+      `/author/OL1A/works?offset=${Number.MAX_SAFE_INTEGER}`
+    );
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(providerOffset, MAX_PAGINATION_OFFSET);
+    assert.strictEqual(res.body.pagination.offset, MAX_PAGINATION_OFFSET);
   });
 });

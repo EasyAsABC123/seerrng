@@ -22,9 +22,40 @@ import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import authRoutes from './auth';
-import searchRoutes from './search';
+import searchRoutes, {
+  MAX_COMBINED_SEARCH_RESULTS,
+  MAX_SEARCH_RESULTS_PER_PROVIDER,
+  SEARCH_RATE_LIMIT,
+  capSearchProviderResults,
+} from './search';
 
 let app: Express;
+
+describe('search provider result bounds', () => {
+  it('bounds authenticated search fan-out', () => {
+    assert.deepStrictEqual(SEARCH_RATE_LIMIT, {
+      windowMs: 60_000,
+      limit: 30,
+    });
+  });
+
+  it('caps malformed and oversized provider arrays', () => {
+    const values = Array.from(
+      { length: MAX_COMBINED_SEARCH_RESULTS + 10 },
+      (_, index) => index
+    );
+
+    assert.strictEqual(
+      capSearchProviderResults(values).length,
+      MAX_SEARCH_RESULTS_PER_PROVIDER
+    );
+    assert.strictEqual(
+      capSearchProviderResults(values, MAX_COMBINED_SEARCH_RESULTS).length,
+      MAX_COMBINED_SEARCH_RESULTS
+    );
+    assert.deepStrictEqual(capSearchProviderResults({}), []);
+  });
+});
 
 function createApp() {
   const app = express();

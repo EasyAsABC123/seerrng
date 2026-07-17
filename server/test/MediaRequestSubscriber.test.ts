@@ -16,17 +16,30 @@ import {
   MediaStatus,
   MediaType,
 } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
+import dataSource, { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import MediaIdentifier, {
   MediaIdentifierProvider,
 } from '@server/entity/MediaIdentifier';
-import { MediaRequest } from '@server/entity/MediaRequest';
+import {
+  MediaRequest,
+  getRequestMutationAdmissionKey,
+  runWithRequestAdmission,
+} from '@server/entity/MediaRequest';
+import { RequestDispatchOutbox } from '@server/entity/RequestDispatchOutbox';
 import SeasonRequest from '@server/entity/SeasonRequest';
 import { User } from '@server/entity/User';
+import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import notificationManager from '@server/lib/notifications';
+import requestDispatchManager from '@server/lib/requestDispatch';
+import { runWithServarrServiceMutationAdmission } from '@server/lib/serviceAdmission';
 import { getSettings } from '@server/lib/settings';
-import { MediaRequestSubscriber } from '@server/subscriber/MediaRequestSubscriber';
+import {
+  MediaRequestSubscriber,
+  READARR_LOOKUP_HYDRATION_CONCURRENCY,
+  READARR_MAX_LOOKUP_RESULTS,
+  clampReadarrProviderRetryDelay,
+} from '@server/subscriber/MediaRequestSubscriber';
 import { resetTestDb, seedTestDb } from '@server/utils/seedTestDb';
 import axios from 'axios';
 
@@ -81,12 +94,22 @@ const waitForSavedMedia = async (
 };
 
 describe('MediaRequestSubscriber service dispatch', () => {
+  let enqueuedRequestIds: number[];
+
   before(async () => {
     await seedTestDb();
   });
 
   beforeEach(async () => {
     await resetTestDb();
+    enqueuedRequestIds = [];
+    mock.method(
+      requestDispatchManager,
+      'enqueue',
+      async (requestId: number) => {
+        enqueuedRequestIds.push(requestId);
+      }
+    );
   });
 
   afterEach(() => {
@@ -98,7 +121,16 @@ describe('MediaRequestSubscriber service dispatch', () => {
     settings.readarr = [];
   });
 
-  it('sends approved movie requests to Radarr with the configured profile and root folder', async () => {
+  it('bounds provider-directed Bookshelf retry delays', () => {
+    assert.strictEqual(clampReadarrProviderRetryDelay(0), 1_000);
+    assert.strictEqual(clampReadarrProviderRetryDelay(2_000), 2_000);
+    assert.strictEqual(
+      clampReadarrProviderRetryDelay(Number.MAX_SAFE_INTEGER),
+      3_600_000
+    );
+  });
+
+  it('holds request, media, and service authority while dispatching to Radarr', async () => {
     const settings = getSettings();
     settings.radarr = [
       {
@@ -145,6 +177,10 @@ describe('MediaRequestSubscriber service dispatch', () => {
 
     const originalCreate = axios.create;
     let addPayload: Record<string, unknown> | undefined;
+    let releaseAdd: (() => void) | undefined;
+    const heldAdd = new Promise<void>((resolve) => {
+      releaseAdd = resolve;
+    });
     mock.method(axios, 'create', (config: { baseURL?: string }) => {
       if (config?.baseURL === 'https://api.themoviedb.org/3') {
         return originalCreate.call(axios, config);
@@ -173,6 +209,7 @@ describe('MediaRequestSubscriber service dispatch', () => {
         post: async (endpoint: string, payload: Record<string, unknown>) => {
           assert.equal(endpoint, '/movie');
           addPayload = payload;
+          await heldAdd;
 
           return {
             data: {
@@ -186,9 +223,40 @@ describe('MediaRequestSubscriber service dispatch', () => {
     });
 
     const request = await createApprovedRequest(media, requestedBy);
+    await getRepository(MediaRequest).save(request);
 
-    await new MediaRequestSubscriber().sendToRadarr(request);
+    let settled = false;
+    const dispatch = new MediaRequestSubscriber()
+      .dispatchRequestById(request.id)
+      .then(() => {
+        settled = true;
+      });
     await waitForAsyncDispatch(() => !!addPayload);
+
+    let requestMutationAdmitted = false;
+    const requestMutation = runWithRequestAdmission(
+      [getRequestMutationAdmissionKey(request.id)],
+      async () => {
+        requestMutationAdmitted = true;
+      }
+    );
+    let mediaMutationAdmitted = false;
+    const mediaMutation = runMediaEntityMutation(media, async () => {
+      mediaMutationAdmitted = true;
+    });
+    let serviceMutationAdmitted = false;
+    const serviceMutation = runWithServarrServiceMutationAdmission(
+      [{ serviceType: 'radarr', serviceId: 30 }],
+      async () => {
+        serviceMutationAdmitted = true;
+        settings.radarr[0].apiKey = 'rotated-key';
+      }
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.strictEqual(settled, false);
+    assert.strictEqual(requestMutationAdmitted, false);
+    assert.strictEqual(mediaMutationAdmitted, false);
+    assert.strictEqual(serviceMutationAdmitted, false);
 
     assert.equal(addPayload?.tmdbId, 550);
     assert.equal(addPayload?.qualityProfileId, 5);
@@ -199,6 +267,13 @@ describe('MediaRequestSubscriber service dispatch', () => {
       searchForMovie: true,
     });
     assert.deepStrictEqual(addPayload?.tags, [12]);
+
+    releaseAdd?.();
+    await dispatch;
+    await Promise.all([requestMutation, mediaMutation, serviceMutation]);
+    assert.strictEqual(requestMutationAdmitted, true);
+    assert.strictEqual(mediaMutationAdmitted, true);
+    assert.strictEqual(serviceMutationAdmitted, true);
 
     const savedMedia = await waitForSavedMedia(
       media.id,
@@ -769,6 +844,7 @@ describe('MediaRequestSubscriber service dispatch', () => {
         },
       ],
     }));
+    mock.method(WikidataAPI.prototype, 'getCanonicalBookTerms', async () => []);
 
     const lookupTerms: string[] = [];
     mock.method(ReadarrAPI.prototype, 'lookupBook', async (term: string) => {
@@ -1189,22 +1265,26 @@ describe('MediaRequestSubscriber service dispatch', () => {
     );
     const request = await createApprovedRequest(media, requestedBy);
 
-    mock.method(ReadarrAPI.prototype, 'lookupBook', async () => [
-      {
+    mock.method(ReadarrAPI.prototype, 'lookupBook', async () =>
+      Array.from({ length: 8 }, () => ({
         title: 'The Hobbit, or There and Back Again',
         foreignBookId: '1540236',
         foreignEditionId: '5907',
         authorTitle: 'tolkien, j.r.r. The Hobbit, or There and Back Again',
-      },
-    ]);
-    mock.method(ReadarrAPI.prototype, 'lookupAuthor', async (term: string) => [
-      {
-        foreignAuthorId: term.toLocaleLowerCase().includes('tolkien')
-          ? '656983'
-          : '',
-        authorName: 'J.R.R. Tolkien',
-      },
-    ]);
+      }))
+    );
+    const lookupAuthor = mock.method(
+      ReadarrAPI.prototype,
+      'lookupAuthor',
+      async (term: string) => [
+        {
+          foreignAuthorId: term.toLocaleLowerCase().includes('tolkien')
+            ? '656983'
+            : '',
+          authorName: 'J.R.R. Tolkien',
+        },
+      ]
+    );
 
     let addPayload: ReadarrBookOptions | undefined;
     mock.method(
@@ -1228,6 +1308,9 @@ describe('MediaRequestSubscriber service dispatch', () => {
     assert.equal(addPayload?.editions?.[0]?.foreignEditionId, '5907');
     assert.equal(addPayload?.editions?.[0]?.isbn13, '9780547928227');
     assert.equal(addPayload?.editions?.[0]?.monitored, true);
+    assert.equal(lookupAuthor.mock.callCount(), 1);
+    assert.equal(READARR_MAX_LOOKUP_RESULTS, 50);
+    assert.equal(READARR_LOOKUP_HYDRATION_CONCURRENCY, 5);
 
     const savedRequest = await getRepository(MediaRequest).findOneByOrFail({
       id: request.id,
@@ -1569,12 +1652,164 @@ describe('MediaRequestSubscriber service dispatch', () => {
     });
     mock.method(notificationManager, 'sendNotification', () => undefined);
 
-    await new MediaRequestSubscriber().sendToReadarr(request);
+    const retryAfterMs = await new MediaRequestSubscriber().sendToReadarr(
+      request
+    );
 
     const savedRequest = await getRepository(MediaRequest).findOneByOrFail({
       id: request.id,
     });
     assert.equal(savedRequest.status, MediaRequestStatus.APPROVED);
+    assert.equal(retryAfterMs, 2_000);
+
+    request.status = MediaRequestStatus.DECLINED;
+    assert.equal(
+      await new MediaRequestSubscriber().sendToReadarr(request),
+      undefined
+    );
+  });
+
+  it('reconciles approved book requests not already in the durable queue', async () => {
+    const settings = getSettings();
+    settings.readarr = [
+      {
+        id: 20,
+        name: 'Bookshelf',
+        hostname: 'bookshelf.local',
+        port: 8787,
+        apiKey: 'test-key',
+        useSsl: false,
+        activeProfileId: 11,
+        activeProfileName: 'Books',
+        activeMetadataProfileId: 12,
+        activeMetadataProfileName: 'Standard',
+        activeDirectory: '/books',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: false,
+        tagRequests: false,
+        overrideRule: [],
+        serviceType: 'ebook',
+      },
+    ];
+
+    const requestedBy = await getRequester();
+    const olderMedia = await getRepository(Media).save(
+      new Media({
+        mediaType: MediaType.BOOK,
+        tmdbId: 0,
+        status: MediaStatus.PENDING,
+        status4k: MediaStatus.UNKNOWN,
+        identifiers: [
+          new MediaIdentifier({
+            provider: MediaIdentifierProvider.ISBN,
+            value: '9788427249530',
+          }),
+        ],
+      })
+    );
+    const laterMedia = await getRepository(Media).save(
+      new Media({
+        mediaType: MediaType.BOOK,
+        tmdbId: 0,
+        status: MediaStatus.PENDING,
+        status4k: MediaStatus.UNKNOWN,
+        identifiers: [
+          new MediaIdentifier({
+            provider: MediaIdentifierProvider.ISBN,
+            value: '9780140328721',
+          }),
+        ],
+      })
+    );
+    const olderRequest = await createApprovedRequest(olderMedia, requestedBy);
+    const laterRequest = await getRepository(MediaRequest).save(
+      new MediaRequest({
+        type: MediaType.BOOK,
+        status: MediaRequestStatus.PENDING,
+        media: laterMedia,
+        requestedBy,
+        is4k: false,
+      })
+    );
+    laterRequest.status = MediaRequestStatus.APPROVED;
+    laterRequest.media = laterMedia;
+    laterRequest.requestedBy = requestedBy;
+    await getRepository(MediaRequest).update(olderRequest.id, {
+      status: MediaRequestStatus.APPROVED,
+      updatedAt: new Date(Date.now() - 60_000),
+    });
+    await getRepository(MediaRequest).update(laterRequest.id, {
+      status: MediaRequestStatus.APPROVED,
+      updatedAt: new Date(),
+    });
+
+    mock.method(OpenLibraryAPI.prototype, 'getWork', async () => undefined);
+    let olderLookupAttempts = 0;
+    mock.method(ReadarrAPI.prototype, 'lookupBook', async (term: string) => {
+      if (term.includes('9788427249530')) {
+        olderLookupAttempts += 1;
+        const error = new Error(
+          'Request failed with status code 429'
+        ) as Error & {
+          response: { headers: Record<string, string> };
+        };
+        error.response = { headers: { 'retry-after': '60' } };
+        throw error;
+      }
+
+      return [
+        {
+          title: 'Matilda',
+          foreignBookId: 'readarr-matilda',
+          titleSlug: 'matilda',
+          author: {
+            foreignAuthorId: 'roald-dahl',
+            authorName: 'Roald Dahl',
+          },
+          editions: [
+            {
+              foreignEditionId: 'matilda-edition',
+              title: 'Matilda',
+              isbn13: '9780140328721',
+              monitored: true,
+            },
+          ],
+        },
+      ] as ReadarrBookLookupResult[];
+    });
+    mock.method(
+      ReadarrAPI.prototype,
+      'addBook',
+      async (payload: ReadarrBookOptions) => ({
+        ...payload,
+        id: 58,
+        titleSlug: 'matilda',
+      })
+    );
+    mock.method(notificationManager, 'sendNotification', () => undefined);
+
+    const subscriber = new MediaRequestSubscriber();
+    const retryDelays = await Promise.all([
+      subscriber.sendToReadarr(olderRequest),
+      subscriber.sendToReadarr(olderRequest),
+    ]);
+    assert.equal(olderLookupAttempts, 4);
+    assert.deepEqual(retryDelays, [60_000, 60_000]);
+
+    await getRepository(RequestDispatchOutbox).save(
+      new RequestDispatchOutbox({
+        requestId: olderRequest.id,
+        attempts: 1,
+        nextAttemptAt: new Date(Date.now() + 60_000),
+      })
+    );
+
+    await subscriber.retryApprovedReadarrRequests(1);
+
+    assert.deepEqual(enqueuedRequestIds, [laterRequest.id]);
   });
 
   it('sends audiobook requests to the default audiobook Bookshelf server', async () => {
@@ -2298,7 +2533,10 @@ describe('MediaRequestSubscriber service dispatch', () => {
       })
     );
 
-    await new MediaRequestSubscriber().updateParentStatus(request);
+    await new MediaRequestSubscriber().updateParentStatus(
+      dataSource.manager,
+      request
+    );
 
     const updatedMedia = await getRepository(Media).findOneByOrFail({
       id: media.id,
@@ -2330,7 +2568,10 @@ describe('MediaRequestSubscriber service dispatch', () => {
       })
     );
 
-    await new MediaRequestSubscriber().updateParentStatus(request);
+    await new MediaRequestSubscriber().updateParentStatus(
+      dataSource.manager,
+      request
+    );
 
     const updatedMedia = await getRepository(Media).findOneByOrFail({
       id: media.id,
@@ -2339,5 +2580,52 @@ describe('MediaRequestSubscriber service dispatch', () => {
     assert.equal(updatedMedia.serviceId, 20);
     assert.equal(updatedMedia.externalServiceId, 40);
     assert.equal(updatedMedia.audiobookServiceId, null);
+  });
+
+  it('rolls back parent media status with a source request insertion', async () => {
+    const requestedBy = await getRequester();
+    const media = await getRepository(Media).save(
+      new Media({
+        mediaType: MediaType.MOVIE,
+        tmdbId: 991_001,
+        status: MediaStatus.PENDING,
+        status4k: MediaStatus.UNKNOWN,
+      })
+    );
+    const queryRunner = dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.manager.save(
+        new MediaRequest({
+          type: MediaType.MOVIE,
+          status: MediaRequestStatus.APPROVED,
+          media,
+          requestedBy,
+          is4k: false,
+        })
+      );
+      assert.strictEqual(
+        (await queryRunner.manager.findOneByOrFail(Media, { id: media.id }))
+          .status,
+        MediaStatus.PROCESSING
+      );
+      await queryRunner.rollbackTransaction();
+    } finally {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      await queryRunner.release();
+    }
+
+    assert.strictEqual(
+      (await getRepository(Media).findOneByOrFail({ id: media.id })).status,
+      MediaStatus.PENDING
+    );
+    assert.strictEqual(
+      await getRepository(MediaRequest).countBy({ media: { id: media.id } }),
+      0
+    );
   });
 });

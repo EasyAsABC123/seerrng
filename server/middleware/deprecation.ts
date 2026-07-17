@@ -1,4 +1,5 @@
 import logger from '@server/logger';
+import { getRequestLogPath } from '@server/middleware/apiError';
 import type { NextFunction, Request, Response } from 'express';
 
 interface DeprecationOptions {
@@ -26,7 +27,7 @@ export const deprecatedRoute = ({
         ip: req.ip,
         userAgent: req.get('User-Agent'),
         method: req.method,
-        path: req.originalUrl,
+        path: getRequestLogPath(req.originalUrl),
       }
     );
 

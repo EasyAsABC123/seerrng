@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   isManifestCacheFresh,
+  parseDiscoverHomeManifest,
   readManifestCache,
 } from './useDiscoverHomeManifest';
 
@@ -44,5 +45,43 @@ describe('Discover home manifest cache', () => {
 
     assert.equal(isManifestCacheFresh(record, 60_999), true);
     assert.equal(isManifestCacheFresh(record, 61_000), false);
+  });
+
+  it('rejects corrupt, future-dated, and unbounded manifest records', () => {
+    const storage = new MemoryStorage();
+    storage.values.set(
+      'seerr-discover-manifest-v1:user-1',
+      JSON.stringify({ contextKey: 'user-1', checkedAt: 1000, manifest: {} })
+    );
+    assert.equal(readManifestCache(storage, 'user-1', 1000), undefined);
+
+    storage.values.set(
+      'seerr-discover-manifest-v1:user-1',
+      JSON.stringify({ contextKey: 'user-1', checkedAt: 1001, manifest })
+    );
+    assert.equal(readManifestCache(storage, 'user-1', 1000), undefined);
+
+    assert.equal(
+      parseDiscoverHomeManifest({
+        ...manifest,
+        freshness: { ...manifest.freshness, rowMaxAgeSeconds: Infinity },
+      }),
+      undefined
+    );
+    assert.equal(
+      parseDiscoverHomeManifest({
+        ...manifest,
+        rows: [
+          {
+            key: 'popular',
+            sliderId: 1,
+            type: 1,
+            descriptorRevision: 'descriptor-1',
+            endpoint: 'https://other.example/api/v1/discover',
+          },
+        ],
+      }),
+      undefined
+    );
   });
 });

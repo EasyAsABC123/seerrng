@@ -1,3 +1,10 @@
+import {
+  MAX_POSTGRES_POOL_SIZE,
+  parseBooleanConfig,
+  parseIntegerConfig,
+  readDatabaseTlsFile,
+} from '@server/lib/databaseConfig';
+import { secureSqliteDatabaseFiles } from '@server/lib/sqliteFileSecurity';
 import fs from 'fs';
 import type { TlsOptions } from 'tls';
 import type { DataSourceOptions, EntityTarget, Repository } from 'typeorm';
@@ -25,22 +32,32 @@ const getRuntimeFiles = (directory: string, extension: 'ts' | 'js') =>
     : [];
 
 const DB_SSL_PREFIX = 'DB_SSL_';
+const SQLITE_DATABASE_PATH = process.env.CONFIG_DIRECTORY
+  ? `${process.env.CONFIG_DIRECTORY}/db/db.sqlite3`
+  : 'config/db/db.sqlite3';
+
+export const enforceSqliteDatabasePermissions = (): void => {
+  if (process.env.NODE_ENV === 'test' || process.env.DB_TYPE === 'postgres') {
+    return;
+  }
+
+  secureSqliteDatabaseFiles(SQLITE_DATABASE_PATH);
+};
 
 function boolFromEnv(envVar: string, defaultVal = false) {
-  if (process.env[envVar]) {
-    return process.env[envVar]?.toLowerCase() === 'true';
-  }
-  return defaultVal;
+  return parseBooleanConfig(envVar, process.env[envVar], defaultVal);
 }
 
-function intFromEnv(envVar: string, defaultVal?: number): number | undefined {
-  const val = process.env[envVar];
-  if (val) {
-    const parsed = parseInt(val, 10);
-    return isNaN(parsed) ? defaultVal : parsed;
-  }
-  return defaultVal;
-}
+// PostgreSQL advisory-lock coordinators lease a connection while application
+// repositories perform the protected work. Keep at least one additional pool
+// connection available even when an operator supplies an undersized value.
+export const POSTGRES_POOL_SIZE = Math.max(
+  2,
+  parseIntegerConfig('DB_POOL_SIZE', process.env.DB_POOL_SIZE, 10, {
+    min: 1,
+    max: MAX_POSTGRES_POOL_SIZE,
+  })
+);
 
 function stringOrReadFileFromEnv(envVar: string): Buffer | string | undefined {
   if (process.env[envVar]) {
@@ -48,13 +65,13 @@ function stringOrReadFileFromEnv(envVar: string): Buffer | string | undefined {
   }
   const filePath = process.env[`${envVar}_FILE`];
   if (filePath) {
-    return fs.readFileSync(filePath);
+    return readDatabaseTlsFile(filePath);
   }
   return undefined;
 }
 
 function buildSslConfig(): TlsOptions | undefined {
-  if (process.env.DB_USE_SSL?.toLowerCase() !== 'true') {
+  if (!boolFromEnv('DB_USE_SSL')) {
     return undefined;
   }
   return {
@@ -83,9 +100,7 @@ const testConfig: DataSourceOptions = {
 
 const devConfig: DataSourceOptions = {
   type: 'sqlite',
-  database: process.env.CONFIG_DIRECTORY
-    ? `${process.env.CONFIG_DIRECTORY}/db/db.sqlite3`
-    : 'config/db/db.sqlite3',
+  database: SQLITE_DATABASE_PATH,
   synchronize: true,
   migrationsRun: false,
   logging: boolFromEnv('DB_LOG_QUERIES'),
@@ -97,9 +112,7 @@ const devConfig: DataSourceOptions = {
 
 const prodConfig: DataSourceOptions = {
   type: 'sqlite',
-  database: process.env.CONFIG_DIRECTORY
-    ? `${process.env.CONFIG_DIRECTORY}/db/db.sqlite3`
-    : 'config/db/db.sqlite3',
+  database: SQLITE_DATABASE_PATH,
   synchronize: false,
   migrationsRun: false,
   logging: boolFromEnv('DB_LOG_QUERIES'),
@@ -114,12 +127,15 @@ const postgresDevConfig: DataSourceOptions = {
   host: process.env.DB_SOCKET_PATH || process.env.DB_HOST,
   port: process.env.DB_SOCKET_PATH
     ? undefined
-    : parseInt(process.env.DB_PORT ?? '5432'),
+    : parseIntegerConfig('DB_PORT', process.env.DB_PORT, 5432, {
+        min: 1,
+        max: 65535,
+      }),
   username: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME ?? 'seerr',
   ssl: buildSslConfig(),
-  poolSize: intFromEnv('DB_POOL_SIZE'),
+  poolSize: POSTGRES_POOL_SIZE,
   synchronize: false,
   migrationsRun: true,
   logging: boolFromEnv('DB_LOG_QUERIES'),
@@ -133,12 +149,15 @@ const postgresProdConfig: DataSourceOptions = {
   host: process.env.DB_SOCKET_PATH || process.env.DB_HOST,
   port: process.env.DB_SOCKET_PATH
     ? undefined
-    : parseInt(process.env.DB_PORT ?? '5432'),
+    : parseIntegerConfig('DB_PORT', process.env.DB_PORT, 5432, {
+        min: 1,
+        max: 65535,
+      }),
   username: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME ?? 'seerr',
   ssl: buildSslConfig(),
-  poolSize: intFromEnv('DB_POOL_SIZE'),
+  poolSize: POSTGRES_POOL_SIZE,
   synchronize: false,
   migrationsRun: false,
   logging: boolFromEnv('DB_LOG_QUERIES'),
@@ -160,6 +179,8 @@ function getDataSource(): DataSourceOptions {
 }
 
 const dataSource = new DataSource(getDataSource());
+
+enforceSqliteDatabasePermissions();
 
 export const getRepository = <Entity extends object>(
   target: EntityTarget<Entity>

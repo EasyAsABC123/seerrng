@@ -31,7 +31,8 @@ concurrency:
 jobs:
   link-check:
     name: Verify external links in Markdown and MDX
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
@@ -57,7 +58,7 @@ jobs:
             './gen-docs/**/*.md'
             './gen-docs/**/*.mdx'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
 
       - name: Upload Lychee report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

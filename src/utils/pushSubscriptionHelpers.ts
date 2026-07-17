@@ -77,30 +77,46 @@ export const verifyPushSubscription = async (
 
 export const verifyAndResubscribePushSubscription = async (
   userId: number | undefined,
-  currentSettings: PushSettings
+  currentSettings: PushSettings,
+  isCurrent: () => boolean = () => true
 ): Promise<boolean> => {
-  if (!userId) {
+  if (!userId || !isCurrent()) {
     return false;
   }
 
   const { subscription } = await getPushSubscription();
+  if (!isCurrent()) {
+    return false;
+  }
   const isValid = await verifyPushSubscription(userId, currentSettings);
+  if (!isCurrent()) {
+    return false;
+  }
 
   if (isValid) {
     return true;
   }
 
-  if (subscription) {
-    return false;
-  }
-
   if (currentSettings.enablePushRegistration) {
     try {
-      const oldEndpoint = await unsubscribeToPushNotifications(userId);
+      const oldEndpoint = subscription?.endpoint;
+      if (subscription) {
+        await subscription.unsubscribe();
+      }
+      if (!isCurrent()) {
+        return false;
+      }
 
-      await subscribeToPushNotifications(userId, currentSettings);
+      const subscribedEndpoint = await subscribeToPushNotifications(
+        userId,
+        currentSettings,
+        isCurrent
+      );
+      if (!subscribedEndpoint || !isCurrent()) {
+        return false;
+      }
 
-      if (oldEndpoint) {
+      if (oldEndpoint && oldEndpoint !== subscribedEndpoint) {
         try {
           await axios.delete(
             `/api/v1/user/${userId}/pushSubscription/${encodeURIComponent(
@@ -125,9 +141,11 @@ export const verifyAndResubscribePushSubscription = async (
 
 export const subscribeToPushNotifications = async (
   userId: number | undefined,
-  currentSettings: PushSettings
+  currentSettings: PushSettings,
+  isCurrent: () => boolean = () => true
 ) => {
   if (
+    !isCurrent() ||
     !('serviceWorker' in navigator) ||
     !userId ||
     !currentSettings.enablePushRegistration
@@ -135,21 +153,32 @@ export const subscribeToPushNotifications = async (
     return false;
   }
 
+  let subscription: PushSubscription | undefined;
   try {
     const { registration } = await getPushSubscription();
 
-    if (!registration) {
+    if (!registration || !isCurrent()) {
       return false;
     }
 
-    const subscription = await registration.pushManager.subscribe({
+    subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: currentSettings.vapidPublic,
     });
 
-    const { endpoint, keys } = subscription.toJSON();
+    if (!isCurrent()) {
+      await subscription.unsubscribe().catch(() => false);
+      return false;
+    }
 
-    if (keys?.p256dh && keys?.auth) {
+    const { keys } = subscription.toJSON();
+    const endpoint = subscription.endpoint;
+
+    if (endpoint && keys?.p256dh && keys?.auth) {
+      if (!isCurrent()) {
+        await subscription.unsubscribe().catch(() => false);
+        return false;
+      }
       await axios.post('/api/v1/user/registerPushSubscription', {
         endpoint,
         p256dh: keys.p256dh,
@@ -157,11 +186,20 @@ export const subscribeToPushNotifications = async (
         userAgent: navigator.userAgent,
       });
 
-      return true;
+      if (!isCurrent()) {
+        await subscription.unsubscribe().catch(() => false);
+        return false;
+      }
+
+      return endpoint;
     }
 
+    await subscription.unsubscribe().catch(() => false);
     return false;
   } catch (error) {
+    if (subscription) {
+      await subscription.unsubscribe().catch(() => false);
+    }
     throw new Error(
       `Issue subscribing to push notifications: ${error.message}`,
       { cause: error }

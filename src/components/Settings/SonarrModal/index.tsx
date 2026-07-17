@@ -163,12 +163,14 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
 
   const testConnection = useCallback(
     async ({
+      id,
       hostname,
       port,
       apiKey,
       baseUrl,
       useSsl = false,
     }: {
+      id?: number;
       hostname: string;
       port: number;
       apiKey: string;
@@ -180,6 +182,7 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
         const response = await axios.post<SonarrTestResponse>(
           '/api/v1/settings/sonarr/test',
           {
+            id,
             hostname,
             apiKey,
             port: Number(port),
@@ -215,6 +218,7 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
   useEffect(() => {
     if (sonarr) {
       testConnection({
+        id: sonarr.id,
         apiKey: sonarr.apiKey,
         hostname: sonarr.hostname,
         port: sonarr.port,
@@ -351,6 +355,7 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
               onSecondary={() => {
                 if (values.apiKey && values.hostname && values.port) {
                   testConnection({
+                    id: sonarr?.id,
                     apiKey: values.apiKey,
                     baseUrl: values.baseUrl,
                     hostname: values.hostname,

@@ -6,8 +6,8 @@ import type { TmdbGenre } from '@server/api/themoviedb/interfaces';
 import type OverrideRule from '@server/entity/OverrideRule';
 import type { User } from '@server/entity/User';
 import type {
-  DVRSettings,
   Language,
+  LidarrSettings,
   RadarrSettings,
   SonarrSettings,
 } from '@server/lib/settings';
@@ -16,6 +16,11 @@ import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
+import {
+  KEYWORD_LOOKUP_CONCURRENCY,
+  getOverrideRuleKeywordIds,
+  getOverrideRuleUserIds,
+} from './ruleLookups';
 
 const messages = defineMessages('components.Settings.OverrideRuleTile', {
   qualityprofile: 'Quality Profile',
@@ -41,6 +46,7 @@ interface OverrideRuleTilesProps {
   revalidate: () => void;
   radarrServices: RadarrSettings[];
   sonarrServices: SonarrSettings[];
+  lidarrServices: LidarrSettings[];
 }
 
 const OverrideRuleTiles = ({
@@ -49,6 +55,7 @@ const OverrideRuleTiles = ({
   revalidate,
   radarrServices,
   sonarrServices,
+  lidarrServices,
 }: OverrideRuleTilesProps) => {
   const intl = useIntl();
   const [users, setUsers] = useState<User[] | null>(null);
@@ -59,88 +66,143 @@ const OverrideRuleTiles = ({
     (DVRTestResponse & { type: string; id: number })[]
   >([]);
 
-  const getServiceInfos = useCallback(async () => {
-    const results: (DVRTestResponse & { type: string; id: number })[] = [];
-    const services: DVRSettings[] = [...radarrServices, ...sonarrServices];
-    for (const service of services) {
-      const { hostname, port, apiKey, baseUrl, useSsl = false } = service;
-      try {
-        const response = await axios.post<DVRTestResponse>(
-          `/api/v1/settings/${
-            radarrServices.includes(service as RadarrSettings)
-              ? 'radarr'
-              : 'sonarr'
-          }/test`,
-          {
-            hostname,
-            apiKey,
-            port: Number(port),
-            baseUrl,
-            useSsl,
+  const getServiceInfos = useCallback(
+    async (signal: AbortSignal) => {
+      const results: (DVRTestResponse & { type: string; id: number })[] = [];
+      const services = [
+        ...radarrServices.map((service) => ({
+          service,
+          type: 'radarr' as const,
+          referenced: rules.some((rule) => rule.radarrServiceId === service.id),
+        })),
+        ...sonarrServices.map((service) => ({
+          service,
+          type: 'sonarr' as const,
+          referenced: rules.some((rule) => rule.sonarrServiceId === service.id),
+        })),
+        ...lidarrServices.map((service) => ({
+          service,
+          type: 'lidarr' as const,
+          referenced: rules.some((rule) => rule.lidarrServiceId === service.id),
+        })),
+      ].filter(({ referenced }) => referenced);
+      for (const { service, type } of services) {
+        const { hostname, port, apiKey, baseUrl, useSsl = false } = service;
+        try {
+          const response = await axios.post<DVRTestResponse>(
+            `/api/v1/settings/${type}/test`,
+            {
+              id: service.id,
+              hostname,
+              apiKey,
+              port: Number(port),
+              baseUrl,
+              useSsl,
+            },
+            { signal }
+          );
+          results.push({
+            type,
+            id: service.id,
+            ...response.data,
+          });
+        } catch {
+          if (signal.aborted) {
+            break;
           }
-        );
-        results.push({
-          type: radarrServices.includes(service as RadarrSettings)
-            ? 'radarr'
-            : 'sonarr',
-          id: service.id,
-          ...response.data,
-        });
-      } catch {
-        results.push({
-          type: radarrServices.includes(service as RadarrSettings)
-            ? 'radarr'
-            : 'sonarr',
-          id: service.id,
-          profiles: [],
-          rootFolders: [],
-          tags: [],
-        });
+          results.push({
+            type,
+            id: service.id,
+            profiles: [],
+            rootFolders: [],
+            tags: [],
+          });
+        }
       }
-    }
-    setTestResponses(results);
-  }, [radarrServices, sonarrServices]);
+      return results;
+    },
+    [lidarrServices, radarrServices, rules, sonarrServices]
+  );
 
   useEffect(() => {
-    getServiceInfos();
+    const controller = new AbortController();
+    let active = true;
+    const loadServiceInfos = async () => {
+      const results = await getServiceInfos(controller.signal);
+      if (active) {
+        setTestResponses(results);
+      }
+    };
+
+    void loadServiceInfos();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [getServiceInfos]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     (async () => {
-      const keywords = await Promise.all(
-        rules
-          .map((rule) => rule.keywords?.split(','))
-          .flat()
-          .filter((keywordId) => keywordId)
-          .map(async (keywordId) => {
-            const response = await axios.get<Keyword | null>(
-              `/api/v1/keyword/${keywordId}`
-            );
-            return response.data;
-          })
-      );
-      const validKeywords: Keyword[] = keywords.filter(
-        (keyword): keyword is Keyword => keyword !== null
-      );
-      setKeywords(validKeywords);
-      const allUsersFromRules = rules
-        .map((rule) => rule.users)
-        .filter((users) => users)
-        .join(',');
-      if (allUsersFromRules) {
-        const response = await axios.get(
-          `/api/v1/user?includeIds=${encodeURIComponent(allUsersFromRules)}`
+      const keywordIds = getOverrideRuleKeywordIds(rules);
+      const loadedKeywords: Keyword[] = [];
+      for (
+        let offset = 0;
+        offset < keywordIds.length;
+        offset += KEYWORD_LOOKUP_CONCURRENCY
+      ) {
+        const batch = await Promise.all(
+          keywordIds
+            .slice(offset, offset + KEYWORD_LOOKUP_CONCURRENCY)
+            .map((keywordId) =>
+              axios
+                .get<Keyword | null>(`/api/v1/keyword/${keywordId}`, {
+                  signal: controller.signal,
+                })
+                .then((response) => response.data)
+                .catch(() => null)
+            )
         );
-        const users: User[] = response.data.results;
-        setUsers(users);
+        loadedKeywords.push(
+          ...batch.filter((keyword): keyword is Keyword => keyword !== null)
+        );
+        if (controller.signal.aborted) {
+          return;
+        }
+      }
+      if (active) {
+        setKeywords(loadedKeywords);
+      }
+
+      const userIds = getOverrideRuleUserIds(rules);
+      if (userIds.length > 0) {
+        const response = await axios
+          .get(
+            `/api/v1/user?includeIds=${encodeURIComponent(userIds.join(','))}`,
+            { signal: controller.signal }
+          )
+          .catch(() => undefined);
+        if (active) {
+          setUsers((response?.data.results as User[] | undefined) ?? []);
+        }
+      } else if (active) {
+        setUsers([]);
       }
     })();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [rules]);
 
   return (
     <>
       {rules.map((rule) => (
-        <li className="flex h-full flex-col rounded-lg bg-gray-800 text-left shadow ring-1 ring-gray-500">
+        <li
+          key={rule.id}
+          className="flex h-full flex-col rounded-lg bg-gray-800 text-left shadow ring-1 ring-gray-500"
+        >
           <div className="flex w-full flex-1 items-center justify-between space-x-6 p-6">
             <div className="flex-1 truncate">
               <span className="text-lg">
@@ -154,11 +216,9 @@ const OverrideRuleTiles = ({
                   <div className="inline-flex gap-2">
                     {rule.users.split(',').map((userId) => {
                       return (
-                        <span>
-                          {
-                            users?.find((user) => user.id === Number(userId))
-                              ?.displayName
-                          }
+                        <span key={userId}>
+                          {users?.find((user) => user.id === Number(userId))
+                            ?.displayName ?? userId}
                         </span>
                       );
                     })}
@@ -172,7 +232,7 @@ const OverrideRuleTiles = ({
                   </span>
                   <div className="inline-flex gap-2">
                     {rule.genre.split(',').map((genreId) => (
-                      <span>
+                      <span key={genreId}>
                         {genres?.find((g) => g.id === Number(genreId))?.name}
                       </span>
                     ))}
@@ -198,7 +258,7 @@ const OverrideRuleTiles = ({
                             type: 'language',
                             fallback: 'none',
                           }) ?? language.english_name;
-                        return <span>{languageName}</span>;
+                        return <span key={languageId}>{languageName}</span>;
                       })}
                   </div>
                 </p>
@@ -211,12 +271,10 @@ const OverrideRuleTiles = ({
                   <div className="inline-flex gap-2">
                     {rule.keywords.split(',').map((keywordId) => {
                       return (
-                        <span>
-                          {
-                            keywords?.find(
-                              (keyword) => keyword.id === Number(keywordId)
-                            )?.name
-                          }
+                        <span key={keywordId}>
+                          {keywords?.find(
+                            (keyword) => keyword.id === Number(keywordId)
+                          )?.name ?? keywordId}
                         </span>
                       );
                     })}
@@ -226,7 +284,7 @@ const OverrideRuleTiles = ({
               <span className="text-lg">
                 {intl.formatMessage(messages.settings)}
               </span>
-              {rule.profileId && (
+              {rule.profileId != null && (
                 <p className="runcate text-sm leading-5 text-gray-300">
                   <span className="mr-2 font-bold">
                     {intl.formatMessage(messages.qualityprofile)}
@@ -236,7 +294,9 @@ const OverrideRuleTiles = ({
                       (r) =>
                         (r.id === rule.radarrServiceId &&
                           r.type === 'radarr') ||
-                        (r.id === rule.sonarrServiceId && r.type === 'sonarr')
+                        (r.id === rule.sonarrServiceId &&
+                          r.type === 'sonarr') ||
+                        (r.id === rule.lidarrServiceId && r.type === 'lidarr')
                     )
                     ?.profiles.find((profile) => rule.profileId === profile.id)
                     ?.name || rule.profileId}
@@ -257,14 +317,16 @@ const OverrideRuleTiles = ({
                   </span>
                   <div className="inline-flex gap-2">
                     {rule.tags.split(',').map((tag) => (
-                      <span>
+                      <span key={tag}>
                         {testResponses
                           .find(
                             (r) =>
                               (r.id === rule.radarrServiceId &&
                                 r.type === 'radarr') ||
                               (r.id === rule.sonarrServiceId &&
-                                r.type === 'sonarr')
+                                r.type === 'sonarr') ||
+                              (r.id === rule.lidarrServiceId &&
+                                r.type === 'lidarr')
                           )
                           ?.tags?.find((t) => t.id === Number(tag))?.label ||
                           tag}

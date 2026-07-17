@@ -18,7 +18,9 @@ import Season from '@server/entity/Season';
 import { User } from '@server/entity/User';
 import type { SonarrSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
+import { runUserSecurityMutation } from '@server/lib/userSecurityMutation';
 import { setupTestDb } from '@server/test/db';
+import { In } from 'typeorm';
 
 // --- Mock JellyfinAPI ---
 let getSystemInfoImpl: () => Promise<Record<string, unknown>> = async () => ({
@@ -306,18 +308,16 @@ describe('AvailabilitySync', () => {
     };
 
     const userRepository = getRepository(User);
-    const existingAdmin = await userRepository.findOne({ where: { id: 1 } });
-    if (!existingAdmin) {
-      const admin = new User();
-      admin.id = 1;
-      admin.plexToken = 'test-plex-token';
-      admin.jellyfinUserId = 'admin-user-id';
-      admin.jellyfinDeviceId = 'admin-device-id';
-      admin.email = 'admin@test.com';
-      admin.permissions = 2;
-      admin.username = 'admin';
-      await userRepository.save(admin);
-    }
+    const admin =
+      (await userRepository.findOne({ where: { id: 1 } })) ?? new User();
+    admin.id = 1;
+    admin.plexToken = 'test-plex-token';
+    admin.jellyfinUserId = '0123456789abcdef0123456789abcdef';
+    admin.jellyfinDeviceId = 'admin-device-id';
+    admin.email = 'admin@test.com';
+    admin.permissions = 2;
+    admin.username = 'admin';
+    await userRepository.save(admin);
   });
 
   describe('TV season availability - Jellyfin', () => {
@@ -957,6 +957,242 @@ describe('AvailabilitySync', () => {
         MediaStatus.PARTIALLY_AVAILABLE,
         'Show should be PARTIALLY_AVAILABLE after season removal'
       );
+    });
+  });
+
+  describe('scan lifecycle and pagination', () => {
+    it('does not delete media refreshed while an availability probe is in flight', async () => {
+      configurePlex();
+      configureSonarr([]);
+      const mediaRepository = getRepository(Media);
+      const media = await mediaRepository.save(
+        new Media({
+          tmdbId: 2899,
+          mediaType: MediaType.MOVIE,
+          status: MediaStatus.AVAILABLE,
+          status4k: MediaStatus.UNKNOWN,
+          ratingKey: 'stale-rating-key',
+          seasons: [],
+        })
+      );
+      let probeStarted!: () => void;
+      let releaseProbe!: () => void;
+      const probeStartedPromise = new Promise<void>((resolve) => {
+        probeStarted = resolve;
+      });
+      const releaseProbePromise = new Promise<void>((resolve) => {
+        releaseProbe = resolve;
+      });
+      getMetadataImpl = async () => {
+        probeStarted();
+        await releaseProbePromise;
+        throw new Error('404');
+      };
+
+      const scan = availabilitySync.run();
+      await probeStartedPromise;
+      await mediaRepository.update(media.id, {
+        status: MediaStatus.PROCESSING,
+        ratingKey: 'fresh-rating-key',
+      });
+      releaseProbe();
+      await scan;
+
+      const current = await mediaRepository.findOneByOrFail({ id: media.id });
+      assert.strictEqual(current.status, MediaStatus.PROCESSING);
+      assert.strictEqual(current.ratingKey, 'fresh-rating-key');
+    });
+
+    it('treats only Jellyfin 404 responses as proof that media is absent', async () => {
+      configureJellyfin();
+      configureSonarr([]);
+      const mediaRepository = getRepository(Media);
+      const [unavailableBackendMedia, missingMedia] =
+        await mediaRepository.save([
+          new Media({
+            tmdbId: 2900,
+            mediaType: MediaType.MOVIE,
+            status: MediaStatus.AVAILABLE,
+            status4k: MediaStatus.UNKNOWN,
+            jellyfinMediaId: 'jellyfin-500',
+            seasons: [],
+          }),
+          new Media({
+            tmdbId: 2901,
+            mediaType: MediaType.MOVIE,
+            status: MediaStatus.AVAILABLE,
+            status4k: MediaStatus.UNKNOWN,
+            jellyfinMediaId: 'jellyfin-404',
+            seasons: [],
+          }),
+        ]);
+      getItemDataImpl = async (id: string) => {
+        throw new Error(
+          id === 'jellyfin-500'
+            ? 'Request failed with status code 500'
+            : 'Request failed with status code 404'
+        );
+      };
+
+      await availabilitySync.run();
+
+      const [preserved, deleted] = await Promise.all([
+        mediaRepository.findOneByOrFail({ id: unavailableBackendMedia.id }),
+        mediaRepository.findOneByOrFail({ id: missingMedia.id }),
+      ]);
+      assert.strictEqual(preserved.status, MediaStatus.AVAILABLE);
+      assert.strictEqual(deleted.status, MediaStatus.DELETED);
+    });
+
+    it('does not delete media using results from rotated Jellyfin credentials', async () => {
+      configureJellyfin();
+      configureSonarr([]);
+      const settings = getSettings();
+      const mediaRepository = getRepository(Media);
+      const media = await mediaRepository.save(
+        new Media({
+          tmdbId: 2902,
+          mediaType: MediaType.MOVIE,
+          status: MediaStatus.AVAILABLE,
+          status4k: MediaStatus.UNKNOWN,
+          jellyfinMediaId: 'stale-jellyfin-id',
+          seasons: [],
+        })
+      );
+      getItemDataImpl = async () => {
+        settings.jellyfin = {
+          ...settings.jellyfin,
+          apiKey: 'rotated-during-probe',
+        };
+        throw new Error('Request failed with status code 404');
+      };
+
+      await availabilitySync.run();
+
+      const current = await mediaRepository.findOneByOrFail({ id: media.id });
+      assert.strictEqual(current.status, MediaStatus.AVAILABLE);
+      assert.strictEqual(current.jellyfinMediaId, 'stale-jellyfin-id');
+    });
+
+    it('does not delete media after the owner Jellyfin identity changes', async () => {
+      configureJellyfin();
+      configureSonarr([]);
+      const mediaRepository = getRepository(Media);
+      const media = await mediaRepository.save(
+        new Media({
+          tmdbId: 2903,
+          mediaType: MediaType.MOVIE,
+          status: MediaStatus.AVAILABLE,
+          status4k: MediaStatus.UNKNOWN,
+          jellyfinMediaId: 'owner-stale-jellyfin-id',
+          seasons: [],
+        })
+      );
+      getItemDataImpl = async () => {
+        await runUserSecurityMutation(1, () =>
+          getRepository(User)
+            .update(1, { jellyfinDeviceId: 'rotated-during-probe' })
+            .then(() => undefined)
+        );
+        throw new Error('Request failed with status code 404');
+      };
+
+      await availabilitySync.run();
+
+      const current = await mediaRepository.findOneByOrFail({ id: media.id });
+      assert.strictEqual(current.status, MediaStatus.AVAILABLE);
+      assert.strictEqual(current.jellyfinMediaId, 'owner-stale-jellyfin-id');
+    });
+
+    it('processes every matching row when earlier pages stop matching', async () => {
+      configurePlex();
+      configureSonarr([]);
+      const mediaRepository = getRepository(Media);
+      const media = await mediaRepository.save(
+        Array.from(
+          { length: 55 },
+          (_, index) =>
+            new Media({
+              tmdbId: 3000 + index,
+              mediaType: MediaType.MOVIE,
+              status: MediaStatus.AVAILABLE,
+              status4k: MediaStatus.UNKNOWN,
+              seasons: [],
+            })
+        )
+      );
+
+      await availabilitySync.run();
+
+      const updated = await mediaRepository.findBy({
+        id: In(media.map((item) => item.id)),
+      });
+      assert.strictEqual(updated.length, 55);
+      assert.ok(
+        updated.every((item) => item.status === MediaStatus.DELETED),
+        'keyset pagination left available rows unprocessed'
+      );
+    });
+
+    it('fails closed without deleting media when the Plex admin is unavailable', async () => {
+      configurePlex();
+      configureSonarr([]);
+      const userRepository = getRepository(User);
+      const admin = await userRepository.findOneByOrFail({ id: 1 });
+      admin.plexToken = null;
+      await userRepository.save(admin);
+      const mediaRepository = getRepository(Media);
+      const media = await mediaRepository.save(
+        new Media({
+          tmdbId: 4000,
+          mediaType: MediaType.MOVIE,
+          status: MediaStatus.AVAILABLE,
+          status4k: MediaStatus.UNKNOWN,
+          ratingKey: 'plex-movie',
+          seasons: [],
+        })
+      );
+
+      await availabilitySync.run();
+
+      const updated = await mediaRepository.findOneByOrFail({ id: media.id });
+      assert.strictEqual(updated.status, MediaStatus.AVAILABLE);
+    });
+
+    it('skips overlapping availability runs', async () => {
+      configurePlex();
+      configureSonarr([]);
+      const mediaRepository = getRepository(Media);
+      await mediaRepository.save(
+        new Media({
+          tmdbId: 5000,
+          mediaType: MediaType.MOVIE,
+          status: MediaStatus.AVAILABLE,
+          status4k: MediaStatus.UNKNOWN,
+          ratingKey: 'slow-plex-movie',
+          seasons: [],
+        })
+      );
+      let releaseLookup: (() => void) | undefined;
+      let lookupCount = 0;
+      const lookupStarted = new Promise<void>((resolve) => {
+        getMetadataImpl = async () => {
+          lookupCount += 1;
+          resolve();
+          await new Promise<void>((release) => {
+            releaseLookup = release;
+          });
+          throw new Error('404');
+        };
+      });
+
+      const firstRun = availabilitySync.run();
+      await lookupStarted;
+      await availabilitySync.run();
+      releaseLookup?.();
+      await firstRun;
+
+      assert.strictEqual(lookupCount, 1);
     });
   });
 });

@@ -10,19 +10,21 @@ import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
 import {
   BaseAgent,
-  NOTIFICATION_HTTP_OPTIONS,
+  CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS,
   getNotificationActionUrl,
 } from './agent';
 
 interface EmbedField {
   type: 'plain_text' | 'mrkdwn';
   text: string;
+  verbatim?: boolean;
 }
 
 interface TextItem {
   type: 'plain_text' | 'mrkdwn';
   text: string;
   emoji?: boolean;
+  verbatim?: boolean;
 }
 
 interface Element {
@@ -52,6 +54,67 @@ interface SlackBlockEmbed {
   blocks: EmbedBlock[];
 }
 
+export const SLACK_HEADER_TEXT_LIMIT = 150;
+export const SLACK_FIELD_LABEL_LIMIT = 256;
+export const SLACK_FIELD_TEXT_LIMIT = 2_000;
+export const SLACK_SECTION_TEXT_LIMIT = 3_000;
+export const SLACK_FALLBACK_TEXT_LIMIT = 4_000;
+
+const takeSlackText = (value: string, maxLength: number): string => {
+  let output = '';
+  for (const character of value) {
+    if (output.length + character.length > maxLength) {
+      break;
+    }
+    output += character;
+  }
+  return output;
+};
+
+const truncateSlackText = (value: string, maxLength: number): string => {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  if (maxLength <= 0) {
+    return '';
+  }
+  return `${takeSlackText(value, maxLength - 1)}…`;
+};
+
+export const escapeSlackMrkdwnText = (
+  value: string,
+  maxLength = Number.MAX_SAFE_INTEGER
+): string => {
+  let output = '';
+  for (const character of value) {
+    const escaped =
+      character === '&'
+        ? '&amp;'
+        : character === '<'
+          ? '&lt;'
+          : character === '>'
+            ? '&gt;'
+            : character;
+    if (output.length + escaped.length > maxLength) {
+      return maxLength > 0 ? `${takeSlackText(output, maxLength - 1)}…` : '';
+    }
+    output += escaped;
+  }
+  return output;
+};
+
+const buildSlackField = (label: string, value: string): EmbedField => {
+  const prefix = `*${escapeSlackMrkdwnText(label, SLACK_FIELD_LABEL_LIMIT)}*\n`;
+  return {
+    type: 'mrkdwn',
+    text: `${prefix}${escapeSlackMrkdwnText(
+      value,
+      Math.max(0, SLACK_FIELD_TEXT_LIMIT - prefix.length)
+    )}`,
+    verbatim: true,
+  };
+};
+
 class SlackAgent
   extends BaseAgent<NotificationAgentSlack>
   implements NotificationAgent
@@ -78,10 +141,12 @@ class SlackAgent
     const fields: EmbedField[] = [];
 
     if (payload.request) {
-      fields.push({
-        type: 'mrkdwn',
-        text: `*${intl.formatMessage(globalMessages.requestedBy)}*\n${payload.request.requestedBy.displayName}`,
-      });
+      fields.push(
+        buildSlackField(
+          intl.formatMessage(globalMessages.requestedBy),
+          payload.request.requestedBy.displayName
+        )
+      );
 
       let status = '';
       switch (type) {
@@ -104,42 +169,43 @@ class SlackAgent
       }
 
       if (status) {
-        fields.push({
-          type: 'mrkdwn',
-          text: `*${intl.formatMessage(globalMessages.requestStatus)}*\n${status}`,
-        });
+        fields.push(
+          buildSlackField(
+            intl.formatMessage(globalMessages.requestStatus),
+            status
+          )
+        );
       }
     } else if (payload.comment) {
-      fields.push({
-        type: 'mrkdwn',
-        text: `*${intl.formatMessage(globalMessages.commentFrom, { userName: payload.comment.user.displayName })}*\n${payload.comment.message}`,
-      });
+      fields.push(
+        buildSlackField(
+          intl.formatMessage(globalMessages.commentFrom, {
+            userName: payload.comment.user.displayName,
+          }),
+          payload.comment.message
+        )
+      );
     } else if (payload.issue) {
       fields.push(
-        {
-          type: 'mrkdwn',
-          text: `*${intl.formatMessage(globalMessages.reportedBy)}*\n${payload.issue.createdBy.displayName}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `*${intl.formatMessage(globalMessages.issueType)}*\n${IssueTypeName[payload.issue.issueType]}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `*${intl.formatMessage(globalMessages.issueStatus)}*\n${
-            payload.issue.status === IssueStatus.OPEN
-              ? intl.formatMessage(globalMessages.open)
-              : intl.formatMessage(globalMessages.resolved)
-          }`,
-        }
+        buildSlackField(
+          intl.formatMessage(globalMessages.reportedBy),
+          payload.issue.createdBy.displayName
+        ),
+        buildSlackField(
+          intl.formatMessage(globalMessages.issueType),
+          IssueTypeName[payload.issue.issueType]
+        ),
+        buildSlackField(
+          intl.formatMessage(globalMessages.issueStatus),
+          payload.issue.status === IssueStatus.OPEN
+            ? intl.formatMessage(globalMessages.open)
+            : intl.formatMessage(globalMessages.resolved)
+        )
       );
     }
 
     for (const extra of payload.extra ?? []) {
-      fields.push({
-        type: 'mrkdwn',
-        text: `*${extra.name}*\n${extra.value}`,
-      });
+      fields.push(buildSlackField(extra.name, extra.value));
     }
 
     const blocks: EmbedBlock[] = [];
@@ -150,7 +216,11 @@ class SlackAgent
         elements: [
           {
             type: 'mrkdwn',
-            text: `*${payload.event}*`,
+            text: `*${escapeSlackMrkdwnText(
+              payload.event,
+              SLACK_SECTION_TEXT_LIMIT - 2
+            )}*`,
+            verbatim: true,
           },
         ],
       });
@@ -160,7 +230,7 @@ class SlackAgent
       type: 'header',
       text: {
         type: 'plain_text',
-        text: payload.subject,
+        text: truncateSlackText(payload.subject, SLACK_HEADER_TEXT_LIMIT),
       },
     });
 
@@ -169,7 +239,11 @@ class SlackAgent
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: payload.message,
+          text: escapeSlackMrkdwnText(
+            payload.message,
+            SLACK_SECTION_TEXT_LIMIT
+          ),
+          verbatim: true,
         },
         accessory:
           embedPoster && payload.image
@@ -214,7 +288,10 @@ class SlackAgent
     }
 
     return {
-      text: payload.event ?? payload.subject,
+      text: escapeSlackMrkdwnText(
+        payload.event ?? payload.subject,
+        SLACK_FALLBACK_TEXT_LIMIT
+      ),
       blocks,
     };
   }
@@ -266,7 +343,7 @@ class SlackAgent
       await axios.post(
         settings.options.webhookUrl,
         this.buildEmbed(type, payload),
-        NOTIFICATION_HTTP_OPTIONS
+        CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS
       );
 
       return true;

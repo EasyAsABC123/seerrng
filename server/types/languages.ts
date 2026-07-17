@@ -39,3 +39,7 @@ export const availableLocales = [
 ] as const;
 
 export type AvailableLocale = (typeof availableLocales)[number];
+
+export const isAvailableLocale = (value: unknown): value is AvailableLocale =>
+  typeof value === 'string' &&
+  availableLocales.includes(value as AvailableLocale);

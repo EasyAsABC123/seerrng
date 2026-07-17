@@ -1,6 +1,6 @@
 # seerr-chart
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.1.0](https://img.shields.io/badge/AppVersion-v0.1.0-informational?style=flat-square)
+![Version: 1.0.0](https://img.shields.io/badge/Version-1.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v3.4.0](https://img.shields.io/badge/AppVersion-v3.4.0-informational?style=flat-square)
 
 SeerrNG Helm chart for Kubernetes
 
@@ -53,6 +53,7 @@ If `replicaCount` value was used - remove it. Helm update should work fine after
 | config.persistence.storageClass | string | `""` | Storage class for the PVC. Set to "-" to disable dynamic provisioning. Uses default storage class if no value is provided |
 | config.persistence.subPath | string | `""` | Subpath of the pvc which should be mounted |
 | config.persistence.volumeName | string | `""` | Name of the permanent volume to reference in the claim. Can be used to bind to existing volumes. |
+| enableServiceLinks | bool | `false` | Inject environment variables for active Kubernetes Services into the pod |
 | extraEnv | list | `[]` | Environment variables to add to the seerr pods |
 | extraEnvFrom | list | `[]` | Environment variables from secrets or configmaps to add to the seerr pods |
 | fullnameOverride | string | `""` |  |
@@ -77,7 +78,7 @@ If `replicaCount` value was used - remove it. Helm update should work fine after
 | podSecurityContext.fsGroupChangePolicy | string | `"OnRootMismatch"` |  |
 | probes.livenessProbe | object | `{"initialDelaySeconds":20,"periodSeconds":15,"timeoutSeconds":3}` | Configure liveness probe |
 | probes.readinessProbe | object | `{"initialDelaySeconds":60,"periodSeconds":15,"timeoutSeconds":3}` | Configure readiness probe |
-| probes.startupProbe | string | `nil` | Configure startup probe |
+| probes.startupProbe | object | `{"failureThreshold":120,"httpGet":{"path":"/api/v1/settings/public","port":"http"},"periodSeconds":5,"timeoutSeconds":3}` | Configure startup probe |
 | resources | object | `{}` |  |
 | route.main.additionalRules | list | `[]` |  |
 | route.main.annotations | object | `{}` |  |
@@ -91,17 +92,19 @@ If `replicaCount` value was used - remove it. Helm update should work fine after
 | route.main.matches[0].path.type | string | `"PathPrefix"` |  |
 | route.main.matches[0].path.value | string | `"/"` |  |
 | route.main.parentRefs | list | `[]` |  |
+| runtimeStorage.nextCacheSizeLimit | string | `"256Mi"` | Ephemeral storage available to the Next.js image cache |
+| runtimeStorage.tmpSizeLimit | string | `"64Mi"` | Ephemeral storage available to temporary files |
 | securityContext.allowPrivilegeEscalation | bool | `false` |  |
 | securityContext.capabilities.drop[0] | string | `"ALL"` |  |
 | securityContext.privileged | bool | `false` |  |
-| securityContext.readOnlyRootFilesystem | bool | `false` |  |
+| securityContext.readOnlyRootFilesystem | bool | `true` |  |
 | securityContext.runAsGroup | int | `1000` |  |
 | securityContext.runAsNonRoot | bool | `true` |  |
 | securityContext.runAsUser | int | `1000` |  |
 | securityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
+| service.annotations | object | `{}` |  |
 | service.port | int | `80` |  |
 | service.type | string | `"ClusterIP"` |  |
-| service.annotations | object | {} |  |
 | serviceAccount.annotations | object | `{}` | Annotations to add to the service account |
 | serviceAccount.automount | bool | `false` | Automatically mount a ServiceAccount's API credentials? |
 | serviceAccount.create | bool | `true` | Specifies whether a service account should be created |

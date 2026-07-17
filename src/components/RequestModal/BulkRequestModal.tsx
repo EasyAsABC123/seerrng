@@ -13,6 +13,10 @@ import {
   encodeApiPathSegment,
   normalizeExternalTitleId,
 } from '@app/utils/apiPath';
+import {
+  loadNumberedCatalog,
+  loadOffsetCatalog,
+} from '@app/utils/bulkCatalogPagination';
 import defineMessages from '@app/utils/defineMessages';
 import { Transition } from '@headlessui/react';
 import { MediaRequestStatus, MediaStatus } from '@server/constants/media';
@@ -24,7 +28,7 @@ import type {
 import type { QuotaResponse } from '@server/interfaces/api/userInterfaces';
 import type { BookResult } from '@server/models/Book';
 import axios from 'axios';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR, { mutate } from 'swr';
 
@@ -335,6 +339,9 @@ const BulkRequestModal = ({
   const [authorTotal, setAuthorTotal] = useState<number | undefined>(
     initialTotalItems
   );
+  const loadMoreAuthorControllerRef = useRef<AbortController | undefined>(
+    undefined
+  );
 
   const { data: quota } = useSWR<QuotaResponse>(
     user &&
@@ -350,143 +357,120 @@ const BulkRequestModal = ({
   }, [initialItems, initialTotalItems, mediaType]);
 
   useEffect(() => {
-    let canceled = false;
+    const controller = new AbortController();
+    let active = true;
 
-    const loadInitialAuthorWorks = async () => {
-      if (!show || mediaType !== 'book' || !authorId) {
+    const loadCatalog = async () => {
+      if (!show || (mediaType === 'book' ? !authorId : !artistId)) {
+        setIsLoadingItems(false);
         return;
       }
 
       setIsLoadingItems(true);
 
       try {
-        const works: BookResult[] = [];
-        const limit = 100;
-        let offset = 0;
-        let totalItems = 0;
-        let nextOffset = 0;
-
-        do {
-          const response = await axios.get<AuthorWorksResponse>(
-            `/api/v1/author/${encodeApiPathSegment(authorId)}/works`,
-            { params: { limit, offset } }
+        if (mediaType === 'book' && authorId) {
+          const result = await loadOffsetCatalog({
+            pageSize: 100,
+            signal: controller.signal,
+            loadPage: async (offset, limit, signal) => {
+              const response = await axios.get<AuthorWorksResponse>(
+                `/api/v1/author/${encodeApiPathSegment(authorId)}/works`,
+                { params: { limit, offset }, signal }
+              );
+              return {
+                items: response.data.works,
+                ...response.data.pagination,
+              };
+            },
+          });
+          const worksById = new Map<string, BookResult>();
+          result.items.forEach((work) =>
+            worksById.set(normalizeBulkItemId(work.id, 'book'), work)
           );
 
-          works.push(...response.data.works);
-          totalItems = response.data.pagination.totalItems;
-          nextOffset =
-            response.data.pagination.nextOffset ??
-            offset + response.data.pagination.limit;
-          offset = nextOffset;
-        } while (offset < totalItems && nextOffset > 0);
+          if (active) {
+            setAuthorOffset(result.nextOffset);
+            setAuthorTotal(result.totalItems);
+            setItems(
+              dedupeBulkItems(
+                [...worksById.values()].map(mapBookWorkToBulkItem),
+                mediaType
+              )
+            );
+          }
+        } else if (mediaType === 'music' && artistId) {
+          const releaseGroups = await loadNumberedCatalog({
+            pageSize: 50,
+            signal: controller.signal,
+            loadPage: async (page, pageSize, signal) => {
+              const response = await axios.get<ArtistResponse>(
+                `/api/v1/artist/${encodeApiPathSegment(artistId)}`,
+                {
+                  params: { albumType: releaseType, page, pageSize },
+                  signal,
+                }
+              );
+              return {
+                items: response.data.releaseGroups,
+                totalPages: response.data.pagination?.totalPages,
+              };
+            },
+          });
+          const releaseGroupsById = new Map<
+            string,
+            ArtistResponse['releaseGroups'][number]
+          >();
+          releaseGroups.forEach((album) =>
+            releaseGroupsById.set(normalizeBulkItemId(album.id, 'music'), album)
+          );
 
-        const worksById = new Map<string, BookResult>();
-        works.forEach((work) =>
-          worksById.set(normalizeBulkItemId(work.id, 'book'), work)
-        );
-
-        if (canceled) {
-          return;
+          if (active) {
+            setItems(
+              dedupeBulkItems(
+                [...releaseGroupsById.values()].map((album) => ({
+                  id: album.id,
+                  title: album.title ?? 'Unknown Album',
+                  year: album['first-release-date']?.slice(0, 4),
+                  image: album.posterPath,
+                  artist: album['artist-credit']?.[0]?.name,
+                  mediaInfo: album.mediaInfo,
+                  releaseType:
+                    album.secondary_types?.[0] ??
+                    album['primary-type'] ??
+                    'Other',
+                })),
+                mediaType
+              )
+            );
+          }
         }
-
-        setAuthorOffset(totalItems);
-        setAuthorTotal(totalItems);
-        setItems(
-          dedupeBulkItems(
-            [...worksById.values()].map(mapBookWorkToBulkItem),
-            mediaType
-          )
-        );
-      } catch {
-        if (!canceled) {
+      } catch (error) {
+        if (active && !axios.isCancel(error)) {
           setItems(dedupeBulkItems(initialItems, mediaType));
         }
       } finally {
-        if (!canceled) {
+        if (active) {
           setIsLoadingItems(false);
         }
       }
     };
 
-    loadInitialAuthorWorks();
+    void loadCatalog();
 
     return () => {
-      canceled = true;
+      active = false;
+      controller.abort();
     };
-  }, [authorId, initialItems, mediaType, show]);
+  }, [artistId, authorId, initialItems, mediaType, releaseType, show]);
 
-  useEffect(() => {
-    let canceled = false;
-
-    const loadArtistType = async () => {
-      if (!show || mediaType !== 'music' || !artistId) {
-        return;
-      }
-
-      setIsLoadingItems(true);
-
-      try {
-        const releaseGroups: ArtistResponse['releaseGroups'] = [];
-        let page = 1;
-        let totalPages = 1;
-
-        do {
-          const response = await axios.get<ArtistResponse>(
-            `/api/v1/artist/${encodeApiPathSegment(artistId)}`,
-            {
-              params: { albumType: releaseType, page, pageSize: 50 },
-            }
-          );
-
-          releaseGroups.push(...response.data.releaseGroups);
-          totalPages = response.data.pagination?.totalPages ?? 1;
-          page += 1;
-        } while (page <= totalPages);
-
-        const releaseGroupsById = new Map<
-          string,
-          ArtistResponse['releaseGroups'][number]
-        >();
-        releaseGroups.forEach((album) =>
-          releaseGroupsById.set(normalizeBulkItemId(album.id, 'music'), album)
-        );
-
-        if (canceled) {
-          return;
-        }
-
-        setItems(
-          dedupeBulkItems(
-            [...releaseGroupsById.values()].map((album) => ({
-              id: album.id,
-              title: album.title ?? 'Unknown Album',
-              year: album['first-release-date']?.slice(0, 4),
-              image: album.posterPath,
-              artist: album['artist-credit']?.[0]?.name,
-              mediaInfo: album.mediaInfo,
-              releaseType:
-                album.secondary_types?.[0] ?? album['primary-type'] ?? 'Other',
-            })),
-            mediaType
-          )
-        );
-      } catch {
-        if (!canceled) {
-          setItems(dedupeBulkItems(initialItems, mediaType));
-        }
-      } finally {
-        if (!canceled) {
-          setIsLoadingItems(false);
-        }
-      }
-    };
-
-    loadArtistType();
-
-    return () => {
-      canceled = true;
-    };
-  }, [artistId, initialItems, mediaType, releaseType, show]);
+  useEffect(
+    () => () => {
+      loadMoreAuthorControllerRef.current?.abort();
+      loadMoreAuthorControllerRef.current = undefined;
+    },
+    [authorId]
+  );
 
   const getIneligibleReason = useCallback(
     (item: BulkItem): string | undefined =>
@@ -561,26 +545,58 @@ const BulkRequestModal = ({
   };
 
   const loadMoreAuthorWorks = async () => {
-    if (!authorId || isLoadingItems) {
+    if (!authorId || isLoadingItems || loadMoreAuthorControllerRef.current) {
       return;
     }
+    const controller = new AbortController();
+    loadMoreAuthorControllerRef.current = controller;
+    setIsLoadingItems(true);
 
-    const response = await axios.get<AuthorWorksResponse>(
-      `/api/v1/author/${encodeApiPathSegment(authorId)}/works`,
-      { params: { limit: 20, offset: authorOffset } }
-    );
-
-    const nextOffset =
-      response.data.pagination.nextOffset ??
-      authorOffset + response.data.pagination.limit;
-    setAuthorOffset(nextOffset);
-    setAuthorTotal(response.data.pagination.totalItems);
-    setItems((current) => {
-      return dedupeBulkItems(
-        [...current, ...response.data.works.map(mapBookWorkToBulkItem)],
-        mediaType
+    try {
+      const result = await loadOffsetCatalog({
+        initialOffset: authorOffset,
+        maxItems: 20,
+        pageSize: 20,
+        signal: controller.signal,
+        loadPage: async (offset, limit, signal) => {
+          const response = await axios.get<AuthorWorksResponse>(
+            `/api/v1/author/${encodeApiPathSegment(authorId)}/works`,
+            { params: { limit, offset }, signal }
+          );
+          return {
+            items: response.data.works,
+            ...response.data.pagination,
+          };
+        },
+      });
+      if (loadMoreAuthorControllerRef.current !== controller) {
+        return;
+      }
+      setAuthorOffset(result.nextOffset);
+      setAuthorTotal(result.totalItems);
+      setItems((current) =>
+        dedupeBulkItems(
+          [...current, ...result.items.map(mapBookWorkToBulkItem)],
+          mediaType
+        )
       );
-    });
+    } catch (error) {
+      if (
+        loadMoreAuthorControllerRef.current === controller &&
+        !axios.isCancel(error) &&
+        !(error instanceof DOMException && error.name === 'AbortError')
+      ) {
+        addToast(intl.formatMessage(globalMessages.error), {
+          appearance: 'error',
+          autoDismiss: true,
+        });
+      }
+    } finally {
+      if (loadMoreAuthorControllerRef.current === controller) {
+        loadMoreAuthorControllerRef.current = undefined;
+        setIsLoadingItems(false);
+      }
+    }
   };
 
   const hasMoreAuthorWorks =
@@ -705,7 +721,7 @@ const BulkRequestModal = ({
       show={show}
     >
       <Modal
-        loading={!quota}
+        loading={!quota || isLoadingItems}
         title={intl.formatMessage(
           mediaType === 'book'
             ? messages.requestbibliography
@@ -727,7 +743,10 @@ const BulkRequestModal = ({
         }
         okDisabled={
           !summary &&
-          (isUpdating || selectedIds.length === 0 || selectedExceedsQuota)
+          (isLoadingItems ||
+            isUpdating ||
+            selectedIds.length === 0 ||
+            selectedExceedsQuota)
         }
         dialogClass="sm:max-w-5xl"
       >
@@ -923,7 +942,11 @@ const BulkRequestModal = ({
             </div>
             {hasMoreAuthorWorks && (
               <div className="mt-4">
-                <Button buttonType="ghost" onClick={loadMoreAuthorWorks}>
+                <Button
+                  buttonType="ghost"
+                  disabled={isLoadingItems}
+                  onClick={() => void loadMoreAuthorWorks()}
+                >
                   {intl.formatMessage(messages.loadmore)}
                 </Button>
               </div>

@@ -20,6 +20,12 @@ import type { User } from '@app/hooks/useUser';
 import { Permission, UserType, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import {
+  isStoredOption,
+  isStoredPageSize,
+  readLocalStoredRecord,
+  writeLocalStoredRecord,
+} from '@app/utils/localStorage';
 import { Transition } from '@headlessui/react';
 import {
   BarsArrowDownIcon,
@@ -78,10 +84,11 @@ const messages = defineMessages('components.UserList', {
   username: 'Username',
   email: 'Email Address',
   password: 'Password',
-  passwordinfodescription:
-    'Configure an application URL and enable email notifications to allow automatic password generation.',
-  autogeneratepassword: 'Automatically Generate Password',
-  autogeneratepasswordTip: 'Email a server-generated password to the user',
+  passwordsetupdescription:
+    'Configure an application URL and enable email notifications to send password setup links.',
+  sendpasswordsetuplink: 'Send Password Setup Link',
+  sendpasswordsetuplinkTip:
+    'Email a secure link that lets the user choose a password',
   validationUsername: 'You must provide an username',
   validationEmail: 'Email required',
   sortBy: 'Sort by {field}',
@@ -106,6 +113,15 @@ type Sort =
   | 'usertype'
   | 'role';
 type SortDirection = 'asc' | 'desc';
+const USER_SORT_OPTIONS: readonly Sort[] = [
+  'created',
+  'updated',
+  'requests',
+  'displayname',
+  'usertype',
+  'role',
+];
+const SORT_DIRECTION_OPTIONS: readonly SortDirection[] = ['asc', 'desc'];
 
 type ClientUserResultsResponse = PaginatedResponse & {
   results: User[];
@@ -168,28 +184,28 @@ const UserList = () => {
   const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
 
   useEffect(() => {
-    const filterString = window.localStorage.getItem('ul-filter-settings');
-
-    if (filterString) {
-      const filterSettings = JSON.parse(filterString);
-
-      setCurrentSort(filterSettings.currentSort);
-      setCurrentPageSize(filterSettings.currentPageSize);
-      if (filterSettings.sortDirection) {
+    const filterSettings = readLocalStoredRecord('ul-filter-settings');
+    if (filterSettings) {
+      if (isStoredOption(filterSettings.currentSort, USER_SORT_OPTIONS)) {
+        setCurrentSort(filterSettings.currentSort);
+      }
+      if (isStoredPageSize(filterSettings.currentPageSize)) {
+        setCurrentPageSize(filterSettings.currentPageSize);
+      }
+      if (
+        isStoredOption(filterSettings.sortDirection, SORT_DIRECTION_OPTIONS)
+      ) {
         setSortDirection(filterSettings.sortDirection);
       }
     }
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      'ul-filter-settings',
-      JSON.stringify({
-        currentSort,
-        currentPageSize,
-        sortDirection,
-      })
-    );
+    writeLocalStoredRecord('ul-filter-settings', {
+      currentSort,
+      currentPageSize,
+      sortDirection,
+    });
   }, [currentSort, currentPageSize, sortDirection]);
 
   const SortableColumnHeader = ({
@@ -463,7 +479,7 @@ const UserList = () => {
                   !passwordGenerationEnabled && (
                     <Alert
                       title={intl.formatMessage(
-                        messages.passwordinfodescription
+                        messages.passwordsetupdescription
                       )}
                       type="info"
                     />
@@ -517,9 +533,9 @@ const UserList = () => {
                     }`}
                   >
                     <label htmlFor="genpassword" className="checkbox-label">
-                      {intl.formatMessage(messages.autogeneratepassword)}
+                      {intl.formatMessage(messages.sendpasswordsetuplink)}
                       <span className="label-tip">
-                        {intl.formatMessage(messages.autogeneratepasswordTip)}
+                        {intl.formatMessage(messages.sendpasswordsetuplinkTip)}
                       </span>
                     </label>
                     <div className="form-input-area">

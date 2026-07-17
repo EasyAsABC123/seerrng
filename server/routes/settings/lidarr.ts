@@ -1,10 +1,26 @@
 import LidarrAPI from '@server/api/servarr/lidarr';
+import { Permission } from '@server/lib/permissions';
+import {
+  runWithCurrentServarrService,
+  runWithServarrServiceCollectionMutationAdmission,
+} from '@server/lib/serviceAdmission';
+import {
+  allocateServarrServiceId,
+  assertServarrServiceCanBeRemoved,
+  getHistoricalServarrServiceIdMaximum,
+} from '@server/lib/serviceId';
 import type { LidarrSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
+import { authorizedMutation } from '@server/middleware/authorizedMutation';
 import { parseNonNegativeRouteId } from '@server/utils/routeId';
-import { preserveRedactedSecrets, redactSecrets } from '@server/utils/security';
-import { parseLidarrSettings } from '@server/utils/servarrSettings';
+import { REDACTED_SECRET, redactSecrets } from '@server/utils/security';
+import {
+  assertServarrInstanceCapacity,
+  parseLidarrSettings,
+  preserveServarrApiKey,
+  preserveServarrConnectionSecret,
+} from '@server/utils/servarrSettings';
 import { Router } from 'express';
 
 const lidarrRoutes = Router();
@@ -15,173 +31,240 @@ lidarrRoutes.get('/', (_req, res) => {
   res.status(200).json(redactSecrets(settings.lidarr));
 });
 
-lidarrRoutes.post('/', async (req, res) => {
-  const settings = getSettings();
+lidarrRoutes.post(
+  '/',
+  authorizedMutation(Permission.ADMIN, async (req, res) => {
+    const settings = getSettings();
 
-  const parsedLidarr = parseLidarrSettings(
-    preserveRedactedSecrets(req.body, undefined) as Partial<LidarrSettings>
-  );
-
-  if ('error' in parsedLidarr) {
-    return res.status(400).json({ message: parsedLidarr.error });
-  }
-
-  const newLidarr = parsedLidarr.value;
-  const lastItem = settings.lidarr[settings.lidarr.length - 1];
-  newLidarr.id = lastItem ? lastItem.id + 1 : 0;
-
-  if (newLidarr.isDefault) {
-    settings.lidarr = settings.lidarr.map((lidarr) => ({
-      ...lidarr,
-      isDefault: false,
-    }));
-  }
-
-  settings.lidarr = [...settings.lidarr, newLidarr];
-  await settings.save();
-
-  return res.status(201).json(redactSecrets(newLidarr));
-});
-
-lidarrRoutes.post<
-  undefined,
-  Record<string, unknown>,
-  LidarrSettings & { tagLabel?: string }
->('/test', async (req, res, next) => {
-  try {
     const parsedLidarr = parseLidarrSettings(req.body);
 
     if ('error' in parsedLidarr) {
       return res.status(400).json({ message: parsedLidarr.error });
     }
 
-    const lidarr = new LidarrAPI({
-      apiKey: parsedLidarr.value.apiKey,
-      url: LidarrAPI.buildUrl(parsedLidarr.value, '/api/v1'),
-    });
+    return runWithServarrServiceCollectionMutationAdmission(
+      'lidarr',
+      async () => {
+        const historicalServiceIdMaximum =
+          await getHistoricalServarrServiceIdMaximum('lidarr');
+        const lidarr = await settings.persistSection('lidarr', (current) => {
+          assertServarrInstanceCapacity(current);
+          const newLidarr = {
+            ...parsedLidarr.value,
+            id: allocateServarrServiceId(
+              current.map(({ id }) => id),
+              historicalServiceIdMaximum
+            ),
+          };
+          const existing = newLidarr.isDefault
+            ? current.map((instance) => ({ ...instance, isDefault: false }))
+            : current;
+          return [...existing, newLidarr];
+        });
+        const newLidarr = lidarr[lidarr.length - 1];
 
-    const urlBase = await lidarr
-      .getSystemStatus()
-      .then((value) => value.urlBase)
-      .catch(() => parsedLidarr.value.baseUrl);
-    const profiles = await lidarr.getProfiles();
-    const metadataProfiles = await lidarr.getMetadataProfiles();
-    const folders = await lidarr.getRootFolders();
-    const tags = await lidarr.getTags();
+        return res.status(201).json(redactSecrets(newLidarr));
+      }
+    );
+  })
+);
 
-    return res.status(200).json({
-      profiles,
-      metadataProfiles,
-      rootFolders: folders.map((folder) => ({
-        id: folder.id,
-        path: folder.path,
-      })),
-      tags,
-      urlBase,
-    });
-  } catch (e) {
-    logger.error('Failed to test Lidarr', {
-      label: 'Lidarr',
-      message: e.message,
-    });
-    next({ status: 500, message: 'Failed to connect to Lidarr' });
-  }
-});
+lidarrRoutes.post<
+  undefined,
+  Record<string, unknown>,
+  LidarrSettings & { tagLabel?: string }
+>(
+  '/test',
+  authorizedMutation<
+    undefined,
+    Record<string, unknown>,
+    LidarrSettings & { tagLabel?: string }
+  >(Permission.ADMIN, async (req, res, next) => {
+    try {
+      const parsedLidarr = parseLidarrSettings(
+        preserveServarrConnectionSecret(req.body, getSettings().lidarr)
+      );
+
+      if ('error' in parsedLidarr) {
+        return res.status(400).json({ message: parsedLidarr.error });
+      }
+
+      const lidarr = new LidarrAPI({
+        apiKey: parsedLidarr.value.apiKey,
+        url: LidarrAPI.buildUrl(parsedLidarr.value, '/api/v1'),
+      });
+
+      const urlBase = await lidarr
+        .getSystemStatus()
+        .then((value) => value.urlBase)
+        .catch(() => parsedLidarr.value.baseUrl);
+      const profiles = await lidarr.getProfiles();
+      const metadataProfiles = await lidarr.getMetadataProfiles();
+      const folders = await lidarr.getRootFolders();
+      const tags = await lidarr.getTags();
+
+      return res.status(200).json({
+        profiles,
+        metadataProfiles,
+        rootFolders: folders.map((folder) => ({
+          id: folder.id,
+          path: folder.path,
+        })),
+        tags,
+        urlBase,
+      });
+    } catch (e) {
+      logger.error('Failed to test Lidarr', {
+        label: 'Lidarr',
+        message: e.message,
+      });
+      next({ status: 500, message: 'Failed to connect to Lidarr' });
+    }
+  })
+);
 
 lidarrRoutes.put<{ id: string }, LidarrSettings, LidarrSettings>(
   '/:id',
-  async (req, res, next) => {
-    const settings = getSettings();
-    const lidarrId = parseNonNegativeRouteId(req.params.id);
-    if (lidarrId === undefined) {
-      return next({ status: '404', message: 'Settings instance not found' });
+  authorizedMutation<{ id: string }, LidarrSettings, LidarrSettings>(
+    Permission.ADMIN,
+    async (req, res, next) => {
+      const settings = getSettings();
+      const lidarrId = parseNonNegativeRouteId(req.params.id);
+      if (lidarrId === undefined) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
+
+      const lidarrIndex = settings.lidarr.findIndex((r) => r.id === lidarrId);
+
+      if (lidarrIndex === -1) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
+
+      return runWithServarrServiceCollectionMutationAdmission(
+        'lidarr',
+        async () => {
+          const currentLidarr = settings.lidarr.find(
+            (instance) => instance.id === lidarrId
+          );
+          if (!currentLidarr) {
+            return next({
+              status: 404,
+              message: 'Settings instance not found',
+            });
+          }
+          const admittedLidarr = parseLidarrSettings(
+            preserveServarrApiKey(req.body, currentLidarr),
+            currentLidarr
+          );
+          if ('error' in admittedLidarr) {
+            return next({ status: 400, message: admittedLidarr.error });
+          }
+          const lidarr = await settings.persistSection('lidarr', (current) =>
+            current.map((instance) => {
+              if (instance.id === lidarrId) {
+                return {
+                  ...admittedLidarr.value,
+                  apiKey:
+                    (req.body as { apiKey?: unknown }).apiKey ===
+                    REDACTED_SECRET
+                      ? instance.apiKey
+                      : admittedLidarr.value.apiKey,
+                  id: lidarrId,
+                } as LidarrSettings;
+              }
+              return admittedLidarr.value.isDefault
+                ? { ...instance, isDefault: false }
+                : instance;
+            })
+          );
+
+          return res
+            .status(200)
+            .json(redactSecrets(lidarr.find(({ id }) => id === lidarrId)));
+        }
+      );
     }
-
-    const lidarrIndex = settings.lidarr.findIndex((r) => r.id === lidarrId);
-
-    if (lidarrIndex === -1) {
-      return next({ status: '404', message: 'Settings instance not found' });
-    }
-
-    const parsedLidarr = parseLidarrSettings(
-      preserveRedactedSecrets(
-        req.body,
-        settings.lidarr[lidarrIndex]
-      ) as Partial<LidarrSettings>,
-      settings.lidarr[lidarrIndex]
-    );
-
-    if ('error' in parsedLidarr) {
-      return next({ status: 400, message: parsedLidarr.error });
-    }
-
-    if (parsedLidarr.value.isDefault) {
-      settings.lidarr = settings.lidarr.map((lidarr) => ({
-        ...lidarr,
-        isDefault: lidarr.id === lidarrId,
-      }));
-    }
-
-    settings.lidarr[lidarrIndex] = {
-      ...parsedLidarr.value,
-      id: lidarrId,
-    } as LidarrSettings;
-    await settings.save();
-
-    return res.status(200).json(redactSecrets(settings.lidarr[lidarrIndex]));
-  }
+  )
 );
 
-lidarrRoutes.get<{ id: string }>('/:id/profiles', async (req, res, next) => {
-  const settings = getSettings();
-  const lidarrId = parseNonNegativeRouteId(req.params.id);
-  if (lidarrId === undefined) {
-    return next({ status: '404', message: 'Settings instance not found' });
-  }
+lidarrRoutes.get<{ id: string }>(
+  '/:id/profiles',
+  authorizedMutation<{ id: string }>(
+    Permission.ADMIN,
+    async (req, res, next) => {
+      const lidarrId = parseNonNegativeRouteId(req.params.id);
+      if (lidarrId === undefined) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
 
-  const lidarrSettings = settings.lidarr.find((r) => r.id === lidarrId);
+      const profiles = await runWithCurrentServarrService(
+        'lidarr',
+        lidarrId,
+        async (lidarrSettings) =>
+          new LidarrAPI({
+            apiKey: lidarrSettings.apiKey,
+            url: LidarrAPI.buildUrl(lidarrSettings, '/api/v1'),
+          }).getProfiles()
+      );
+      if (!profiles) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
 
-  if (!lidarrSettings) {
-    return next({ status: '404', message: 'Settings instance not found' });
-  }
+      return res.status(200).json(
+        profiles.map((profile) => ({
+          id: profile.id,
+          name: profile.name,
+        }))
+      );
+    }
+  )
+);
 
-  const lidarr = new LidarrAPI({
-    apiKey: lidarrSettings.apiKey,
-    url: LidarrAPI.buildUrl(lidarrSettings, '/api/v1'),
-  });
+lidarrRoutes.delete<{ id: string }>(
+  '/:id',
+  authorizedMutation<{ id: string }>(
+    Permission.ADMIN,
+    async (req, res, next) => {
+      const settings = getSettings();
+      const lidarrId = parseNonNegativeRouteId(req.params.id);
+      if (lidarrId === undefined) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
 
-  const profiles = await lidarr.getProfiles();
+      const lidarrIndex = settings.lidarr.findIndex((r) => r.id === lidarrId);
 
-  return res.status(200).json(
-    profiles.map((profile) => ({
-      id: profile.id,
-      name: profile.name,
-    }))
-  );
-});
+      if (lidarrIndex === -1) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
 
-lidarrRoutes.delete<{ id: string }>('/:id', async (req, res, next) => {
-  const settings = getSettings();
-  const lidarrId = parseNonNegativeRouteId(req.params.id);
-  if (lidarrId === undefined) {
-    return next({ status: '404', message: 'Settings instance not found' });
-  }
+      return runWithServarrServiceCollectionMutationAdmission(
+        'lidarr',
+        async () => {
+          const removed = settings.lidarr.find(
+            (instance) => instance.id === lidarrId
+          );
+          if (!removed) {
+            return next({
+              status: 404,
+              message: 'Settings instance not found',
+            });
+          }
+          await assertServarrServiceCanBeRemoved('lidarr', lidarrId);
+          await settings.persistSection('lidarr', (current) => {
+            const remaining = current.filter(({ id }) => id !== lidarrId);
+            return removed.isDefault && remaining.length > 0
+              ? remaining.map((instance, index) => ({
+                  ...instance,
+                  isDefault: index === 0,
+                }))
+              : remaining;
+          });
 
-  const lidarrIndex = settings.lidarr.findIndex((r) => r.id === lidarrId);
-
-  if (lidarrIndex === -1) {
-    return next({ status: '404', message: 'Settings instance not found' });
-  }
-
-  const [removed] = settings.lidarr.splice(lidarrIndex, 1);
-
-  if (removed.isDefault && settings.lidarr.length > 0) {
-    settings.lidarr[0].isDefault = true;
-  }
-
-  await settings.save();
-
-  return res.status(200).json(redactSecrets(removed));
-});
+          return res.status(200).json(redactSecrets(removed));
+        }
+      );
+    }
+  )
+);
 
 export default lidarrRoutes;

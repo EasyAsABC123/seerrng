@@ -14,6 +14,12 @@ import {
 import globalMessages from '@app/i18n/globalMessages';
 import ErrorPage from '@app/pages/_error';
 import defineMessages from '@app/utils/defineMessages';
+import {
+  isStoredOption,
+  isStoredPageSize,
+  readLocalStoredRecord,
+  writeLocalStoredRecord,
+} from '@app/utils/localStorage';
 import { Transition } from '@headlessui/react';
 import {
   ChevronLeftIcon,
@@ -58,6 +64,13 @@ const messages = defineMessages('components.Settings.SettingsLogs', {
 });
 
 type Filter = 'debug' | 'info' | 'warn' | 'error';
+const LOG_FILTER_OPTIONS: readonly Filter[] = [
+  'debug',
+  'info',
+  'warn',
+  'error',
+];
+const LOG_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 const SettingsLogs = () => {
   const router = useRouter();
@@ -98,24 +111,24 @@ const SettingsLogs = () => {
   const { data: appData } = useSWR('/api/v1/status/appdata');
 
   useEffect(() => {
-    const filterString = window.localStorage.getItem('logs-display-settings');
-
-    if (filterString) {
-      const filterSettings = JSON.parse(filterString);
-
-      setCurrentFilter(filterSettings.currentFilter);
-      setCurrentPageSize(filterSettings.currentPageSize);
+    const filterSettings = readLocalStoredRecord('logs-display-settings');
+    if (filterSettings) {
+      if (isStoredOption(filterSettings.currentFilter, LOG_FILTER_OPTIONS)) {
+        setCurrentFilter(filterSettings.currentFilter);
+      }
+      if (
+        isStoredPageSize(filterSettings.currentPageSize, LOG_PAGE_SIZE_OPTIONS)
+      ) {
+        setCurrentPageSize(filterSettings.currentPageSize);
+      }
     }
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      'logs-display-settings',
-      JSON.stringify({
-        currentFilter,
-        currentPageSize,
-      })
-    );
+    writeLocalStoredRecord('logs-display-settings', {
+      currentFilter,
+      currentPageSize,
+    });
   }, [currentFilter, currentPageSize]);
 
   const copyLogString = (log: LogMessage): void => {

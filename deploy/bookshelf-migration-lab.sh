@@ -1,11 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/compose.bookshelf.yml"
-LAB_DIR="${LAB_DIR:-${REPO_DIR}/.bookshelf-migration-lab}"
+DEFAULT_LAB_DIR="${REPO_DIR}/.bookshelf-migration-lab"
+LAB_DIR="${LAB_DIR:-$DEFAULT_LAB_DIR}"
+LAB_MARKER_NAME=".seerr-bookshelf-migration-lab"
+LAB_MARKER_VALUE="seerrng-bookshelf-migration-lab-v1"
 PROJECT_NAME="${PROJECT_NAME:-seerrng-bookshelf-migration-lab}"
+
+LAB_DIR_RESOLVED="$(realpath -m "$LAB_DIR")"
+DEFAULT_LAB_DIR_RESOLVED="$(realpath -m "$DEFAULT_LAB_DIR")"
+if [ "$LAB_DIR_RESOLVED" = "/" ] || [ "$LAB_DIR_RESOLVED" = "$REPO_DIR" ] ||
+  [ "$LAB_DIR_RESOLVED" = "$(realpath -m "${HOME:-/}")" ] || [ -L "$LAB_DIR" ]; then
+  echo "Refusing unsafe LAB_DIR: ${LAB_DIR}" >&2
+  exit 2
+fi
+LAB_DIR="$LAB_DIR_RESOLVED"
+LAB_MARKER="${LAB_DIR}/${LAB_MARKER_NAME}"
 
 SOURCE_EBOOK_CONFIG_DIR="${SOURCE_EBOOK_CONFIG_DIR:-}"
 SOURCE_AUDIOBOOK_CONFIG_DIR="${SOURCE_AUDIOBOOK_CONFIG_DIR:-}"
@@ -26,7 +40,7 @@ EXISTING_LAB_EBOOK_API_KEY="$(sed -n 's/^LAB_EBOOK_API_KEY=//p' "${LAB_DIR}/.env
 EXISTING_LAB_AUDIOBOOK_API_KEY="$(sed -n 's/^LAB_AUDIOBOOK_API_KEY=//p' "${LAB_DIR}/.env" 2>/dev/null | tail -n 1 || true)"
 LAB_EBOOK_API_KEY="${LAB_EBOOK_API_KEY:-${EXISTING_LAB_EBOOK_API_KEY:-$(date +%s%N | sha256sum | awk '{print substr($1,1,32)}')}}"
 LAB_AUDIOBOOK_API_KEY="${LAB_AUDIOBOOK_API_KEY:-${EXISTING_LAB_AUDIOBOOK_API_KEY:-$(date +%s%N | sha256sum | awk '{print substr($1,1,32)}')}}"
-BOOKSHELF_IMAGE="${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover}"
+BOOKSHELF_IMAGE="${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2}"
 BOOKSHELF_METADATA_URL="${BOOKSHELF_METADATA_URL:-https://hardcover.bookinfo.pro}"
 BOOKSHELF_HARDCOVER="${BOOKSHELF_HARDCOVER:-true}"
 HARDCOVER_VALIDATION_TERM="${HARDCOVER_VALIDATION_TERM:-Foundation Isaac Asimov}"
@@ -107,13 +121,64 @@ require_command() {
   fi
 }
 
+assert_lab_marker() {
+  if [ ! -f "$LAB_MARKER" ] || [ -L "$LAB_MARKER" ] ||
+    [ "$(cat "$LAB_MARKER")" != "$LAB_MARKER_VALUE" ] ||
+    [ "$(stat -c '%u' "$LAB_DIR")" != "$(id -u)" ]; then
+    echo "Refusing to use unowned or unmarked LAB_DIR: ${LAB_DIR}" >&2
+    exit 1
+  fi
+}
+
+initialize_lab_directory() {
+  if [ -e "$LAB_DIR" ] && [ ! -d "$LAB_DIR" ]; then
+    echo "LAB_DIR is not a directory: ${LAB_DIR}" >&2
+    exit 1
+  fi
+  if [ -d "$LAB_DIR" ] && [ ! -e "$LAB_MARKER" ] &&
+    [ "$LAB_DIR_RESOLVED" != "$DEFAULT_LAB_DIR_RESOLVED" ] &&
+    find "$LAB_DIR" -mindepth 1 -print -quit | grep -q .; then
+    echo "Refusing to initialize a non-empty custom LAB_DIR: ${LAB_DIR}" >&2
+    exit 1
+  fi
+
+  mkdir -p "$LAB_DIR"
+  if [ ! -e "$LAB_MARKER" ]; then
+    (umask 077; printf '%s\n' "$LAB_MARKER_VALUE" >"$LAB_MARKER")
+  fi
+  assert_lab_marker
+  chmod 700 "$LAB_DIR"
+  chmod 600 "$LAB_MARKER"
+}
+
+atomic_write_lab_file() {
+  local output_file="$1"
+  local output_directory
+  local output_name
+  local temporary_file
+
+  output_directory="$(dirname "$output_file")"
+  output_name="$(basename "$output_file")"
+  mkdir -p "$output_directory"
+  if [ -L "$output_file" ]; then
+    echo "Refusing to overwrite a symlinked lab artifact: ${output_file}" >&2
+    exit 1
+  fi
+  temporary_file="$(mktemp "${output_directory}/.${output_name}.XXXXXX.tmp")"
+  if ! cat >"$temporary_file" || ! chmod 600 "$temporary_file" ||
+    ! mv -Tf -- "$temporary_file" "$output_file"; then
+    rm -f -- "$temporary_file"
+    return 1
+  fi
+}
+
 write_config_xml() {
   local config_dir="$1"
   local port="$2"
   local api_key="$3"
 
   mkdir -p "$config_dir"
-  cat >"${config_dir}/config.xml" <<EOF
+  atomic_write_lab_file "${config_dir}/config.xml" <<EOF
 <Config>
   <LogLevel>info</LogLevel>
   <Port>${port}</Port>
@@ -164,29 +229,50 @@ copy_source_config() {
 
 ensure_lab_path_for_container_path() {
   local container_path="$1"
+  local base_path=""
   local host_path=""
+  local relative_path=""
 
   case "$container_path" in
     /data/*)
-      host_path="${LAB_MEDIA_DIR}/${container_path#/data/}"
+      base_path="$LAB_MEDIA_DIR"
+      relative_path="${container_path#/data/}"
       ;;
     /download/*)
-      host_path="${LAB_DOWNLOAD_DIR}/${container_path#/download/}"
+      base_path="$LAB_DOWNLOAD_DIR"
+      relative_path="${container_path#/download/}"
       ;;
     /downloads/*)
-      host_path="${LAB_MEDIA_DIR}/${container_path#/downloads/}"
+      base_path="$LAB_MEDIA_DIR"
+      relative_path="${container_path#/downloads/}"
       ;;
     /plex/*)
-      host_path="${LAB_PLEX_DIR}/${container_path#/plex/}"
+      base_path="$LAB_PLEX_DIR"
+      relative_path="${container_path#/plex/}"
       ;;
     /media/plex/*)
-      host_path="${LAB_PLEX_DIR}/${container_path#/media/plex/}"
+      base_path="$LAB_PLEX_DIR"
+      relative_path="${container_path#/media/plex/}"
       ;;
   esac
 
-  if [ -n "$host_path" ]; then
-    mkdir -p "$host_path"
+  if [ -z "$base_path" ]; then
+    return
   fi
+  if [ -z "$relative_path" ] || [ "${relative_path#/}" != "$relative_path" ] ||
+    [[ "/${relative_path}/" == *"/../"* ]] ||
+    [[ "/${relative_path}/" == *"/./"* ]] || [[ "$relative_path" == *"//"* ]]; then
+    echo "Unsafe source root folder path: ${container_path}" >&2
+    exit 1
+  fi
+
+  base_path="$(realpath -m "$base_path")"
+  host_path="$(realpath -m "${base_path}/${relative_path}")"
+  if [[ "$host_path" != "${base_path}/"* ]]; then
+    echo "Source root folder escapes the lab: ${container_path}" >&2
+    exit 1
+  fi
+  mkdir -p "$host_path"
 }
 
 ensure_lab_root_folders() {
@@ -209,7 +295,7 @@ ensure_lab_root_folders() {
 }
 
 write_env_file() {
-  cat >"${LAB_DIR}/.env" <<EOF
+  atomic_write_lab_file "${LAB_DIR}/.env" <<EOF
 PUID=$(id -u)
 PGID=$(id -g)
 TZ=${TZ:-America/Regina}
@@ -285,9 +371,9 @@ ensure_bookshelf_image() {
         if [ "$SKIP_PULL" != "true" ]; then
           compose_lab pull bookshelf-ebooks bookshelf-audiobooks
         fi
-      elif docker image inspect ghcr.io/snapetech/bookshelfng:softcover >/dev/null 2>&1; then
+      elif docker image inspect ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97 >/dev/null 2>&1; then
         echo "Cannot pull ${BOOKSHELF_IMAGE}; using local softcover image with HARDCOVER=true for the lab."
-        BOOKSHELF_IMAGE="ghcr.io/snapetech/bookshelfng:softcover"
+        BOOKSHELF_IMAGE="ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97"
       else
         echo "Cannot pull ${BOOKSHELF_IMAGE}; falling back to local build."
         build_local_image
@@ -304,9 +390,9 @@ wait_for_api() {
   local label="$1"
   local port="$2"
   local api_key="$3"
-  local attempt
+  local _attempt
 
-  for attempt in $(seq 1 60); do
+  for _attempt in $(seq 1 60); do
     if curl -fsS -H "X-Api-Key: ${api_key}" \
       "http://127.0.0.1:${port}/api/v1/config/development" >/dev/null 2>&1; then
       echo "${label} Bookshelf API is ready on port ${port}."
@@ -368,7 +454,8 @@ prepare_lab() {
     exit 2
   fi
 
-  mkdir -p "$LAB_DIR" "$LAB_MEDIA_DIR" "$LAB_DOWNLOAD_DIR" "$LAB_PLEX_DIR"
+  initialize_lab_directory
+  mkdir -p "$LAB_MEDIA_DIR" "$LAB_DOWNLOAD_DIR" "$LAB_PLEX_DIR"
   copy_source_config "$SOURCE_EBOOK_CONFIG_DIR" "$LAB_SOURCE_EBOOK_DIR" "ebook"
   copy_source_config "$SOURCE_AUDIOBOOK_CONFIG_DIR" "$LAB_SOURCE_AUDIOBOOK_DIR" "audiobook"
   ensure_lab_root_folders
@@ -428,7 +515,8 @@ run_migration_report() {
     MIN_BACKUP_FREE_MULTIPLIER=1 \
     "${SCRIPT_DIR}/install-bookshelf-backend.sh" --migrate-to-hardcover --skip-pull
 
-  printf '%s\n' "${LAB_BACKUP_DIR}/hardcover-migration" >"${LAB_DIR}/latest-migration-dir"
+  printf '%s\n' "${LAB_BACKUP_DIR}/hardcover-migration" |
+    atomic_write_lab_file "${LAB_DIR}/latest-migration-dir"
   echo "Migration lab reports: ${LAB_BACKUP_DIR}/hardcover-migration"
 }
 
@@ -500,7 +588,8 @@ run_migration_dir() {
   fi
 
   node "${SCRIPT_DIR}/bookshelf-hardcover-migration.mjs" --summary "$migration_dir"
-  printf '%s\n' "$migration_dir" >"${LAB_DIR}/latest-migration-dir"
+  printf '%s\n' "$migration_dir" |
+    atomic_write_lab_file "${LAB_DIR}/latest-migration-dir"
   echo "Migration lab reports: ${migration_dir}"
 }
 
@@ -600,6 +689,7 @@ case "$mode" in
     fi
     ;;
   clean)
+    assert_lab_marker
     if [ -f "${LAB_DIR}/.env" ]; then
       compose_lab down
     fi

@@ -10,7 +10,13 @@ import Media from '@server/entity/Media';
 import MetadataAlbum from '@server/entity/MetadataAlbum';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import { Watchlist } from '@server/entity/Watchlist';
-import { normalizeMusicBrainzId } from '@server/lib/externalIds';
+import {
+  isValidMusicBrainzResourceId,
+  MAX_MUSICBRAINZ_BATCH_IDS,
+  normalizeMusicBrainzId,
+  prepareMusicBrainzBatchIds,
+} from '@server/lib/externalIds';
+import { hydrateMediaSummaryRelations } from '@server/lib/mediaSummaryHydration';
 import logger from '@server/logger';
 import { mapMusicDetails } from '@server/models/Music';
 import { filterEntityResponse } from '@server/utils/entityResponse';
@@ -25,6 +31,9 @@ import { In } from 'typeorm';
 const musicRoutes = Router();
 const MAX_MUSICBRAINZ_ID_LENGTH = 128;
 const MAX_PAGE = 500;
+export const MAX_ALBUM_MEDIA = 50;
+export const MAX_ALBUM_TRACKS = 1_000;
+export const MAX_ALBUM_TRACK_ARTISTS = 20;
 
 class AlbumDetailsNotFoundError extends Error {
   constructor(message = 'Album not found') {
@@ -40,12 +49,75 @@ const parseMusicBrainzId = (value: unknown) =>
 
 const normalizeParsedMusicBrainzId = (
   parsed: ReturnType<typeof parseMusicBrainzId>
-) =>
-  'error' in parsed ? parsed : { value: normalizeMusicBrainzId(parsed.value) };
+) => {
+  if ('error' in parsed) {
+    return parsed;
+  }
+
+  const value = normalizeMusicBrainzId(parsed.value);
+  return isValidMusicBrainzResourceId(value)
+    ? { value }
+    : { error: 'MusicBrainz ID is invalid.' };
+};
 
 const normalizeMusicBrainzIds = (ids: string[]): string[] => [
-  ...new Set(ids.filter(Boolean).map(normalizeMusicBrainzId)),
+  ...prepareMusicBrainzBatchIds(ids),
 ];
+
+export const collectAlbumTrackArtists = (
+  value: unknown
+): { artistId: string; artistName: string }[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const artists = new Map<string, string>();
+  let inspectedTracks = 0;
+  outer: for (const medium of value.slice(0, MAX_ALBUM_MEDIA)) {
+    if (!medium || typeof medium !== 'object') continue;
+    const tracks = (medium as { tracks?: unknown }).tracks;
+    if (!Array.isArray(tracks)) continue;
+
+    for (const track of tracks) {
+      if (inspectedTracks >= MAX_ALBUM_TRACKS) {
+        break outer;
+      }
+      inspectedTracks += 1;
+      if (!track || typeof track !== 'object') continue;
+      const credits = (track as { artists?: unknown }).artists;
+      if (!Array.isArray(credits)) continue;
+
+      for (const credit of credits.slice(0, MAX_ALBUM_TRACK_ARTISTS)) {
+        if (!credit || typeof credit !== 'object') continue;
+        const { artist_mbid: rawId, artist_credit_name: rawName } = credit as {
+          artist_mbid?: unknown;
+          artist_credit_name?: unknown;
+        };
+        if (
+          typeof rawId !== 'string' ||
+          rawId.length > 128 ||
+          typeof rawName !== 'string' ||
+          rawName.length > 512
+        ) {
+          continue;
+        }
+        const artistId = normalizeMusicBrainzId(rawId);
+        const artistName = rawName.trim();
+        if (artistId && artistName && !artists.has(artistId)) {
+          artists.set(artistId, artistName);
+        }
+        if (artists.size >= MAX_MUSICBRAINZ_BATCH_IDS) {
+          break outer;
+        }
+      }
+    }
+  }
+
+  return [...artists].map(([artistId, artistName]) => ({
+    artistId,
+    artistName,
+  }));
+};
 
 const mapMusicBrainzReleaseGroupToListenBrainzAlbum = (
   album: MbAlbumDetails
@@ -175,21 +247,26 @@ musicRoutes.get('/:id', async (req, res, next) => {
     const [albumDetails, media, onUserWatchlist] = await Promise.all([
       getAlbumDetails(mbId, listenbrainz, musicbrainz),
       getRepository(Media)
-        .createQueryBuilder('media')
-        .leftJoinAndSelect('media.requests', 'requests')
-        .leftJoinAndSelect('requests.requestedBy', 'requestedBy')
-        .leftJoinAndSelect('requests.modifiedBy', 'modifiedBy')
-        .leftJoinAndSelect('media.issues', 'issues')
-        .leftJoinAndSelect('issues.createdBy', 'issueCreatedBy')
-        .leftJoinAndSelect('issues.modifiedBy', 'issueModifiedBy')
-        .leftJoinAndSelect('issues.comments', 'issueComments')
-        .leftJoinAndSelect('issueComments.user', 'issueCommentUser')
-        .where({
-          mbId,
-          mediaType: MediaType.MUSIC,
+        .findOne({
+          where: { mbId, mediaType: MediaType.MUSIC },
+          relations: {
+            issues: {
+              createdBy: true,
+              modifiedBy: true,
+              comments: { user: true },
+            },
+          },
+          // Requests, issues, and comments are independent one-to-many
+          // relations. Joined hydration multiplies their row counts before
+          // TypeORM can reconstruct the entities.
+          relationLoadStrategy: 'query',
         })
-        .getOne()
-        .then((media) => media ?? undefined),
+        .then(async (media) => {
+          if (media) {
+            await hydrateMediaSummaryRelations([media], req.user);
+          }
+          return media ?? undefined;
+        }),
       getRepository(Watchlist).exist({
         where: {
           mbId,
@@ -207,13 +284,8 @@ musicRoutes.get('/:id', async (req, res, next) => {
     const isPerson =
       albumDetails.release_group_metadata?.artist?.artists?.[0]?.type ===
       'Person';
-    const trackArtistIds = normalizeMusicBrainzIds(
-      (albumDetails.mediums ?? [])
-        .flatMap((medium) => medium.tracks)
-        .flatMap((track) => track.artists ?? [])
-        .filter((artist) => artist.artist_mbid)
-        .map((artist) => artist.artist_mbid)
-    );
+    const trackArtists = collectAlbumTrackArtists(albumDetails.mediums);
+    const trackArtistIds = trackArtists.map((artist) => artist.artistId);
 
     const [
       metadataAlbum,
@@ -253,24 +325,14 @@ musicRoutes.get('/:id', async (req, res, next) => {
     const resolvedArtistWikipedia =
       artistWikipedia.status === 'fulfilled' ? artistWikipedia.value : null;
 
-    const trackArtistsToMap = (albumDetails.mediums ?? [])
-      .flatMap((medium) => medium.tracks)
-      .flatMap((track) =>
-        (track.artists ?? [])
-          .filter((artist) => artist.artist_mbid)
-          .filter(
-            (artist) =>
-              !resolvedTrackArtistMetadata.some(
-                (m) =>
-                  normalizeMusicBrainzId(m.mbArtistId) ===
-                    normalizeMusicBrainzId(artist.artist_mbid) && m.tmdbPersonId
-              )
-          )
-          .map((artist) => ({
-            artistId: normalizeMusicBrainzId(artist.artist_mbid),
-            artistName: artist.artist_credit_name,
-          }))
-      );
+    const trackArtistsToMap = trackArtists.filter(
+      (artist) =>
+        !resolvedTrackArtistMetadata.some(
+          (metadata) =>
+            normalizeMusicBrainzId(metadata.mbArtistId) === artist.artistId &&
+            metadata.tmdbPersonId
+        )
+    );
 
     const responses = await Promise.allSettled([
       artistId &&
@@ -318,43 +380,46 @@ musicRoutes.get('/:id', async (req, res, next) => {
       updatedArtistMetadata || resolvedTrackArtistMetadata;
 
     return res.status(200).json(
-      filterEntityResponse({
-        ...mappedDetails,
-        posterPath: resolvedMetadataAlbum?.caaUrl ?? null,
-        needsCoverArt: !resolvedMetadataAlbum?.caaUrl,
-        artistWikipedia: resolvedArtistWikipedia,
-        artistThumb:
-          updatedMetadataArtist?.tmdbThumb ??
-          updatedMetadataArtist?.tadbThumb ??
-          artistImages?.artistThumb ??
-          null,
-        artistBackdrop:
-          updatedMetadataArtist?.tadbCover ??
-          artistImages?.artistBackground ??
-          null,
-        tmdbPersonId: updatedMetadataArtist?.tmdbPersonId
-          ? Number(updatedMetadataArtist.tmdbPersonId)
-          : null,
-        tracks: mappedDetails.tracks.map((track) => ({
-          ...track,
-          artists: track.artists.map((artist) => {
-            const metadata = finalTrackArtistMetadata.find(
-              (m) =>
-                normalizeMusicBrainzId(m.mbArtistId) ===
-                normalizeMusicBrainzId(artist.mbid)
-            );
-            return {
-              ...artist,
-              tmdbMapping: metadata?.tmdbPersonId
-                ? {
-                    personId: Number(metadata.tmdbPersonId),
-                    profilePath: metadata.tmdbThumb,
-                  }
-                : null,
-            };
-          }),
-        })),
-      })
+      filterEntityResponse(
+        {
+          ...mappedDetails,
+          posterPath: resolvedMetadataAlbum?.caaUrl ?? null,
+          needsCoverArt: !resolvedMetadataAlbum?.caaUrl,
+          artistWikipedia: resolvedArtistWikipedia,
+          artistThumb:
+            updatedMetadataArtist?.tmdbThumb ??
+            updatedMetadataArtist?.tadbThumb ??
+            artistImages?.artistThumb ??
+            null,
+          artistBackdrop:
+            updatedMetadataArtist?.tadbCover ??
+            artistImages?.artistBackground ??
+            null,
+          tmdbPersonId: updatedMetadataArtist?.tmdbPersonId
+            ? Number(updatedMetadataArtist.tmdbPersonId)
+            : null,
+          tracks: mappedDetails.tracks.map((track) => ({
+            ...track,
+            artists: track.artists.map((artist) => {
+              const metadata = finalTrackArtistMetadata.find(
+                (m) =>
+                  normalizeMusicBrainzId(m.mbArtistId) ===
+                  normalizeMusicBrainzId(artist.mbid)
+              );
+              return {
+                ...artist,
+                tmdbMapping: metadata?.tmdbPersonId
+                  ? {
+                      personId: Number(metadata.tmdbPersonId),
+                      profilePath: metadata.tmdbThumb,
+                    }
+                  : null,
+              };
+            }),
+          })),
+        },
+        req.user
+      )
     );
   } catch (e) {
     if (e instanceof AlbumDetailsNotFoundError) {
@@ -620,10 +685,9 @@ musicRoutes.get('/:id/artist-similar', async (req, res, next) => {
       return res.status(404).json({ status: 404, message: 'Artist not found' });
     }
 
-    const allSimilarArtists =
-      artistDetails.similarArtists?.artists?.sort(
-        (a, b) => b.score - a.score
-      ) ?? [];
+    const allSimilarArtists = [
+      ...(artistDetails.similarArtists?.artists ?? []),
+    ].sort((a, b) => b.score - a.score);
 
     const totalResults = allSimilarArtists.length;
     const totalPages = Math.max(Math.ceil(totalResults / pageSize), 1);

@@ -156,7 +156,7 @@ const ServerInstance = ({
 
   const internalUrl =
     (isSSL ? 'https://' : 'http://') + hostname + ':' + String(port);
-  const internalHref = getSafeHref(internalUrl) ?? internalUrl;
+  const internalHref = getSafeHref(internalUrl);
   const serviceUrl = getSafeHref(externalUrl) ?? internalHref;
 
   return (
@@ -214,7 +214,7 @@ const ServerInstance = ({
               rel="noopener noreferrer"
               className="transition duration-300 hover:text-white hover:underline"
             >
-              {internalHref}
+              {internalUrl}
             </a>
           </p>
           <p className="mt-1 truncate text-sm leading-5 text-gray-300">
@@ -788,11 +788,12 @@ const SettingsServices = () => {
       </div>
       <div className="section">
         <ul className="grid max-w-6xl grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-          {rules && radarrData && sonarrData && (
+          {rules && radarrData && sonarrData && lidarrData && (
             <OverrideRuleTiles
               rules={rules}
               radarrServices={radarrData}
               sonarrServices={sonarrData}
+              lidarrServices={lidarrData}
               setOverrideRuleModal={setOverrideRuleModal}
               revalidate={revalidate}
             />
@@ -801,7 +802,11 @@ const SettingsServices = () => {
             <div className="flex h-full w-full items-center justify-center">
               <Button
                 buttonType="ghost"
-                disabled={!radarrData?.length && !sonarrData?.length}
+                disabled={
+                  !radarrData?.length &&
+                  !sonarrData?.length &&
+                  !lidarrData?.length
+                }
                 onClick={() =>
                   setOverrideRuleModal({
                     open: true,
@@ -816,7 +821,7 @@ const SettingsServices = () => {
           </li>
         </ul>
       </div>
-      {overrideRuleModal.open && radarrData && sonarrData && (
+      {overrideRuleModal.open && radarrData && sonarrData && lidarrData && (
         <OverrideRuleModal
           rule={overrideRuleModal.rule}
           onClose={() => {
@@ -828,6 +833,7 @@ const SettingsServices = () => {
           }}
           radarrServices={radarrData}
           sonarrServices={sonarrData}
+          lidarrServices={lidarrData}
         />
       )}
     </>

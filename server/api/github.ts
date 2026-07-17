@@ -5,63 +5,75 @@ import ExternalAPI from './externalapi';
 const SEERR_REPO = '/repos/snapetech/seerrng';
 
 interface GitHubRelease {
-  url: string;
-  assets_url: string;
-  upload_url: string;
-  html_url: string;
-  id: number;
-  node_id: string;
-  tag_name: string;
-  target_commitish: string;
   name: string;
-  draft: boolean;
-  prerelease: boolean;
-  created_at: string;
-  published_at: string;
-  tarball_url: string;
-  zipball_url: string;
-  body: string;
 }
 
 interface GithubCommit {
   sha: string;
-  node_id: string;
   commit: {
-    author: {
-      name: string;
-      email: string;
-      date: string;
-    };
-    committer: {
-      name: string;
-      email: string;
-      date: string;
-    };
     message: string;
-    tree: {
-      sha: string;
-      url: string;
-    };
-    url: string;
-    comment_count: number;
-    verification: {
-      verified: boolean;
-      reason: string;
-      signature: string;
-      payload: string;
-    };
   };
-  url: string;
-  html_url: string;
-  comments_url: string;
-  parents: [
-    {
-      sha: string;
-      url: string;
-      html_url: string;
-    },
-  ];
 }
+
+const MAX_GITHUB_RESULTS = 100;
+const MAX_GITHUB_TEXT_LENGTH = 10_000;
+
+const clampTake = (value: number): number =>
+  Number.isFinite(value)
+    ? Math.min(MAX_GITHUB_RESULTS, Math.max(1, Math.trunc(value)))
+    : 20;
+
+export const sanitizeGithubReleases = (
+  value: unknown,
+  take = 20
+): GitHubRelease[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, clampTake(take))
+    .flatMap((release) =>
+      release &&
+      typeof release === 'object' &&
+      typeof (release as Record<string, unknown>).name === 'string'
+        ? [
+            {
+              name: ((release as Record<string, unknown>).name as string).slice(
+                0,
+                MAX_GITHUB_TEXT_LENGTH
+              ),
+            },
+          ]
+        : []
+    );
+
+export const sanitizeGithubCommits = (
+  value: unknown,
+  take = 20
+): GithubCommit[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, clampTake(take))
+    .flatMap((rawCommit) => {
+      if (!rawCommit || typeof rawCommit !== 'object') {
+        return [];
+      }
+      const commit = rawCommit as Record<string, unknown>;
+      if (
+        typeof commit.sha !== 'string' ||
+        !commit.commit ||
+        typeof commit.commit !== 'object' ||
+        typeof (commit.commit as Record<string, unknown>).message !== 'string'
+      ) {
+        return [];
+      }
+      return [
+        {
+          sha: commit.sha.slice(0, 128),
+          commit: {
+            message: (
+              (commit.commit as Record<string, unknown>).message as string
+            ).slice(0, MAX_GITHUB_TEXT_LENGTH),
+          },
+        },
+      ];
+    });
 
 class GithubAPI extends ExternalAPI {
   constructor() {
@@ -84,13 +96,14 @@ class GithubAPI extends ExternalAPI {
     take?: number;
   } = {}): Promise<GitHubRelease[]> {
     try {
-      const data = await this.get<GitHubRelease[]>(`${SEERR_REPO}/releases`, {
+      const boundedTake = clampTake(take);
+      const data = await this.get<unknown>(`${SEERR_REPO}/releases`, {
         params: {
-          per_page: take,
+          per_page: boundedTake,
         },
       });
 
-      return data;
+      return sanitizeGithubReleases(data, boundedTake);
     } catch (e) {
       logger.warn(
         "Failed to retrieve GitHub releases. This may be an issue on GitHub's end. SeerrNG can't check if it's on the latest version.",
@@ -108,14 +121,18 @@ class GithubAPI extends ExternalAPI {
     branch?: string;
   } = {}): Promise<GithubCommit[]> {
     try {
-      const data = await this.get<GithubCommit[]>(`${SEERR_REPO}/commits`, {
+      const boundedTake = clampTake(take);
+      const data = await this.get<unknown>(`${SEERR_REPO}/commits`, {
         params: {
-          per_page: take,
-          branch,
+          per_page: boundedTake,
+          branch:
+            typeof branch === 'string' && branch.length <= 128
+              ? branch
+              : 'main',
         },
       });
 
-      return data;
+      return sanitizeGithubCommits(data, boundedTake);
     } catch (e) {
       logger.warn(
         "Failed to retrieve GitHub commits. This may be an issue on GitHub's end. SeerrNG can't check if it's on the latest version.",

@@ -2,8 +2,22 @@ import type { AllSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import fs from 'fs/promises';
 import path from 'path';
+import {
+  readPrivateSettingsFile,
+  writePrivateSettingsFile,
+} from './fileSecurity';
 
 const migrationsDir = path.join(__dirname, 'migrations');
+
+export const getSettingsBackupPath = (settingsPath: string): string => {
+  const parsed = path.parse(settingsPath);
+  return path.join(parsed.dir, `${parsed.name}.old${parsed.ext || '.json'}`);
+};
+
+export const getSettingsMigrationFiles = (files: string[]): string[] =>
+  files
+    .filter((file) => file.endsWith('.js') || file.endsWith('.ts'))
+    .sort((left, right) => left.localeCompare(right));
 
 export const runMigrations = async (
   settings: AllSettings,
@@ -13,17 +27,20 @@ export const runMigrations = async (
 
   try {
     // we read old backup and create a backup of currents settings
-    const BACKUP_PATH = SETTINGS_PATH.replace('.json', '.old.json');
+    const BACKUP_PATH = getSettingsBackupPath(SETTINGS_PATH);
     let oldBackup: string | null = null;
     try {
-      oldBackup = await fs.readFile(BACKUP_PATH, 'utf-8');
+      oldBackup = await readPrivateSettingsFile(BACKUP_PATH);
     } catch {
       /* empty */
     }
-    await fs.writeFile(BACKUP_PATH, JSON.stringify(settings, undefined, ' '));
+    await writePrivateSettingsFile(
+      BACKUP_PATH,
+      JSON.stringify(settings, undefined, ' ')
+    );
 
-    const migrations = (await fs.readdir(migrationsDir)).filter(
-      (file) => file.endsWith('.js') || file.endsWith('.ts')
+    const migrations = getSettingsMigrationFiles(
+      await fs.readdir(migrationsDir)
     );
 
     const settingsBefore = JSON.stringify(migrated);
@@ -57,7 +74,7 @@ export const runMigrations = async (
             label: 'Settings Migrator',
           }
         );
-        process.exit();
+        process.exit(1);
       }
     }
 
@@ -66,11 +83,13 @@ export const runMigrations = async (
     if (settingsBefore !== settingsAfter) {
       // a migration occured
       // we check that the new config will be saved
-      await fs.writeFile(
+      await writePrivateSettingsFile(
         SETTINGS_PATH,
         JSON.stringify(migrated, undefined, ' ')
       );
-      const fileSaved = JSON.parse(await fs.readFile(SETTINGS_PATH, 'utf-8'));
+      const fileSaved = JSON.parse(
+        await readPrivateSettingsFile(SETTINGS_PATH)
+      );
       if (JSON.stringify(fileSaved) !== settingsAfter) {
         // something went wrong while saving file
         throw new Error('Unable to save settings after migration.');
@@ -78,7 +97,7 @@ export const runMigrations = async (
     } else if (oldBackup) {
       // no migration occured
       // we save the old backup (to avoid settings.json and settings.old.json being the same)
-      await fs.writeFile(BACKUP_PATH, oldBackup.toString());
+      await writePrivateSettingsFile(BACKUP_PATH, oldBackup.toString());
     }
   } catch (e) {
     // we stop Seerr if the migration failed
@@ -94,7 +113,7 @@ export const runMigrations = async (
         label: 'Settings Migrator',
       }
     );
-    process.exit();
+    process.exit(1);
   }
 
   return migrated;

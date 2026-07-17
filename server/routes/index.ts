@@ -5,14 +5,20 @@ import type {
   TmdbMovieResult,
   TmdbTvResult,
 } from '@server/api/themoviedb/interfaces';
-import { getRepository } from '@server/datasource';
+import dataSource, { getRepository } from '@server/datasource';
 import DiscoverSlider from '@server/entity/DiscoverSlider';
+import { User } from '@server/entity/User';
 import type { StatusResponse } from '@server/interfaces/api/settingsInterfaces';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
+import {
+  UserMutationActorUnauthorizedError,
+  runUserSecurityMutationWithActor,
+} from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { apiResponseCache } from '@server/middleware/apiResponseCache';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
+import { authorizedRouteScope } from '@server/middleware/authorizedMutation';
 import deprecatedRoute from '@server/middleware/deprecation';
 import { mapProductionCompany } from '@server/models/Movie';
 import { mapNetwork } from '@server/models/Tv';
@@ -28,6 +34,7 @@ import {
 import { getAppVersion, getCommitTag } from '@server/utils/appVersion';
 import restartFlag from '@server/utils/restartFlag';
 import { parsePositiveRouteId } from '@server/utils/routeId';
+import { getRateLimitKey } from '@server/utils/security';
 import { isPerson } from '@server/utils/typeHelpers';
 import {
   parseBoundedString,
@@ -44,6 +51,7 @@ import blocklistRoutes from './blocklist';
 import bookRoutes from './book';
 import collectionRoutes from './collection';
 import discoverRoutes, { createTmdbWithRegionLanguage } from './discover';
+import { imageCacheWarmRateLimit, warmImageCache } from './imageproxy';
 import issueRoutes from './issue';
 import issueCommentRoutes from './issueComment';
 import mediaRoutes from './media';
@@ -71,6 +79,29 @@ const publicStatusRateLimit = rateLimit({
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === 'test',
 });
+export const PUBLIC_BACKDROPS_RATE_LIMIT = {
+  windowMs: 60 * 1000,
+  limit: 30,
+} as const;
+export const EXTERNAL_METADATA_RATE_LIMIT = {
+  windowMs: 60 * 1000,
+  limit: 60,
+} as const;
+const publicBackdropsRateLimit = rateLimit({
+  ...PUBLIC_BACKDROPS_RATE_LIMIT,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  keyGenerator: getRateLimitKey,
+});
+const externalMetadataRateLimit = rateLimit({
+  ...EXTERNAL_METADATA_RATE_LIMIT,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+  keyGenerator: (req) => `user:${req.user!.id}`,
+});
 
 const parsePushoverToken = (value: unknown) =>
   parseBoundedString(value, {
@@ -84,8 +115,41 @@ const parseWatchRegion = (value: unknown) =>
     maxLength: MAX_WATCH_REGION_LENGTH,
   });
 
+export const getCommitUpdateStatus = (
+  commits: { sha: string; commit: { message: string } }[],
+  commitTag: string
+): { updateAvailable: boolean; commitsBehind: number } => {
+  const relevantCommits = commits.filter(
+    (commit) => !commit.commit.message.includes('[skip ci]')
+  );
+
+  if (relevantCommits.length === 0 || relevantCommits[0].sha === commitTag) {
+    return { updateAvailable: false, commitsBehind: 0 };
+  }
+
+  const commitIndex = relevantCommits.findIndex(
+    (commit) => commit.sha === commitTag
+  );
+
+  return {
+    updateAvailable: true,
+    // If the current commit is older than the fetched window, the exact count
+    // is unknown but it is at least the number of relevant commits returned.
+    commitsBehind: commitIndex >= 0 ? commitIndex : relevantCommits.length,
+  };
+};
+
 router.use(checkUser);
 router.use(apiResponseCache);
+
+router.get('/status/ready', publicStatusRateLimit, async (_req, res) => {
+  try {
+    await dataSource.query('SELECT 1');
+    return res.status(204).send();
+  } catch {
+    return res.status(503).send();
+  }
+});
 
 router.get<Record<string, never>, StatusResponse>(
   '/status',
@@ -105,22 +169,10 @@ router.get<Record<string, never>, StatusResponse>(
         branch: branchMatch[1],
       });
 
-      if (commits.length) {
-        const filteredCommits = commits.filter(
-          (commit) => !commit.commit.message.includes('[skip ci]')
-        );
-        if (filteredCommits[0].sha !== commitTag) {
-          updateAvailable = true;
-        }
-
-        const commitIndex = filteredCommits.findIndex(
-          (commit) => commit.sha === commitTag
-        );
-
-        if (updateAvailable) {
-          commitsBehind = commitIndex;
-        }
-      }
+      ({ updateAvailable, commitsBehind } = getCommitUpdateStatus(
+        commits,
+        commitTag
+      ));
     } else if (commitTag !== 'local') {
       const releases = await githubApi.getSeerrReleases();
 
@@ -146,6 +198,7 @@ router.get<Record<string, never>, StatusResponse>(
 router.get(
   '/status/appdata',
   isAuthenticated(Permission.ADMIN),
+  authorizedRouteScope(Permission.ADMIN),
   (_req, res) => {
     return res.status(200).json({
       appData: appDataStatus(),
@@ -178,16 +231,50 @@ router.get(
   '/settings/notifications/pushover/sounds',
   isAuthenticated(),
   async (req, res, next) => {
-    const pushoverApi = new PushoverAPI();
-    const token = parsePushoverToken(req.query.token);
-    if ('error' in token) {
-      return next({ status: 400, message: token.error });
-    }
-
     try {
-      const sounds = await pushoverApi.getSounds(token.value);
-      res.status(200).json(sounds);
+      const requestedUserId =
+        req.query.userId === undefined
+          ? undefined
+          : parsePositiveRouteId(req.query.userId);
+      if (req.query.userId !== undefined && !requestedUserId) {
+        return next({ status: 400, message: 'Invalid user ID.' });
+      }
+      const actorId = req.user!.id;
+      return await runUserSecurityMutationWithActor(
+        actorId,
+        requestedUserId ?? actorId,
+        Permission.ADMIN,
+        async (actor) => {
+          let rawToken: unknown;
+          if (requestedUserId !== undefined) {
+            const user = await getRepository(User).findOne({
+              where: { id: requestedUserId },
+            });
+            if (!user) {
+              return next({ status: 404, message: 'User not found.' });
+            }
+            rawToken = user.settings?.pushoverApplicationToken;
+          } else {
+            if (!actor.hasPermission(Permission.ADMIN)) {
+              throw new UserMutationActorUnauthorizedError();
+            }
+            rawToken =
+              getSettings().notifications.agents.pushover.options.accessToken;
+          }
+
+          const token = parsePushoverToken(rawToken);
+          if ('error' in token) {
+            return next({ status: 400, message: token.error });
+          }
+
+          const sounds = await new PushoverAPI().getSounds(token.value);
+          return res.status(200).json(sounds);
+        }
+      );
     } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError) {
+        return next({ status: 403, message: 'Access denied.' });
+      }
       logger.debug('Something went wrong retrieving Pushover sounds', {
         label: 'API',
         errorMessage: e.message,
@@ -215,19 +302,40 @@ router.use(
   }),
   blocklistRoutes
 );
-router.use('/movie', isAuthenticated(), movieRoutes);
-router.use('/tv', isAuthenticated(), tvRoutes);
-router.use('/music', isAuthenticated(), musicRoutes);
+router.use('/movie', isAuthenticated(), externalMetadataRateLimit, movieRoutes);
+router.use('/tv', isAuthenticated(), externalMetadataRateLimit, tvRoutes);
+router.use('/music', isAuthenticated(), externalMetadataRateLimit, musicRoutes);
 router.use('/book', isAuthenticated(), bookRoutes);
-router.use('/artist', isAuthenticated(), artistRoutes);
+router.use(
+  '/artist',
+  isAuthenticated(),
+  externalMetadataRateLimit,
+  artistRoutes
+);
 router.use('/association', isAuthenticated(), associationRoutes);
 router.use('/author', isAuthenticated(), authorRoutes);
 router.use('/media', isAuthenticated(), mediaRoutes);
-router.use('/person', isAuthenticated(), personRoutes);
-router.use('/collection', isAuthenticated(), collectionRoutes);
+router.use(
+  '/person',
+  isAuthenticated(),
+  externalMetadataRateLimit,
+  personRoutes
+);
+router.use(
+  '/collection',
+  isAuthenticated(),
+  externalMetadataRateLimit,
+  collectionRoutes
+);
 router.use('/service', isAuthenticated(), serviceRoutes);
 router.use('/issue', isAuthenticated(), issueRoutes);
 router.use('/issueComment', isAuthenticated(), issueCommentRoutes);
+router.post(
+  '/imageproxy/warm',
+  isAuthenticated(),
+  imageCacheWarmRateLimit,
+  warmImageCache
+);
 router.use('/auth', authRoutes);
 router.use(
   '/overrideRule',
@@ -381,7 +489,7 @@ router.get('/genres/tv', isAuthenticated(), async (req, res, next) => {
   }
 });
 
-router.get('/backdrops', async (req, res, next) => {
+router.get('/backdrops', publicBackdropsRateLimit, async (req, res, next) => {
   const tmdb = createTmdbWithRegionLanguage();
 
   try {

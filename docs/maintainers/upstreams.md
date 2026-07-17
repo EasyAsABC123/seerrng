@@ -85,7 +85,7 @@ high.
 | --- | --- |
 | Published image | `ghcr.io/snapetech/seerrng`, `docker.io/snapetech/seerrng` |
 | Local Postgres compose | `postgres:18` |
-| Bookshelf compose | `postgres:16-alpine`, `blampe/rreading-glasses:latest`, `ghcr.io/snapetech/bookshelfng:*` |
+| Bookshelf compose | Digest-pinned `postgres:16-alpine`, `blampe/rreading-glasses:latest`, and `ghcr.io/snapetech/bookshelfng:*` defaults |
 | Helm chart | `charts/seerr-chart`, image `ghcr.io/snapetech/seerrng`, chart version/appVersion in `Chart.yaml` |
 | Snap | `packaging/snap/snapcraft.yaml`, base `core24` |
 | Flatpak | `org.freedesktop.Platform` runtime `24.08`, local `flatpak-src/node` and `flatpak-src/seerrng` sources |

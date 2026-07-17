@@ -13,16 +13,23 @@ export interface PushoverSound {
   description: string;
 }
 
-export const mapSounds = (sounds: {
-  [name: string]: string;
-}): PushoverSound[] =>
-  Object.entries(sounds).map(
-    ([name, description]) =>
-      ({
-        name,
-        description,
-      }) as PushoverSound
-  );
+export const MAX_PUSHOVER_SOUNDS = 1_000;
+
+export const mapSounds = (sounds: unknown): PushoverSound[] =>
+  sounds && typeof sounds === 'object' && !Array.isArray(sounds)
+    ? Object.entries(sounds)
+        .slice(0, MAX_PUSHOVER_SOUNDS)
+        .flatMap(([name, description]) =>
+          typeof description === 'string'
+            ? [
+                {
+                  name: name.slice(0, 256),
+                  description: description.slice(0, 1000),
+                },
+              ]
+            : []
+        )
+    : [];
 
 class PushoverAPI extends ExternalAPI {
   constructor() {
@@ -46,7 +53,7 @@ class PushoverAPI extends ExternalAPI {
         },
       });
 
-      return mapSounds(data.sounds);
+      return mapSounds(data?.sounds);
     } catch (e) {
       throw new Error(`[Pushover] Failed to retrieve sounds: ${e.message}`, {
         cause: e,

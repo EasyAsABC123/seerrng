@@ -21,6 +21,8 @@ export type WikidataCanonicalBookTerm = {
 };
 
 const MAX_WIKIDATA_TITLE_LENGTH = 300;
+const MAX_WIKIDATA_BINDINGS = 25;
+const MAX_WIKIDATA_AUTHOR_LENGTH = 300;
 
 const escapeSparqlString = (value: string): string =>
   value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -126,15 +128,31 @@ LIMIT 25`;
     const normalizedAuthorName = authorName
       ? normalizeComparableText(authorName)
       : undefined;
-    const terms = data.results.bindings
+    const bindings = Array.isArray(data?.results?.bindings)
+      ? data.results.bindings.slice(0, MAX_WIKIDATA_BINDINGS)
+      : [];
+    const terms = bindings
       .map((binding): WikidataCanonicalBookTerm | undefined => {
-        const canonicalTitle = binding.canonicalTitle?.value?.trim();
+        if (!binding || typeof binding !== 'object') {
+          return undefined;
+        }
+
+        const rawTitle = binding.canonicalTitle?.value;
+        const canonicalTitle =
+          typeof rawTitle === 'string'
+            ? rawTitle.trim().slice(0, MAX_WIKIDATA_TITLE_LENGTH)
+            : undefined;
 
         if (!canonicalTitle) {
           return undefined;
         }
 
-        const resolvedAuthorName = binding.authorLabel?.value?.trim();
+        const rawAuthorName = binding.authorLabel?.value;
+        const resolvedAuthorName =
+          typeof rawAuthorName === 'string'
+            ? rawAuthorName.trim().slice(0, MAX_WIKIDATA_AUTHOR_LENGTH) ||
+              undefined
+            : undefined;
 
         if (
           normalizedAuthorName &&
@@ -147,7 +165,11 @@ LIMIT 25`;
         return {
           title: canonicalTitle,
           authorName: resolvedAuthorName,
-          isbn13: normalizeValidIsbn(binding.isbn13?.value),
+          isbn13: normalizeValidIsbn(
+            typeof binding.isbn13?.value === 'string'
+              ? binding.isbn13.value
+              : undefined
+          ),
         };
       })
       .filter((term): term is WikidataCanonicalBookTerm => !!term);

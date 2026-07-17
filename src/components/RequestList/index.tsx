@@ -12,6 +12,12 @@ import {
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import {
+  isStoredOption,
+  isStoredPageSize,
+  readLocalStoredRecord,
+  writeLocalStoredRecord,
+} from '@app/utils/localStorage';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import {
   ArrowDownIcon,
@@ -60,6 +66,9 @@ type MediaType = 'all' | 'movie' | 'tv' | 'music' | 'book';
 const isMediaType = (value: unknown): value is MediaType =>
   typeof value === 'string' &&
   ['all', 'movie', 'tv', 'music', 'book'].includes(value);
+const REQUEST_FILTER_OPTIONS = Object.values(Filter);
+const REQUEST_SORT_OPTIONS: readonly Sort[] = ['added', 'modified'];
+const SORT_DIRECTION_OPTIONS: readonly SortDirection[] = ['asc', 'desc'];
 
 const RequestList = () => {
   const router = useRouter();
@@ -108,18 +117,28 @@ const RequestList = () => {
 
   // Restore last set filter values on component mount
   useEffect(() => {
-    const filterString = window.localStorage.getItem('rl-filter-settings');
-
-    if (filterString) {
-      const filterSettings = JSON.parse(filterString);
-
-      setCurrentFilter(filterSettings.currentFilter);
+    const filterSettings = readLocalStoredRecord('rl-filter-settings');
+    if (filterSettings) {
+      if (
+        isStoredOption(filterSettings.currentFilter, REQUEST_FILTER_OPTIONS)
+      ) {
+        setCurrentFilter(filterSettings.currentFilter);
+      }
       if (isMediaType(filterSettings.currentMediaType)) {
         setCurrentMediaType(filterSettings.currentMediaType);
       }
-      setCurrentSort(filterSettings.currentSort);
-      setCurrentPageSize(filterSettings.currentPageSize);
-      if (['asc', 'desc'].includes(filterSettings.currentSortDirection)) {
+      if (isStoredOption(filterSettings.currentSort, REQUEST_SORT_OPTIONS)) {
+        setCurrentSort(filterSettings.currentSort);
+      }
+      if (isStoredPageSize(filterSettings.currentPageSize)) {
+        setCurrentPageSize(filterSettings.currentPageSize);
+      }
+      if (
+        isStoredOption(
+          filterSettings.currentSortDirection,
+          SORT_DIRECTION_OPTIONS
+        )
+      ) {
         setCurrentSortDirection(filterSettings.currentSortDirection);
       }
     }
@@ -139,16 +158,13 @@ const RequestList = () => {
 
   // Set filter values to local storage any time they are changed
   useEffect(() => {
-    window.localStorage.setItem(
-      'rl-filter-settings',
-      JSON.stringify({
-        currentFilter,
-        currentMediaType: effectiveMediaType,
-        currentSort,
-        currentSortDirection,
-        currentPageSize,
-      })
-    );
+    writeLocalStoredRecord('rl-filter-settings', {
+      currentFilter,
+      currentMediaType: effectiveMediaType,
+      currentSort,
+      currentSortDirection,
+      currentPageSize,
+    });
   }, [
     currentFilter,
     effectiveMediaType,

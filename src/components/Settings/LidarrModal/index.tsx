@@ -163,12 +163,14 @@ const LidarrModal = ({ onClose, lidarr, onSave }: LidarrModalProps) => {
 
   const testConnection = useCallback(
     async ({
+      id,
       hostname,
       port,
       apiKey,
       baseUrl,
       useSsl = false,
     }: {
+      id?: number;
       hostname: string;
       port: number;
       apiKey: string;
@@ -180,6 +182,7 @@ const LidarrModal = ({ onClose, lidarr, onSave }: LidarrModalProps) => {
         const response = await axios.post<TestResponse>(
           '/api/v1/settings/lidarr/test',
           {
+            id,
             hostname,
             apiKey,
             port: Number(port),
@@ -215,6 +218,7 @@ const LidarrModal = ({ onClose, lidarr, onSave }: LidarrModalProps) => {
   useEffect(() => {
     if (lidarr) {
       testConnection({
+        id: lidarr.id,
         apiKey: lidarr.apiKey,
         hostname: lidarr.hostname,
         port: lidarr.port,
@@ -328,6 +332,7 @@ const LidarrModal = ({ onClose, lidarr, onSave }: LidarrModalProps) => {
               onSecondary={() => {
                 if (values.apiKey && values.hostname && values.port) {
                   testConnection({
+                    id: lidarr?.id,
                     apiKey: values.apiKey,
                     baseUrl: values.baseUrl,
                     hostname: values.hostname,

@@ -1,8 +1,8 @@
 workflow:
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH'
     - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - when: never
 
 stages:
   - build
@@ -18,7 +18,7 @@ variables:
 
 docker:seerrng:
   stage: build
-  image: docker:27.5.1
+  image: docker:27.5.1@sha256:aa3df78ecf320f5fafdce71c659f1629e96e9de0968305fe1de670e0ca9176ce
   tags:
     - kspls0
     - amd64
@@ -26,9 +26,12 @@ docker:seerrng:
   before_script:
     - docker info
     - docker buildx use default
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   script:
     - >
-      docker buildx build --network host
+      docker buildx build
       --file Dockerfile
       --build-arg COMMIT_TAG="${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
       --build-arg BUILD_VERSION="${CI_COMMIT_TAG:-$CI_COMMIT_REF_SLUG}"
@@ -40,10 +43,10 @@ docker:seerrng:
 .trivy_scan:
   stage: scan
   image:
-    name: aquasec/trivy:0.58.2
+    name: aquasec/trivy:0.58.2@sha256:665030f4d33a82c1e8d9d5e0453365842236723c1ee5cc3becca698268e66a56
     entrypoint: ['']
   script:
-    - trivy image --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" --exit-code 0 --severity HIGH,CRITICAL "$CS_IMAGE"
+    - TRIVY_USERNAME="$CI_REGISTRY_USER" TRIVY_PASSWORD="$CI_REGISTRY_PASSWORD" trivy image --exit-code 0 --severity HIGH,CRITICAL "$CS_IMAGE"
 
 container_scanning:
   extends: .trivy_scan
@@ -55,7 +58,7 @@ container_scanning:
 
 deploy:seerr.home:
   stage: deploy
-  image: docker:27.5.1
+  image: docker:27.5.1@sha256:aa3df78ecf320f5fafdce71c659f1629e96e9de0968305fe1de670e0ca9176ce
   needs: ['docker:seerrng']
   tags:
     - kspls0
@@ -76,7 +79,7 @@ deploy:seerr.home:
         docker tag "$IMAGE_SHA_TAG" "$SEERRNG_DEPLOY_IMAGE"
       else
         docker buildx use default
-        docker buildx build --network host \
+        docker buildx build \
           --file Dockerfile \
           --build-arg COMMIT_TAG="${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}" \
           --build-arg BUILD_VERSION="${CI_COMMIT_TAG:-$CI_COMMIT_REF_SLUG}" \
@@ -89,8 +92,10 @@ deploy:seerr.home:
       docker rm -f "$SEERRNG_DEPLOY_CONTAINER" >/dev/null 2>&1 || true
       docker run -d \
         --name "$SEERRNG_DEPLOY_CONTAINER" \
-        --network host \
+        --publish "$SEERRNG_DEPLOY_PORT:$SEERRNG_DEPLOY_PORT" \
         --restart unless-stopped \
+        --security-opt no-new-privileges:true \
+        --cap-drop ALL \
         -e CONFIG_DIRECTORY=/app/config \
         -e LOG_LEVEL=info \
         -e TZ=America/Regina \
@@ -123,13 +128,15 @@ deploy:seerr.home:
 github:mirror:
   extends: .github_publication_defaults
   stage: promote
-  image: alpine:3.21
+  image: alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
   before_script:
     - apk add --no-cache git openssh-client
     - eval "$(ssh-agent -s)"
     - printf '%s\n' "$GITHUB_MIRROR_SSH_KEY" | tr -d '\r' | ssh-add -
-    - mkdir -p ~/.ssh
-    - ssh-keyscan github.com >> ~/.ssh/known_hosts
+    - install -d -m 0700 ~/.ssh
+    - printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > ~/.ssh/known_hosts
+    - test "$(ssh-keygen -lf ~/.ssh/known_hosts -E sha256 | awk '{print $2}')" = 'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU'
+    - chmod 0600 ~/.ssh/known_hosts
   script:
     - test -n "$GITHUB_MIRROR_URL"
     - git remote add github-mirror "$GITHUB_MIRROR_URL"
@@ -146,9 +153,11 @@ github:release:
   extends: .github_publication_defaults
   stage: promote
   image:
-    name: ghcr.io/cli/cli:2.63.2
+    name: alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
     entrypoint: ['']
   needs: ['github:mirror']
+  before_script:
+    - apk add --no-cache github-cli
   script:
     - test -n "$GITHUB_TOKEN"
     - test -n "$GITHUB_REPOSITORY"
@@ -167,15 +176,15 @@ ghcr:promote:
   extends: .github_publication_defaults
   stage: promote
   image:
-    name: quay.io/skopeo/stable:v1.17.0
+    name: quay.io/skopeo/stable:v1.17.0@sha256:be15097a3e99a1fe72838b3d626d1c283db38626536fff5e04ab6bbb814baeca
     entrypoint: ['']
   script:
     - test -n "$GHCR_TOKEN"
     - test -n "$GITHUB_REPOSITORY"
     - export GHCR_USER="${GHCR_USER:-${GITHUB_REPOSITORY%%/*}}"
     - export GHCR_REPOSITORY="${GHCR_REPOSITORY:-ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')}"
-    - skopeo login -u "$GHCR_USER" -p "$GHCR_TOKEN" ghcr.io
-    - skopeo login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - printf '%s\n' "$GHCR_TOKEN" | skopeo login -u "$GHCR_USER" --password-stdin ghcr.io
+    - printf '%s\n' "$CI_REGISTRY_PASSWORD" | skopeo login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - skopeo copy "docker://${IMAGE_SHA_TAG}" "docker://$GHCR_REPOSITORY:$CI_COMMIT_SHORT_SHA"
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
@@ -187,13 +196,13 @@ ghcr:promote:
 dockerhub:promote:
   stage: promote
   image:
-    name: quay.io/skopeo/stable:v1.17.0
+    name: quay.io/skopeo/stable:v1.17.0@sha256:be15097a3e99a1fe72838b3d626d1c283db38626536fff5e04ab6bbb814baeca
     entrypoint: ['']
   script:
     - test -n "$DOCKERHUB_USERNAME"
     - test -n "$DOCKERHUB_TOKEN"
-    - skopeo login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN" docker.io
-    - skopeo login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - printf '%s\n' "$DOCKERHUB_TOKEN" | skopeo login -u "$DOCKERHUB_USERNAME" --password-stdin docker.io
+    - printf '%s\n' "$CI_REGISTRY_PASSWORD" | skopeo login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - skopeo copy "docker://${IMAGE_SHA_TAG}" "docker://docker.io/snapetech/seerrng:$CI_COMMIT_SHORT_SHA"
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
@@ -226,7 +235,7 @@ dockerhub:promote:
 
 package-smoke:containers:
   extends: .package_smoke_defaults
-  image: docker:27.5.1
+  image: docker:27.5.1@sha256:aa3df78ecf320f5fafdce71c659f1629e96e9de0968305fe1de670e0ca9176ce
   parallel:
     matrix:
       - SMOKE_PROJECT: seerrng
@@ -240,7 +249,7 @@ package-smoke:containers:
 
 package-smoke:ubuntu:
   extends: .package_smoke_defaults
-  image: ubuntu:24.04
+  image: ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
   parallel:
     matrix:
       - SMOKE_PROJECT: seerrng
@@ -254,7 +263,7 @@ package-smoke:ubuntu:
 
 package-smoke:delayed:
   extends: .package_smoke_defaults
-  image: ubuntu:22.04
+  image: ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982
   allow_failure: true
   parallel:
     matrix:
@@ -269,7 +278,7 @@ package-smoke:delayed:
 
 package-smoke:fedora:
   extends: .package_smoke_defaults
-  image: fedora:43
+  image: fedora:43@sha256:762d73ba1c455232b0272c5d445a34f36c4b9f421cbc05ce8102552325b6a222
   allow_failure: true
   parallel:
     matrix:
@@ -283,7 +292,7 @@ package-smoke:fedora:
 
 package-smoke:arch:
   extends: .package_smoke_defaults
-  image: archlinux:base-devel
+  image: archlinux:base-devel@sha256:212b1e518e94ee9c52be55e8a32da75fcf11e7b5610b80b49479e67880102406
   allow_failure: true
   parallel:
     matrix:

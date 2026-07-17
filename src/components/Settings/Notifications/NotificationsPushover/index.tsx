@@ -4,6 +4,7 @@ import NotificationTypeSelector from '@app/components/NotificationTypeSelector';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { REDACTED_SECRET } from '@app/utils/secret';
 import { ArrowDownOnSquareIcon, BeakerIcon } from '@heroicons/react/24/outline';
 import type { PushoverSound } from '@server/api/pushover';
 import axios from 'axios';
@@ -48,9 +49,7 @@ const NotificationsPushover = () => {
   } = useSWR('/api/v1/settings/notifications/pushover');
   const { data: soundsData } = useSWR<PushoverSound[]>(
     data?.options.accessToken
-      ? `/api/v1/settings/notifications/pushover/sounds?token=${encodeURIComponent(
-          data.options.accessToken
-        )}`
+      ? '/api/v1/settings/notifications/pushover/sounds'
       : null,
     {
       revalidateOnFocus: false,
@@ -72,7 +71,7 @@ const NotificationsPushover = () => {
         otherwise: (schema) => schema.nullable(),
       })
       .matches(
-        /^[a-z\d]{30}$/i,
+        new RegExp(`^(?:\\${REDACTED_SECRET}|[a-z\\d]{30})$`, 'i'),
         intl.formatMessage(messages.validationAccessTokenRequired)
       ),
     userToken: Yup.string()
@@ -85,7 +84,7 @@ const NotificationsPushover = () => {
         otherwise: (schema) => schema.nullable(),
       })
       .matches(
-        /^[a-z\d]{30}$/i,
+        new RegExp(`^(?:\\${REDACTED_SECRET}|[a-z\\d]{30})$`, 'i'),
         intl.formatMessage(messages.validationUserTokenRequired)
       ),
   });

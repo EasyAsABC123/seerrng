@@ -7,7 +7,10 @@ import Media from '@server/entity/Media';
 import MetadataAlbum from '@server/entity/MetadataAlbum';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import { getAssociations } from '@server/lib/associations';
-import { normalizeMusicBrainzId } from '@server/lib/externalIds';
+import {
+  isValidMusicBrainzResourceId,
+  normalizeMusicBrainzId,
+} from '@server/lib/externalIds';
 import logger from '@server/logger';
 import { parsePositiveInt } from '@server/utils/pagination';
 import {
@@ -24,6 +27,10 @@ const MAX_PAGE = 500;
 const MAX_MUSICBRAINZ_ID_LENGTH = 128;
 const MAX_ALBUM_TYPE_LENGTH = 128;
 const ALL_ALBUM_TYPES = 'All';
+export const MAX_ARTIST_RELEASE_GROUP_TYPES = 32;
+export const MAX_DEFAULT_ARTIST_RELEASE_GROUPS = 100;
+export const MAX_ARTIST_PROVIDER_RELEASE_GROUPS = 2_000;
+const MAX_ARTIST_PROVIDER_TEXT_LENGTH = 512;
 
 const parseMusicBrainzId = (value: unknown, fieldName = 'Artist ID') =>
   parseBoundedString(value, {
@@ -33,8 +40,16 @@ const parseMusicBrainzId = (value: unknown, fieldName = 'Artist ID') =>
 
 const normalizeParsedMusicBrainzId = (
   parsed: ReturnType<typeof parseMusicBrainzId>
-) =>
-  'error' in parsed ? parsed : { value: normalizeMusicBrainzId(parsed.value) };
+) => {
+  if ('error' in parsed) {
+    return parsed;
+  }
+
+  const value = normalizeMusicBrainzId(parsed.value);
+  return isValidMusicBrainzResourceId(value)
+    ? { value }
+    : { error: 'MusicBrainz ID is invalid.' };
+};
 
 const normalizeReleaseGroupTitle = (title: string) =>
   title
@@ -44,30 +59,78 @@ const normalizeReleaseGroupTitle = (title: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-const dedupeReleaseGroups = (releaseGroups: LbReleaseGroupExtended[]) => {
+const dedupeReleaseGroups = (value: unknown): LbReleaseGroupExtended[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();
+  const releaseGroups: LbReleaseGroupExtended[] = [];
 
-  return releaseGroups.filter((releaseGroup) => {
-    const idKey = normalizeMusicBrainzId(releaseGroup.mbid);
-    const type = releaseGroup.secondary_types?.length
-      ? releaseGroup.secondary_types[0]
-      : releaseGroup.type || 'Other';
+  for (const rawReleaseGroup of value.slice(
+    0,
+    MAX_ARTIST_PROVIDER_RELEASE_GROUPS
+  )) {
+    if (!rawReleaseGroup || typeof rawReleaseGroup !== 'object') {
+      continue;
+    }
+    const raw = rawReleaseGroup as Record<string, unknown>;
+    if (
+      typeof raw.mbid !== 'string' ||
+      !raw.mbid ||
+      raw.mbid.length > 128 ||
+      typeof raw.name !== 'string' ||
+      !raw.name ||
+      raw.name.length > MAX_ARTIST_PROVIDER_TEXT_LENGTH ||
+      typeof raw.artist_credit_name !== 'string' ||
+      raw.artist_credit_name.length > MAX_ARTIST_PROVIDER_TEXT_LENGTH
+    ) {
+      continue;
+    }
+    const secondaryTypes = Array.isArray(raw.secondary_types)
+      ? raw.secondary_types
+          .filter(
+            (type): type is string =>
+              typeof type === 'string' && type.length > 0 && type.length <= 128
+          )
+          .slice(0, 10)
+      : undefined;
+    const type =
+      typeof raw.type === 'string'
+        ? raw.type.slice(0, MAX_ALBUM_TYPE_LENGTH)
+        : '';
+    const date = typeof raw.date === 'string' ? raw.date.slice(0, 128) : '';
+    const idKey = normalizeMusicBrainzId(raw.mbid);
+    const candidateType = (secondaryTypes?.[0] ?? type) || 'Other';
     const titleKey = [
-      normalizeReleaseGroupTitle(releaseGroup.name),
-      releaseGroup.artist_credit_name.toLocaleLowerCase(),
-      releaseGroup.date?.slice(0, 4) ?? '',
-      type.toLocaleLowerCase(),
+      normalizeReleaseGroupTitle(raw.name),
+      raw.artist_credit_name.toLocaleLowerCase(),
+      date.slice(0, 4),
+      candidateType.toLocaleLowerCase(),
     ].join('|');
 
     if (seenIds.has(idKey) || seenTitles.has(titleKey)) {
-      return false;
+      continue;
     }
 
     seenIds.add(idKey);
     seenTitles.add(titleKey);
-    return true;
-  });
+    releaseGroups.push({
+      mbid: raw.mbid,
+      name: raw.name,
+      artist_credit_name: raw.artist_credit_name,
+      date,
+      type,
+      secondary_types: secondaryTypes,
+      total_listen_count:
+        typeof raw.total_listen_count === 'number' &&
+        Number.isFinite(raw.total_listen_count)
+          ? raw.total_listen_count
+          : 0,
+    } as LbReleaseGroupExtended);
+  }
+
+  return releaseGroups;
 };
 
 artistRoutes.get('/:id/similar', async (req, res, next) => {
@@ -167,35 +230,38 @@ artistRoutes.get('/:id', async (req, res, next) => {
     }
 
     const releaseGroups = dedupeReleaseGroups(artistData.releaseGroups);
-    const groupedReleaseGroups = releaseGroups.reduce(
-      (acc, rg) => {
-        const type = rg.secondary_types?.length
-          ? rg.secondary_types[0]
-          : rg.type || 'Other';
+    const groupedReleaseGroups = new Map<
+      string,
+      typeof artistData.releaseGroups
+    >();
+    for (const releaseGroup of releaseGroups) {
+      const candidateType = releaseGroup.secondary_types?.length
+        ? releaseGroup.secondary_types[0]
+        : releaseGroup.type || 'Other';
+      const type =
+        groupedReleaseGroups.has(candidateType) ||
+        groupedReleaseGroups.size < MAX_ARTIST_RELEASE_GROUP_TYPES - 1
+          ? candidateType
+          : 'Other';
+      const group = groupedReleaseGroups.get(type) ?? [];
+      group.push(releaseGroup);
+      groupedReleaseGroups.set(type, group);
+    }
 
-        if (!acc[type]) {
-          acc[type] = [];
-        }
-        acc[type].push(rg);
-        return acc;
-      },
-      {} as Record<string, typeof artistData.releaseGroups>
-    );
-
-    Object.keys(groupedReleaseGroups).forEach((type) => {
-      groupedReleaseGroups[type].sort((a, b) => {
+    for (const releases of groupedReleaseGroups.values()) {
+      releases.sort((a, b) => {
         const dateA = a.date ? new Date(a.date).getTime() : 0;
         const dateB = b.date ? new Date(b.date).getTime() : 0;
         return dateB - dateA;
       });
-    });
+    }
 
     let releaseGroupsToProcess: LbReleaseGroupExtended[];
     let totalCount;
     let totalPages;
 
     if (albumType === ALL_ALBUM_TYPES) {
-      const allReleaseGroups = Object.values(groupedReleaseGroups).flat();
+      const allReleaseGroups = [...groupedReleaseGroups.values()].flat();
       allReleaseGroups.sort((a, b) => {
         const dateA = a.date ? new Date(a.date).getTime() : 0;
         const dateB = b.date ? new Date(b.date).getTime() : 0;
@@ -210,7 +276,7 @@ artistRoutes.get('/:id', async (req, res, next) => {
         page * pageSize
       );
     } else if (albumType) {
-      const filteredReleaseGroups = groupedReleaseGroups[albumType] || [];
+      const filteredReleaseGroups = groupedReleaseGroups.get(albumType) || [];
       totalCount = filteredReleaseGroups.length;
       totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
 
@@ -220,11 +286,15 @@ artistRoutes.get('/:id', async (req, res, next) => {
       );
     } else {
       releaseGroupsToProcess = [];
-      Object.entries(groupedReleaseGroups).forEach(([, releases]) => {
+      for (const releases of groupedReleaseGroups.values()) {
         releaseGroupsToProcess.push(...releases.slice(0, initialItemsPerType));
-      });
+      }
+      releaseGroupsToProcess = releaseGroupsToProcess.slice(
+        0,
+        MAX_DEFAULT_ARTIST_RELEASE_GROUPS
+      );
 
-      totalCount = Object.values(groupedReleaseGroups).reduce(
+      totalCount = [...groupedReleaseGroups.values()].reduce(
         (sum, releases) => sum + releases.length,
         0
       );
@@ -297,14 +367,23 @@ artistRoutes.get('/:id', async (req, res, next) => {
     });
 
     const typeCounts = Object.fromEntries(
-      Object.entries(groupedReleaseGroups).map(([type, releases]) => [
+      [...groupedReleaseGroups.entries()].map(([type, releases]) => [
         type,
         releases.length,
       ])
     );
 
     return res.status(200).json({
-      ...artistData,
+      artist: {
+        name:
+          typeof artistData.artist?.name === 'string'
+            ? artistData.artist.name.slice(0, 512)
+            : '',
+        area:
+          typeof artistData.artist?.area === 'string'
+            ? artistData.artist.area.slice(0, 512)
+            : undefined,
+      },
       wikipedia: artistWikipedia,
       artistThumb:
         metadataArtist?.tmdbThumb ??

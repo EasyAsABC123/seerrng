@@ -40,23 +40,36 @@ const SetupLogin: React.FC<LoginWithMediaServerProps> = ({
   // ask swr to revalidate the user which _shouid_ come back with a valid user.
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const login = async () => {
       try {
-        const response = await axios.post('/api/v1/auth/plex', {
-          authToken: authToken,
-        });
+        const response = await axios.post(
+          '/api/v1/auth/plex',
+          { authToken },
+          { signal: controller.signal }
+        );
 
-        if (response.data?.id) {
-          const { data: user } = await axios.get('/api/v1/auth/me');
-          revalidate(user, false);
+        if (active && response.data?.id) {
+          const { data: user } = await axios.get('/api/v1/auth/me', {
+            signal: controller.signal,
+          });
+          if (active) {
+            void revalidate(user, false);
+          }
         }
       } catch {
         // auth failed silently and user can attempt again
       }
     };
     if (authToken && mediaServerType == MediaServerType.PLEX) {
-      login();
+      void login();
     }
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [authToken, mediaServerType, revalidate]);
 
   useEffect(() => {

@@ -9,7 +9,7 @@ import {
   MediaStatus,
   MediaType,
 } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
+import dataSource, { getRepository } from '@server/datasource';
 import { Blocklist } from '@server/entity/Blocklist';
 import MediaIdentifier, {
   MediaIdentifierProvider,
@@ -22,16 +22,39 @@ import {
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
 import { normalizeValidIsbn } from '@server/lib/isbn';
-import notificationManager, { Notification } from '@server/lib/notifications';
+import {
+  MediaServerUserAuthorityChangedError,
+  assertMediaServerUserAuthorityCurrent,
+  type MediaServerUserAuthoritySnapshot,
+} from '@server/lib/mediaServerUserAuthority';
+import type { Notification } from '@server/lib/notifications';
+import notificationManager from '@server/lib/notifications';
+import {
+  getOverrideRuleProfileId,
+  getOverrideRuleTagIds,
+  overrideRuleMatchesUser,
+  selectMostSpecificOverrideRule,
+} from '@server/lib/overrideRules';
 import { Permission } from '@server/lib/permissions';
-import { getSettings } from '@server/lib/settings';
+import requestAdmissionCoordinator from '@server/lib/requestAdmission';
+import {
+  runWithServarrServiceAdmission,
+  type ServarrServiceType,
+} from '@server/lib/serviceAdmission';
+import {
+  getSettings,
+  type ReadarrSettings,
+  type SonarrSettings,
+} from '@server/lib/settings';
+import {
+  isUserCredentialVersionCurrent,
+  runUserSecurityMutation,
+} from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { DbAwareColumn, resolveDbType } from '@server/utils/DbColumnHelper';
-import { truncate } from 'lodash';
+import AsyncLock from '@server/utils/asyncLock';
 import {
-  AfterInsert,
   AfterLoad,
-  AfterUpdate,
   Column,
   Entity,
   Index,
@@ -53,8 +76,67 @@ export class BlocklistedMediaError extends Error {}
 export class ServiceConfigurationError extends Error {}
 
 type MediaRequestOptions = {
+  expectedCredentialVersion?: number;
+  expectedMediaServerUserAuthority?: MediaServerUserAuthoritySnapshot;
   isAutoRequest?: boolean;
 };
+
+type BookIdentifierCandidate = {
+  provider: MediaIdentifierProvider;
+  value: string;
+  canonical: boolean;
+};
+
+type ResolvedBookRequest = {
+  openLibraryId: string;
+  identifierCandidates: BookIdentifierCandidate[];
+};
+
+type InternalMediaRequestOptions = MediaRequestOptions & {
+  resolvedMusicMbId?: string;
+  resolvedBook?: ResolvedBookRequest;
+  serviceAdmissionGranted?: boolean;
+};
+export const MAX_BOOK_REQUEST_IDENTIFIER_CANDIDATES = 200;
+
+const requestAdmissionLock = new AsyncLock();
+
+const runWithLocalRequestLocks = <T>(
+  keys: string[],
+  callback: () => Promise<T>
+): Promise<T> => {
+  const uniqueKeys = [...new Set(keys)].sort();
+  const dispatch = (index: number): Promise<T> =>
+    index === uniqueKeys.length
+      ? callback()
+      : requestAdmissionLock.dispatch(uniqueKeys[index], () =>
+          dispatch(index + 1)
+        );
+
+  return dispatch(0);
+};
+
+export const runWithRequestAdmission = <T>(
+  keys: string[],
+  callback: () => Promise<T>
+): Promise<T> =>
+  requestAdmissionCoordinator.run(keys, () =>
+    runWithLocalRequestLocks(keys, callback)
+  );
+
+export const getRequestMutationAdmissionKey = (requestId: number): string => {
+  if (!Number.isSafeInteger(requestId) || requestId <= 0) {
+    throw new Error('A valid request ID is required for request admission.');
+  }
+  return `request-edit:${requestId}`;
+};
+
+const getRequestMediaLockKey = (requestBody: MediaRequestBody): string =>
+  [
+    'request-media',
+    requestBody.mediaType,
+    String(requestBody.mediaId).trim().toLowerCase(),
+  ].join(':');
 
 const canUseAdvancedRequestOptions = (user: User): boolean =>
   user.hasPermission(
@@ -64,10 +146,37 @@ const canUseAdvancedRequestOptions = (user: User): boolean =>
     }
   );
 
-const isActiveMediaRequest = (request: MediaRequest): boolean =>
-  request.status !== MediaRequestStatus.DECLINED &&
-  request.status !== MediaRequestStatus.FAILED &&
-  request.status !== MediaRequestStatus.COMPLETED;
+export const hasMediaRequestPermission = (
+  user: User,
+  mediaType: MediaType,
+  is4k = false
+): boolean => {
+  switch (mediaType) {
+    case MediaType.MOVIE:
+      return user.hasPermission(
+        is4k
+          ? [Permission.REQUEST_4K, Permission.REQUEST_4K_MOVIE]
+          : [Permission.REQUEST, Permission.REQUEST_MOVIE],
+        { type: 'or' }
+      );
+    case MediaType.TV:
+      return user.hasPermission(
+        is4k
+          ? [Permission.REQUEST_4K, Permission.REQUEST_4K_TV]
+          : [Permission.REQUEST, Permission.REQUEST_TV],
+        { type: 'or' }
+      );
+    case MediaType.MUSIC:
+      return user.hasPermission(
+        [Permission.REQUEST, Permission.REQUEST_MUSIC],
+        { type: 'or' }
+      );
+    case MediaType.BOOK:
+      return user.hasPermission([Permission.REQUEST, Permission.REQUEST_BOOK], {
+        type: 'or',
+      });
+  }
+};
 
 const isTvdbConstraintError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error);
@@ -143,10 +252,61 @@ const resolveMusicReleaseGroupId = async (
 
 @Entity()
 export class MediaRequest {
-  public static async request(
+  public static request(
     requestBody: MediaRequestBody,
     user: User,
     options: MediaRequestOptions = {}
+  ): Promise<MediaRequest> {
+    requestBody = { ...requestBody, is4k: requestBody.is4k ?? false };
+
+    // Lock the requested target even when the actor's loaded permission snapshot
+    // says they cannot select it. Permissions are reloaded under the security
+    // lock below, so a concurrent grant or revocation cannot change which quota
+    // and user rows are protected.
+    const requestUserId = requestBody.userId ?? user.id;
+    const expectedMediaServerUserAuthority =
+      options.expectedMediaServerUserAuthority;
+
+    if (
+      expectedMediaServerUserAuthority &&
+      expectedMediaServerUserAuthority.userId !== user.id
+    ) {
+      return Promise.reject(
+        new RequestPermissionError(
+          'Media server authority does not belong to the request user.'
+        )
+      );
+    }
+
+    const userLockKey = `request-user:${requestUserId}`;
+    const mediaLockKey = getRequestMediaLockKey(requestBody);
+
+    return runUserSecurityMutation([user.id, requestUserId], async () => {
+      if (expectedMediaServerUserAuthority) {
+        try {
+          await assertMediaServerUserAuthorityCurrent(
+            expectedMediaServerUserAuthority
+          );
+        } catch (error) {
+          if (error instanceof MediaServerUserAuthorityChangedError) {
+            throw new RequestPermissionError(
+              'Media server authority changed before request admission.'
+            );
+          }
+          throw error;
+        }
+      }
+
+      return runWithRequestAdmission([userLockKey, mediaLockKey], () =>
+        this.requestUnlocked(requestBody, user, options)
+      );
+    });
+  }
+
+  private static async requestUnlocked(
+    requestBody: MediaRequestBody,
+    user: User,
+    options: InternalMediaRequestOptions
   ): Promise<MediaRequest> {
     const tmdb = new TheMovieDb();
     const listenbrainz = new ListenBrainzAPI();
@@ -158,6 +318,23 @@ export class MediaRequest {
     const userRepository = getRepository(User);
     const settings = getSettings();
 
+    const currentUser = await userRepository.findOne({
+      where: { id: user.id },
+    });
+    if (!currentUser) {
+      throw new RequestPermissionError('Request user no longer exists.');
+    }
+    if (
+      !isUserCredentialVersionCurrent(
+        currentUser,
+        options.expectedCredentialVersion
+      )
+    ) {
+      throw new RequestPermissionError(
+        'Request credentials changed before admission.'
+      );
+    }
+    user = currentUser;
     let requestUser = user;
 
     if (
@@ -182,13 +359,10 @@ export class MediaRequest {
 
     if (
       requestBody.mediaType === MediaType.MOVIE &&
-      !requestUser.hasPermission(
+      !hasMediaRequestPermission(
+        requestUser,
+        requestBody.mediaType,
         requestBody.is4k
-          ? [Permission.REQUEST_4K, Permission.REQUEST_4K_MOVIE]
-          : [Permission.REQUEST, Permission.REQUEST_MOVIE],
-        {
-          type: 'or',
-        }
       )
     ) {
       throw new RequestPermissionError(
@@ -198,13 +372,10 @@ export class MediaRequest {
       );
     } else if (
       requestBody.mediaType === MediaType.TV &&
-      !requestUser.hasPermission(
+      !hasMediaRequestPermission(
+        requestUser,
+        requestBody.mediaType,
         requestBody.is4k
-          ? [Permission.REQUEST_4K, Permission.REQUEST_4K_TV]
-          : [Permission.REQUEST, Permission.REQUEST_TV],
-        {
-          type: 'or',
-        }
       )
     ) {
       throw new RequestPermissionError(
@@ -214,28 +385,62 @@ export class MediaRequest {
       );
     } else if (
       requestBody.mediaType === MediaType.MUSIC &&
-      !requestUser.hasPermission(
-        [Permission.REQUEST, Permission.REQUEST_MUSIC],
-        {
-          type: 'or',
-        }
-      )
+      !hasMediaRequestPermission(requestUser, requestBody.mediaType)
     ) {
       throw new RequestPermissionError(
         'You do not have permission to make music requests.'
       );
     } else if (
       requestBody.mediaType === MediaType.BOOK &&
-      !requestUser.hasPermission(
-        [Permission.REQUEST, Permission.REQUEST_BOOK],
-        {
-          type: 'or',
-        }
-      )
+      !hasMediaRequestPermission(requestUser, requestBody.mediaType)
     ) {
       throw new RequestPermissionError(
         'You do not have permission to make book requests.'
       );
+    }
+
+    if (canUseAdvancedRequestOptions(user) && requestBody.serverId != null) {
+      const serviceName =
+        requestBody.mediaType === MediaType.MOVIE
+          ? 'Radarr'
+          : requestBody.mediaType === MediaType.TV
+            ? 'Sonarr'
+            : requestBody.mediaType === MediaType.MUSIC
+              ? 'Lidarr'
+              : 'Bookshelf';
+      const selectedService =
+        requestBody.mediaType === MediaType.MOVIE
+          ? settings.radarr.find(({ id }) => id === requestBody.serverId)
+          : requestBody.mediaType === MediaType.TV
+            ? settings.sonarr.find(({ id }) => id === requestBody.serverId)
+            : requestBody.mediaType === MediaType.MUSIC
+              ? settings.lidarr.find(({ id }) => id === requestBody.serverId)
+              : settings.readarr.find(({ id }) => id === requestBody.serverId);
+      if (!selectedService) {
+        throw new ServiceConfigurationError(
+          `Selected ${serviceName} server does not exist.`
+        );
+      }
+      if (
+        (requestBody.mediaType === MediaType.MOVIE ||
+          requestBody.mediaType === MediaType.TV) &&
+        selectedService.is4k !== Boolean(requestBody.is4k)
+      ) {
+        throw new ServiceConfigurationError(
+          `Selected ${serviceName} server does not match the requested quality tier.`
+        );
+      }
+      if (
+        requestBody.mediaType === MediaType.BOOK &&
+        ((selectedService as ReadarrSettings).serviceType ?? 'ebook') !==
+          (requestBody.format === 'audiobook' ? 'audiobook' : 'ebook')
+      ) {
+        throw new ServiceConfigurationError(
+          `Selected Bookshelf server is not configured for ${
+            requestBody.format === 'audiobook' ? 'audiobook' : 'ebook'
+          }.`
+        );
+      }
     }
 
     const quotas = await requestUser.getQuota();
@@ -256,7 +461,13 @@ export class MediaRequest {
       throw new QuotaRestrictedError('Book Quota exceeded.');
     }
 
-    if (requestBody.mediaType === MediaType.MUSIC) {
+    // Canonical media admission must precede Servarr admission. Media mutation
+    // paths use that order too; reversing it here can deadlock two PostgreSQL
+    // instances when a request races a service-backed media mutation.
+    if (
+      requestBody.mediaType === MediaType.MUSIC &&
+      !options.resolvedMusicMbId
+    ) {
       const musicMbId = normalizeMusicBrainzId(
         await resolveMusicReleaseGroupId(
           requestBody.mediaId.toString(),
@@ -264,6 +475,183 @@ export class MediaRequest {
           musicbrainz
         )
       );
+
+      return runWithRequestAdmission(
+        [`request-canonical:music:${musicMbId}`],
+        () =>
+          this.requestUnlocked(requestBody, user, {
+            ...options,
+            resolvedMusicMbId: musicMbId,
+          })
+      );
+    }
+
+    if (requestBody.mediaType === MediaType.BOOK && !options.resolvedBook) {
+      const openLibraryId = normalizeOpenLibraryWorkId(
+        requestBody.mediaId.toString()
+      );
+      const [, editions] = await Promise.all([
+        openLibrary.getWork(openLibraryId),
+        openLibrary.getWorkEditions(openLibraryId).catch(() => ({
+          size: 0,
+          entries: [],
+        })),
+      ]);
+      const openLibraryEditionId = requestBody.editionId
+        ? normalizeOpenLibraryEditionId(requestBody.editionId.toString())
+        : undefined;
+      const maxIsbnCandidates =
+        MAX_BOOK_REQUEST_IDENTIFIER_CANDIDATES -
+        1 -
+        (openLibraryEditionId ? 1 : 0);
+      const normalizedIsbns = new Set<string>();
+      const addIsbn = (value?: string) => {
+        if (normalizedIsbns.size >= maxIsbnCandidates) {
+          return;
+        }
+        const normalized = normalizeValidIsbn(value);
+        if (normalized) {
+          normalizedIsbns.add(normalized);
+        }
+      };
+      addIsbn(requestBody.isbn13);
+      for (const edition of editions.entries.slice(0, 100)) {
+        for (const isbn of edition.isbn_13 ?? []) {
+          addIsbn(isbn);
+        }
+        for (const isbn of edition.isbn_10 ?? []) {
+          addIsbn(isbn);
+        }
+        if (normalizedIsbns.size >= maxIsbnCandidates) {
+          break;
+        }
+      }
+
+      const resolvedBook: ResolvedBookRequest = {
+        openLibraryId,
+        identifierCandidates: [
+          {
+            provider: MediaIdentifierProvider.OPENLIBRARY,
+            value: openLibraryId,
+            canonical: true,
+          },
+          ...[...normalizedIsbns].map((isbn) => ({
+            provider: MediaIdentifierProvider.ISBN,
+            value: isbn,
+            canonical: false,
+          })),
+          ...(openLibraryEditionId
+            ? [
+                {
+                  provider: MediaIdentifierProvider.OPENLIBRARY_EDITION,
+                  value: openLibraryEditionId,
+                  canonical: false,
+                },
+              ]
+            : []),
+        ],
+      };
+
+      return runWithRequestAdmission(
+        resolvedBook.identifierCandidates.map(
+          (identifier) =>
+            `request-canonical:book:${identifier.provider}:${identifier.value}`
+        ),
+        () =>
+          this.requestUnlocked(requestBody, user, {
+            ...options,
+            resolvedBook,
+          })
+      );
+    }
+
+    if (!options.serviceAdmissionGranted) {
+      const useAdvancedOptions = canUseAdvancedRequestOptions(user);
+      const services: {
+        serviceType: ServarrServiceType;
+        serviceId: number;
+      }[] = [];
+      const addService = (
+        serviceType: ServarrServiceType,
+        serviceId: number | null | undefined
+      ) => {
+        if (serviceId != null) services.push({ serviceType, serviceId });
+      };
+
+      if (requestBody.mediaType === MediaType.MOVIE) {
+        addService(
+          'radarr',
+          useAdvancedOptions && requestBody.serverId != null
+            ? requestBody.serverId
+            : settings.radarr.find(
+                ({ is4k, isDefault }) =>
+                  isDefault && is4k === Boolean(requestBody.is4k)
+              )?.id
+        );
+      } else if (requestBody.mediaType === MediaType.TV) {
+        addService(
+          'sonarr',
+          useAdvancedOptions && requestBody.serverId != null
+            ? requestBody.serverId
+            : settings.sonarr.find(
+                ({ is4k, isDefault }) =>
+                  isDefault && is4k === Boolean(requestBody.is4k)
+              )?.id
+        );
+      } else if (requestBody.mediaType === MediaType.MUSIC) {
+        addService(
+          'lidarr',
+          useAdvancedOptions && requestBody.serverId != null
+            ? requestBody.serverId
+            : settings.lidarr.find(({ isDefault }) => isDefault)?.id
+        );
+      } else {
+        const format = requestBody.format ?? 'ebook';
+        if (format === 'both') {
+          addService(
+            'readarr',
+            useAdvancedOptions && requestBody.serverId != null
+              ? requestBody.serverId
+              : settings.readarr.find(
+                  ({ isDefault, serviceType }) =>
+                    isDefault && (serviceType ?? 'ebook') === 'ebook'
+                )?.id
+          );
+          addService(
+            'readarr',
+            settings.readarr.find(
+              ({ isDefault, serviceType }) =>
+                isDefault && serviceType === 'audiobook'
+            )?.id
+          );
+        } else {
+          addService(
+            'readarr',
+            useAdvancedOptions && requestBody.serverId != null
+              ? requestBody.serverId
+              : settings.readarr.find(
+                  ({ isDefault, serviceType }) =>
+                    isDefault &&
+                    (serviceType ?? 'ebook') ===
+                      (format === 'audiobook' ? 'audiobook' : 'ebook')
+                )?.id
+          );
+        }
+      }
+
+      if (services.length > 0) {
+        return runWithServarrServiceAdmission(services, () =>
+          this.requestUnlocked(requestBody, user, {
+            ...options,
+            serviceAdmissionGranted: true,
+          })
+        );
+      }
+    }
+
+    if (requestBody.mediaType === MediaType.MUSIC) {
+      const musicMbId = options.resolvedMusicMbId!;
+
       const blocklistedAlbum = await getRepository(Blocklist).findOne({
         where: {
           externalId: musicMbId,
@@ -282,7 +670,6 @@ export class MediaRequest {
 
       let media = await mediaRepository.findOne({
         where: { mbId: musicMbId, mediaType: MediaType.MUSIC },
-        relations: ['requests'],
       });
 
       if (!media) {
@@ -304,17 +691,23 @@ export class MediaRequest {
         media.status = MediaStatus.PENDING;
       }
 
-      const existing = await requestRepository
+      const hasActiveRequest = await requestRepository
         .createQueryBuilder('request')
         .leftJoin('request.media', 'media')
-        .leftJoinAndSelect('request.requestedBy', 'user')
         .where('media.mbId = :mbId', { mbId: musicMbId })
         .andWhere('media.mediaType = :mediaType', {
           mediaType: MediaType.MUSIC,
         })
-        .getMany();
+        .andWhere('request.status NOT IN (:...inactiveStatuses)', {
+          inactiveStatuses: [
+            MediaRequestStatus.DECLINED,
+            MediaRequestStatus.FAILED,
+            MediaRequestStatus.COMPLETED,
+          ],
+        })
+        .getExists();
 
-      if (existing.some((request) => isActiveMediaRequest(request))) {
+      if (hasActiveRequest) {
         throw new DuplicateMediaRequestError(
           'Request for this album already exists.'
         );
@@ -341,7 +734,7 @@ export class MediaRequest {
         );
       }
 
-      if (!defaultLidarr && !requestedServerId) {
+      if (!defaultLidarr && requestedServerId == null) {
         throw new ServiceConfigurationError(
           'No default Lidarr server configured.'
         );
@@ -367,31 +760,29 @@ export class MediaRequest {
         const overrideRules = await getRepository(OverrideRule).find({
           where: { lidarrServiceId: serverId },
         });
-        const prioritizedRule = overrideRules.find(
-          (rule) =>
-            !rule.users ||
-            rule.users
-              .split(',')
-              .some((userId) => Number(userId) === requestUser.id)
+        const prioritizedRule = selectMostSpecificOverrideRule(
+          overrideRules.filter((rule) =>
+            overrideRuleMatchesUser(rule, requestUser.id)
+          ),
+          ['users']
         );
 
         if (prioritizedRule?.rootFolder) {
           rootFolder = prioritizedRule.rootFolder;
         }
-        if (prioritizedRule?.profileId) {
-          profileId = prioritizedRule.profileId;
+        const overrideProfileId = prioritizedRule
+          ? getOverrideRuleProfileId(prioritizedRule)
+          : undefined;
+        if (overrideProfileId !== undefined) {
+          profileId = overrideProfileId;
         }
-        if (prioritizedRule?.tags) {
-          tags = [
-            ...new Set([
-              ...(tags || []),
-              ...prioritizedRule.tags.split(',').map((tag) => Number(tag)),
-            ]),
-          ];
+        const overrideTags = prioritizedRule
+          ? getOverrideRuleTagIds(prioritizedRule)
+          : [];
+        if (overrideTags.length > 0) {
+          tags = [...new Set([...(tags || []), ...overrideTags])];
         }
       }
-
-      await mediaRepository.save(media);
 
       const autoApproved = user.hasPermission(
         [
@@ -419,82 +810,22 @@ export class MediaRequest {
         isAutoRequest: options.isAutoRequest ?? false,
       });
 
-      await requestRepository.save(request);
-      return request;
+      return dataSource.transaction(async (manager) => {
+        const savedMedia = await manager.getRepository(Media).save(media!);
+        request.media = savedMedia;
+        return manager.getRepository(MediaRequest).save(request);
+      });
     }
 
     if (requestBody.mediaType === MediaType.BOOK) {
-      const openLibraryId = normalizeOpenLibraryWorkId(
-        requestBody.mediaId.toString()
-      );
-      const [, editions] = await Promise.all([
-        openLibrary.getWork(openLibraryId),
-        openLibrary.getWorkEditions(openLibraryId).catch(() => ({
-          size: 0,
-          entries: [],
-        })),
-      ]);
-      const normalizedRequestIsbn = normalizeValidIsbn(requestBody.isbn13);
-      const requestIsbn =
-        normalizedRequestIsbn ??
-        editions.entries
-          .flatMap((edition) => [
-            ...(edition.isbn_13 ?? []),
-            ...(edition.isbn_10 ?? []),
-          ])
-          .map((isbn) => normalizeValidIsbn(isbn))
-          .find((isbn): isbn is string => !!isbn);
-      const openLibraryEditionId = requestBody.editionId
-        ? normalizeOpenLibraryEditionId(requestBody.editionId.toString())
-        : undefined;
-      const identifierCandidates = [
-        {
-          provider: MediaIdentifierProvider.OPENLIBRARY,
-          value: openLibraryId,
-          canonical: true,
-        },
-        ...(requestIsbn
-          ? [
-              {
-                provider: MediaIdentifierProvider.ISBN,
-                value: requestIsbn,
-                canonical: false,
-              },
-            ]
-          : []),
-        ...(openLibraryEditionId
-          ? [
-              {
-                provider: MediaIdentifierProvider.OPENLIBRARY_EDITION,
-                value: openLibraryEditionId,
-                canonical: false,
-              },
-            ]
-          : []),
-      ];
+      const resolvedBook = options.resolvedBook!;
+
+      const { openLibraryId, identifierCandidates } = resolvedBook;
       const blocklistedBook = await getRepository(Blocklist).findOne({
-        where: [
-          {
-            externalId: openLibraryId,
-            mediaType: MediaType.BOOK,
-          },
-          ...(openLibraryEditionId
-            ? [
-                {
-                  externalId: openLibraryEditionId,
-                  mediaType: MediaType.BOOK,
-                },
-              ]
-            : []),
-          ...(requestIsbn
-            ? [
-                {
-                  externalId: requestIsbn,
-                  mediaType: MediaType.BOOK,
-                },
-              ]
-            : []),
-        ],
+        where: identifierCandidates.map((identifier) => ({
+          externalId: identifier.value,
+          mediaType: MediaType.BOOK,
+        })),
       });
 
       if (blocklistedBook) {
@@ -506,18 +837,25 @@ export class MediaRequest {
         throw new BlocklistedMediaError('This book is blocklisted.');
       }
 
-      const existingIdentifier = await mediaIdentifierRepository.findOne({
+      const existingIdentifiers = await mediaIdentifierRepository.find({
         where: identifierCandidates.map((identifier) => ({
           provider: identifier.provider,
           value: identifier.value,
         })),
-        relations: {
-          media: {
-            requests: true,
-            identifiers: true,
-          },
-        },
+        relations: { media: true },
+        relationLoadStrategy: 'query',
+        order: { id: 'ASC' },
       });
+      const existingIdentifier = identifierCandidates
+        .map((candidate) =>
+          existingIdentifiers.find(
+            (identifier) =>
+              identifier.provider === candidate.provider &&
+              identifier.value === candidate.value &&
+              identifier.media.mediaType === MediaType.BOOK
+          )
+        )
+        .find((identifier) => identifier !== undefined);
 
       let media = existingIdentifier?.media;
 
@@ -527,14 +865,6 @@ export class MediaRequest {
           status: MediaStatus.PENDING,
           status4k: MediaStatus.UNKNOWN,
           mediaType: MediaType.BOOK,
-          identifiers: identifierCandidates.map(
-            (identifier) =>
-              new MediaIdentifier({
-                provider: identifier.provider,
-                value: identifier.value,
-                canonical: identifier.canonical,
-              })
-          ),
         });
       } else if (media.status === MediaStatus.BLOCKLISTED) {
         logger.warn('Request for book blocked due to being blocklisted', {
@@ -548,72 +878,33 @@ export class MediaRequest {
       }
 
       const requestedBookFormat = requestBody.format ?? 'ebook';
-      const requestedFormats =
-        requestedBookFormat === 'both'
-          ? (['ebook', 'audiobook'] as const)
-          : ([requestedBookFormat] as const);
-      const hasActiveOverlappingBookRequest = media?.requests?.some(
-        (request) => {
-          if (!isActiveMediaRequest(request)) {
-            return false;
-          }
-
-          const existingBookFormat = request.bookFormat ?? 'ebook';
-          const existingFormats =
-            existingBookFormat === 'both'
-              ? (['ebook', 'audiobook'] as const)
-              : ([existingBookFormat] as const);
-
-          return existingFormats.some((existingFormat) =>
-            requestedFormats.includes(existingFormat)
-          );
-        }
-      );
+      let activeBookRequestQuery = requestRepository
+        .createQueryBuilder('request')
+        .where('request.media = :mediaId', { mediaId: media.id })
+        .andWhere('request.status NOT IN (:...inactiveStatuses)', {
+          inactiveStatuses: [
+            MediaRequestStatus.DECLINED,
+            MediaRequestStatus.FAILED,
+            MediaRequestStatus.COMPLETED,
+          ],
+        });
+      if (requestedBookFormat === 'ebook') {
+        activeBookRequestQuery = activeBookRequestQuery.andWhere(
+          `COALESCE(request.bookFormat, 'ebook') IN ('ebook', 'both')`
+        );
+      } else if (requestedBookFormat === 'audiobook') {
+        activeBookRequestQuery = activeBookRequestQuery.andWhere(
+          `request.bookFormat IN ('audiobook', 'both')`
+        );
+      }
+      const hasActiveOverlappingBookRequest = media.id
+        ? await activeBookRequestQuery.getExists()
+        : false;
 
       if (hasActiveOverlappingBookRequest) {
         throw new DuplicateMediaRequestError(
           'Request for this book already exists.'
         );
-      }
-
-      media = await mediaRepository.save(media);
-
-      for (const identifier of identifierCandidates) {
-        const hasIdentifier = media.identifiers?.some(
-          (existing) =>
-            existing.provider === identifier.provider &&
-            existing.value === identifier.value
-        );
-
-        if (!hasIdentifier) {
-          await mediaIdentifierRepository.save(
-            new MediaIdentifier({
-              media,
-              provider: identifier.provider,
-              value: identifier.value,
-              canonical: identifier.canonical,
-            })
-          );
-        }
-      }
-
-      if (normalizedRequestIsbn && normalizedRequestIsbn !== requestIsbn) {
-        const hasRequestIsbn = media.identifiers?.some(
-          (identifier) =>
-            identifier.provider === MediaIdentifierProvider.ISBN &&
-            identifier.value === normalizedRequestIsbn
-        );
-
-        if (!hasRequestIsbn) {
-          await mediaIdentifierRepository.save(
-            new MediaIdentifier({
-              media,
-              provider: MediaIdentifierProvider.ISBN,
-              value: normalizedRequestIsbn,
-              canonical: false,
-            })
-          );
-        }
       }
 
       const requestedServiceType =
@@ -640,7 +931,6 @@ export class MediaRequest {
         requestedServerId !== undefined &&
         requestedServerId !== null &&
         requestedServer &&
-        requestedBookFormat !== 'both' &&
         (requestedServer.serviceType ?? 'ebook') !== requestedServiceType
       ) {
         throw new ServiceConfigurationError(
@@ -662,12 +952,15 @@ export class MediaRequest {
       );
 
       if (requestedBookFormat === 'both') {
-        if (!defaultEbookReadarr || !defaultAudiobookReadarr) {
+        if (
+          !(requestedServer ?? defaultEbookReadarr) ||
+          !defaultAudiobookReadarr
+        ) {
           throw new ServiceConfigurationError(
             'Both book formats require default ebook and audiobook Bookshelf servers.'
           );
         }
-      } else if (!defaultReadarr && !requestedServerId) {
+      } else if (!defaultReadarr && requestedServerId == null) {
         throw new ServiceConfigurationError(
           `No default Bookshelf server configured for ${requestedServiceType}.`
         );
@@ -711,8 +1004,41 @@ export class MediaRequest {
         isAutoRequest: options.isAutoRequest ?? false,
       });
 
-      await requestRepository.save(request);
-      return request;
+      return dataSource.transaction(async (manager) => {
+        const transactionalMediaRepository = manager.getRepository(Media);
+        const transactionalIdentifierRepository =
+          manager.getRepository(MediaIdentifier);
+        const savedMedia = await transactionalMediaRepository.save(media);
+
+        for (const identifier of identifierCandidates) {
+          const hasIdentifier = existingIdentifiers.some(
+            (existing) =>
+              existing.provider === identifier.provider &&
+              existing.value === identifier.value &&
+              existing.media.id === savedMedia.id
+          );
+          const isOwnedByOtherMedia = existingIdentifiers.some(
+            (existing) =>
+              existing.provider === identifier.provider &&
+              existing.value === identifier.value &&
+              existing.media.id !== savedMedia.id
+          );
+
+          if (!hasIdentifier && !isOwnedByOtherMedia) {
+            await transactionalIdentifierRepository.save(
+              new MediaIdentifier({
+                media: savedMedia,
+                provider: identifier.provider,
+                value: identifier.value,
+                canonical: identifier.canonical,
+              })
+            );
+          }
+        }
+
+        request.media = savedMedia;
+        return manager.getRepository(MediaRequest).save(request);
+      });
     }
 
     const tmdbMedia =
@@ -729,7 +1055,6 @@ export class MediaRequest {
         tmdbId: requestBody.mediaId as number,
         mediaType: requestBody.mediaType,
       },
-      relations: ['requests'],
     });
 
     if (!media && requestBody.mediaType === MediaType.TV && tvdbId) {
@@ -738,7 +1063,6 @@ export class MediaRequest {
           tvdbId,
           mediaType: MediaType.TV,
         },
-        relations: ['requests'],
       });
 
       if (media && media.tmdbId !== tmdbMedia.id) {
@@ -788,7 +1112,6 @@ export class MediaRequest {
     const existingRequestQuery = requestRepository
       .createQueryBuilder('request')
       .leftJoin('request.media', 'media')
-      .leftJoinAndSelect('request.requestedBy', 'user')
       .where('request.is4k = :is4k', { is4k: requestBody.is4k })
       .andWhere('media.mediaType = :mediaType', {
         mediaType: requestBody.mediaType,
@@ -805,14 +1128,19 @@ export class MediaRequest {
       });
     }
 
-    const existing = await existingRequestQuery.getMany();
-
-    if (existing && existing.length > 0) {
-      // If there is an existing active movie request, don't allow a new one.
-      if (
-        requestBody.mediaType === MediaType.MOVIE &&
-        existing.some((request) => isActiveMediaRequest(request))
-      ) {
+    // If there is an existing active movie request, don't allow a new one.
+    if (requestBody.mediaType === MediaType.MOVIE) {
+      const hasActiveMovieRequest = await existingRequestQuery
+        .clone()
+        .andWhere('request.status NOT IN (:...inactiveStatuses)', {
+          inactiveStatuses: [
+            MediaRequestStatus.DECLINED,
+            MediaRequestStatus.FAILED,
+            MediaRequestStatus.COMPLETED,
+          ],
+        })
+        .getExists();
+      if (hasActiveMovieRequest) {
         logger.warn('Duplicate request for media blocked', {
           tmdbId: tmdbMedia.id,
           mediaType: requestBody.mediaType,
@@ -824,18 +1152,24 @@ export class MediaRequest {
           'Request for this media already exists.'
         );
       }
+    }
 
-      // If an existing auto-request for this media exists from the same user,
-      // don't allow a new one.
-      if (
-        existing.find(
-          (r) => r.requestedBy.id === requestUser.id && r.isAutoRequest
-        )
-      ) {
-        throw new DuplicateMediaRequestError(
-          'Auto-request for this media and user already exists.'
-        );
-      }
+    // If an existing auto-request for this media exists from the same user,
+    // don't allow a new one.
+    const hasExistingAutoRequest = await existingRequestQuery
+      .clone()
+      .innerJoin('request.requestedBy', 'requestedBy')
+      .andWhere('requestedBy.id = :requestUserId', {
+        requestUserId: requestUser.id,
+      })
+      .andWhere('request.isAutoRequest = :isAutoRequest', {
+        isAutoRequest: true,
+      })
+      .getExists();
+    if (hasExistingAutoRequest) {
+      throw new DuplicateMediaRequestError(
+        'Auto-request for this media and user already exists.'
+      );
     }
 
     const useAdvancedOptions = canUseAdvancedRequestOptions(user);
@@ -848,25 +1182,51 @@ export class MediaRequest {
       : settings.sonarr.find((s) => !s.is4k && s.isDefault);
     const defaultServer =
       requestBody.mediaType === MediaType.MOVIE ? defaultRadarr : defaultSonarr;
-    const serverId = useAdvancedOptions
-      ? (requestBody.serverId ?? defaultServer?.id)
-      : defaultServer?.id;
+    const requestedServerId = useAdvancedOptions
+      ? requestBody.serverId
+      : undefined;
+    const requestedServer =
+      requestedServerId == null
+        ? undefined
+        : requestBody.mediaType === MediaType.MOVIE
+          ? settings.radarr.find(({ id }) => id === requestedServerId)
+          : settings.sonarr.find(({ id }) => id === requestedServerId);
+    if (requestedServerId != null && !requestedServer) {
+      throw new ServiceConfigurationError(
+        `Selected ${
+          requestBody.mediaType === MediaType.MOVIE ? 'Radarr' : 'Sonarr'
+        } server does not exist.`
+      );
+    }
+    if (requestedServer && requestedServer.is4k !== Boolean(requestBody.is4k)) {
+      throw new ServiceConfigurationError(
+        `Selected ${
+          requestBody.mediaType === MediaType.MOVIE ? 'Radarr' : 'Sonarr'
+        } server does not match the requested quality tier.`
+      );
+    }
+    const selectedServer = requestedServer ?? defaultServer;
+    const serverId = selectedServer?.id;
+    const selectedSonarr =
+      requestBody.mediaType === MediaType.TV
+        ? (selectedServer as SonarrSettings)
+        : undefined;
 
     let rootFolder = useAdvancedOptions
-      ? (requestBody.rootFolder ?? defaultServer?.activeDirectory)
-      : defaultServer?.activeDirectory;
+      ? (requestBody.rootFolder ?? selectedServer?.activeDirectory)
+      : selectedServer?.activeDirectory;
     let profileId = useAdvancedOptions
-      ? (requestBody.profileId ?? defaultServer?.activeProfileId)
-      : defaultServer?.activeProfileId;
+      ? (requestBody.profileId ?? selectedServer?.activeProfileId)
+      : selectedServer?.activeProfileId;
     let tags = useAdvancedOptions
-      ? (requestBody.tags ?? defaultServer?.tags)
-      : defaultServer?.tags;
+      ? (requestBody.tags ?? selectedServer?.tags)
+      : selectedServer?.tags;
     const languageProfileId =
       requestBody.mediaType === MediaType.TV
         ? useAdvancedOptions
           ? (requestBody.languageProfileId ??
-            defaultSonarr?.activeLanguageProfileId)
-          : defaultSonarr?.activeLanguageProfileId
+            selectedSonarr?.activeLanguageProfileId)
+          : selectedSonarr?.activeLanguageProfileId
         : undefined;
 
     if (useOverrides) {
@@ -897,12 +1257,7 @@ export class MediaRequest {
           return false;
         }
 
-        if (
-          rule.users &&
-          !rule.users
-            .split(',')
-            .some((userId) => Number(userId) === requestUser.id)
-        ) {
+        if (!overrideRuleMatchesUser(rule, requestUser.id)) {
           return false;
         }
         if (
@@ -946,32 +1301,20 @@ export class MediaRequest {
         return true;
       });
 
-      // hacky way to prioritize rules
-      // TODO: make this better
-      const prioritizedRule = appliedOverrideRules.sort((a, b) => {
-        const keys: (keyof OverrideRule)[] = ['genre', 'language', 'keywords'];
-
-        const aSpecificity = keys.filter((key) => a[key] !== null).length;
-        const bSpecificity = keys.filter((key) => b[key] !== null).length;
-
-        // Take the rule with the most specific condition first
-        return bSpecificity - aSpecificity;
-      })[0];
+      const prioritizedRule =
+        selectMostSpecificOverrideRule(appliedOverrideRules);
 
       if (prioritizedRule) {
         if (prioritizedRule.rootFolder) {
           rootFolder = prioritizedRule.rootFolder;
         }
-        if (prioritizedRule.profileId) {
-          profileId = prioritizedRule.profileId;
+        const overrideProfileId = getOverrideRuleProfileId(prioritizedRule);
+        if (overrideProfileId !== undefined) {
+          profileId = overrideProfileId;
         }
-        if (prioritizedRule.tags) {
-          tags = [
-            ...new Set([
-              ...(tags || []),
-              ...prioritizedRule.tags.split(',').map((tag) => Number(tag)),
-            ]),
-          ];
+        const overrideTags = getOverrideRuleTagIds(prioritizedRule);
+        if (overrideTags.length > 0) {
+          tags = [...new Set([...(tags || []), ...overrideTags])];
         }
 
         logger.debug('Override rule applied.', {
@@ -982,8 +1325,6 @@ export class MediaRequest {
     }
 
     if (requestBody.mediaType === MediaType.MOVIE) {
-      await mediaRepository.save(media);
-
       const request = new MediaRequest({
         type: MediaType.MOVIE,
         media,
@@ -1025,8 +1366,11 @@ export class MediaRequest {
         isAutoRequest: options.isAutoRequest ?? false,
       });
 
-      await requestRepository.save(request);
-      return request;
+      return dataSource.transaction(async (manager) => {
+        const savedMedia = await manager.getRepository(Media).save(media!);
+        request.media = savedMedia;
+        return manager.getRepository(MediaRequest).save(request);
+      });
     } else {
       const tmdbMediaShow = tmdbMedia as Awaited<
         ReturnType<typeof tmdb.getTvShow>
@@ -1041,27 +1385,36 @@ export class MediaRequest {
         requestedSeasons = requestedSeasons.filter((sn) => sn > 0);
       }
 
-      const getFinalSeasons = (requestMedia: Media): number[] => {
-        let existingSeasons: number[] = [];
-
-        // We need to check existing requests on this title to make sure we don't double up on seasons that were
-        // already requested. In the case they were, we just throw out any duplicates but still approve the request.
-        // (Unless there are no seasons, in which case we abort)
-        if (requestMedia.requests) {
-          existingSeasons = requestMedia.requests
-            .filter(
-              (request) =>
-                request.is4k === requestBody.is4k &&
-                isActiveMediaRequest(request)
-            )
-            .reduce((seasons, request) => {
-              const combinedSeasons = request.seasons.map(
-                (season) => season.seasonNumber
-              );
-
-              return [...seasons, ...combinedSeasons];
-            }, [] as number[]);
-        }
+      const getFinalSeasons = async (
+        requestMedia: Media
+      ): Promise<number[]> => {
+        const activeRequestedSeasonRows = requestMedia.id
+          ? await getRepository(SeasonRequest)
+              .createQueryBuilder('requestedSeason')
+              .innerJoin('requestedSeason.request', 'existingRequest')
+              .innerJoin('existingRequest.media', 'existingMedia')
+              .select('DISTINCT requestedSeason.seasonNumber', 'seasonNumber')
+              .where('existingMedia.id = :mediaId', {
+                mediaId: requestMedia.id,
+              })
+              .andWhere('existingRequest.is4k = :is4k', {
+                is4k: requestBody.is4k,
+              })
+              .andWhere(
+                'existingRequest.status NOT IN (:...inactiveStatuses)',
+                {
+                  inactiveStatuses: [
+                    MediaRequestStatus.DECLINED,
+                    MediaRequestStatus.FAILED,
+                    MediaRequestStatus.COMPLETED,
+                  ],
+                }
+              )
+              .getRawMany<{ seasonNumber: number | string }>()
+          : [];
+        let existingSeasons = activeRequestedSeasonRows
+          .map(({ seasonNumber }) => Number(seasonNumber))
+          .filter(Number.isSafeInteger);
 
         // We should also check seasons that are available/partially available but don't have existing requests
         if (requestMedia.seasons) {
@@ -1082,7 +1435,7 @@ export class MediaRequest {
         return requestedSeasons.filter((rs) => !existingSeasons.includes(rs));
       };
 
-      let finalSeasons = getFinalSeasons(media);
+      let finalSeasons = await getFinalSeasons(media);
 
       if (finalSeasons.length === 0) {
         throw new NoSeasonsAvailableError('No seasons available to request');
@@ -1093,8 +1446,59 @@ export class MediaRequest {
         throw new QuotaRestrictedError('Series Quota exceeded.');
       }
 
+      const persistTvRequest = (
+        requestMedia: Media,
+        seasons: number[]
+      ): Promise<MediaRequest> => {
+        const autoApproved = user.hasPermission(
+          [
+            requestBody.is4k
+              ? Permission.AUTO_APPROVE_4K
+              : Permission.AUTO_APPROVE,
+            requestBody.is4k
+              ? Permission.AUTO_APPROVE_4K_TV
+              : Permission.AUTO_APPROVE_TV,
+            Permission.MANAGE_REQUESTS,
+          ],
+          { type: 'or' }
+        );
+        const request = new MediaRequest({
+          type: MediaType.TV,
+          media: requestMedia,
+          requestedBy: requestUser,
+          status: autoApproved
+            ? MediaRequestStatus.APPROVED
+            : MediaRequestStatus.PENDING,
+          modifiedBy: autoApproved ? user : undefined,
+          is4k: requestBody.is4k,
+          serverId,
+          profileId: profileId,
+          rootFolder: rootFolder,
+          languageProfileId,
+          tags: tags,
+          seasons: seasons.map(
+            (sn) =>
+              new SeasonRequest({
+                seasonNumber: sn,
+                status: autoApproved
+                  ? MediaRequestStatus.APPROVED
+                  : MediaRequestStatus.PENDING,
+              })
+          ),
+          isAutoRequest: options.isAutoRequest ?? false,
+        });
+
+        return dataSource.transaction(async (manager) => {
+          const savedMedia = await manager
+            .getRepository(Media)
+            .save(requestMedia);
+          request.media = savedMedia;
+          return manager.getRepository(MediaRequest).save(request);
+        });
+      };
+
       try {
-        await mediaRepository.save(media);
+        return await persistTvRequest(media, finalSeasons);
       } catch (e) {
         if (!tvdbId || !isTvdbConstraintError(e)) {
           throw e;
@@ -1105,7 +1509,6 @@ export class MediaRequest {
             tvdbId,
             mediaType: MediaType.TV,
           },
-          relations: ['requests'],
         });
 
         if (!existingMedia) {
@@ -1133,79 +1536,14 @@ export class MediaRequest {
           media.status4k = MediaStatus.PENDING;
         }
 
-        finalSeasons = getFinalSeasons(media);
+        finalSeasons = await getFinalSeasons(media);
 
         if (finalSeasons.length === 0) {
           throw new NoSeasonsAvailableError('No seasons available to request');
         }
 
-        await mediaRepository.save(media);
+        return persistTvRequest(media, finalSeasons);
       }
-
-      const request = new MediaRequest({
-        type: MediaType.TV,
-        media,
-        requestedBy: requestUser,
-        // If the user is an admin or has the "auto approve" permission, automatically approve the request
-        status: user.hasPermission(
-          [
-            requestBody.is4k
-              ? Permission.AUTO_APPROVE_4K
-              : Permission.AUTO_APPROVE,
-            requestBody.is4k
-              ? Permission.AUTO_APPROVE_4K_TV
-              : Permission.AUTO_APPROVE_TV,
-            Permission.MANAGE_REQUESTS,
-          ],
-          { type: 'or' }
-        )
-          ? MediaRequestStatus.APPROVED
-          : MediaRequestStatus.PENDING,
-        modifiedBy: user.hasPermission(
-          [
-            requestBody.is4k
-              ? Permission.AUTO_APPROVE_4K
-              : Permission.AUTO_APPROVE,
-            requestBody.is4k
-              ? Permission.AUTO_APPROVE_4K_TV
-              : Permission.AUTO_APPROVE_TV,
-            Permission.MANAGE_REQUESTS,
-          ],
-          { type: 'or' }
-        )
-          ? user
-          : undefined,
-        is4k: requestBody.is4k,
-        serverId,
-        profileId: profileId,
-        rootFolder: rootFolder,
-        languageProfileId,
-        tags: tags,
-        seasons: finalSeasons.map(
-          (sn) =>
-            new SeasonRequest({
-              seasonNumber: sn,
-              status: user.hasPermission(
-                [
-                  requestBody.is4k
-                    ? Permission.AUTO_APPROVE_4K
-                    : Permission.AUTO_APPROVE,
-                  requestBody.is4k
-                    ? Permission.AUTO_APPROVE_4K_TV
-                    : Permission.AUTO_APPROVE_TV,
-                  Permission.MANAGE_REQUESTS,
-                ],
-                { type: 'or' }
-              )
-                ? MediaRequestStatus.APPROVED
-                : MediaRequestStatus.PENDING,
-            })
-        ),
-        isAutoRequest: options.isAutoRequest ?? false,
-      });
-
-      await requestRepository.save(request);
-      return request;
     }
   }
 
@@ -1318,106 +1656,6 @@ export class MediaRequest {
     Object.assign(this, init);
   }
 
-  @AfterInsert()
-  public async notifyNewRequest(): Promise<void> {
-    if (this.status === MediaRequestStatus.PENDING) {
-      const mediaRepository = getRepository(Media);
-      const media = await mediaRepository.findOne({
-        where: { id: this.media.id },
-      });
-      if (!media) {
-        logger.error('Media data not found', {
-          label: 'Media Request',
-          requestId: this.id,
-          mediaId: this.media.id,
-        });
-        return;
-      }
-
-      MediaRequest.sendNotification(this, media, Notification.MEDIA_PENDING);
-
-      if (this.isAutoRequest) {
-        MediaRequest.sendNotification(
-          this,
-          media,
-          Notification.MEDIA_AUTO_REQUESTED
-        );
-      }
-    }
-  }
-
-  /**
-   * Notification for approval
-   *
-   * We only check on AfterUpdate as to not trigger this for
-   * auto approved content
-   */
-  @AfterUpdate()
-  public async notifyApprovedOrDeclined(autoApproved = false): Promise<void> {
-    if (
-      this.status === MediaRequestStatus.APPROVED ||
-      this.status === MediaRequestStatus.DECLINED
-    ) {
-      const mediaRepository = getRepository(Media);
-      const media = await mediaRepository.findOne({
-        where: { id: this.media.id },
-      });
-      if (!media) {
-        logger.error('Media data not found', {
-          label: 'Media Request',
-          requestId: this.id,
-          mediaId: this.media.id,
-        });
-        return;
-      }
-
-      if (
-        this.status === MediaRequestStatus.APPROVED &&
-        media[this.is4k ? 'status4k' : 'status'] === MediaStatus.AVAILABLE
-      ) {
-        logger.info(
-          'Media is already available. Sending availability notification instead of approval.',
-          { label: 'Media Request', requestId: this.id, mediaId: this.media.id }
-        );
-        MediaRequest.sendNotification(
-          this,
-          media,
-          Notification.MEDIA_AVAILABLE
-        );
-        return;
-      }
-
-      MediaRequest.sendNotification(
-        this,
-        media,
-        this.status === MediaRequestStatus.APPROVED
-          ? autoApproved
-            ? Notification.MEDIA_AUTO_APPROVED
-            : Notification.MEDIA_APPROVED
-          : Notification.MEDIA_DECLINED
-      );
-
-      if (
-        this.status === MediaRequestStatus.APPROVED &&
-        autoApproved &&
-        this.isAutoRequest
-      ) {
-        MediaRequest.sendNotification(
-          this,
-          media,
-          Notification.MEDIA_AUTO_REQUESTED
-        );
-      }
-    }
-  }
-
-  @AfterInsert()
-  public async autoapprovalNotification(): Promise<void> {
-    if (this.status === MediaRequestStatus.APPROVED) {
-      this.notifyApprovedOrDeclined(true);
-    }
-  }
-
   @AfterLoad()
   private sortSeasons() {
     if (Array.isArray(this.seasons)) {
@@ -1430,197 +1668,22 @@ export class MediaRequest {
     media: Media,
     type: Notification
   ) {
-    const tmdb = new TheMovieDb();
-    const listenbrainz = new ListenBrainzAPI();
-    const openLibrary = new OpenLibraryAPI();
-
     try {
-      const mediaType =
-        entity.type === MediaType.MOVIE
-          ? 'Movie'
-          : entity.type === MediaType.TV
-            ? 'Series'
-            : entity.type === MediaType.MUSIC
-              ? 'Music'
-              : 'Book';
-      let event: string | undefined;
-      let notifyAdmin = true;
-      let notifySystem = true;
-
-      switch (type) {
-        case Notification.MEDIA_AVAILABLE:
-          event = `${entity.is4k ? '4K ' : ''}${mediaType} Now Available`;
-          notifyAdmin = false;
-          break;
-        case Notification.MEDIA_APPROVED:
-          event = `${entity.is4k ? '4K ' : ''}${mediaType} Request Approved`;
-          notifyAdmin = false;
-          break;
-        case Notification.MEDIA_DECLINED:
-          event = `${entity.is4k ? '4K ' : ''}${mediaType} Request Declined`;
-          notifyAdmin = false;
-          break;
-        case Notification.MEDIA_PENDING:
-          event = `New ${entity.is4k ? '4K ' : ''}${mediaType} Request`;
-          break;
-        case Notification.MEDIA_AUTO_REQUESTED:
-          event = `${
-            entity.is4k ? '4K ' : ''
-          }${mediaType} Request Automatically Submitted`;
-          notifyAdmin = false;
-          notifySystem = false;
-          break;
-        case Notification.MEDIA_AUTO_APPROVED:
-          event = `${
-            entity.is4k ? '4K ' : ''
-          }${mediaType} Request Automatically Approved`;
-          break;
-        case Notification.MEDIA_FAILED:
-          event = `${entity.is4k ? '4K ' : ''}${mediaType} Request Failed`;
-          break;
+      if (Number.isSafeInteger(entity.id) && entity.id > 0) {
+        await notificationManager.sendNotificationIntent(type, {
+          kind: 'media-request',
+          requestId: entity.id,
+        });
+        return;
       }
-
-      if (entity.type === MediaType.MOVIE) {
-        const movie = await tmdb.getMovie({ movieId: media.tmdbId });
-        notificationManager.sendNotification(type, {
-          media,
-          mediaUrl: `/movie/${media.tmdbId}`,
-          request: entity,
-          notifyAdmin,
-          notifySystem,
-          notifyUser: notifyAdmin ? undefined : entity.requestedBy,
-          event,
-          subject: `${movie.title}${
-            movie.release_date ? ` (${movie.release_date.slice(0, 4)})` : ''
-          }`,
-          message: truncate(movie.overview, {
-            length: 500,
-            separator: /\s/,
-            omission: '…',
-          }),
-          image: `https://image.tmdb.org/t/p/w600_and_h900_bestv2${movie.poster_path}`,
-        });
-      } else if (entity.type === MediaType.TV) {
-        const tv = await tmdb.getTvShow({ tvId: media.tmdbId });
-        notificationManager.sendNotification(type, {
-          media,
-          mediaUrl: `/tv/${media.tmdbId}`,
-          request: entity,
-          notifyAdmin,
-          notifySystem,
-          notifyUser: notifyAdmin ? undefined : entity.requestedBy,
-          event,
-          subject: `${tv.name}${
-            tv.first_air_date ? ` (${tv.first_air_date.slice(0, 4)})` : ''
-          }`,
-          message: truncate(tv.overview, {
-            length: 500,
-            separator: /\s/,
-            omission: '…',
-          }),
-          image: `https://image.tmdb.org/t/p/w600_and_h900_bestv2${tv.poster_path}`,
-          extra: [
-            {
-              name: 'Requested Seasons',
-              value: entity.seasons
-                .map((season) => season.seasonNumber)
-                .join(', '),
-            },
-          ],
-        });
-      } else if (entity.type === MediaType.MUSIC && media.mbId) {
-        const musicMbId = normalizeMusicBrainzId(media.mbId);
-        const album = await listenbrainz.getAlbum(musicMbId);
-        const releaseGroup = album.release_group_metadata.release_group;
-        const artist = album.release_group_metadata.artist;
-        const releaseYear = releaseGroup.date?.slice(0, 4);
-
-        notificationManager.sendNotification(type, {
-          media,
-          mediaUrl: `/music/${musicMbId}`,
-          request: entity,
-          notifyAdmin,
-          notifySystem,
-          notifyUser: notifyAdmin ? undefined : entity.requestedBy,
-          event,
-          subject: `${releaseGroup.name}${
-            releaseYear ? ` (${releaseYear})` : ''
-          }`,
-          message: artist.name,
-          extra: [
-            {
-              name: 'Artist',
-              value: artist.name,
-            },
-          ],
-        });
-      } else if (entity.type === MediaType.BOOK) {
-        const mediaWithIdentifiers =
-          media.identifiers !== undefined
-            ? media
-            : await getRepository(Media).findOne({
-                where: { id: media.id },
-                relations: { identifiers: true },
-              });
-        const openLibraryId = mediaWithIdentifiers?.identifiers?.find(
-          (identifier) =>
-            identifier.provider === MediaIdentifierProvider.OPENLIBRARY
-        )?.value;
-
-        if (!openLibraryId) {
-          throw new Error('Missing Open Library identifier for book request.');
-        }
-
-        const normalizedOpenLibraryId =
-          normalizeOpenLibraryWorkId(openLibraryId);
-        const [work, editions] = await Promise.all([
-          openLibrary.getWork(normalizedOpenLibraryId),
-          openLibrary.getWorkEditions(normalizedOpenLibraryId).catch(() => ({
-            size: 0,
-            entries: [],
-          })),
-        ]);
-        const description =
-          typeof work.description === 'string'
-            ? work.description
-            : work.description?.value;
-        const releaseYear = work.first_publish_date?.match(/\d{4}/)?.[0];
-        const coverId = work.covers?.[0];
-        const isbn =
-          editions.entries.find((edition) => edition.isbn_13?.[0])
-            ?.isbn_13?.[0] ??
-          editions.entries.find((edition) => edition.isbn_10?.[0])
-            ?.isbn_10?.[0];
-
-        notificationManager.sendNotification(type, {
-          media,
-          mediaUrl: `/book/${normalizedOpenLibraryId}`,
-          request: entity,
-          notifyAdmin,
-          notifySystem,
-          notifyUser: notifyAdmin ? undefined : entity.requestedBy,
-          event,
-          subject: `${work.title}${releaseYear ? ` (${releaseYear})` : ''}`,
-          message: description
-            ? truncate(description, {
-                length: 500,
-                separator: /\s/,
-                omission: '…',
-              })
-            : undefined,
-          image: coverId
-            ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
-            : undefined,
-          extra: isbn
-            ? [
-                {
-                  name: 'ISBN',
-                  value: isbn,
-                },
-              ]
-            : undefined,
-        });
-      }
+      const { buildMediaRequestNotificationPayload } =
+        await import('@server/lib/notifications/intents');
+      const payload = await buildMediaRequestNotificationPayload(
+        entity,
+        media,
+        type
+      );
+      await notificationManager.sendNotification(type, payload);
     } catch (e) {
       logger.error('Something went wrong sending media notification(s)', {
         label: 'Notifications',

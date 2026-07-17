@@ -27,9 +27,13 @@ probes:
     # successThreshold: 1
     # failureThreshold: 3
   # -- Configure startup probe
-  startupProbe: null
-  #  tcpSocket:
-  #    port: http
+  startupProbe:
+    httpGet:
+      path: /api/v1/settings/public
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 120
 
 # -- Environment variables to add to the seerr pods
 extraEnv: []
@@ -50,6 +54,9 @@ serviceAccount:
 podAnnotations: {}
 podLabels: {}
 
+# -- Inject environment variables for active Kubernetes Services into the pod
+enableServiceLinks: false
+
 podSecurityContext:
   fsGroup: 1000
   fsGroupChangePolicy: OnRootMismatch
@@ -59,13 +66,19 @@ securityContext:
   capabilities:
     drop:
       - ALL
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   privileged: false
   runAsUser: 1000
   runAsGroup: 1000
   seccompProfile:
     type: RuntimeDefault
+
+runtimeStorage:
+  # -- Ephemeral storage available to temporary files
+  tmpSizeLimit: 64Mi
+  # -- Ephemeral storage available to the Next.js image cache
+  nextCacheSizeLimit: 256Mi
 
 service:
   type: ClusterIP

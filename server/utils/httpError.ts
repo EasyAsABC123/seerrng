@@ -26,6 +26,79 @@ export const getHttpErrorDetails = (error: unknown): HttpErrorDetails => {
   };
 };
 
+export const hasHttpStatus = (
+  error: unknown,
+  expectedStatus: number
+): boolean => {
+  if (
+    !Number.isInteger(expectedStatus) ||
+    expectedStatus < 100 ||
+    expectedStatus > 599
+  ) {
+    return false;
+  }
+
+  let current = error;
+  const seen = new Set<object>();
+
+  for (
+    let depth = 0;
+    current !== undefined && current !== null && depth < 8;
+    depth++
+  ) {
+    if (typeof current === 'object') {
+      if (seen.has(current)) {
+        return false;
+      }
+      seen.add(current);
+    }
+
+    if (
+      axios.isAxiosError(current) &&
+      current.response?.status === expectedStatus
+    ) {
+      return true;
+    }
+
+    const record =
+      typeof current === 'object'
+        ? (current as {
+            status?: unknown;
+            statusCode?: unknown;
+            cause?: unknown;
+            response?: { status?: unknown };
+          })
+        : undefined;
+    if (
+      record?.status === expectedStatus ||
+      record?.statusCode === expectedStatus ||
+      record?.response?.status === expectedStatus
+    ) {
+      return true;
+    }
+
+    const message =
+      current instanceof Error
+        ? current.message
+        : typeof current === 'string'
+          ? current
+          : '';
+    if (
+      message.trim() === String(expectedStatus) ||
+      new RegExp(
+        `(?:http|status(?:\\s+code)?)\\D{0,20}${expectedStatus}(?:\\D|$)`,
+        'i'
+      ).test(message)
+    ) {
+      return true;
+    }
+
+    current = record?.cause;
+  }
+
+  return false;
+};
+
 export const isTransientHttpError = (error: unknown): boolean => {
   if (!axios.isAxiosError(error)) {
     return false;

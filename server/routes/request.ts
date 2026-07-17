@@ -20,6 +20,9 @@ import {
   QuotaRestrictedError,
   RequestPermissionError,
   ServiceConfigurationError,
+  getRequestMutationAdmissionKey,
+  hasMediaRequestPermission,
+  runWithRequestAdmission,
 } from '@server/entity/MediaRequest';
 import SeasonRequest from '@server/entity/SeasonRequest';
 import { User } from '@server/entity/User';
@@ -30,27 +33,45 @@ import type {
   RequestResultsResponse,
 } from '@server/interfaces/api/requestInterfaces';
 import {
+  isValidMusicBrainzResourceId,
+  isValidOpenLibraryResourceId,
   normalizeMusicBrainzId,
+  normalizeOpenLibraryAuthorId,
+  normalizeOpenLibraryEditionId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { hydrateMediaRequestRelations } from '@server/lib/mediaRequestHydration';
 import { Permission } from '@server/lib/permissions';
+import { runWithCurrentServarrService } from '@server/lib/serviceAdmission';
 import { getSettings } from '@server/lib/settings';
+import {
+  UserMutationActorUnauthorizedError,
+  acquireAuthorizedUserSecurityMutation,
+  isUserCredentialVersionCurrent,
+  runAuthorizedUserSecurityMutation,
+  runUserSecurityMutation,
+  runUserSecurityMutationWithActor,
+  type AuthorizedUserSecurityMutationLease,
+} from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import { filterEntityResponse } from '@server/utils/entityResponse';
 import {
   parseOptionalPositiveInt,
   parsePageParams,
 } from '@server/utils/pagination';
 import { parsePositiveRouteId } from '@server/utils/routeId';
+import { MAX_SERVARR_INSTANCES_PER_TYPE } from '@server/utils/servarrSettings';
 import {
   parseOptionalAllowedString,
   parseOptionalBoundedString,
   parseOptionalNonNegativeInteger,
 } from '@server/utils/validation';
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 
 const requestRoutes = Router();
+export const REQUEST_SERVICE_PROFILE_CONCURRENCY = 10;
 const maxBulkRequestItems = 100;
 const maxRequestIdValue = 1_000_000_000;
 const maxRequestTags = 100;
@@ -77,9 +98,15 @@ const requestStatusFilters = [
   'available',
   'deleted',
 ] as const;
+
+const getExpectedCredentialVersion = (
+  req: Pick<Request, 'session' | 'user'>
+): number | undefined =>
+  req.session?.userId === req.user?.id
+    ? (req.session.credentialVersion ?? 0)
+    : undefined;
 const requestSortFields = ['added', 'modified'] as const;
 const requestSortDirections = ['asc', 'desc'] as const;
-
 const getErrorLogFields = (error: unknown) => ({
   errorMessage: error instanceof Error ? error.message : 'Unknown error',
   errorStack: error instanceof Error ? error.stack : undefined,
@@ -190,8 +217,6 @@ const parseRequestStatusAction = (
   status: unknown
 ): MediaRequestStatus | undefined => {
   switch (status) {
-    case 'pending':
-      return MediaRequestStatus.PENDING;
     case 'approve':
       return MediaRequestStatus.APPROVED;
     case 'decline':
@@ -366,7 +391,8 @@ const parseOptionalRequestSeasons = (
 };
 
 const sanitizeMediaRequestBody = (
-  body: unknown
+  body: unknown,
+  options: { requireCreateIdentity?: boolean } = {}
 ): RequestOptionValidationResult<MediaRequestBody> => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return {
@@ -378,6 +404,128 @@ const sanitizeMediaRequestBody = (
   }
 
   const bodyObject = body as Partial<Record<keyof MediaRequestBody, unknown>>;
+  const mediaType = bodyObject.mediaType;
+
+  if (
+    mediaType !== undefined &&
+    !Object.values(MediaType).includes(mediaType as MediaType)
+  ) {
+    return {
+      error: { status: 400, message: 'mediaType is invalid.' },
+    };
+  }
+  if (options.requireCreateIdentity && mediaType === undefined) {
+    return {
+      error: { status: 400, message: 'mediaType is required.' },
+    };
+  }
+
+  if (bodyObject.is4k !== undefined && typeof bodyObject.is4k !== 'boolean') {
+    return {
+      error: {
+        status: 400,
+        message: 'is4k must be a boolean.',
+      },
+    };
+  }
+
+  if (mediaType === MediaType.MUSIC && bodyObject.mediaId !== undefined) {
+    if (
+      typeof bodyObject.mediaId !== 'string' ||
+      !isValidMusicBrainzResourceId(normalizeMusicBrainzId(bodyObject.mediaId))
+    ) {
+      return {
+        error: {
+          status: 400,
+          message: 'mediaId must be a valid MusicBrainz resource ID.',
+        },
+      };
+    }
+  } else if (mediaType === MediaType.MUSIC && options.requireCreateIdentity) {
+    return {
+      error: {
+        status: 400,
+        message: 'mediaId is required for music requests.',
+      },
+    };
+  }
+
+  if (mediaType === MediaType.BOOK) {
+    const bookIds = [
+      {
+        field: 'mediaId',
+        value: bodyObject.mediaId,
+        normalize: normalizeOpenLibraryWorkId,
+      },
+      {
+        field: 'editionId',
+        value: bodyObject.editionId,
+        normalize: normalizeOpenLibraryEditionId,
+      },
+      {
+        field: 'authorId',
+        value: bodyObject.authorId,
+        normalize: normalizeOpenLibraryAuthorId,
+      },
+    ];
+    for (const { field, value, normalize } of bookIds) {
+      if (
+        value !== undefined &&
+        (typeof value !== 'string' ||
+          !isValidOpenLibraryResourceId(normalize(value)))
+      ) {
+        return {
+          error: {
+            status: 400,
+            message: `${field} must be a valid Open Library resource ID.`,
+          },
+        };
+      }
+    }
+    if (options.requireCreateIdentity && bodyObject.mediaId === undefined) {
+      return {
+        error: {
+          status: 400,
+          message: 'mediaId is required for book requests.',
+        },
+      };
+    }
+  }
+
+  if (mediaType === MediaType.MOVIE || mediaType === MediaType.TV) {
+    const mediaId = parsePositiveRouteId(bodyObject.mediaId, maxRequestIdValue);
+    if (bodyObject.mediaId !== undefined && mediaId === undefined) {
+      return {
+        error: {
+          status: 400,
+          message: 'mediaId must be a positive integer.',
+        },
+      };
+    }
+    if (options.requireCreateIdentity && mediaId === undefined) {
+      return {
+        error: {
+          status: 400,
+          message: 'mediaId is required for movie and series requests.',
+        },
+      };
+    }
+    if (bodyObject.tvdbId !== undefined) {
+      const tvdbId = parsePositiveRouteId(bodyObject.tvdbId, maxRequestIdValue);
+      if (tvdbId === undefined) {
+        return {
+          error: {
+            status: 400,
+            message: 'tvdbId must be a positive integer.',
+          },
+        };
+      }
+      bodyObject.tvdbId = tvdbId;
+    }
+    if (mediaId !== undefined) {
+      bodyObject.mediaId = mediaId;
+    }
+  }
 
   const serverId = parseOptionalRequestOptionId(
     bodyObject.serverId,
@@ -452,9 +600,23 @@ const sanitizeMediaRequestBody = (
   if ('error' in seasons) {
     return seasons;
   }
+  if (
+    options.requireCreateIdentity &&
+    mediaType === MediaType.TV &&
+    (seasons.value === undefined ||
+      (Array.isArray(seasons.value) && seasons.value.length === 0))
+  ) {
+    return {
+      error: {
+        status: 400,
+        message: 'seasons are required for series requests.',
+      },
+    };
+  }
 
   const value = {
     ...body,
+    is4k: bodyObject.is4k ?? false,
     serverId: serverId.value,
     profileId: profileId.value,
     profileName: profileName.value,
@@ -477,7 +639,7 @@ const sanitizeBulkMediaRequestBody = (
 ): RequestOptionValidationResult<BulkMediaRequestBody> => {
   const sanitized = sanitizeMediaRequestBody({
     ...body,
-    mediaId: '',
+    mediaId: 'bulk-placeholder',
   } as MediaRequestBody);
 
   if ('error' in sanitized) {
@@ -517,6 +679,28 @@ const sanitizeBulkMediaRequestBody = (
         },
       };
     }
+    if (
+      body.mediaType === MediaType.MUSIC &&
+      !isValidMusicBrainzResourceId(normalizeMusicBrainzId(mediaId))
+    ) {
+      return {
+        error: {
+          status: 400,
+          message: 'mediaId must be a valid MusicBrainz resource ID.',
+        },
+      };
+    }
+    if (
+      body.mediaType === MediaType.BOOK &&
+      !isValidOpenLibraryResourceId(normalizeOpenLibraryWorkId(mediaId))
+    ) {
+      return {
+        error: {
+          status: 400,
+          message: 'mediaId must be a valid Open Library resource ID.',
+        },
+      };
+    }
 
     const title = parseOptionalRequestString(
       item.title,
@@ -552,6 +736,25 @@ const sanitizeBulkMediaRequestBody = (
     );
     if ('error' in authorId) {
       return authorId;
+    }
+    if (
+      body.mediaType === MediaType.BOOK &&
+      ((editionId.value !== undefined &&
+        !isValidOpenLibraryResourceId(
+          normalizeOpenLibraryEditionId(editionId.value)
+        )) ||
+        (authorId.value !== undefined &&
+          !isValidOpenLibraryResourceId(
+            normalizeOpenLibraryAuthorId(authorId.value)
+          )))
+    ) {
+      return {
+        error: {
+          status: 400,
+          message:
+            'Book editionId and authorId must be valid Open Library resource IDs.',
+        },
+      };
     }
 
     const sanitizedItem = {
@@ -590,9 +793,35 @@ const sanitizeBulkMediaRequestBody = (
 const validateExternalServiceConfiguration = (
   requestType: MediaType,
   serverId?: number | null,
-  bookFormat?: 'ebook' | 'audiobook' | 'both' | null
+  bookFormat?: 'ebook' | 'audiobook' | 'both' | null,
+  is4k = false
 ) => {
   const settings = getSettings();
+
+  if (requestType === MediaType.MOVIE || requestType === MediaType.TV) {
+    if (serverId === undefined || serverId === null) {
+      return;
+    }
+    const selectedServer =
+      requestType === MediaType.MOVIE
+        ? settings.radarr.find(({ id }) => id === serverId)
+        : settings.sonarr.find(({ id }) => id === serverId);
+    if (!selectedServer) {
+      throw new ServiceConfigurationError(
+        `The selected ${
+          requestType === MediaType.MOVIE ? 'Radarr' : 'Sonarr'
+        } server no longer exists.`
+      );
+    }
+    if (selectedServer.is4k !== is4k) {
+      throw new ServiceConfigurationError(
+        `The selected ${
+          requestType === MediaType.MOVIE ? 'Radarr' : 'Sonarr'
+        } server does not match the requested quality tier.`
+      );
+    }
+    return;
+  }
 
   if (requestType === MediaType.MUSIC) {
     if (serverId === undefined || serverId === null) {
@@ -657,9 +886,21 @@ const validateExternalServiceConfiguration = (
     }
 
     if (requestedFormat === 'both') {
-      throw new ServiceConfigurationError(
-        'Both-format book requests must use separate default ebook and audiobook Bookshelf services.'
-      );
+      if ((selectedReadarr.serviceType ?? 'ebook') !== 'ebook') {
+        throw new ServiceConfigurationError(
+          'The selected Bookshelf server is configured for audiobook requests, not ebook requests.'
+        );
+      }
+      if (
+        !settings.readarr.some(
+          (readarr) => readarr.isDefault && readarr.serviceType === 'audiobook'
+        )
+      ) {
+        throw new ServiceConfigurationError(
+          'Both-format book requests require a default audiobook Bookshelf service.'
+        );
+      }
+      return;
     }
 
     const selectedReadarrServiceType = selectedReadarr.serviceType ?? 'ebook';
@@ -684,35 +925,31 @@ const hasBookFormat = (
   return serviceId !== null && serviceId !== undefined;
 };
 
-const isActiveMediaRequest = (request: MediaRequest): boolean =>
-  request.status !== MediaRequestStatus.DECLINED &&
-  request.status !== MediaRequestStatus.FAILED &&
-  request.status !== MediaRequestStatus.COMPLETED;
+const inactiveMediaRequestStatuses = [
+  MediaRequestStatus.DECLINED,
+  MediaRequestStatus.FAILED,
+  MediaRequestStatus.COMPLETED,
+] as const;
 
-const hasActiveOverlappingBookRequest = (
-  requests: MediaRequest[] | undefined,
+const hasActiveOverlappingBookRequest = async (
+  mediaId: number,
   format: 'ebook' | 'audiobook' | 'both' = 'ebook'
-): boolean => {
-  const requestedFormats =
-    format === 'both' ? (['ebook', 'audiobook'] as const) : ([format] as const);
+): Promise<boolean> => {
+  let query = getRepository(MediaRequest)
+    .createQueryBuilder('request')
+    .where('request.media = :mediaId', { mediaId })
+    .andWhere('request.status NOT IN (:...inactiveStatuses)', {
+      inactiveStatuses: inactiveMediaRequestStatuses,
+    });
+  if (format === 'ebook') {
+    query = query.andWhere(
+      `COALESCE(request.bookFormat, 'ebook') IN ('ebook', 'both')`
+    );
+  } else if (format === 'audiobook') {
+    query = query.andWhere(`request.bookFormat IN ('audiobook', 'both')`);
+  }
 
-  return (
-    requests?.some((request) => {
-      if (!isActiveMediaRequest(request)) {
-        return false;
-      }
-
-      const existingBookFormat = request.bookFormat ?? 'ebook';
-      const existingFormats =
-        existingBookFormat === 'both'
-          ? (['ebook', 'audiobook'] as const)
-          : ([existingBookFormat] as const);
-
-      return existingFormats.some((existingFormat) =>
-        requestedFormats.includes(existingFormat)
-      );
-    }) ?? false
-  );
+  return query.getExists();
 };
 
 const getBulkCoveredReason = async (
@@ -724,7 +961,6 @@ const getBulkCoveredReason = async (
     const normalizedMediaId = normalizeMusicBrainzId(mediaId);
     const media = await getRepository(Media).findOne({
       where: { mbId: normalizedMediaId, mediaType: MediaType.MUSIC },
-      relations: { requests: true },
     });
 
     if (media?.status === MediaStatus.BLOCKLISTED) {
@@ -735,7 +971,16 @@ const getBulkCoveredReason = async (
       return 'This album is already available.';
     }
 
-    if (media?.requests?.some(isActiveMediaRequest)) {
+    const hasActiveRequest = media
+      ? await getRepository(MediaRequest)
+          .createQueryBuilder('request')
+          .where('request.media = :mediaId', { mediaId: media.id })
+          .andWhere('request.status NOT IN (:...inactiveStatuses)', {
+            inactiveStatuses: inactiveMediaRequestStatuses,
+          })
+          .getExists()
+      : false;
+    if (hasActiveRequest) {
       return 'Request for this album already exists.';
     }
 
@@ -748,7 +993,8 @@ const getBulkCoveredReason = async (
       provider: MediaIdentifierProvider.OPENLIBRARY,
       value: normalizedOpenLibraryId,
     },
-    relations: { media: { requests: true } },
+    relations: { media: true },
+    relationLoadStrategy: 'query',
   });
   const media = identifier?.media;
 
@@ -776,7 +1022,7 @@ const getBulkCoveredReason = async (
     return 'One or more requested book formats are already available.';
   }
 
-  if (hasActiveOverlappingBookRequest(media.requests, requestedFormat)) {
+  if (await hasActiveOverlappingBookRequest(media.id, requestedFormat)) {
     return 'Request for this book already exists.';
   }
 
@@ -787,6 +1033,7 @@ requestRoutes.get<
   Record<string, unknown>,
   RequestResultsResponse | { status: number; message: string }
 >('/', async (req, res, next) => {
+  let requestReadLease: AuthorizedUserSecurityMutationLease | undefined;
   try {
     const { pageSize, skip } = parsePageParams(req.query, {
       take: 10,
@@ -918,13 +1165,48 @@ requestRoutes.get<
         sortDirection = 'DESC';
     }
 
+    if (
+      req.user?.hasPermission(
+        [
+          Permission.MANAGE_REQUESTS,
+          Permission.REQUEST_VIEW,
+          Permission.REQUEST_ADVANCED,
+        ],
+        { type: 'or' }
+      )
+    ) {
+      try {
+        requestReadLease = await acquireAuthorizedUserSecurityMutation(
+          req.user.id,
+          req.user.id,
+          [
+            Permission.MANAGE_REQUESTS,
+            Permission.REQUEST_VIEW,
+            Permission.REQUEST_ADVANCED,
+          ],
+          {
+            expectedCredentialVersion: getExpectedCredentialVersion(req),
+          }
+        );
+        req.user = requestReadLease.actor;
+      } catch (error) {
+        if (!(error instanceof UserMutationActorUnauthorizedError)) {
+          throw error;
+        }
+      }
+    }
+
+    const canViewAllRequests =
+      requestReadLease?.actor.hasPermission(
+        [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
+        { type: 'or' }
+      ) ?? false;
+
     let query = getRepository(MediaRequest)
       .createQueryBuilder('request')
       .leftJoinAndSelect('request.media', 'media')
-      .leftJoinAndSelect('request.seasons', 'seasons')
       .leftJoinAndSelect('request.modifiedBy', 'modifiedBy')
       .leftJoinAndSelect('request.requestedBy', 'requestedBy')
-      .leftJoinAndSelect('media.identifiers', 'identifiers')
       .where('request.status IN (:...requestStatus)', {
         requestStatus: statusFilter,
       })
@@ -935,12 +1217,7 @@ requestRoutes.get<
         }
       );
 
-    if (
-      !req.user?.hasPermission(
-        [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
-        { type: 'or' }
-      )
-    ) {
+    if (!canViewAllRequests) {
       if (requestedBy && requestedBy !== req.user?.id) {
         return next({
           status: 403,
@@ -982,33 +1259,68 @@ requestRoutes.get<
         break;
     }
 
-    const [requests, requestCount] = await query
+    const [requestRows, requestCount] = await query
       .orderBy(sortFilter, sortDirection)
       .take(pageSize)
       .skip(skip)
       .getManyAndCount();
+    const requests = await hydrateMediaRequestRelations(requestRows, {
+      includeMediaIdentifiers: true,
+    });
+
+    const canHydrateServiceProfiles =
+      requestReadLease?.actor.hasPermission(
+        [Permission.REQUEST_ADVANCED, Permission.MANAGE_REQUESTS],
+        { type: 'or' }
+      ) ?? false;
 
     const settings = getSettings();
+    const sonarrSettings = canHydrateServiceProfiles ? settings.sonarr : [];
+    const radarrSettings = canHydrateServiceProfiles ? settings.radarr : [];
+    const lidarrSettings = canHydrateServiceProfiles ? settings.lidarr : [];
+    const readarrSettings = canHydrateServiceProfiles ? settings.readarr : [];
+    const referencedProfileServiceIds = new Map<MediaType, Set<number>>();
+    for (const item of requests) {
+      if (
+        !Number.isSafeInteger(item.serverId) ||
+        !Number.isSafeInteger(item.profileId)
+      ) {
+        continue;
+      }
+      const serviceIds =
+        referencedProfileServiceIds.get(item.type) ?? new Set<number>();
+      serviceIds.add(item.serverId as number);
+      referencedProfileServiceIds.set(item.type, serviceIds);
+    }
 
-    // get all quality profiles for every configured sonarr server
-    const sonarrServers = await Promise.all(
-      settings.sonarr.map(async (sonarrSetting) => {
+    // Profile names are display-only. Do not fan out to configured services
+    // that are not referenced by this result page.
+    const sonarrServers = await mapWithConcurrency(
+      sonarrSettings
+        .filter((service) =>
+          referencedProfileServiceIds.get(MediaType.TV)?.has(service.id)
+        )
+        .slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      REQUEST_SERVICE_PROFILE_CONCURRENCY,
+      async (sonarrSetting) => {
         try {
-          const sonarr = new SonarrAPI({
-            apiKey: sonarrSetting.apiKey,
-            url: SonarrAPI.buildUrl(sonarrSetting, '/api/v3'),
-          });
-
           return {
             id: sonarrSetting.id,
-            profiles: await sonarr.getProfiles().catch((error) => {
+            profiles: await runWithCurrentServarrService(
+              'sonarr',
+              sonarrSetting.id,
+              async (current) =>
+                new SonarrAPI({
+                  apiKey: current.apiKey,
+                  url: SonarrAPI.buildUrl(current, '/api/v3'),
+                }).getProfiles()
+            ).catch((error) => {
               logRequestServiceProfileFailure(
                 'sonarr',
                 sonarrSetting.id,
                 sonarrSetting.name,
                 error
               );
-
               return undefined;
             }),
           };
@@ -1022,21 +1334,29 @@ requestRoutes.get<
 
           return { id: sonarrSetting.id, profiles: undefined };
         }
-      })
+      }
     );
 
-    // get all quality profiles for every configured radarr server
-    const radarrServers = await Promise.all(
-      settings.radarr.map(async (radarrSetting) => {
+    const radarrServers = await mapWithConcurrency(
+      radarrSettings
+        .filter((service) =>
+          referencedProfileServiceIds.get(MediaType.MOVIE)?.has(service.id)
+        )
+        .slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      REQUEST_SERVICE_PROFILE_CONCURRENCY,
+      async (radarrSetting) => {
         try {
-          const radarr = new RadarrAPI({
-            apiKey: radarrSetting.apiKey,
-            url: RadarrAPI.buildUrl(radarrSetting, '/api/v3'),
-          });
-
           return {
             id: radarrSetting.id,
-            profiles: await radarr.getProfiles().catch((error) => {
+            profiles: await runWithCurrentServarrService(
+              'radarr',
+              radarrSetting.id,
+              async (current) =>
+                new RadarrAPI({
+                  apiKey: current.apiKey,
+                  url: RadarrAPI.buildUrl(current, '/api/v3'),
+                }).getProfiles()
+            ).catch((error) => {
               logRequestServiceProfileFailure(
                 'radarr',
                 radarrSetting.id,
@@ -1057,20 +1377,29 @@ requestRoutes.get<
 
           return { id: radarrSetting.id, profiles: undefined };
         }
-      })
+      }
     );
 
-    const lidarrServers = await Promise.all(
-      settings.lidarr.map(async (lidarrSetting) => {
+    const lidarrServers = await mapWithConcurrency(
+      lidarrSettings
+        .filter((service) =>
+          referencedProfileServiceIds.get(MediaType.MUSIC)?.has(service.id)
+        )
+        .slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      REQUEST_SERVICE_PROFILE_CONCURRENCY,
+      async (lidarrSetting) => {
         try {
-          const lidarr = new LidarrAPI({
-            apiKey: lidarrSetting.apiKey,
-            url: LidarrAPI.buildUrl(lidarrSetting, '/api/v1'),
-          });
-
           return {
             id: lidarrSetting.id,
-            profiles: await lidarr.getProfiles().catch((error) => {
+            profiles: await runWithCurrentServarrService(
+              'lidarr',
+              lidarrSetting.id,
+              async (current) =>
+                new LidarrAPI({
+                  apiKey: current.apiKey,
+                  url: LidarrAPI.buildUrl(current, '/api/v1'),
+                }).getProfiles()
+            ).catch((error) => {
               logRequestServiceProfileFailure(
                 'lidarr',
                 lidarrSetting.id,
@@ -1091,20 +1420,29 @@ requestRoutes.get<
 
           return { id: lidarrSetting.id, profiles: undefined };
         }
-      })
+      }
     );
 
-    const readarrServers = await Promise.all(
-      settings.readarr.map(async (readarrSetting) => {
+    const readarrServers = await mapWithConcurrency(
+      readarrSettings
+        .filter((service) =>
+          referencedProfileServiceIds.get(MediaType.BOOK)?.has(service.id)
+        )
+        .slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      REQUEST_SERVICE_PROFILE_CONCURRENCY,
+      async (readarrSetting) => {
         try {
-          const readarr = new ReadarrAPI({
-            apiKey: readarrSetting.apiKey,
-            url: ReadarrAPI.buildUrl(readarrSetting, '/api/v1'),
-          });
-
           return {
             id: readarrSetting.id,
-            profiles: await readarr.getProfiles().catch((error) => {
+            profiles: await runWithCurrentServarrService(
+              'readarr',
+              readarrSetting.id,
+              async (current) =>
+                new ReadarrAPI({
+                  apiKey: current.apiKey,
+                  url: ReadarrAPI.buildUrl(current, '/api/v1'),
+                }).getProfiles()
+            ).catch((error) => {
               logRequestServiceProfileFailure(
                 'readarr',
                 readarrSetting.id,
@@ -1125,7 +1463,7 @@ requestRoutes.get<
 
           return { id: readarrSetting.id, profiles: undefined };
         }
-      })
+      }
     );
 
     // add profile names to the media requests, with undefined if not found
@@ -1175,14 +1513,14 @@ requestRoutes.get<
     });
 
     // add canRemove prop if user has permission
-    if (req.user?.hasPermission(Permission.MANAGE_REQUESTS)) {
+    if (requestReadLease?.actor.hasPermission(Permission.MANAGE_REQUESTS)) {
       mappedRequests = mappedRequests.map((r) => {
         switch (r.type) {
           case MediaType.MOVIE: {
             return {
               ...r,
               // check if the radarr server for this request is configured
-              canRemove: radarrServers.some(
+              canRemove: radarrSettings.some(
                 (server) =>
                   server.id ===
                   (r.is4k ? r.media.serviceId4k : r.media.serviceId)
@@ -1193,7 +1531,7 @@ requestRoutes.get<
             return {
               ...r,
               // check if the sonarr server for this request is configured
-              canRemove: sonarrServers.some(
+              canRemove: sonarrSettings.some(
                 (server) =>
                   server.id ===
                   (r.is4k ? r.media.serviceId4k : r.media.serviceId)
@@ -1203,7 +1541,7 @@ requestRoutes.get<
           case MediaType.MUSIC: {
             return {
               ...r,
-              canRemove: lidarrServers.some(
+              canRemove: lidarrSettings.some(
                 (server) => server.id === r.media.serviceId
               ),
             };
@@ -1221,10 +1559,10 @@ requestRoutes.get<
               r.media.audiobookExternalServiceId !== undefined;
             const canRemoveEbook =
               hasEbookLink &&
-              readarrServers.some((server) => server.id === r.media.serviceId);
+              readarrSettings.some((server) => server.id === r.media.serviceId);
             const canRemoveAudiobook =
               hasAudiobookLink &&
-              readarrServers.some(
+              readarrSettings.some(
                 (server) => server.id === r.media.audiobookServiceId
               );
 
@@ -1257,7 +1595,7 @@ requestRoutes.get<
         results: requestCount,
         page: Math.ceil(skip / pageSize) + 1,
       },
-      results: filterEntityResponse(mappedRequests),
+      results: filterEntityResponse(mappedRequests, req.user),
       serviceErrors: {
         radarr: radarrServers
           .filter((s) => !s.profiles)
@@ -1308,6 +1646,8 @@ requestRoutes.get<
       status: 500,
       message: e instanceof Error ? e.message : 'Unable to retrieve requests.',
     });
+  } finally {
+    await requestReadLease?.release();
   }
 });
 
@@ -1321,7 +1661,9 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
           message: 'You must be logged in to request media.',
         });
       }
-      const body = sanitizeMediaRequestBody(req.body);
+      const body = sanitizeMediaRequestBody(req.body, {
+        requireCreateIdentity: true,
+      });
       if ('error' in body) {
         logRequestValidationFailure(
           'create',
@@ -1332,9 +1674,11 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
         return next(body.error);
       }
 
-      const request = await MediaRequest.request(body.value, req.user);
+      const request = await MediaRequest.request(body.value, req.user, {
+        expectedCredentialVersion: getExpectedCredentialVersion(req),
+      });
 
-      return res.status(201).json(filterEntityResponse(request));
+      return res.status(201).json(filterEntityResponse(request, req.user));
     } catch (error) {
       if (!(error instanceof Error)) {
         logger.error('Failed to submit media request', {
@@ -1347,6 +1691,7 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
       }
 
       switch (error.constructor) {
+        case UserMutationActorUnauthorizedError:
         case RequestPermissionError:
         case QuotaRestrictedError:
           return next({ status: 403, message: error.message });
@@ -1365,7 +1710,7 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
             requestBody: getRequestLogBody(req.body),
             userId: req.user?.id,
           });
-          return next({ status: 500, message: error.message });
+          return next({ status: 500, message: 'Unable to submit request.' });
       }
     }
   }
@@ -1510,6 +1855,7 @@ requestRoutes.post<never, BulkMediaRequestResponse, BulkMediaRequestBody>(
           }
 
           if (
+            error instanceof UserMutationActorUnauthorizedError ||
             error instanceof RequestPermissionError ||
             error instanceof QuotaRestrictedError
           ) {
@@ -1520,10 +1866,16 @@ requestRoutes.post<never, BulkMediaRequestResponse, BulkMediaRequestBody>(
             return next({ status: 400, message: error.message });
           }
 
+          logger.error('Failed to evaluate bulk request item', {
+            label: 'Request',
+            ...getErrorLogFields(error),
+            mediaType: body.mediaType,
+            userId: req.user.id,
+          });
           failed.push({
             mediaId: item.mediaId,
             title: item.title,
-            reason: error.message,
+            reason: 'Unable to process item.',
           });
         }
       }
@@ -1557,7 +1909,10 @@ requestRoutes.post<never, BulkMediaRequestResponse, BulkMediaRequestBody>(
               userId: body.userId,
               tags: body.tags,
             },
-            req.user
+            req.user,
+            {
+              expectedCredentialVersion: getExpectedCredentialVersion(req),
+            }
           );
 
           created.push(request);
@@ -1584,6 +1939,7 @@ requestRoutes.post<never, BulkMediaRequestResponse, BulkMediaRequestBody>(
           }
 
           if (
+            error instanceof UserMutationActorUnauthorizedError ||
             error instanceof RequestPermissionError ||
             error instanceof QuotaRestrictedError
           ) {
@@ -1594,10 +1950,16 @@ requestRoutes.post<never, BulkMediaRequestResponse, BulkMediaRequestBody>(
             return next({ status: 400, message: error.message });
           }
 
+          logger.error('Failed to submit bulk request item', {
+            label: 'Request',
+            ...getErrorLogFields(error),
+            mediaType: body.mediaType,
+            userId: req.user.id,
+          });
           failed.push({
             mediaId: item.mediaId,
             title: item.title,
-            reason: error.message,
+            reason: 'Unable to process item.',
           });
         }
       }
@@ -1614,56 +1976,81 @@ requestRoutes.post<never, BulkMediaRequestResponse, BulkMediaRequestBody>(
         userId: req.user.id,
       });
 
-      return res.status(207).json({ created, skipped, failed });
+      return res.status(207).json({
+        created: filterEntityResponse(created, req.user),
+        skipped,
+        failed,
+      });
     } catch (error) {
-      if (error instanceof Error) {
-        return next({ status: 500, message: error.message });
+      if (error instanceof UserMutationActorUnauthorizedError) {
+        return next({ status: 403, message: 'Access denied.' });
       }
-
+      logger.error('Failed to submit bulk media request', {
+        label: 'Request',
+        ...getErrorLogFields(error),
+        userId: req.user?.id,
+      });
       return next({ status: 500, message: 'Unable to submit bulk request.' });
     }
   }
 );
 
-requestRoutes.get('/count', async (_req, res, next) => {
+requestRoutes.get('/count', async (req, res, next) => {
   const requestRepository = getRepository(MediaRequest);
 
   try {
-    const counts = await requestRepository
-      .createQueryBuilder('request')
-      .innerJoin('request.media', 'media')
-      .select('COUNT(*)', 'total')
-      .addSelect(
-        'SUM(CASE WHEN request.type = :movie THEN 1 ELSE 0 END)',
-        'movie'
-      )
-      .addSelect('SUM(CASE WHEN request.type = :tv THEN 1 ELSE 0 END)', 'tv')
-      .addSelect(
-        'SUM(CASE WHEN request.type = :music THEN 1 ELSE 0 END)',
-        'music'
-      )
-      .addSelect(
-        'SUM(CASE WHEN request.type = :book THEN 1 ELSE 0 END)',
-        'book'
-      )
-      .addSelect(
-        'SUM(CASE WHEN request.status = :pending THEN 1 ELSE 0 END)',
-        'pending'
-      )
-      .addSelect(
-        'SUM(CASE WHEN request.status = :approved THEN 1 ELSE 0 END)',
-        'approved'
-      )
-      .addSelect(
-        'SUM(CASE WHEN request.status = :declined THEN 1 ELSE 0 END)',
-        'declined'
-      )
-      .addSelect(
-        'SUM(CASE WHEN request.status = :completed THEN 1 ELSE 0 END)',
-        'completed'
-      )
-      .addSelect(
-        `SUM(CASE WHEN request.status = :approved AND (
+    return await runUserSecurityMutation(req.user!.id, async () => {
+      const actor = await getRepository(User).findOneBy({ id: req.user!.id });
+      if (
+        !actor ||
+        !isUserCredentialVersionCurrent(
+          actor,
+          getExpectedCredentialVersion(req)
+        )
+      ) {
+        throw new UserMutationActorUnauthorizedError();
+      }
+
+      const countQuery = requestRepository
+        .createQueryBuilder('request')
+        .innerJoin('request.media', 'media')
+        .innerJoin('request.requestedBy', 'requestedBy')
+        .select('COUNT(*)', 'total')
+        .addSelect(
+          'SUM(CASE WHEN request.type = :movie THEN 1 ELSE 0 END)',
+          'movie'
+        )
+        .addSelect('SUM(CASE WHEN request.type = :tv THEN 1 ELSE 0 END)', 'tv')
+        .addSelect(
+          'SUM(CASE WHEN request.type = :music THEN 1 ELSE 0 END)',
+          'music'
+        )
+        .addSelect(
+          'SUM(CASE WHEN request.type = :book THEN 1 ELSE 0 END)',
+          'book'
+        )
+        .addSelect(
+          'SUM(CASE WHEN request.status = :pending THEN 1 ELSE 0 END)',
+          'pending'
+        )
+        .addSelect(
+          'SUM(CASE WHEN request.status = :approved THEN 1 ELSE 0 END)',
+          'approved'
+        )
+        .addSelect(
+          'SUM(CASE WHEN request.status = :declined THEN 1 ELSE 0 END)',
+          'declined'
+        )
+        .addSelect(
+          'SUM(CASE WHEN request.status = :failed THEN 1 ELSE 0 END)',
+          'failed'
+        )
+        .addSelect(
+          'SUM(CASE WHEN request.status = :completed THEN 1 ELSE 0 END)',
+          'completed'
+        )
+        .addSelect(
+          `SUM(CASE WHEN request.status = :approved AND (
           (request.type = :book AND (
             (COALESCE(request.bookFormat, 'ebook') = 'both'
               AND media.externalServiceId IS NOT NULL
@@ -1678,41 +2065,60 @@ requestRoutes.get('/count', async (_req, res, next) => {
           OR (request.type != :book AND request.is4k = :not4k
             AND media.status = :available)
         ) THEN 1 ELSE 0 END)`,
-        'available'
-      )
-      .setParameters({
-        movie: MediaType.MOVIE,
-        tv: MediaType.TV,
-        music: MediaType.MUSIC,
-        book: MediaType.BOOK,
-        pending: MediaRequestStatus.PENDING,
-        approved: MediaRequestStatus.APPROVED,
-        declined: MediaRequestStatus.DECLINED,
-        completed: MediaRequestStatus.COMPLETED,
-        is4k: true,
-        not4k: false,
-        available: MediaStatus.AVAILABLE,
-      })
-      .getRawOne<Record<string, string | number | null>>();
+          'available'
+        )
+        .setParameters({
+          movie: MediaType.MOVIE,
+          tv: MediaType.TV,
+          music: MediaType.MUSIC,
+          book: MediaType.BOOK,
+          pending: MediaRequestStatus.PENDING,
+          approved: MediaRequestStatus.APPROVED,
+          declined: MediaRequestStatus.DECLINED,
+          failed: MediaRequestStatus.FAILED,
+          completed: MediaRequestStatus.COMPLETED,
+          is4k: true,
+          not4k: false,
+          available: MediaStatus.AVAILABLE,
+        });
 
-    const count = (key: string): number => Number(counts?.[key] ?? 0);
-    const availableCount = count('available');
-    const processingCount = count('approved') - availableCount;
+      if (
+        !actor.hasPermission(
+          [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
+          { type: 'or' }
+        )
+      ) {
+        countQuery.andWhere('requestedBy.id = :visibleUserId', {
+          visibleUserId: actor.id,
+        });
+      }
 
-    return res.status(200).json({
-      total: count('total'),
-      movie: count('movie'),
-      tv: count('tv'),
-      music: count('music'),
-      book: count('book'),
-      pending: count('pending'),
-      approved: count('approved'),
-      declined: count('declined'),
-      processing: processingCount,
-      available: availableCount,
-      completed: count('completed'),
+      const counts =
+        await countQuery.getRawOne<Record<string, string | number | null>>();
+
+      const count = (key: string): number => Number(counts?.[key] ?? 0);
+      const availableCount = count('available');
+      const processingCount = count('approved') - availableCount;
+
+      return res.status(200).json({
+        total: count('total'),
+        movie: count('movie'),
+        tv: count('tv'),
+        music: count('music'),
+        book: count('book'),
+        pending: count('pending'),
+        approved: count('approved'),
+        declined: count('declined'),
+        failed: count('failed'),
+        processing: processingCount,
+        available: availableCount,
+        completed: count('completed'),
+      });
     });
   } catch (e) {
+    if (e instanceof UserMutationActorUnauthorizedError) {
+      return next({ status: 403, message: 'Access denied.' });
+    }
     logger.error('Something went wrong retrieving request counts', {
       label: 'API',
       errorMessage: e.message,
@@ -1730,30 +2136,45 @@ requestRoutes.get('/:requestId', async (req, res, next) => {
       return next({ status: 404, message: 'Request not found.' });
     }
 
-    const request = await requestRepository.findOneOrFail({
-      where: { id: requestId },
-      relations: {
-        requestedBy: true,
-        modifiedBy: true,
-        media: { identifiers: true },
-      },
-    });
-
-    if (
-      request.requestedBy.id !== req.user?.id &&
-      !req.user?.hasPermission(
-        [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
-        { type: 'or' }
-      )
-    ) {
-      return next({
-        status: 403,
-        message: 'You do not have permission to view this request.',
+    return await runUserSecurityMutation(req.user!.id, async () => {
+      const actor = await getRepository(User).findOneBy({ id: req.user!.id });
+      if (
+        !actor ||
+        !isUserCredentialVersionCurrent(
+          actor,
+          getExpectedCredentialVersion(req)
+        )
+      ) {
+        throw new UserMutationActorUnauthorizedError();
+      }
+      const request = await requestRepository.findOneOrFail({
+        where: { id: requestId },
+        relations: {
+          requestedBy: true,
+          modifiedBy: true,
+          media: { identifiers: true },
+        },
       });
-    }
 
-    return res.status(200).json(filterEntityResponse(request));
+      if (
+        request.requestedBy.id !== actor.id &&
+        !actor.hasPermission(
+          [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
+          { type: 'or' }
+        )
+      ) {
+        return next({
+          status: 403,
+          message: 'You do not have permission to view this request.',
+        });
+      }
+
+      return res.status(200).json(filterEntityResponse(request, req.user));
+    });
   } catch (e) {
+    if (e instanceof UserMutationActorUnauthorizedError) {
+      return next({ status: 403, message: 'Access denied.' });
+    }
     logger.debug('Failed to retrieve request.', {
       label: 'API',
       errorMessage: e.message,
@@ -1773,16 +2194,6 @@ requestRoutes.put<{ requestId: string }>(
         return next({ status: 404, message: 'Request not found.' });
       }
 
-      const request = await requestRepository.findOne({
-        where: {
-          id: requestId,
-        },
-      });
-
-      if (!request) {
-        return next({ status: 404, message: 'Request not found.' });
-      }
-
       const sanitizedBody = sanitizeMediaRequestBody(req.body);
       if ('error' in sanitizedBody) {
         logRequestValidationFailure(
@@ -1794,180 +2205,341 @@ requestRoutes.put<{ requestId: string }>(
         return next(sanitizedBody.error);
       }
       const body = sanitizedBody.value;
-
-      if (body.mediaType && body.mediaType !== request.type) {
+      const initialRequest = await requestRepository.findOne({
+        where: { id: requestId },
+        select: { id: true, status: true },
+      });
+      if (!initialRequest) {
+        return next({ status: 404, message: 'Request not found.' });
+      }
+      if (initialRequest.status !== MediaRequestStatus.PENDING) {
         return next({
-          status: 400,
-          message: 'Request media type cannot be changed.',
+          status: 409,
+          message: 'Only pending requests can be edited.',
         });
       }
 
-      if (
-        (request.requestedBy.id !== req.user?.id ||
-          (request.type !== MediaType.TV &&
-            !req.user?.hasPermission(Permission.REQUEST_ADVANCED))) &&
-        !req.user?.hasPermission(Permission.MANAGE_REQUESTS)
-      ) {
+      return await runUserSecurityMutationWithActor(
+        req.user!.id,
+        body.userId ?? req.user!.id,
+        [Permission.MANAGE_USERS, Permission.MANAGE_REQUESTS],
+        (actor) =>
+          runWithRequestAdmission(
+            [getRequestMutationAdmissionKey(requestId)],
+            async () => {
+              const request = await requestRepository.findOne({
+                where: { id: requestId },
+              });
+
+              if (!request) {
+                return next({ status: 404, message: 'Request not found.' });
+              }
+
+              if (request.status !== MediaRequestStatus.PENDING) {
+                return next({
+                  status: 409,
+                  message: 'Only pending requests can be edited.',
+                });
+              }
+
+              if (body.mediaType && body.mediaType !== request.type) {
+                return next({
+                  status: 400,
+                  message: 'Request media type cannot be changed.',
+                });
+              }
+
+              if (
+                (request.requestedBy.id !== actor.id ||
+                  (request.type !== MediaType.TV &&
+                    !actor.hasPermission(Permission.REQUEST_ADVANCED))) &&
+                !actor.hasPermission(Permission.MANAGE_REQUESTS)
+              ) {
+                return next({
+                  status: 403,
+                  message: 'You do not have permission to modify this request.',
+                });
+              }
+
+              let requestUser = request.requestedBy;
+              const changesRequestUser =
+                body.userId !== undefined &&
+                body.userId !== request.requestedBy.id;
+
+              if (
+                changesRequestUser &&
+                !actor.hasPermission([
+                  Permission.MANAGE_USERS,
+                  Permission.MANAGE_REQUESTS,
+                ])
+              ) {
+                return next({
+                  status: 403,
+                  message:
+                    'You do not have permission to modify the request user.',
+                });
+              } else if (body.userId !== undefined) {
+                const selectedUser = await userRepository.findOne({
+                  where: { id: body.userId },
+                });
+                if (!selectedUser) {
+                  return next({ status: 404, message: 'User not found.' });
+                }
+                requestUser = selectedUser;
+              }
+
+              return await runWithRequestAdmission(
+                [`request-user:${requestUser.id}`],
+                async () => {
+                  if (
+                    (changesRequestUser || request.type === MediaType.TV) &&
+                    !hasMediaRequestPermission(
+                      requestUser,
+                      request.type,
+                      request.is4k
+                    )
+                  ) {
+                    return next({
+                      status: 403,
+                      message:
+                        'The selected user does not have permission to request this media.',
+                    });
+                  }
+
+                  if (request.type === MediaType.MOVIE) {
+                    const nextServerId =
+                      body.serverId === undefined
+                        ? request.serverId
+                        : body.serverId;
+                    validateExternalServiceConfiguration(
+                      request.type,
+                      nextServerId,
+                      null,
+                      request.is4k
+                    );
+                    if (body.serverId !== undefined) {
+                      request.serverId = body.serverId as number;
+                    }
+                    if (body.profileId !== undefined) {
+                      request.profileId = body.profileId as number;
+                    }
+                    if (body.rootFolder !== undefined) {
+                      request.rootFolder = body.rootFolder as string;
+                    }
+                    if (body.tags !== undefined) {
+                      request.tags = body.tags;
+                    }
+                  } else if (
+                    request.type === MediaType.MUSIC ||
+                    request.type === MediaType.BOOK
+                  ) {
+                    const nextServerId =
+                      body.serverId === undefined
+                        ? request.serverId
+                        : body.serverId;
+                    const nextBookFormat =
+                      request.type === MediaType.BOOK
+                        ? (body.format ?? request.bookFormat ?? 'ebook')
+                        : null;
+
+                    validateExternalServiceConfiguration(
+                      request.type,
+                      nextServerId,
+                      nextBookFormat
+                    );
+
+                    if (body.serverId !== undefined) {
+                      request.serverId = body.serverId;
+                    }
+                    if (body.profileId !== undefined) {
+                      request.profileId = body.profileId;
+                    }
+                    if (body.metadataProfileId !== undefined) {
+                      request.metadataProfileId = body.metadataProfileId;
+                    }
+                    if (body.rootFolder !== undefined) {
+                      request.rootFolder = body.rootFolder;
+                    }
+                    if (body.tags !== undefined) {
+                      request.tags = body.tags;
+                    }
+                    if (request.type === MediaType.BOOK) {
+                      request.bookFormat =
+                        body.format ?? request.bookFormat ?? 'ebook';
+                    }
+                  } else if (request.type === MediaType.TV) {
+                    const requestedSeasons =
+                      body.seasons === 'all' ? undefined : body.seasons;
+                    if (!requestedSeasons || requestedSeasons.length === 0) {
+                      return next({
+                        status: 400,
+                        message:
+                          'Missing seasons. Use DELETE to cancel a series request.',
+                      });
+                    }
+
+                    const media = await getRepository(Media).findOneOrFail({
+                      where: {
+                        tmdbId: request.media.tmdbId,
+                        mediaType: MediaType.TV,
+                      },
+                    });
+                    const existingSeasons = new Set(
+                      (
+                        await getRepository(SeasonRequest)
+                          .createQueryBuilder('requestedSeason')
+                          .innerJoin(
+                            'requestedSeason.request',
+                            'existingRequest'
+                          )
+                          .innerJoin('existingRequest.media', 'existingMedia')
+                          .select(
+                            'DISTINCT requestedSeason.seasonNumber',
+                            'seasonNumber'
+                          )
+                          .where('existingMedia.id = :mediaId', {
+                            mediaId: media.id,
+                          })
+                          .andWhere('existingRequest.is4k = :is4k', {
+                            is4k: request.is4k,
+                          })
+                          .andWhere('existingRequest.id != :requestId', {
+                            requestId: request.id,
+                          })
+                          .andWhere(
+                            'existingRequest.status NOT IN (:...inactiveStatuses)',
+                            {
+                              inactiveStatuses: inactiveMediaRequestStatuses,
+                            }
+                          )
+                          .getRawMany<{
+                            seasonNumber: number | string;
+                          }>()
+                      )
+                        .map(({ seasonNumber }) => Number(seasonNumber))
+                        .filter(Number.isSafeInteger)
+                    );
+                    const filteredSeasons = requestedSeasons.filter(
+                      (seasonNumber) => !existingSeasons.has(seasonNumber)
+                    );
+
+                    if (filteredSeasons.length === 0) {
+                      return next({
+                        status: 202,
+                        message: 'No seasons available to request',
+                      });
+                    }
+
+                    const quotas = await requestUser.getQuota();
+                    const existingAllowance = changesRequestUser
+                      ? 0
+                      : request.seasons.length;
+                    if (
+                      quotas.tv.limit &&
+                      filteredSeasons.length >
+                        (quotas.tv.remaining ?? 0) + existingAllowance
+                    ) {
+                      return next({
+                        status: 403,
+                        message: 'Series quota exceeded.',
+                      });
+                    }
+
+                    if (
+                      actor.hasPermission(
+                        [
+                          Permission.REQUEST_ADVANCED,
+                          Permission.MANAGE_REQUESTS,
+                        ],
+                        { type: 'or' }
+                      )
+                    ) {
+                      const nextServerId =
+                        body.serverId === undefined
+                          ? request.serverId
+                          : body.serverId;
+                      validateExternalServiceConfiguration(
+                        request.type,
+                        nextServerId,
+                        null,
+                        request.is4k
+                      );
+                      if (body.serverId !== undefined) {
+                        request.serverId = body.serverId as number;
+                      }
+                      if (body.profileId !== undefined) {
+                        request.profileId = body.profileId as number;
+                      }
+                      if (body.rootFolder !== undefined) {
+                        request.rootFolder = body.rootFolder as string;
+                      }
+                      if (body.languageProfileId !== undefined) {
+                        request.languageProfileId =
+                          body.languageProfileId as number;
+                      }
+                      if (body.tags !== undefined) {
+                        request.tags = body.tags;
+                      }
+                    }
+
+                    const currentSeasonNumbers = new Set(
+                      request.seasons.map((season) => season.seasonNumber)
+                    );
+                    const newSeasons = filteredSeasons.filter(
+                      (seasonNumber) => !currentSeasonNumbers.has(seasonNumber)
+                    );
+                    request.seasons = request.seasons.filter((season) =>
+                      filteredSeasons.includes(season.seasonNumber)
+                    );
+                    request.seasons.push(
+                      ...newSeasons.map(
+                        (seasonNumber) =>
+                          new SeasonRequest({
+                            seasonNumber,
+                            status: MediaRequestStatus.PENDING,
+                          })
+                      )
+                    );
+                  }
+
+                  if (changesRequestUser) {
+                    const quotas = await requestUser.getQuota();
+                    const quota =
+                      request.type === MediaType.MOVIE
+                        ? quotas.movie
+                        : request.type === MediaType.MUSIC
+                          ? quotas.music
+                          : request.type === MediaType.BOOK
+                            ? quotas.book
+                            : undefined;
+                    if (quota?.restricted) {
+                      return next({
+                        status: 403,
+                        message: `${request.type} quota exceeded.`,
+                      });
+                    }
+                  }
+
+                  request.requestedBy = requestUser;
+                  await requestRepository.save(request);
+                  return res
+                    .status(200)
+                    .json(filterEntityResponse(request, req.user));
+                }
+              );
+            }
+          ),
+        {
+          expectedCredentialVersion: getExpectedCredentialVersion(req),
+        }
+      );
+    } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError) {
         return next({
           status: 403,
           message: 'You do not have permission to modify this request.',
         });
       }
-
-      let requestUser = request.requestedBy;
-
-      if (
-        body.userId &&
-        body.userId !== request.requestedBy.id &&
-        !req.user?.hasPermission([
-          Permission.MANAGE_USERS,
-          Permission.MANAGE_REQUESTS,
-        ])
-      ) {
-        return next({
-          status: 403,
-          message: 'You do not have permission to modify the request user.',
-        });
-      } else if (body.userId) {
-        requestUser = await userRepository.findOneOrFail({
-          where: { id: body.userId },
-        });
-      }
-
-      if (request.type === MediaType.MOVIE) {
-        request.serverId = body.serverId as number;
-        request.profileId = body.profileId as number;
-        request.rootFolder = body.rootFolder as string;
-        request.tags = body.tags;
-        request.requestedBy = requestUser as User;
-
-        await requestRepository.save(request);
-      } else if (
-        request.type === MediaType.MUSIC ||
-        request.type === MediaType.BOOK
-      ) {
-        const nextServerId =
-          body.serverId === undefined ? request.serverId : body.serverId;
-        const nextBookFormat =
-          request.type === MediaType.BOOK
-            ? (body.format ?? request.bookFormat ?? 'ebook')
-            : null;
-
-        validateExternalServiceConfiguration(
-          request.type,
-          nextServerId,
-          nextBookFormat
-        );
-
-        if (body.serverId !== undefined) {
-          request.serverId = body.serverId;
-        }
-        if (body.profileId !== undefined) {
-          request.profileId = body.profileId;
-        }
-        if (body.metadataProfileId !== undefined) {
-          request.metadataProfileId = body.metadataProfileId;
-        }
-        if (body.rootFolder !== undefined) {
-          request.rootFolder = body.rootFolder;
-        }
-        if (body.tags !== undefined) {
-          request.tags = body.tags;
-        }
-        request.requestedBy = requestUser as User;
-        if (request.type === MediaType.BOOK) {
-          request.bookFormat = body.format ?? request.bookFormat ?? 'ebook';
-        }
-
-        await requestRepository.save(request);
-      } else if (request.type === MediaType.TV) {
-        const mediaRepository = getRepository(Media);
-        if (
-          req.user?.hasPermission(
-            [Permission.REQUEST_ADVANCED, Permission.MANAGE_REQUESTS],
-            { type: 'or' }
-          )
-        ) {
-          request.serverId = body.serverId as number;
-          request.profileId = body.profileId as number;
-          request.rootFolder = body.rootFolder as string;
-          request.languageProfileId = body.languageProfileId as number;
-          request.tags = body.tags;
-        }
-        request.requestedBy = requestUser as User;
-
-        const requestedSeasons =
-          body.seasons === 'all' ? undefined : body.seasons;
-
-        if (!requestedSeasons || requestedSeasons.length === 0) {
-          throw new Error(
-            'Missing seasons. If you want to cancel a series request, use the DELETE method.'
-          );
-        }
-
-        // Get existing media so we can work with all the requests
-        const media = await mediaRepository.findOneOrFail({
-          where: { tmdbId: request.media.tmdbId, mediaType: MediaType.TV },
-          relations: { requests: true },
-        });
-
-        // Get all requested seasons that are not part of this request we are editing
-        const existingSeasons = media.requests
-          .filter(
-            (r) =>
-              r.is4k === request.is4k &&
-              r.id !== request.id &&
-              r.status !== MediaRequestStatus.DECLINED &&
-              r.status !== MediaRequestStatus.COMPLETED
-          )
-          .reduce((seasons, r) => {
-            const combinedSeasons = r.seasons.map(
-              (season) => season.seasonNumber
-            );
-
-            return [...seasons, ...combinedSeasons];
-          }, [] as number[]);
-
-        const filteredSeasons = requestedSeasons.filter(
-          (rs) => !existingSeasons.includes(rs)
-        );
-
-        if (filteredSeasons.length === 0) {
-          return next({
-            status: 202,
-            message: 'No seasons available to request',
-          });
-        }
-
-        const newSeasons = requestedSeasons.filter(
-          (sn) => !request.seasons.map((s) => s.seasonNumber).includes(sn)
-        );
-
-        request.seasons = request.seasons.filter((rs) =>
-          filteredSeasons.includes(rs.seasonNumber)
-        );
-
-        if (newSeasons.length > 0) {
-          logger.debug('Adding new seasons to request', {
-            label: 'Media Request',
-            newSeasons,
-          });
-          request.seasons.push(
-            ...newSeasons.map(
-              (ns) =>
-                new SeasonRequest({
-                  seasonNumber: ns,
-                  status: MediaRequestStatus.PENDING,
-                })
-            )
-          );
-        }
-
-        await requestRepository.save(request);
-      }
-
-      return res.status(200).json(filterEntityResponse(request));
-    } catch (e) {
       if (e instanceof ServiceConfigurationError) {
         return next({ status: 400, message: e.message });
       }
@@ -1986,26 +2558,42 @@ requestRoutes.delete('/:requestId', async (req, res, next) => {
       return next({ status: 404, message: 'Request not found.' });
     }
 
-    const request = await requestRepository.findOneOrFail({
-      where: { id: requestId },
-      relations: { requestedBy: true, modifiedBy: true },
-    });
+    return await runUserSecurityMutationWithActor(
+      req.user!.id,
+      req.user!.id,
+      Permission.MANAGE_REQUESTS,
+      (actor) =>
+        runWithRequestAdmission(
+          [getRequestMutationAdmissionKey(requestId)],
+          async () => {
+            const request = await requestRepository.findOneOrFail({
+              where: { id: requestId },
+              relations: { requestedBy: true, modifiedBy: true },
+            });
 
-    if (
-      !req.user?.hasPermission(Permission.MANAGE_REQUESTS) &&
-      (request.requestedBy.id !== req.user?.id ||
-        request.status !== MediaRequestStatus.PENDING)
-    ) {
-      return next({
-        status: 401,
-        message: 'You do not have permission to delete this request.',
-      });
-    }
+            if (
+              !actor.hasPermission(Permission.MANAGE_REQUESTS) &&
+              (request.requestedBy.id !== actor.id ||
+                request.status !== MediaRequestStatus.PENDING)
+            ) {
+              return next({
+                status: 401,
+                message: 'You do not have permission to delete this request.',
+              });
+            }
 
-    await requestRepository.remove(request);
-
-    return res.status(204).send();
+            await requestRepository.remove(request);
+            return res.status(204).send();
+          }
+        ),
+      {
+        expectedCredentialVersion: getExpectedCredentialVersion(req),
+      }
+    );
   } catch (e) {
+    if (e instanceof UserMutationActorUnauthorizedError) {
+      return next({ status: 401, message: 'Request user no longer exists.' });
+    }
     logger.error('Something went wrong deleting a request.', {
       label: 'API',
       errorMessage: e.message,
@@ -2028,24 +2616,54 @@ requestRoutes.post<{
         return next({ status: 404, message: 'Request not found.' });
       }
 
-      const request = await requestRepository.findOneOrFail({
-        where: { id: requestId },
-        relations: { requestedBy: true, modifiedBy: true },
-      });
+      return await runAuthorizedUserSecurityMutation(
+        req.user!.id,
+        req.user!.id,
+        Permission.MANAGE_REQUESTS,
+        (actor) =>
+          runWithRequestAdmission(
+            [getRequestMutationAdmissionKey(requestId)],
+            async () => {
+              const request = await requestRepository.findOneOrFail({
+                where: { id: requestId },
+                relations: { requestedBy: true, modifiedBy: true },
+              });
 
-      // this also triggers updating the parent media's status & sending to *arr
-      validateExternalServiceConfiguration(
-        request.type,
-        request.serverId,
-        request.bookFormat
+              if (request.status !== MediaRequestStatus.FAILED) {
+                return next({
+                  status: 409,
+                  message: 'Only failed requests can be retried.',
+                });
+              }
+
+              // this also triggers updating the parent media's status & sending to *arr
+              validateExternalServiceConfiguration(
+                request.type,
+                request.serverId,
+                request.bookFormat,
+                request.is4k
+              );
+
+              request.status = MediaRequestStatus.APPROVED;
+              request.modifiedBy = actor;
+              await requestRepository.save(request);
+
+              return res
+                .status(200)
+                .json(filterEntityResponse(request, req.user));
+            }
+          ),
+        {
+          expectedCredentialVersion: getExpectedCredentialVersion(req),
+        }
       );
-
-      request.status = MediaRequestStatus.APPROVED;
-      request.modifiedBy = req.user;
-      await requestRepository.save(request);
-
-      return res.status(200).json(filterEntityResponse(request));
     } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError) {
+        return next({
+          status: 403,
+          message: 'You do not have permission to retry this request.',
+        });
+      }
       if (e instanceof ServiceConfigurationError) {
         return next({ status: 400, message: e.message });
       }
@@ -2061,7 +2679,7 @@ requestRoutes.post<{
 
 requestRoutes.post<{
   requestId: string;
-  status: 'pending' | 'approve' | 'decline';
+  status: 'approve' | 'decline';
 }>(
   '/:requestId/:status',
   isAuthenticated(Permission.MANAGE_REQUESTS),
@@ -2078,25 +2696,55 @@ requestRoutes.post<{
         return next({ status: 404, message: 'Request not found.' });
       }
 
-      const request = await requestRepository.findOneOrFail({
-        where: { id: requestId },
-        relations: { requestedBy: true, modifiedBy: true },
-      });
+      return await runAuthorizedUserSecurityMutation(
+        req.user!.id,
+        req.user!.id,
+        Permission.MANAGE_REQUESTS,
+        (actor) =>
+          runWithRequestAdmission(
+            [getRequestMutationAdmissionKey(requestId)],
+            async () => {
+              const request = await requestRepository.findOneOrFail({
+                where: { id: requestId },
+                relations: { requestedBy: true, modifiedBy: true },
+              });
 
-      if (newStatus === MediaRequestStatus.APPROVED) {
-        validateExternalServiceConfiguration(
-          request.type,
-          request.serverId,
-          request.bookFormat
-        );
-      }
+              if (request.status !== MediaRequestStatus.PENDING) {
+                return next({
+                  status: 409,
+                  message: 'Only pending requests can be approved or declined.',
+                });
+              }
 
-      request.status = newStatus;
-      request.modifiedBy = req.user;
-      await requestRepository.save(request);
+              if (newStatus === MediaRequestStatus.APPROVED) {
+                validateExternalServiceConfiguration(
+                  request.type,
+                  request.serverId,
+                  request.bookFormat,
+                  request.is4k
+                );
+              }
 
-      return res.status(200).json(filterEntityResponse(request));
+              request.status = newStatus;
+              request.modifiedBy = actor;
+              await requestRepository.save(request);
+
+              return res
+                .status(200)
+                .json(filterEntityResponse(request, req.user));
+            }
+          ),
+        {
+          expectedCredentialVersion: getExpectedCredentialVersion(req),
+        }
+      );
     } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError) {
+        return next({
+          status: 403,
+          message: 'You do not have permission to update this request.',
+        });
+      }
       if (e instanceof ServiceConfigurationError) {
         return next({ status: 400, message: e.message });
       }

@@ -7,6 +7,7 @@ import { getPositiveQueryParamNumber } from '@app/hooks/useUpdateQueryParams';
 import { useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { REDACTED_SECRET } from '@app/utils/secret';
 import type { PushoverSound } from '@server/api/pushover';
 import type { UserSettingsNotificationsResponse } from '@server/interfaces/api/userSettingsInterfaces';
 import axios from 'axios';
@@ -50,10 +51,8 @@ const UserPushoverSettings = () => {
     user ? `/api/v1/user/${user?.id}/settings/notifications` : null
   );
   const { data: soundsData } = useSWR<PushoverSound[]>(
-    data?.pushoverApplicationToken
-      ? `/api/v1/settings/notifications/pushover/sounds?token=${encodeURIComponent(
-          data.pushoverApplicationToken
-        )}`
+    data?.pushoverApplicationToken && user
+      ? `/api/v1/settings/notifications/pushover/sounds?userId=${user.id}`
       : null
   );
 
@@ -70,7 +69,7 @@ const UserPushoverSettings = () => {
         otherwise: (schema) => schema.nullable(),
       })
       .matches(
-        /^[a-z\d]{30}$/i,
+        new RegExp(`^(?:\\${REDACTED_SECRET}|[a-z\\d]{30})$`, 'i'),
         intl.formatMessage(messages.validationPushoverApplicationToken)
       ),
     pushoverUserKey: Yup.string()
@@ -83,7 +82,7 @@ const UserPushoverSettings = () => {
         otherwise: (schema) => schema.nullable(),
       })
       .matches(
-        /^[a-z\d]{30}$/i,
+        new RegExp(`^(?:\\${REDACTED_SECRET}|[a-z\\d]{30})$`, 'i'),
         intl.formatMessage(messages.validationPushoverUserKey)
       ),
   });

@@ -82,6 +82,130 @@ interface QueueResponse<QueueItemAppendT> {
   records: (QueueItem & QueueItemAppendT)[];
 }
 
+export const MAX_SERVARR_CONFIGURATION_RESULTS = 1_000;
+export const MAX_SERVARR_QUEUE_RESULTS = 10_000;
+export const MAX_SERVARR_LIBRARY_RESULTS = 100_000;
+export const MAX_SERVARR_LOOKUP_RESULTS = 1_000;
+const MAX_SERVARR_TEXT_LENGTH = 10_000;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const boundedText = (value: unknown): string =>
+  typeof value === 'string' ? value.slice(0, MAX_SERVARR_TEXT_LENGTH) : '';
+
+export const sanitizeServarrSystemStatus = (
+  value: unknown
+): Pick<SystemStatus, 'appName' | 'version' | 'urlBase'> => {
+  if (!isRecord(value)) {
+    throw new Error('Servarr returned invalid system status');
+  }
+  const version = boundedText(value.version);
+  if (!version) {
+    throw new Error('Servarr returned invalid system status');
+  }
+  return {
+    appName: boundedText(value.appName) || undefined,
+    version,
+    urlBase: boundedText(value.urlBase),
+  };
+};
+
+export const sanitizeServarrRecordArray = <T>(
+  value: unknown,
+  maximum = MAX_SERVARR_LIBRARY_RESULTS
+): T[] =>
+  (Array.isArray(value) ? value : []).slice(0, maximum).filter(isRecord) as T[];
+
+export const sanitizeServarrProfiles = (value: unknown): QualityProfile[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_SERVARR_CONFIGURATION_RESULTS)
+    .flatMap((profile) => {
+      if (!isRecord(profile) || !Number.isSafeInteger(profile.id)) {
+        return [];
+      }
+      const name = boundedText(profile.name);
+      return name ? [{ id: profile.id as number, name }] : [];
+    });
+
+export const sanitizeServarrRootFolders = (value: unknown): RootFolder[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_SERVARR_CONFIGURATION_RESULTS)
+    .flatMap((folder) => {
+      if (!isRecord(folder) || !Number.isSafeInteger(folder.id)) {
+        return [];
+      }
+      const path = boundedText(folder.path);
+      if (!path) {
+        return [];
+      }
+      const finiteNumber = (number: unknown): number =>
+        typeof number === 'number' && Number.isFinite(number) ? number : 0;
+      return [
+        {
+          id: folder.id as number,
+          path,
+          freeSpace: finiteNumber(folder.freeSpace),
+          totalSpace: finiteNumber(folder.totalSpace),
+          accessible:
+            typeof folder.accessible === 'boolean'
+              ? folder.accessible
+              : undefined,
+          unmappedFolders: (Array.isArray(folder.unmappedFolders)
+            ? folder.unmappedFolders
+            : []
+          )
+            .slice(0, MAX_SERVARR_CONFIGURATION_RESULTS)
+            .flatMap((unmapped) =>
+              isRecord(unmapped)
+                ? [
+                    {
+                      name: boundedText(unmapped.name),
+                      path: boundedText(unmapped.path),
+                    },
+                  ]
+                : []
+            ),
+        },
+      ];
+    });
+
+export const sanitizeServarrTags = (value: unknown): Tag[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_SERVARR_CONFIGURATION_RESULTS)
+    .flatMap((tag) => {
+      if (!isRecord(tag) || !Number.isSafeInteger(tag.id)) {
+        return [];
+      }
+      const label = boundedText(tag.label);
+      return label ? [{ id: tag.id as number, label }] : [];
+    });
+
+export const sanitizeServarrQueue = <T>(value: unknown): T[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_SERVARR_QUEUE_RESULTS)
+    .flatMap((item) => {
+      if (!isRecord(item)) {
+        return [];
+      }
+      const normalized = { ...item };
+      for (const field of [
+        'title',
+        'timeleft',
+        'estimatedCompletionTime',
+        'status',
+        'trackedDownloadStatus',
+        'trackedDownloadState',
+        'downloadId',
+        'protocol',
+        'downloadClient',
+        'indexer',
+      ]) {
+        normalized[field] = boundedText(normalized[field]);
+      }
+      return [normalized as T];
+    });
+
 const EXTERNAL_READ_ONLY =
   process.env.SEERR_EXTERNAL_READ_ONLY?.toLowerCase() === 'true' ||
   process.env.SEERR_EXTERNAL_READ_ONLY === '1';
@@ -139,6 +263,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
         apikey: apiKey,
       },
       {
+        allowPrivateAddresses: true,
         nodeCache: cacheManager.getCache(cacheName).data,
         timeout,
       }
@@ -167,11 +292,13 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     }
   }
 
-  public async getSystemStatus(): Promise<SystemStatus> {
+  public async getSystemStatus(): Promise<
+    Pick<SystemStatus, 'appName' | 'version' | 'urlBase'>
+  > {
     try {
-      const response = await this.axios.get<SystemStatus>('/system/status');
+      const response = await this.axios.get<unknown>('/system/status');
 
-      return response.data;
+      return sanitizeServarrSystemStatus(response.data);
     } catch (e) {
       throw new Error(
         `[${this.apiName}] Failed to retrieve system status: ${e.message}`,
@@ -188,7 +315,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
         3600
       );
 
-      return data;
+      return sanitizeServarrProfiles(data);
     } catch (e) {
       throw new Error(
         `[${this.apiName}] Failed to retrieve profiles: ${e.message}`,
@@ -205,7 +332,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
         3600
       );
 
-      return data;
+      return sanitizeServarrRootFolders(data);
     } catch (e) {
       throw new Error(
         `[${this.apiName}] Failed to retrieve root folders: ${e.message}`,
@@ -225,7 +352,9 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
         }
       );
 
-      return response.data.records;
+      return sanitizeServarrQueue<QueueItem & QueueItemAppendT>(
+        response.data?.records
+      );
     } catch (e) {
       throw new Error(
         `[${this.apiName}] Failed to retrieve queue: ${e.message}`,
@@ -238,7 +367,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     try {
       const response = await this.axios.get<Tag[]>(`/tag`);
 
-      return response.data;
+      return sanitizeServarrTags(response.data);
     } catch (e) {
       throw new Error(
         `[${this.apiName}] Failed to retrieve tags: ${e.message}`,
@@ -253,7 +382,9 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
         label,
       });
 
-      return response.data;
+      const tag = sanitizeServarrTags([response.data])[0];
+      if (!tag) throw new Error('Servarr returned an invalid tag');
+      return tag;
     } catch (e) {
       throw new Error(`[${this.apiName}] Failed to create tag: ${e.message}`, {
         cause: e,
@@ -274,7 +405,9 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
         label,
       });
 
-      return response.data;
+      const tag = sanitizeServarrTags([response.data])[0];
+      if (!tag) throw new Error('Servarr returned an invalid tag');
+      return tag;
     } catch (e) {
       throw new Error(`[${this.apiName}] Failed to rename tag: ${e.message}`, {
         cause: e,

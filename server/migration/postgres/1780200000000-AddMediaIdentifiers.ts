@@ -5,7 +5,7 @@ export class AddMediaIdentifiers1780200000000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TABLE "media_identifier" ("id" SERIAL NOT NULL, "provider" character varying NOT NULL, "value" character varying NOT NULL, "canonical" boolean NOT NULL DEFAULT false, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "mediaId" integer, CONSTRAINT "UNIQUE_MEDIA_IDENTIFIER" UNIQUE ("mediaId", "provider", "value"), CONSTRAINT "PK_media_identifier" PRIMARY KEY ("id"))`
+      `CREATE TABLE "media_identifier" ("id" SERIAL NOT NULL, "provider" character varying NOT NULL, "value" character varying NOT NULL, "canonical" boolean NOT NULL DEFAULT false, "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "mediaId" integer, CONSTRAINT "UNIQUE_MEDIA_IDENTIFIER" UNIQUE ("mediaId", "provider", "value"), CONSTRAINT "PK_media_identifier" PRIMARY KEY ("id"))`
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_media_identifier_provider_value" ON "media_identifier" ("provider", "value")`

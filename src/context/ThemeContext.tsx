@@ -1,3 +1,7 @@
+import {
+  readLocalStorageValue,
+  writeLocalStorageValue,
+} from '@app/utils/localStorage';
 import type { ReactNode } from 'react';
 import {
   createContext,
@@ -601,20 +605,12 @@ const THEME_PALETTE_KEY = 'seerr-theme-palette';
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 const getStoredMode = (): ThemeMode => {
-  if (typeof window === 'undefined') {
-    return 'dark';
-  }
-
-  const storedMode = window.localStorage.getItem(THEME_MODE_KEY);
+  const storedMode = readLocalStorageValue(THEME_MODE_KEY);
   return storedMode === 'light' || storedMode === 'dark' ? storedMode : 'dark';
 };
 
 const getStoredPalette = (): string => {
-  if (typeof window === 'undefined') {
-    return themePalettes[0].id;
-  }
-
-  const storedPalette = window.localStorage.getItem(THEME_PALETTE_KEY);
+  const storedPalette = readLocalStorageValue(THEME_PALETTE_KEY);
   return storedPalette &&
     themePalettes.some((palette) => palette.id === storedPalette)
     ? storedPalette
@@ -690,8 +686,8 @@ const applyTheme = (mode: ThemeMode, palette: string) => {
     themeTokens.secondaryScale,
     mode
   );
-  window.localStorage.setItem(THEME_MODE_KEY, mode);
-  window.localStorage.setItem(THEME_PALETTE_KEY, themeTokens.activePaletteId);
+  writeLocalStorageValue(THEME_MODE_KEY, mode);
+  writeLocalStorageValue(THEME_PALETTE_KEY, themeTokens.activePaletteId);
 };
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {

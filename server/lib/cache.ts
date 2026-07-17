@@ -1,4 +1,5 @@
 import NodeCache from 'node-cache';
+import { serialize } from 'node:v8';
 
 export type AvailableCacheIds =
   | 'tmdb'
@@ -23,22 +24,81 @@ export type AvailableCacheIds =
 
 const DEFAULT_TTL = 300;
 const DEFAULT_CHECK_PERIOD = 120;
+export const DEFAULT_MAX_CACHE_KEYS = 10_000;
+export const DEFAULT_MAX_CACHE_BYTES = 64 * 1024 * 1024;
 
-class Cache {
+export const estimateCacheEntryBytes = (key: string, value: unknown): number =>
+  Buffer.byteLength(key, 'utf8') + serialize(value).byteLength;
+
+export class Cache {
   public id: AvailableCacheIds;
   public data: NodeCache;
   public name: string;
+  private readonly keyOrder = new Map<string, undefined>();
+  private readonly keyBytes = new Map<string, number>();
+  private readonly maxKeys: number;
+  private readonly maxBytes: number;
+  private totalBytes = 0;
 
   constructor(
     id: AvailableCacheIds,
     name: string,
-    options: { stdTtl?: number; checkPeriod?: number } = {}
+    options: {
+      stdTtl?: number;
+      checkPeriod?: number;
+      maxKeys?: number;
+      maxBytes?: number;
+    } = {}
   ) {
     this.id = id;
     this.name = name;
+    this.maxKeys = options.maxKeys ?? DEFAULT_MAX_CACHE_KEYS;
+    this.maxBytes = options.maxBytes ?? DEFAULT_MAX_CACHE_BYTES;
+    if (!Number.isSafeInteger(this.maxKeys) || this.maxKeys <= 0) {
+      throw new Error('Cache key limit must be a positive integer.');
+    }
+    if (!Number.isSafeInteger(this.maxBytes) || this.maxBytes <= 0) {
+      throw new Error('Cache byte limit must be a positive integer.');
+    }
     this.data = new NodeCache({
       stdTTL: options.stdTtl ?? DEFAULT_TTL,
       checkperiod: options.checkPeriod ?? DEFAULT_CHECK_PERIOD,
+    });
+    this.data.on('set', (key: string, value: unknown) => {
+      this.totalBytes -= this.keyBytes.get(key) ?? 0;
+      let entryBytes: number;
+      try {
+        entryBytes = estimateCacheEntryBytes(key, value);
+      } catch {
+        entryBytes = this.maxBytes + 1;
+      }
+      this.keyBytes.set(key, entryBytes);
+      this.totalBytes += entryBytes;
+      this.keyOrder.delete(key);
+      this.keyOrder.set(key, undefined);
+
+      while (
+        this.keyOrder.size > this.maxKeys ||
+        this.totalBytes > this.maxBytes
+      ) {
+        const oldestKey = this.keyOrder.keys().next().value;
+        if (oldestKey === undefined) {
+          break;
+        }
+        this.data.del(oldestKey);
+      }
+    });
+    const forgetKey = (key: string) => {
+      this.keyOrder.delete(key);
+      this.totalBytes -= this.keyBytes.get(key) ?? 0;
+      this.keyBytes.delete(key);
+    };
+    this.data.on('del', forgetKey);
+    this.data.on('expired', forgetKey);
+    this.data.on('flush', () => {
+      this.keyOrder.clear();
+      this.keyBytes.clear();
+      this.totalBytes = 0;
     });
   }
 

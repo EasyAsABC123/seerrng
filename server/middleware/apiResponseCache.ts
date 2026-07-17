@@ -46,6 +46,17 @@ export const apiResponseCache = (
   res: Response,
   next: NextFunction
 ) => {
+  // API responses are private unless a route below explicitly opts into a
+  // bounded browser cache. Cookie-authenticated requests are not covered by
+  // HTTP's Authorization-header cache rules, so leaving sensitive responses
+  // without a directive can expose them through a shared reverse proxy.
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Vary', 'Cookie, Authorization, X-API-Key, Accept-Encoding');
+
+  if (req.headers.authorization || req.header('X-API-Key')) {
+    return next();
+  }
+
   if (req.method === 'GET' && req.path === '/settings/public') {
     delete req.headers['if-none-match'];
     delete req.headers['if-modified-since'];
@@ -53,7 +64,6 @@ export const apiResponseCache = (
 
   if (
     req.method !== 'GET' ||
-    req.headers.authorization ||
     !cacheableRoutePatterns.some((pattern) => pattern.test(req.path))
   ) {
     return next();

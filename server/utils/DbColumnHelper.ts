@@ -4,12 +4,23 @@ import { Column } from 'typeorm';
 const pgTypeMapping: { [key: string]: ColumnType } = {
   datetime: 'timestamp with time zone',
 };
+const sqliteTypeMapping: { [key: string]: ColumnType } = {
+  bigint: 'integer',
+};
 
-export function resolveDbType(pgType: ColumnType): ColumnType {
-  if (isPgsql && pgType.toString() in pgTypeMapping) {
-    return pgTypeMapping[pgType.toString()];
+export function resolveDbType(type: ColumnType): ColumnType {
+  const typeName = type.toString();
+  if (isPgsql && typeName in pgTypeMapping) {
+    return pgTypeMapping[typeName];
   }
-  return pgType;
+  if (!isPgsql && typeName in sqliteTypeMapping) {
+    return sqliteTypeMapping[typeName];
+  }
+  return type;
+}
+
+export function currentTimestampDefault(): string {
+  return isPgsql ? 'CURRENT_TIMESTAMP' : "datetime('now')";
 }
 
 export function DbAwareColumn(columnOptions: ColumnOptions) {

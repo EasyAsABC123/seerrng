@@ -13,7 +13,7 @@ import { dirname } from 'node:path';
 import { fetchIssues, issueText } from './utils.mjs';
 
 const MODEL_NAME = process.env.EMBEDDING_MODEL || 'Xenova/all-MiniLM-L6-v2';
-const OUTPUT_PATH = 'issue_index.json';
+const OUTPUT_PATH = process.env.INDEX_PATH || 'issue_index.json';
 const INCLUDE_CLOSED_DAYS = 90;
 const MAX_ISSUES = 5000;
 const BATCH_SIZE = 64;
@@ -80,14 +80,19 @@ async function main() {
   }
 
   const issueMetadata = allIssues.map((issue) => {
-    const body = (issue.body || '').trim();
+    const body = typeof issue.body === 'string' ? issue.body.trim() : '';
     return {
       number: issue.number,
-      title: issue.title,
-      state: issue.state,
-      url: issue.html_url,
+      title: typeof issue.title === 'string' ? issue.title.slice(0, 256) : '',
+      state: typeof issue.state === 'string' ? issue.state.slice(0, 32) : '',
+      url:
+        typeof issue.html_url === 'string' ? issue.html_url.slice(0, 2048) : '',
       body_preview: body.slice(0, 500) || '',
-      labels: (issue.labels || []).map((l) => l.name),
+      labels: (Array.isArray(issue.labels) ? issue.labels : [])
+        .map((label) => (typeof label === 'string' ? label : label?.name))
+        .filter((label) => typeof label === 'string')
+        .slice(0, 100)
+        .map((label) => label.slice(0, 100)),
       created_at: issue.created_at,
       updated_at: issue.updated_at,
     };

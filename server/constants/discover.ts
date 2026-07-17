@@ -31,6 +31,7 @@ export enum DiscoverSliderType {
 }
 
 export const MAX_DISCOVER_SLIDERS = 100;
+export const MAX_DISCOVER_KEYWORD_IDS = 20;
 export const MAX_DISCOVER_SLIDER_TITLE_LENGTH = 100;
 export const MAX_DISCOVER_SLIDER_DATA_LENGTH = 500;
 

@@ -1,5 +1,8 @@
 import { MediaServerType } from '@server/constants/server';
-import dataSource, { getRepository } from '@server/datasource';
+import dataSource, {
+  enforceSqliteDatabasePermissions,
+  getRepository,
+} from '@server/datasource';
 import Media from '@server/entity/Media';
 import Settings from '@server/lib/settings';
 import logger from '@server/logger';
@@ -30,6 +33,7 @@ const checkOverseerrMerge = async (): Promise<boolean> => {
 
   // Open the database connection to get the migrations and close it afterwards
   const dbConnection = await dataSource.initialize();
+  enforceSqliteDatabasePermissions();
   const migrations = dbConnection.migrations;
   await dbConnection.destroy();
 
@@ -64,6 +68,7 @@ const checkOverseerrMerge = async (): Promise<boolean> => {
 
   // Reopen the database connection with the updated migrations
   await dataSource.initialize();
+  enforceSqliteDatabasePermissions();
 
   // Add fake migration record to prevent running the already existing Overseerr migration again
   try {
@@ -133,20 +138,34 @@ const checkOverseerrMerge = async (): Promise<boolean> => {
     process.exit(1);
   }
 
-  // Set media server type to Plex (default for Overseerr)
-  settings.main.mediaServerType = MediaServerType.PLEX;
-
-  // Replace default Overseerr values with Seerr values
-  if (settings.main.applicationTitle === 'Overseerr') {
-    settings.main.applicationTitle = 'Seerr';
-  }
-  if (settings.notifications.agents.email.options.senderName === 'Overseerr') {
-    settings.notifications.agents.email.options.senderName = 'Seerr';
-  }
-
-  // Save the updated settings
   try {
-    await settings.save();
+    await settings.persistChanges((current) => ({
+      main: {
+        ...current.main,
+        mediaServerType: MediaServerType.PLEX,
+        applicationTitle:
+          current.main.applicationTitle === 'Overseerr'
+            ? 'Seerr'
+            : current.main.applicationTitle,
+      },
+      notifications: {
+        ...current.notifications,
+        agents: {
+          ...current.notifications.agents,
+          email: {
+            ...current.notifications.agents.email,
+            options: {
+              ...current.notifications.agents.email.options,
+              senderName:
+                current.notifications.agents.email.options.senderName ===
+                'Overseerr'
+                  ? 'Seerr'
+                  : current.notifications.agents.email.options.senderName,
+            },
+          },
+        },
+      },
+    }));
   } catch (error) {
     logger.error('Failed to save updated settings for Overseerr merge', {
       label: 'Seerr Migration',

@@ -6,6 +6,8 @@ import useSettings from '@app/hooks/useSettings';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { isRedactedSecret } from '@app/utils/secret';
+import { isValidURL } from '@app/utils/urlValidationHelper';
 import { ArrowDownOnSquareIcon, BeakerIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import { Field, Form, Formik } from 'formik';
@@ -51,7 +53,11 @@ const NotificationsDiscord = () => {
   const NotificationsDiscordSchema = Yup.object().shape({
     botAvatarUrl: Yup.string()
       .nullable()
-      .url(intl.formatMessage(messages.validationUrl)),
+      .test(
+        'valid-url',
+        intl.formatMessage(messages.validationUrl),
+        (value) => !value || isRedactedSecret(value) || isValidURL(value)
+      ),
     webhookUrl: Yup.string()
       .when('enabled', {
         is: true,

@@ -11,22 +11,69 @@ import {
 } from '@server/utils/serviceUrl';
 import {
   parseBoundedString,
-  parseOptionalBoolean,
   parseOptionalBoundedString,
   parseOptionalNonNegativeInteger,
 } from '@server/utils/validation';
-import { isValidHttpUrl } from './security';
+import { REDACTED_SECRET, isValidHttpUrl } from './security';
 
 const MAX_SERVICE_STRING_LENGTH = 512;
 const MAX_SERVICE_PATH_LENGTH = 4096;
 const MAX_SERVICE_TAGS = 100;
 const MAX_SERVICE_PORT = 65535;
 const MAX_SERVICE_ID = 1_000_000;
+export const MAX_SERVARR_INSTANCES_PER_TYPE = 50;
+
+export const assertServarrInstanceCapacity = (
+  current: readonly unknown[]
+): void => {
+  if (current.length >= MAX_SERVARR_INSTANCES_PER_TYPE) {
+    throw Object.assign(
+      new Error(
+        `A maximum of ${MAX_SERVARR_INSTANCES_PER_TYPE} instances can be configured for each service type.`
+      ),
+      { status: 409 }
+    );
+  }
+};
 
 export type ServarrConnectionSettings = Pick<
   DVRSettings,
   'hostname' | 'port' | 'apiKey' | 'useSsl' | 'baseUrl'
 > & { id?: number };
+
+export const preserveServarrApiKey = <T extends { apiKey: string }>(
+  body: unknown,
+  current?: T
+): unknown => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return body;
+  }
+
+  const incoming = body as Record<string, unknown>;
+  return current && incoming.apiKey === REDACTED_SECRET
+    ? { ...incoming, apiKey: current.apiKey }
+    : body;
+};
+
+export const preserveServarrConnectionSecret = <
+  T extends { id: number; apiKey: string },
+>(
+  body: unknown,
+  currentSettings: T[]
+): unknown => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return body;
+  }
+
+  const incoming = body as Record<string, unknown>;
+  const id = parseOptionalNonNegativeInteger(incoming.id, MAX_SERVICE_ID);
+  if (id === undefined) {
+    return body;
+  }
+
+  const current = currentSettings.find((settings) => settings.id === id);
+  return preserveServarrApiKey(body, current);
+};
 
 const parseNumberArray = (
   value: unknown,
@@ -105,6 +152,33 @@ const parseOptionalUrlBase = (
     : { error: 'baseUrl must be a relative path.' };
 };
 
+const parseServiceBoolean = (
+  value: unknown,
+  fieldName: string
+): { value: boolean } | { error: string } => {
+  if (value === undefined || value === null) {
+    return { value: false };
+  }
+
+  return typeof value === 'boolean'
+    ? { value }
+    : { error: `${fieldName} must be a boolean.` };
+};
+
+const parseOptionalServiceId = (
+  value: unknown,
+  fieldName: string
+): { value: number | undefined } | { error: string } => {
+  if (value === undefined || value === null || value === '') {
+    return { value: undefined };
+  }
+
+  const parsed = parseOptionalNonNegativeInteger(value, MAX_SERVICE_ID);
+  return parsed === undefined
+    ? { error: `${fieldName} is invalid.` }
+    : { value: parsed };
+};
+
 export const parseServarrConnectionSettings = (
   body: unknown
 ): { value: ServarrConnectionSettings } | { error: string } => {
@@ -130,13 +204,15 @@ export const parseServarrConnectionSettings = (
 
   const baseUrl = parseOptionalUrlBase(settings.baseUrl);
   if ('error' in baseUrl) return baseUrl;
+  const useSsl = parseServiceBoolean(settings.useSsl, 'useSsl');
+  if ('error' in useSsl) return useSsl;
 
   return {
     value: {
       hostname: normalizedHostname,
       port,
       apiKey: apiKey.value,
-      useSsl: parseOptionalBoolean(settings.useSsl) ?? false,
+      useSsl: useSsl.value,
       baseUrl: baseUrl.value,
     },
   };
@@ -189,6 +265,22 @@ const parseDvrSettings = (
   const overrideRule = parseNumberArray(settings.overrideRule, 'overrideRule');
   if ('error' in overrideRule) return overrideRule;
 
+  const useSsl = parseServiceBoolean(settings.useSsl, 'useSsl');
+  if ('error' in useSsl) return useSsl;
+  const is4k = parseServiceBoolean(settings.is4k, 'is4k');
+  if ('error' in is4k) return is4k;
+  const isDefault = parseServiceBoolean(settings.isDefault, 'isDefault');
+  if ('error' in isDefault) return isDefault;
+  const syncEnabled = parseServiceBoolean(settings.syncEnabled, 'syncEnabled');
+  if ('error' in syncEnabled) return syncEnabled;
+  const preventSearch = parseServiceBoolean(
+    settings.preventSearch,
+    'preventSearch'
+  );
+  if ('error' in preventSearch) return preventSearch;
+  const tagRequests = parseServiceBoolean(settings.tagRequests, 'tagRequests');
+  if ('error' in tagRequests) return tagRequests;
+
   const port = parseOptionalNonNegativeInteger(settings.port, MAX_SERVICE_PORT);
   const activeProfileId = parseOptionalNonNegativeInteger(
     settings.activeProfileId,
@@ -210,18 +302,18 @@ const parseDvrSettings = (
       hostname: normalizedHostname,
       port,
       apiKey: apiKey.value,
-      useSsl: parseOptionalBoolean(settings.useSsl) ?? false,
+      useSsl: useSsl.value,
       baseUrl: baseUrl.value,
       activeProfileId,
       activeProfileName: activeProfileName.value,
       activeDirectory: activeDirectory.value,
       tags: tags.value,
-      is4k: parseOptionalBoolean(settings.is4k) ?? false,
-      isDefault: parseOptionalBoolean(settings.isDefault) ?? false,
+      is4k: is4k.value,
+      isDefault: isDefault.value,
       externalUrl: externalUrl.value,
-      syncEnabled: parseOptionalBoolean(settings.syncEnabled) ?? false,
-      preventSearch: parseOptionalBoolean(settings.preventSearch) ?? false,
-      tagRequests: parseOptionalBoolean(settings.tagRequests) ?? false,
+      syncEnabled: syncEnabled.value,
+      preventSearch: preventSearch.value,
+      tagRequests: tagRequests.value,
       overrideRule: overrideRule.value,
     },
   };
@@ -288,6 +380,28 @@ export const parseSonarrSettings = (
 
   const animeTags = parseNumberArray(settings.animeTags, 'animeTags');
   if ('error' in animeTags) return animeTags;
+  const activeAnimeProfileId = parseOptionalServiceId(
+    settings.activeAnimeProfileId,
+    'activeAnimeProfileId'
+  );
+  if ('error' in activeAnimeProfileId) return activeAnimeProfileId;
+  const activeAnimeLanguageProfileId = parseOptionalServiceId(
+    settings.activeAnimeLanguageProfileId,
+    'activeAnimeLanguageProfileId'
+  );
+  if ('error' in activeAnimeLanguageProfileId) {
+    return activeAnimeLanguageProfileId;
+  }
+  const activeLanguageProfileId = parseOptionalServiceId(
+    settings.activeLanguageProfileId,
+    'activeLanguageProfileId'
+  );
+  if ('error' in activeLanguageProfileId) return activeLanguageProfileId;
+  const enableSeasonFolders = parseServiceBoolean(
+    settings.enableSeasonFolders,
+    'enableSeasonFolders'
+  );
+  if ('error' in enableSeasonFolders) return enableSeasonFolders;
 
   const monitorNewItems =
     settings.monitorNewItems === 'all' || settings.monitorNewItems === 'none'
@@ -303,23 +417,13 @@ export const parseSonarrSettings = (
       ...parsed.value,
       seriesType,
       animeSeriesType,
-      activeAnimeProfileId: parseOptionalNonNegativeInteger(
-        settings.activeAnimeProfileId,
-        MAX_SERVICE_ID
-      ),
+      activeAnimeProfileId: activeAnimeProfileId.value,
       activeAnimeProfileName: activeAnimeProfileName.value,
       activeAnimeDirectory: activeAnimeDirectory.value,
-      activeAnimeLanguageProfileId: parseOptionalNonNegativeInteger(
-        settings.activeAnimeLanguageProfileId,
-        MAX_SERVICE_ID
-      ),
-      activeLanguageProfileId: parseOptionalNonNegativeInteger(
-        settings.activeLanguageProfileId,
-        MAX_SERVICE_ID
-      ),
+      activeAnimeLanguageProfileId: activeAnimeLanguageProfileId.value,
+      activeLanguageProfileId: activeLanguageProfileId.value,
       animeTags: animeTags.value,
-      enableSeasonFolders:
-        parseOptionalBoolean(settings.enableSeasonFolders) ?? false,
+      enableSeasonFolders: enableSeasonFolders.value,
       monitorNewItems,
     },
   };
@@ -338,14 +442,16 @@ export const parseLidarrSettings = (
     'activeMetadataProfileName'
   );
   if ('error' in activeMetadataProfileName) return activeMetadataProfileName;
+  const activeMetadataProfileId = parseOptionalServiceId(
+    settings.activeMetadataProfileId,
+    'activeMetadataProfileId'
+  );
+  if ('error' in activeMetadataProfileId) return activeMetadataProfileId;
 
   return {
     value: {
       ...parsed.value,
-      activeMetadataProfileId: parseOptionalNonNegativeInteger(
-        settings.activeMetadataProfileId,
-        MAX_SERVICE_ID
-      ),
+      activeMetadataProfileId: activeMetadataProfileId.value,
       activeMetadataProfileName: activeMetadataProfileName.value,
     },
   };

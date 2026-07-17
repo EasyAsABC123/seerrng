@@ -17,6 +17,80 @@ export const ALL_NOTIFICATIONS = Object.values(Notification)
   .filter((v) => !isNaN(Number(v)))
   .reduce((a, v) => a + Number(v), 0);
 
+const getDefaultNotificationTypes = (): Partial<NotificationAgentTypes> => ({
+  email: ALL_NOTIFICATIONS,
+  discord: 0,
+  pushbullet: 0,
+  pushover: 0,
+  slack: 0,
+  telegram: 0,
+  webhook: 0,
+  webpush: ALL_NOTIFICATIONS,
+});
+
+const allowedNotificationAgentKeys = Object.values(NotificationAgentKey);
+
+const sanitizeNotificationTypes = (
+  value: unknown
+): Partial<NotificationAgentTypes> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const input = value as Record<string, unknown>;
+  const sanitized: Partial<NotificationAgentTypes> = {};
+  for (const key of allowedNotificationAgentKeys) {
+    const mask = input[key];
+    if (
+      typeof mask === 'number' &&
+      Number.isInteger(mask) &&
+      mask >= 0 &&
+      (mask & ~ALL_NOTIFICATIONS) === 0
+    ) {
+      sanitized[key] = mask;
+    }
+  }
+
+  return sanitized;
+};
+
+export const deserializeNotificationTypes = (
+  value: string | null
+): Partial<NotificationAgentTypes> => {
+  if (!value) {
+    return getDefaultNotificationTypes();
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return getDefaultNotificationTypes();
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return getDefaultNotificationTypes();
+  }
+
+  const values = sanitizeNotificationTypes(parsed);
+  if (values.email == null) {
+    values.email = ALL_NOTIFICATIONS;
+  }
+  if (values.webpush == null) {
+    values.webpush = ALL_NOTIFICATIONS;
+  }
+
+  return values;
+};
+
+export const serializeNotificationTypes = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return JSON.stringify(sanitizeNotificationTypes(value));
+};
+
 @Entity()
 export class UserSettings {
   constructor(init?: Partial<UserSettings>) {
@@ -98,57 +172,9 @@ export class UserSettings {
     nullable: true,
     transformer: {
       from: (value: string | null): Partial<NotificationAgentTypes> => {
-        const defaultTypes = {
-          email: ALL_NOTIFICATIONS,
-          discord: 0,
-          pushbullet: 0,
-          pushover: 0,
-          slack: 0,
-          telegram: 0,
-          webhook: 0,
-          webpush: ALL_NOTIFICATIONS,
-        };
-        if (!value) {
-          return defaultTypes;
-        }
-
-        const values = JSON.parse(value) as Partial<NotificationAgentTypes>;
-
-        // Something with the migration to this field has caused some issue where
-        // the value pre-populates with just a raw "2"? Here we check if that's the case
-        // and return the default notification types if so
-        if (typeof values !== 'object') {
-          return defaultTypes;
-        }
-
-        if (values.email == null) {
-          values.email = ALL_NOTIFICATIONS;
-        }
-
-        if (values.webpush == null) {
-          values.webpush = ALL_NOTIFICATIONS;
-        }
-
-        return values;
+        return deserializeNotificationTypes(value);
       },
-      to: (value: Partial<NotificationAgentTypes>): string | null => {
-        if (!value || typeof value !== 'object') {
-          return null;
-        }
-
-        const allowedKeys = Object.values(NotificationAgentKey);
-
-        // Remove any unknown notification agent keys before saving to db
-        (Object.keys(value) as (keyof NotificationAgentTypes)[]).forEach(
-          (key) => {
-            if (!allowedKeys.includes(key)) {
-              delete value[key];
-            }
-          }
-        );
-
-        return JSON.stringify(value);
-      },
+      to: serializeNotificationTypes,
     },
   })
   public notificationTypes: Partial<NotificationAgentTypes>;
@@ -158,5 +184,34 @@ export class UserSettings {
     type: Notification
   ): boolean {
     return hasNotificationType(type, this.notificationTypes[key] ?? 0);
+  }
+
+  /**
+   * Return only settings needed by the general user payload. Notification
+   * credentials are exposed through their dedicated, redacted endpoint and
+   * must never be included in an eagerly loaded User response.
+   */
+  public filter(): Partial<UserSettings> {
+    return {
+      id: this.id,
+      locale: this.locale,
+      discoverRegion: this.discoverRegion,
+      streamingRegion: this.streamingRegion,
+      originalLanguage: this.originalLanguage,
+      discordId: this.discordId,
+      notificationTypes: this.notificationTypes,
+      watchlistSyncMovies: this.watchlistSyncMovies,
+      watchlistSyncTv: this.watchlistSyncTv,
+      watchlistSyncMusic: this.watchlistSyncMusic,
+      watchlistSyncBooks: this.watchlistSyncBooks,
+      cardTextVisibilityMovie: this.cardTextVisibilityMovie,
+      cardTextVisibilityTv: this.cardTextVisibilityTv,
+      cardTextVisibilityAlbum: this.cardTextVisibilityAlbum,
+      cardTextVisibilityBook: this.cardTextVisibilityBook,
+    };
+  }
+
+  public toJSON(): Partial<UserSettings> {
+    return this.filter();
   }
 }

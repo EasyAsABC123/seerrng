@@ -1,16 +1,30 @@
 import animeList from '@server/api/animelist';
 import { getMetadataProvider } from '@server/api/metadata';
-import type { PlexLibraryItem, PlexMetadata } from '@server/api/plexapi';
-import PlexAPI from '@server/api/plexapi';
+import PlexAPI, {
+  MAX_PLEX_LIBRARY_ITEMS,
+  type PlexLibraryItem,
+  type PlexMetadata,
+} from '@server/api/plexapi';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import type {
   TmdbKeyword,
   TmdbTvDetails,
 } from '@server/api/themoviedb/interfaces';
-import { getRepository } from '@server/datasource';
-import { User } from '@server/entity/User';
 import cacheManager from '@server/lib/cache';
+import {
+  ConfigurationAuthorityChangedError,
+  captureConfigurationAuthority,
+  runWithConfigurationAdmission,
+  runWithConfigurationSnapshot,
+  type ConfigurationAuthoritySnapshot,
+} from '@server/lib/configurationAdmission';
+import {
+  MediaServerUserAuthorityChangedError,
+  captureMediaServerUserAuthority,
+  runWithMediaServerUserAuthority,
+  type MediaServerUserAuthoritySnapshot,
+} from '@server/lib/mediaServerUserAuthority';
 import type {
   MediaIds,
   ProcessableSeason,
@@ -18,9 +32,11 @@ import type {
   StatusBase,
 } from '@server/lib/scanners/baseScanner';
 import BaseScanner from '@server/lib/scanners/baseScanner';
-import type { Library } from '@server/lib/settings';
+import type { Library, PlexSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import { uniqWith } from 'lodash';
+import { createHash } from 'node:crypto';
 
 const imdbRegex = new RegExp(/imdb:\/\/(tt[0-9]+)/);
 const tmdbRegex = new RegExp(/tmdb:\/\/([0-9]+)/);
@@ -32,13 +48,60 @@ const plexRegex = new RegExp(/plex:\/\//);
 const hamaTvdbRegex = new RegExp(/hama:\/\/tvdb[0-9]?-([0-9]+)/);
 const hamaAnidbRegex = new RegExp(/hama:\/\/anidb[0-9]?-([0-9]+)/);
 const HAMA_AGENT = 'com.plexapp.agents.hama';
+export const PLEX_SCAN_PAGE_SIZE = 50;
+export const PLEX_SCAN_ITEM_CONCURRENCY = 10;
+
+export const getBoundedPlexScanTotal = (
+  declaredTotal: unknown,
+  start: number,
+  itemCount: number,
+  pageSize = PLEX_SCAN_PAGE_SIZE
+): number => {
+  const observedEnd = Math.max(0, start) + Math.max(0, itemCount);
+  const safePageSize =
+    Number.isSafeInteger(pageSize) && pageSize > 0
+      ? Math.min(pageSize, PLEX_SCAN_PAGE_SIZE)
+      : PLEX_SCAN_PAGE_SIZE;
+  const total =
+    Number.isSafeInteger(declaredTotal) &&
+    (declaredTotal as number) >= observedEnd
+      ? (declaredTotal as number)
+      : observedEnd + (itemCount >= safePageSize ? safePageSize : 0);
+
+  return Math.min(total, MAX_PLEX_LIBRARY_ITEMS);
+};
+
+export const preparePlexLibraryPageItems = (
+  value: unknown,
+  limit = PLEX_SCAN_PAGE_SIZE
+): PlexLibraryItem[] =>
+  Array.isArray(value)
+    ? value.slice(
+        0,
+        Number.isSafeInteger(limit) && limit > 0
+          ? Math.min(limit, PLEX_SCAN_PAGE_SIZE)
+          : PLEX_SCAN_PAGE_SIZE
+      )
+    : [];
+
+export const getPlexGuidCacheKey = (
+  plex: Pick<PlexSettings, 'machineId' | 'ip' | 'port' | 'useSsl'>,
+  ratingKey: string
+): string => {
+  const serverIdentity =
+    plex.machineId?.trim() ||
+    `${plex.useSsl ? 'https' : 'http'}://${plex.ip}:${plex.port}`;
+  return `plexguid:${createHash('sha256')
+    .update(JSON.stringify([serverIdentity, ratingKey]))
+    .digest('hex')}`;
+};
 
 type SyncStatus = StatusBase & {
   currentLibrary: Library;
   libraries: Library[];
 };
 
-class PlexScanner
+export class PlexScanner
   extends BaseScanner<PlexLibraryItem>
   implements RunnableScanner<SyncStatus>
 {
@@ -46,9 +109,12 @@ class PlexScanner
   private libraries: Library[];
   private currentLibrary: Library;
   private isRecentOnly = false;
+  private configurationSnapshot: ConfigurationAuthoritySnapshot;
+  private plexSettingsSnapshot: PlexSettings;
+  private ownerAuthoritySnapshot: MediaServerUserAuthoritySnapshot;
 
   public constructor(isRecentOnly = false) {
-    super('Plex Scan', { bundleSize: 50 });
+    super('Plex Scan', { bundleSize: PLEX_SCAN_PAGE_SIZE });
     this.isRecentOnly = isRecentOnly;
   }
 
@@ -65,24 +131,38 @@ class PlexScanner
   public async run(): Promise<void> {
     const settings = getSettings();
     const sessionId = this.startRun();
+    if (!sessionId) {
+      return;
+    }
     try {
-      const userRepository = getRepository(User);
-      const admin = await userRepository.findOne({
-        select: { id: true, plexToken: true },
-        where: { id: 1 },
+      await runWithConfigurationAdmission('plex', async () => {
+        const currentSettings = getSettings();
+        this.plexSettingsSnapshot = structuredClone(currentSettings.plex);
+        this.configurationSnapshot = captureConfigurationAuthority(
+          'plex',
+          currentSettings
+        );
       });
-
-      if (!admin) {
+      this.ownerAuthoritySnapshot = await captureMediaServerUserAuthority(
+        1,
+        'plex'
+      );
+      if (!this.ownerAuthoritySnapshot.plexToken) {
         return this.log('No admin configured. Plex scan skipped.', 'warn');
       }
 
-      this.plexClient = new PlexAPI({ plexToken: admin.plexToken });
+      this.plexClient = new PlexAPI({
+        plexToken: this.ownerAuthoritySnapshot.plexToken,
+        plexSettings: this.plexSettingsSnapshot,
+      });
 
-      this.libraries = settings.plex.libraries.filter(
+      this.libraries = this.plexSettingsSnapshot.libraries.filter(
         (library) => library.enabled
       );
 
-      const hasHama = await this.hasHamaAgent();
+      const hasHama = await this.withConfigurationSnapshot(() =>
+        this.hasHamaAgent()
+      );
       if (hasHama) {
         await animeList.sync();
       }
@@ -95,15 +175,17 @@ class PlexScanner
             'info',
             { lastScan: library.lastScan }
           );
-          const libraryItems = await this.plexClient.getRecentlyAdded(
-            library.id,
-            library.lastScan
-              ? {
-                  // We remove 10 minutes from the last scan as a buffer
-                  addedAt: library.lastScan - 1000 * 60 * 10,
-                }
-              : undefined,
-            library.type
+          const libraryItems = await this.withConfigurationSnapshot(() =>
+            this.plexClient.getRecentlyAdded(
+              library.id,
+              library.lastScan
+                ? {
+                    // We remove 10 minutes from the last scan as a buffer
+                    addedAt: library.lastScan - 1000 * 60 * 10,
+                  }
+                : undefined,
+              library.type
+            )
           );
 
           // Bundle items up by rating keys
@@ -124,18 +206,20 @@ class PlexScanner
           await this.loop(this.processItem.bind(this), { sessionId });
 
           // After run completes, update last scan time
-          const newLibraries = settings.plex.libraries.map((lib) => {
-            if (lib.id === library.id) {
-              return {
-                ...lib,
-                lastScan: Date.now(),
-              };
-            }
-            return lib;
-          });
-
-          settings.plex.libraries = newLibraries;
-          await settings.save();
+          await this.withConfigurationSnapshot(() =>
+            settings.persistSection('plex', (current) => ({
+              ...current,
+              libraries: current.libraries.map((lib) => {
+                if (lib.id === library.id) {
+                  return {
+                    ...lib,
+                    lastScan: Date.now(),
+                  };
+                }
+                return lib;
+              }),
+            }))
+          );
         }
       } else {
         for (const library of this.libraries) {
@@ -171,36 +255,52 @@ class PlexScanner
       throw new Error('New session was started. Old session aborted.');
     }
 
-    const response = await this.plexClient.getLibraryContents(library.id, {
-      size: this.protectedBundleSize,
-      offset: start,
-    });
-
-    this.progress = start;
-    this.totalSize = response.totalSize;
-
-    if (response.items.length === 0) {
-      return;
-    }
-
-    await Promise.all(
-      response.items.map(async (item) => {
-        await this.processItem(item);
+    const response = await this.withConfigurationSnapshot(() =>
+      this.plexClient.getLibraryContents(library.id, {
+        size: this.protectedBundleSize,
+        offset: start,
       })
     );
 
-    if (response.items.length < this.protectedBundleSize) {
+    const pageItems = preparePlexLibraryPageItems(
+      response.items,
+      this.protectedBundleSize
+    );
+    this.progress = start;
+    this.totalSize = getBoundedPlexScanTotal(
+      response.totalSize,
+      start,
+      pageItems.length,
+      this.protectedBundleSize
+    );
+
+    if (pageItems.length === 0) {
+      return;
+    }
+
+    await mapWithConcurrency(
+      pageItems,
+      PLEX_SCAN_ITEM_CONCURRENCY,
+      async (item) => this.processItem(item)
+    );
+
+    const nextStart = start + this.protectedBundleSize;
+    if (
+      pageItems.length < this.protectedBundleSize ||
+      nextStart >= this.totalSize ||
+      nextStart >= MAX_PLEX_LIBRARY_ITEMS
+    ) {
       return;
     }
 
     await new Promise<void>((resolve, reject) =>
       setTimeout(() => {
         this.paginateLibrary(library, {
-          start: start + this.protectedBundleSize,
+          start: nextStart,
           sessionId,
         })
           .then(() => resolve())
-          .catch((e) => reject(new Error(e.message)));
+          .catch((e) => reject(e instanceof Error ? e : new Error(String(e))));
       }, this.protectedUpdateRate)
     );
   }
@@ -217,6 +317,12 @@ class PlexScanner
         await this.processPlexShow(plexitem);
       }
     } catch (e) {
+      if (
+        e instanceof ConfigurationAuthorityChangedError ||
+        e instanceof MediaServerUserAuthorityChangedError
+      ) {
+        throw e;
+      }
       this.log('Failed to process Plex media', 'error', {
         errorMessage: e.message,
         title: plexitem.title,
@@ -236,6 +342,8 @@ class PlexScanner
       mediaAddedAt: new Date(plexitem.addedAt * 1000),
       ratingKey: plexitem.ratingKey,
       title: plexitem.title,
+      mutationGuard: (callback) => this.withConfigurationSnapshot(callback),
+      outerMutationGuard: (callback) => this.withOwnerAuthority(callback),
     });
   }
 
@@ -252,6 +360,8 @@ class PlexScanner
       mediaAddedAt: new Date(plexitem.addedAt * 1000),
       ratingKey: plexitem.ratingKey,
       title: plexitem.title,
+      mutationGuard: (callback) => this.withConfigurationSnapshot(callback),
+      outerMutationGuard: (callback) => this.withOwnerAuthority(callback),
     });
   }
 
@@ -305,7 +415,7 @@ class PlexScanner
     // If the media is from HAMA, and doesn't have a TVDb ID, we will treat it
     // as a special HAMA movie
     if (mediaIds.tmdbId && !mediaIds.tvdbId && mediaIds.isHama) {
-      this.processHamaMovie(metadata, mediaIds.tmdbId);
+      await this.processHamaMovie(metadata, mediaIds.tmdbId);
       return;
     }
 
@@ -377,6 +487,8 @@ class PlexScanner
         mediaAddedAt: new Date(metadata.addedAt * 1000),
         ratingKey: ratingKey,
         title: metadata.title,
+        mutationGuard: (callback) => this.withConfigurationSnapshot(callback),
+        outerMutationGuard: (callback) => this.withOwnerAuthority(callback),
       }
     );
   }
@@ -386,8 +498,12 @@ class PlexScanner
     // Check if item is using new plex movie/tv agent
     if (plexitem.guid.match(plexRegex)) {
       const guidCache = cacheManager.getCache('plexguid');
+      const guidCacheKey = getPlexGuidCacheKey(
+        this.plexSettingsSnapshot,
+        plexitem.ratingKey
+      );
 
-      const cachedGuids = guidCache.data.get<MediaIds>(plexitem.ratingKey);
+      const cachedGuids = guidCache.data.get<MediaIds>(guidCacheKey);
 
       if (cachedGuids) {
         this.log('GUIDs are cached. Skipping metadata request.', 'debug', {
@@ -438,7 +554,7 @@ class PlexScanner
       }
 
       // Cache GUIDs
-      guidCache.data.set(plexitem.ratingKey, mediaIds);
+      guidCache.data.set(guidCacheKey, mediaIds);
 
       // Check if the agent is IMDb
     } else if (plexitem.guid.match(imdbRegex)) {
@@ -601,6 +717,21 @@ class PlexScanner
         (plexLibrary) =>
           plexLibrary.agent === HAMA_AGENT && library.id === plexLibrary.key
       )
+    );
+  }
+
+  private withConfigurationSnapshot<Result>(
+    callback: () => Promise<Result>
+  ): Promise<Result> {
+    return runWithConfigurationSnapshot(this.configurationSnapshot, callback);
+  }
+
+  private withOwnerAuthority<Result>(
+    callback: () => Promise<Result>
+  ): Promise<Result> {
+    return runWithMediaServerUserAuthority(
+      this.ownerAuthoritySnapshot,
+      callback
     );
   }
 }

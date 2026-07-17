@@ -1,133 +1,188 @@
+import { acquireInlineStyleLease } from '@app/utils/inlineStyleLease';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/router';
 import { useEffect, useRef, useState } from 'react';
 
-const PullToRefresh = () => {
-  const router = useRouter();
-  const [pullStartPoint, setPullStartPoint] = useState(0);
-  const [pullChange, setPullChange] = useState(0);
-  const refreshDiv = useRef<HTMLDivElement>(null);
+const PULL_INITIAL_THRESHOLD = 20;
+const PULL_ICON_STOP = 120;
+const PULL_RELOAD_THRESHOLD = 340;
+const RESET_DELAY_MS = 200;
+const RELOAD_DELAY_MS = 1_000;
 
-  // Various pull down thresholds that determine icon location
-  const pullDownInitThreshold = pullChange > 20;
-  const pullDownStopThreshold = 120;
-  const pullDownReloadThreshold = pullChange > 340;
-  const pullDownIconLocation = pullChange / 3;
+type PullToRefreshControllerProps = {
+  reload: () => void;
+};
+
+export const PullToRefreshController = ({
+  reload,
+}: PullToRefreshControllerProps) => {
+  const [pullChange, setPullChange] = useState(0);
+  const [visible, setVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const reloadRef = useRef(reload);
+
+  reloadRef.current = reload;
 
   useEffect(() => {
-    // Reload function that is called when reload threshold has been hit
-    // Add loading class to determine when to add spin animation
-    const forceReload = () => {
-      setPullStartPoint(0);
-      refreshDiv.current?.classList.add('loading');
-      setTimeout(() => {
-        router.reload();
-      }, 1000);
+    let active = false;
+    let startPoint = 0;
+    let currentPull = 0;
+    let resetTimer: ReturnType<typeof setTimeout> | undefined;
+    let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+    let releaseStyleLocks: (() => void) | undefined;
+
+    const clearResetTimer = () => {
+      if (resetTimer !== undefined) {
+        clearTimeout(resetTimer);
+        resetTimer = undefined;
+      }
     };
 
-    const html = document.querySelector('html');
+    const restoreStyles = () => {
+      releaseStyleLocks?.();
+      releaseStyleLocks = undefined;
+    };
 
-    // Determines if we are at the top of the page
-    // Locks or unlocks page when pulling down to refresh
-    const pullStart = (e: TouchEvent) => {
-      setPullStartPoint(e.targetTouches[0].screenY);
-
-      const html = document.querySelector('html');
-
-      if (window.scrollY === 0 && window.scrollX === 0) {
-        refreshDiv.current?.classList.add('block');
-        refreshDiv.current?.classList.remove('hidden');
-        document.body.style.touchAction = 'none';
-        document.body.style.overscrollBehavior = 'none';
-        if (html) {
-          html.style.overscrollBehaviorY = 'none';
+    const lockStyles = () => {
+      if (releaseStyleLocks) {
+        return;
+      }
+      const releases = [
+        acquireInlineStyleLease(document.body, 'touchAction', 'none'),
+        acquireInlineStyleLease(document.body, 'overscrollBehavior', 'none'),
+        acquireInlineStyleLease(
+          document.documentElement,
+          'overscrollBehaviorY',
+          'none'
+        ),
+      ];
+      releaseStyleLocks = () => {
+        for (let index = releases.length - 1; index >= 0; index -= 1) {
+          releases[index]();
         }
-      } else {
-        setPullStartPoint(0);
-        refreshDiv.current?.classList.remove('block');
-        refreshDiv.current?.classList.add('hidden');
+      };
+    };
+
+    const resetPull = () => {
+      active = false;
+      startPoint = 0;
+      currentPull = 0;
+      restoreStyles();
+      setPullChange(0);
+      clearResetTimer();
+      resetTimer = setTimeout(() => {
+        resetTimer = undefined;
+        setVisible(false);
+      }, RESET_DELAY_MS);
+    };
+
+    const pullStart = (event: TouchEvent) => {
+      const touch = event.targetTouches[0];
+      if (!touch || window.scrollY !== 0 || window.scrollX !== 0) {
+        resetPull();
+        return;
       }
+
+      clearResetTimer();
+      active = true;
+      startPoint = touch.screenY;
+      currentPull = 0;
+      setPullChange(0);
+      setVisible(true);
+      lockStyles();
     };
 
-    // Tracks how far we have pulled down the refresh icon
-    const pullDown = async (e: TouchEvent) => {
-      const screenY = e.targetTouches[0].screenY;
-      const pullLength =
-        pullStartPoint < screenY ? Math.abs(screenY - pullStartPoint) : 0;
+    const pullDown = (event: TouchEvent) => {
+      const touch = event.targetTouches[0];
+      if (!active || !touch) {
+        return;
+      }
 
-      setPullChange(pullLength);
+      event.preventDefault();
+      currentPull = Math.max(0, touch.screenY - startPoint);
+      setPullChange(currentPull);
     };
 
-    // Will reload the page if we are past the threshold
-    // Otherwise, we reset the pull
     const pullFinish = () => {
-      if (pullDownReloadThreshold && pullStartPoint !== 0) {
-        forceReload();
-      } else {
-        setPullChange(0);
-        setTimeout(() => setPullStartPoint(0), 200);
+      if (!active) {
+        return;
       }
 
-      document.body.style.touchAction = 'auto';
-      document.body.style.overscrollBehaviorY = 'auto';
-      if (html) {
-        html.style.overscrollBehaviorY = 'auto';
+      active = false;
+      startPoint = 0;
+      restoreStyles();
+      if (currentPull > PULL_RELOAD_THRESHOLD) {
+        currentPull = 0;
+        setPullChange(0);
+        setLoading(true);
+        if (reloadTimer !== undefined) {
+          clearTimeout(reloadTimer);
+        }
+        reloadTimer = setTimeout(() => {
+          reloadTimer = undefined;
+          reloadRef.current();
+        }, RELOAD_DELAY_MS);
+      } else {
+        resetPull();
       }
     };
 
     window.addEventListener('touchstart', pullStart, { passive: false });
     window.addEventListener('touchmove', pullDown, { passive: false });
     window.addEventListener('touchend', pullFinish, { passive: false });
+    window.addEventListener('touchcancel', resetPull, { passive: false });
 
     return () => {
       window.removeEventListener('touchstart', pullStart);
       window.removeEventListener('touchmove', pullDown);
       window.removeEventListener('touchend', pullFinish);
+      window.removeEventListener('touchcancel', resetPull);
+      clearResetTimer();
+      if (reloadTimer !== undefined) {
+        clearTimeout(reloadTimer);
+      }
+      restoreStyles();
     };
-  }, [
-    pullDownInitThreshold,
-    pullDownReloadThreshold,
-    pullStartPoint,
-    refreshDiv,
-    router,
-    setPullStartPoint,
-  ]);
+  }, []);
 
-  if (
-    pullStartPoint === 0 &&
-    !refreshDiv.current?.classList.contains('loading')
-  ) {
+  if (!visible && !loading) {
     return null;
   }
 
+  const passedInitialThreshold = pullChange > PULL_INITIAL_THRESHOLD;
+  const passedReloadThreshold = pullChange > PULL_RELOAD_THRESHOLD;
+  const pullDownIconLocation = pullChange / 3;
+
   return (
     <div
-      ref={refreshDiv}
       className="absolute left-0 right-0 top-0 z-50 m-auto w-fit transition-all ease-out"
       id="refreshIcon"
       style={{
-        top:
-          pullDownIconLocation < pullDownStopThreshold && pullDownInitThreshold
-            ? pullDownIconLocation
-            : pullDownInitThreshold
-              ? pullDownStopThreshold
-              : '',
+        top: passedInitialThreshold
+          ? Math.min(pullDownIconLocation, PULL_ICON_STOP)
+          : undefined,
       }}
     >
       <div
         className={`${
-          refreshDiv.current?.classList.contains('loading') && 'animate-spin'
-        } relative -top-28 h-9 w-9 rounded-full border-4 border-gray-800 bg-gray-800 shadow-md shadow-black ring-1 ring-gray-700`}
+          loading ? 'animate-spin' : ''
+        }relative -top-28 h-9 w-9 rounded-full border-4 border-gray-800 bg-gray-800 shadow-md shadow-black ring-1 ring-gray-700`}
         style={{ animationDirection: 'reverse' }}
       >
         <ArrowPathIcon
-          className={`rounded-full ${
-            pullDownReloadThreshold && 'rotate-180'
+          className={`rounded-full${
+            passedReloadThreshold ? 'rotate-180' : ''
           } text-indigo-500 transition-all duration-300`}
         />
       </div>
     </div>
   );
+};
+
+const PullToRefresh = () => {
+  const router = useRouter();
+
+  return <PullToRefreshController reload={router.reload} />;
 };
 
 export default PullToRefresh;

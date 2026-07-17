@@ -123,7 +123,7 @@ const TvRequestModal = ({
           languageProfileId: requestOverrides?.language,
           userId: requestOverrides?.user?.id,
           tags: requestOverrides?.tags,
-          seasons: selectedSeasons.sort((a, b) => a - b),
+          seasons: [...selectedSeasons].sort((a, b) => a - b),
         });
 
         if (alsoApproveRequest) {
@@ -203,7 +203,7 @@ const TvRequestModal = ({
         mediaType: 'tv',
         is4k,
         seasons: settings.currentSettings.partialRequestsEnabled
-          ? selectedSeasons.sort((a, b) => a - b)
+          ? [...selectedSeasons].sort((a, b) => a - b)
           : getAllSeasons().filter(
               (season) => !getAllRequestedSeasons().includes(season)
             ),

@@ -1,20 +1,24 @@
 import { IssueType, IssueTypeName } from '@server/constants/issue';
 import { MediaType } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
-import { User } from '@server/entity/User';
 import { defineMessages, getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
 import PreparedEmail from '@server/lib/email';
+import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentEmail } from '@server/lib/settings';
 import { NotificationAgentKey, getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import type { EmailOptions } from 'email-templates';
 import path from 'path';
 import validator from 'validator';
 import { Notification, shouldSendAdminNotification } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
-import { BaseAgent, getNotificationActionUrl } from './agent';
+import {
+  BaseAgent,
+  NOTIFICATION_DELIVERY_CONCURRENCY,
+  getNotificationActionUrl,
+} from './agent';
 
 const messages = defineMessages('notifications.agents.email', {
   issueType: '{type} issue',
@@ -95,7 +99,7 @@ class EmailAgent
     const intl = getIntl(locale);
     const settings = getSettings();
     const { applicationUrl, applicationTitle } = settings.main;
-    const { embedPoster } = settings.notifications.agents.email;
+    const { embedPoster } = this.getSettings();
 
     if (type === Notification.TEST_NOTIFICATION) {
       return {
@@ -328,12 +332,10 @@ class EmailAgent
     }
 
     if (payload.notifyAdmin) {
-      const userRepository = getRepository(User);
-      const users = await userRepository.find();
-
-      await Promise.all(
-        users
-          .filter(
+      let adminDeliveryFailed = false;
+      await forEachNotificationUserBatch(async (users) => {
+        const adminDeliveries = await mapWithConcurrency(
+          users.filter(
             (user) =>
               (!user.settings ||
                 (user.settings.hasNotificationType(
@@ -342,8 +344,9 @@ class EmailAgent
                 ) ??
                   true)) &&
               shouldSendAdminNotification(type, user, payload)
-          )
-          .map(async (user) => {
+          ),
+          NOTIFICATION_DELIVERY_CONCURRENCY,
+          async (user) => {
             logger.debug('Sending email notification', {
               label: 'Notifications',
               recipient: user.displayName,
@@ -385,8 +388,15 @@ class EmailAgent
 
               return false;
             }
-          })
-      );
+          }
+        );
+        adminDeliveryFailed ||= adminDeliveries.some(
+          (delivered) => delivered === false
+        );
+      });
+      if (adminDeliveryFailed) {
+        return false;
+      }
     }
 
     return true;

@@ -1,7 +1,9 @@
 import ButtonWithDropdown from '@app/components/Common/ButtonWithDropdown';
 import useSettings from '@app/hooks/useSettings';
+import useToasts from '@app/hooks/useToasts';
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
+import { mapWithConcurrency } from '@app/utils/concurrency';
 import defineMessages from '@app/utils/defineMessages';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import {
@@ -14,7 +16,7 @@ import type Media from '@server/entity/Media';
 import type { MediaRequest } from '@server/entity/MediaRequest';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import { mutate } from 'swr';
 
@@ -39,7 +41,11 @@ const messages = defineMessages('components.RequestButton', {
     'Approve {requestCount, plural, one {4K Request} other {{requestCount} 4K Requests}}',
   decline4krequests:
     'Decline {requestCount, plural, one {4K Request} other {{requestCount} 4K Requests}}',
+  requestupdatesfailed:
+    '{failed, plural, one {One request could not be updated.} other {{failed} requests could not be updated.}}',
 });
+
+const REQUEST_MUTATION_CONCURRENCY = 5;
 
 interface ButtonOption {
   id: string;
@@ -67,10 +73,13 @@ const RequestButton = ({
 }: RequestButtonProps) => {
   const intl = useIntl();
   const settings = useSettings();
+  const { addToast } = useToasts();
   const { user, hasPermission } = useUser();
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showRequest4kModal, setShowRequest4kModal] = useState(false);
   const [editRequest, setEditRequest] = useState(false);
+  const [isModifying, setIsModifying] = useState(false);
+  const modificationActiveRef = useRef(false);
 
   // All pending requests
   const activeRequests = media?.requests.filter(
@@ -84,14 +93,14 @@ const RequestButton = ({
   const activeRequest = useMemo(() => {
     return activeRequests && activeRequests.length > 0
       ? (activeRequests.find(
-          (request) => request.requestedBy.id === user?.id
+          (request) => request.requestedBy?.id === user?.id
         ) ?? activeRequests[0])
       : undefined;
   }, [activeRequests, user]);
   const active4kRequest = useMemo(() => {
     return active4kRequests && active4kRequests.length > 0
       ? (active4kRequests.find(
-          (request) => request.requestedBy.id === user?.id
+          (request) => request.requestedBy?.id === user?.id
         ) ?? active4kRequests[0])
       : undefined;
   }, [active4kRequests, user]);
@@ -100,11 +109,28 @@ const RequestButton = ({
     request: MediaRequest,
     type: 'approve' | 'decline'
   ) => {
-    const response = await axios.post(`/api/v1/request/${request.id}/${type}`);
+    if (modificationActiveRef.current) {
+      return;
+    }
+    modificationActiveRef.current = true;
+    setIsModifying(true);
 
-    if (response) {
+    try {
+      await axios.post(`/api/v1/request/${request.id}/${type}`);
+
       onUpdate();
-      mutate('/api/v1/request/count');
+      void mutate('/api/v1/request/count').catch(() => undefined);
+    } catch {
+      addToast(
+        intl.formatMessage(messages.requestupdatesfailed, { failed: 1 }),
+        {
+          appearance: 'error',
+          autoDismiss: true,
+        }
+      );
+    } finally {
+      modificationActiveRef.current = false;
+      setIsModifying(false);
     }
   };
 
@@ -112,18 +138,45 @@ const RequestButton = ({
     requests: MediaRequest[],
     type: 'approve' | 'decline'
   ): Promise<void> => {
-    if (!requests) {
+    if (!requests.length || modificationActiveRef.current) {
       return;
     }
+    modificationActiveRef.current = true;
+    setIsModifying(true);
 
-    await Promise.all(
-      requests.map(async (request) => {
-        return axios.post(`/api/v1/request/${request.id}/${type}`);
-      })
-    );
+    try {
+      const outcomes = await mapWithConcurrency(
+        requests,
+        REQUEST_MUTATION_CONCURRENCY,
+        async (request) => {
+          try {
+            await axios.post(`/api/v1/request/${request.id}/${type}`);
+            return true;
+          } catch {
+            return false;
+          }
+        }
+      );
+      const succeeded = outcomes.filter(Boolean).length;
+      const failed = outcomes.length - succeeded;
 
-    onUpdate();
-    mutate('/api/v1/request/count');
+      if (succeeded > 0) {
+        onUpdate();
+        void mutate('/api/v1/request/count').catch(() => undefined);
+      }
+      if (failed > 0) {
+        addToast(
+          intl.formatMessage(messages.requestupdatesfailed, { failed }),
+          {
+            appearance: 'error',
+            autoDismiss: true,
+          }
+        );
+      }
+    } finally {
+      modificationActiveRef.current = false;
+      setIsModifying(false);
+    }
   };
 
   const buttons: ButtonOption[] = [];
@@ -132,7 +185,7 @@ const RequestButton = ({
   if (activeRequest || active4kRequest) {
     if (
       activeRequest &&
-      (activeRequest.requestedBy.id === user?.id ||
+      (activeRequest.requestedBy?.id === user?.id ||
         (activeRequests?.length === 1 &&
           hasPermission(Permission.MANAGE_REQUESTS)))
     ) {
@@ -157,7 +210,7 @@ const RequestButton = ({
           id: 'approve-request',
           text: intl.formatMessage(messages.approverequest),
           action: () => {
-            modifyRequest(activeRequest, 'approve');
+            void modifyRequest(activeRequest, 'approve');
           },
           svg: <CheckIcon />,
         },
@@ -165,7 +218,7 @@ const RequestButton = ({
           id: 'decline-request',
           text: intl.formatMessage(messages.declinerequest),
           action: () => {
-            modifyRequest(activeRequest, 'decline');
+            void modifyRequest(activeRequest, 'decline');
           },
           svg: <XMarkIcon />,
         }
@@ -183,7 +236,7 @@ const RequestButton = ({
             requestCount: activeRequests.length,
           }),
           action: () => {
-            modifyRequests(activeRequests, 'approve');
+            void modifyRequests(activeRequests, 'approve');
           },
           svg: <CheckIcon />,
         },
@@ -193,7 +246,7 @@ const RequestButton = ({
             requestCount: activeRequests.length,
           }),
           action: () => {
-            modifyRequests(activeRequests, 'decline');
+            void modifyRequests(activeRequests, 'decline');
           },
           svg: <XMarkIcon />,
         }
@@ -202,7 +255,7 @@ const RequestButton = ({
 
     if (
       active4kRequest &&
-      (active4kRequest.requestedBy.id === user?.id ||
+      (active4kRequest.requestedBy?.id === user?.id ||
         (active4kRequests?.length === 1 &&
           hasPermission(Permission.MANAGE_REQUESTS)))
     ) {
@@ -227,7 +280,7 @@ const RequestButton = ({
           id: 'approve-4k-request',
           text: intl.formatMessage(messages.approverequest4k),
           action: () => {
-            modifyRequest(active4kRequest, 'approve');
+            void modifyRequest(active4kRequest, 'approve');
           },
           svg: <CheckIcon />,
         },
@@ -235,7 +288,7 @@ const RequestButton = ({
           id: 'decline-4k-request',
           text: intl.formatMessage(messages.declinerequest4k),
           action: () => {
-            modifyRequest(active4kRequest, 'decline');
+            void modifyRequest(active4kRequest, 'decline');
           },
           svg: <XMarkIcon />,
         }
@@ -253,7 +306,7 @@ const RequestButton = ({
             requestCount: active4kRequests.length,
           }),
           action: () => {
-            modifyRequests(active4kRequests, 'approve');
+            void modifyRequests(active4kRequests, 'approve');
           },
           svg: <CheckIcon />,
         },
@@ -263,7 +316,7 @@ const RequestButton = ({
             requestCount: active4kRequests.length,
           }),
           action: () => {
-            modifyRequests(active4kRequests, 'decline');
+            void modifyRequests(active4kRequests, 'decline');
           },
           svg: <XMarkIcon />,
         }
@@ -297,7 +350,7 @@ const RequestButton = ({
     });
   } else if (
     mediaType === 'tv' &&
-    (!activeRequest || activeRequest.requestedBy.id !== user?.id) &&
+    (!activeRequest || activeRequest.requestedBy?.id !== user?.id) &&
     hasPermission([Permission.REQUEST, Permission.REQUEST_TV], {
       type: 'or',
     }) &&
@@ -344,7 +397,7 @@ const RequestButton = ({
     });
   } else if (
     mediaType === 'tv' &&
-    (!active4kRequest || active4kRequest.requestedBy.id !== user?.id) &&
+    (!active4kRequest || active4kRequest.requestedBy?.id !== user?.id) &&
     hasPermission([Permission.REQUEST_4K, Permission.REQUEST_4K_TV], {
       type: 'or',
     }) &&
@@ -407,6 +460,7 @@ const RequestButton = ({
           </>
         }
         onClick={buttonOne.action}
+        disabled={isModifying}
         className="ml-2"
       >
         {others && others.length > 0

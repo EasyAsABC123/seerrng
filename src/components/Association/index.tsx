@@ -4,6 +4,10 @@ import PageTitle from '@app/components/Common/PageTitle';
 import type { AssociationMediaType } from '@app/hooks/useAssociations';
 import useAssociations from '@app/hooks/useAssociations';
 import defineMessages from '@app/utils/defineMessages';
+import {
+  readLocalStorageValue,
+  writeLocalStorageValue,
+} from '@app/utils/localStorage';
 import { ListBulletIcon, ShareIcon } from '@heroicons/react/24/solid';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
@@ -37,7 +41,7 @@ const AssociationExplorer = () => {
   const [isGraphAvailable, setIsGraphAvailable] = useState(false);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = readLocalStorageValue(STORAGE_KEY);
     if (stored === 'graph' || stored === 'wall') {
       setView(stored);
     }
@@ -69,7 +73,7 @@ const AssociationExplorer = () => {
     }
 
     setView(mode);
-    window.localStorage.setItem(STORAGE_KEY, mode);
+    writeLocalStorageValue(STORAGE_KEY, mode);
   };
 
   const { graph, isLoading, isError } = useAssociations(mediaType, id, {

@@ -85,10 +85,17 @@ const useWarmImageCache = (
       return;
     }
 
+    const controller = new AbortController();
     const warm = () => {
-      axios.post('/imageproxy/warm', { urls: imageUrls }).catch(() => {
-        // Cache warming is opportunistic and should never affect the UI.
-      });
+      axios
+        .post(
+          '/api/v1/imageproxy/warm',
+          { urls: imageUrls },
+          { signal: controller.signal }
+        )
+        .catch(() => {
+          // Cache warming is opportunistic and should never affect the UI.
+        });
     };
 
     if ('requestIdleCallback' in window) {
@@ -96,12 +103,18 @@ const useWarmImageCache = (
         timeout: 3000,
       });
 
-      return () => window.cancelIdleCallback(idleCallbackId);
+      return () => {
+        window.cancelIdleCallback(idleCallbackId);
+        controller.abort();
+      };
     }
 
     const timeoutId = globalThis.setTimeout(warm, 250);
 
-    return () => globalThis.clearTimeout(timeoutId);
+    return () => {
+      globalThis.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [currentSettings.cacheImages, enabled, imageUrls]);
 };
 

@@ -10,8 +10,12 @@ import PushbulletAgent from '@server/lib/notifications/agents/pushbullet';
 import PushoverAgent from '@server/lib/notifications/agents/pushover';
 import SlackAgent from '@server/lib/notifications/agents/slack';
 import TelegramAgent from '@server/lib/notifications/agents/telegram';
-import WebhookAgent from '@server/lib/notifications/agents/webhook';
+import WebhookAgent, {
+  decodeStoredWebhookPayloadTemplate,
+  parseWebhookPayloadTemplate,
+} from '@server/lib/notifications/agents/webhook';
 import WebPushAgent from '@server/lib/notifications/agents/webpush';
+import { Permission } from '@server/lib/permissions';
 import {
   getSettings,
   type NotificationAgentConfig,
@@ -25,8 +29,14 @@ import {
   type NotificationAgentTelegram,
   type NotificationAgentWebhook,
 } from '@server/lib/settings';
-import type { AvailableLocale } from '@server/types/languages';
+import logger from '@server/logger';
+import { authorizedMutation } from '@server/middleware/authorizedMutation';
 import {
+  isAvailableLocale,
+  type AvailableLocale,
+} from '@server/types/languages';
+import {
+  REDACTED_SECRET,
   isSafeHttpUrl,
   preserveRedactedSecrets,
   redactSecrets,
@@ -35,16 +45,19 @@ import {
   parseOptionalBodyBoolean,
   parseOptionalNonNegativeInteger,
 } from '@server/utils/validation';
+import type { RequestHandler } from 'express';
 import { Router } from 'express';
 
 const notificationRoutes = Router();
-const MAX_WEBHOOK_PAYLOAD_BYTES = 64 * 1024;
+const adminPost = (path: string, handler: RequestHandler) =>
+  notificationRoutes.post(path, authorizedMutation(Permission.ADMIN, handler));
 const MAX_WEBHOOK_CUSTOM_HEADERS = 20;
 const MAX_WEBHOOK_HEADER_VALUE_LENGTH = 4096;
 const MAX_NOTIFICATION_OPTION_STRING_LENGTH = 4096;
 const MAX_NOTIFICATION_TYPES = 0x7fffffff;
 const MAX_NOTIFICATION_PRIORITY = 1000;
 const MAX_PORT = 65_535;
+const MAX_PGP_PRIVATE_KEY_LENGTH = 128 * 1024;
 const WEBHOOK_HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 const messages = defineMessages('notifications.test', {
@@ -67,11 +80,78 @@ type WebhookUrlNotificationBody = {
   options: Record<string, unknown> & { webhookUrl: string };
 };
 
+type UrlNotificationSchema = {
+  booleanOptions?: readonly string[];
+  priority?: boolean;
+  stringOptions?: readonly string[];
+};
+
+type WebhookUrlNotificationSchema = {
+  booleanOptions?: readonly string[];
+  stringOptions?: readonly string[];
+};
+
+const DISCORD_NOTIFICATION_SCHEMA = {
+  stringOptions: ['botUsername', 'botAvatarUrl', 'webhookRoleId', 'locale'],
+  booleanOptions: ['enableMentions', 'useUserLocale'],
+} as const satisfies WebhookUrlNotificationSchema;
+const SLACK_NOTIFICATION_SCHEMA = {
+  stringOptions: ['locale'],
+} as const satisfies WebhookUrlNotificationSchema;
+const GOTIFY_NOTIFICATION_SCHEMA = {
+  stringOptions: ['token', 'locale'],
+  priority: true,
+} as const satisfies UrlNotificationSchema;
+const NTFY_NOTIFICATION_SCHEMA = {
+  stringOptions: ['topic', 'locale', 'username', 'password', 'token'],
+  booleanOptions: ['authMethodUsernamePassword', 'authMethodToken'],
+  priority: true,
+} as const satisfies UrlNotificationSchema;
+
 type GenericNotificationBody = {
   enabled: boolean;
   embedPoster: boolean;
-  types: number;
+  types?: number;
   options: Record<string, unknown>;
+};
+
+type GenericNotificationSchema = {
+  booleanOptions?: readonly string[];
+  numberOptions?: readonly string[];
+  optionalStringOptions?: readonly {
+    maxLength?: number;
+    name: string;
+  }[];
+  requiredStringOptions?: readonly string[];
+  typesRequired?: boolean;
+};
+
+type NotificationAgents = ReturnType<
+  typeof getSettings
+>['notifications']['agents'];
+
+export const persistNotificationAgent = async <
+  K extends keyof NotificationAgents,
+>(
+  key: K,
+  value: NotificationAgents[K]
+): Promise<NotificationAgents[K]> => {
+  const settings = getSettings();
+  const notifications = await settings.persistSection(
+    'notifications',
+    (current) => ({
+      ...current,
+      // Resolve redaction placeholders only after the settings file has been
+      // refreshed under its write lock. Resolving them against an earlier
+      // process-local snapshot can resurrect a credential another instance
+      // rotated while this request was being validated.
+      agents: {
+        ...current.agents,
+        [key]: preserveRedactedSecrets(value, current.agents[key]),
+      },
+    })
+  );
+  return notifications.agents[key];
 };
 
 const sendTestNotification = async (agent: NotificationAgent, user: User) => {
@@ -87,18 +167,14 @@ const sendTestNotification = async (agent: NotificationAgent, user: User) => {
 };
 
 const validateWebhookPayload = (value: unknown) => {
-  if (typeof value !== 'string') {
-    return { status: 400, message: 'Webhook payload must be a JSON string.' };
-  }
-
-  if (Buffer.byteLength(value, 'utf8') > MAX_WEBHOOK_PAYLOAD_BYTES) {
-    return { status: 400, message: 'Webhook payload is too large.' };
-  }
-
   try {
-    JSON.parse(value);
-  } catch {
-    return { status: 400, message: 'Webhook payload must be valid JSON.' };
+    parseWebhookPayloadTemplate(value);
+  } catch (error) {
+    return {
+      status: 400,
+      message:
+        error instanceof Error ? error.message : 'Webhook payload is invalid.',
+    };
   }
 };
 
@@ -136,6 +212,14 @@ const validateWebhookHeaders = (
     }
   }
 };
+
+export const redactWebhookCustomHeaders = (
+  headers: { key: string; value: string }[] | undefined
+): { key: string; value: string }[] =>
+  (headers ?? []).map((header) => ({
+    key: header.key,
+    value: header.value ? REDACTED_SECRET : header.value,
+  }));
 
 const parseWebhookBody = (body: unknown) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -197,11 +281,30 @@ const parseWebhookBody = (body: unknown) => {
   if (typeof options.webhookUrl !== 'string') {
     return { error: { status: 400, message: 'Webhook URL must be a string.' } };
   }
+  if (options.webhookUrl.length > MAX_NOTIFICATION_OPTION_STRING_LENGTH) {
+    return {
+      error: {
+        status: 400,
+        message: `Webhook URL must be ${MAX_NOTIFICATION_OPTION_STRING_LENGTH} characters or fewer.`,
+      },
+    };
+  }
   if (
     options.authHeader !== undefined &&
     typeof options.authHeader !== 'string'
   ) {
     return { error: { status: 400, message: 'Auth header must be a string.' } };
+  }
+  if (
+    typeof options.authHeader === 'string' &&
+    options.authHeader.length > MAX_WEBHOOK_HEADER_VALUE_LENGTH
+  ) {
+    return {
+      error: {
+        status: 400,
+        message: `Auth header must be ${MAX_WEBHOOK_HEADER_VALUE_LENGTH} characters or fewer.`,
+      },
+    };
   }
   let customHeaders: { key: string; value: string }[] | undefined;
   if (options.customHeaders !== undefined) {
@@ -251,7 +354,8 @@ const parseWebhookBody = (body: unknown) => {
 
 const parseUrlNotificationBody = (
   body: unknown,
-  label: string
+  label: string,
+  schema: UrlNotificationSchema
 ): { value: UrlNotificationBody } | { error: RouteError } => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return {
@@ -321,6 +425,12 @@ const parseUrlNotificationBody = (
         message: `${label} ${option} must be a string.`,
       };
     }
+    if (option === 'locale' && !isAvailableLocale(optionValue)) {
+      return {
+        status: 400,
+        message: `${label} locale must be a supported locale.`,
+      };
+    }
     if (optionValue.length > MAX_NOTIFICATION_OPTION_STRING_LENGTH) {
       return {
         status: 400,
@@ -361,17 +471,27 @@ const parseUrlNotificationBody = (
   };
 
   const optionErrors = [
-    validateOptionalString('token'),
-    validateOptionalString('topic'),
-    validateOptionalString('locale'),
-    validateOptionalString('username'),
-    validateOptionalString('password'),
-    validateOptionalBoolean('authMethodUsernamePassword'),
-    validateOptionalBoolean('authMethodToken'),
-    validateOptionalPriority(),
+    ...(schema.stringOptions ?? []).map(validateOptionalString),
+    ...(schema.booleanOptions ?? []).map(validateOptionalBoolean),
+    ...(schema.priority ? [validateOptionalPriority()] : []),
   ].filter(Boolean);
   if (optionErrors.length > 0) {
     return { error: optionErrors[0] as RouteError };
+  }
+
+  const parsedOptions: Record<string, unknown> = { url: options.url };
+  for (const option of schema.stringOptions ?? []) {
+    if (typeof options[option] === 'string') {
+      parsedOptions[option] = options[option];
+    }
+  }
+  for (const option of schema.booleanOptions ?? []) {
+    if (typeof options[option] === 'boolean') {
+      parsedOptions[option] = options[option];
+    }
+  }
+  if (schema.priority && typeof options.priority === 'number') {
+    parsedOptions.priority = options.priority;
   }
 
   return {
@@ -379,10 +499,7 @@ const parseUrlNotificationBody = (
       enabled: enabled.value ?? false,
       embedPoster: embedPoster.value ?? false,
       types,
-      options: {
-        ...options,
-        url: options.url,
-      },
+      options: parsedOptions as Record<string, unknown> & { url: string },
     },
   };
 };
@@ -390,9 +507,7 @@ const parseUrlNotificationBody = (
 const parseGenericNotificationBody = (
   body: unknown,
   label: string,
-  requiredStringOptions: string[] = [],
-  requiredBooleanOptions: string[] = [],
-  requiredNumberOptions: string[] = []
+  schema: GenericNotificationSchema = {}
 ): { value: GenericNotificationBody } | { error: RouteError } => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return {
@@ -417,11 +532,14 @@ const parseGenericNotificationBody = (
   if ('error' in embedPoster) {
     return { error: { status: 400, message: embedPoster.error } };
   }
-  const types = parseOptionalNonNegativeInteger(
-    value.types,
-    MAX_NOTIFICATION_TYPES
-  );
-  if (types === undefined) {
+  const types =
+    value.types === undefined && schema.typesRequired === false
+      ? undefined
+      : parseOptionalNonNegativeInteger(value.types, MAX_NOTIFICATION_TYPES);
+  if (
+    types === undefined &&
+    (schema.typesRequired !== false || value.types !== undefined)
+  ) {
     return {
       error: { status: 400, message: 'Notification types must be valid.' },
     };
@@ -436,14 +554,23 @@ const parseGenericNotificationBody = (
     };
   }
 
-  const options = value.options as Record<string, unknown>;
-  for (const option of requiredStringOptions) {
-    const optionValue = options[option];
+  const rawOptions = value.options as Record<string, unknown>;
+  const options: Record<string, unknown> = {};
+  for (const option of schema.requiredStringOptions ?? []) {
+    const optionValue = rawOptions[option];
     if (typeof optionValue !== 'string') {
       return {
         error: {
           status: 400,
           message: `${label} ${option} must be a string.`,
+        },
+      };
+    }
+    if (option === 'locale' && !isAvailableLocale(optionValue)) {
+      return {
+        error: {
+          status: 400,
+          message: `${label} locale must be a supported locale.`,
         },
       };
     }
@@ -456,9 +583,42 @@ const parseGenericNotificationBody = (
         },
       };
     }
+    options[option] = optionValue;
   }
-  for (const option of requiredBooleanOptions) {
-    const optionValue = options[option];
+  for (const option of schema.optionalStringOptions ?? []) {
+    const optionValue = rawOptions[option.name];
+    if (optionValue === undefined) {
+      continue;
+    }
+    if (typeof optionValue !== 'string') {
+      return {
+        error: {
+          status: 400,
+          message: `${label} ${option.name} must be a string.`,
+        },
+      };
+    }
+    if (option.name === 'locale' && !isAvailableLocale(optionValue)) {
+      return {
+        error: {
+          status: 400,
+          message: `${label} locale must be a supported locale.`,
+        },
+      };
+    }
+    const maxLength = option.maxLength ?? MAX_NOTIFICATION_OPTION_STRING_LENGTH;
+    if (optionValue.length > maxLength) {
+      return {
+        error: {
+          status: 400,
+          message: `${label} ${option.name} must be ${maxLength} characters or fewer.`,
+        },
+      };
+    }
+    options[option.name] = optionValue;
+  }
+  for (const option of schema.booleanOptions ?? []) {
+    const optionValue = rawOptions[option];
     if (typeof optionValue !== 'boolean') {
       return {
         error: {
@@ -467,9 +627,10 @@ const parseGenericNotificationBody = (
         },
       };
     }
+    options[option] = optionValue;
   }
-  for (const option of requiredNumberOptions) {
-    const optionValue = options[option];
+  for (const option of schema.numberOptions ?? []) {
+    const optionValue = rawOptions[option];
     if (
       typeof optionValue !== 'number' ||
       !Number.isInteger(optionValue) ||
@@ -483,13 +644,14 @@ const parseGenericNotificationBody = (
         },
       };
     }
+    options[option] = optionValue;
   }
 
   return {
     value: {
       enabled: enabled.value ?? false,
       embedPoster: embedPoster.value ?? false,
-      types,
+      ...(types === undefined ? {} : { types }),
       options,
     },
   };
@@ -497,7 +659,8 @@ const parseGenericNotificationBody = (
 
 const parseWebhookUrlNotificationBody = (
   body: unknown,
-  label: string
+  label: string,
+  schema: WebhookUrlNotificationSchema
 ): { value: WebhookUrlNotificationBody } | { error: RouteError } => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return {
@@ -547,15 +710,72 @@ const parseWebhookUrlNotificationBody = (
       error: { status: 400, message: `${label} webhook URL must be a string.` },
     };
   }
+  if (options.webhookUrl.length > MAX_NOTIFICATION_OPTION_STRING_LENGTH) {
+    return {
+      error: {
+        status: 400,
+        message: `${label} webhook URL must be ${MAX_NOTIFICATION_OPTION_STRING_LENGTH} characters or fewer.`,
+      },
+    };
+  }
+
+  const parsedOptions: Record<string, unknown> = {
+    webhookUrl: options.webhookUrl,
+  };
+  for (const option of schema.stringOptions ?? []) {
+    const optionValue = options[option];
+    if (optionValue === undefined || optionValue === null) {
+      continue;
+    }
+    if (typeof optionValue !== 'string') {
+      return {
+        error: {
+          status: 400,
+          message: `${label} ${option} must be a string.`,
+        },
+      };
+    }
+    if (option === 'locale' && !isAvailableLocale(optionValue)) {
+      return {
+        error: {
+          status: 400,
+          message: `${label} locale must be a supported locale.`,
+        },
+      };
+    }
+    if (optionValue.length > MAX_NOTIFICATION_OPTION_STRING_LENGTH) {
+      return {
+        error: {
+          status: 400,
+          message: `${label} ${option} must be ${MAX_NOTIFICATION_OPTION_STRING_LENGTH} characters or fewer.`,
+        },
+      };
+    }
+    parsedOptions[option] = optionValue;
+  }
+  for (const option of schema.booleanOptions ?? []) {
+    const optionValue = options[option];
+    if (optionValue === undefined || optionValue === null) {
+      continue;
+    }
+    if (typeof optionValue !== 'boolean') {
+      return {
+        error: {
+          status: 400,
+          message: `${label} ${option} must be a boolean.`,
+        },
+      };
+    }
+    parsedOptions[option] = optionValue;
+  }
 
   return {
     value: {
       enabled: enabled.value ?? false,
       embedPoster: embedPoster.value ?? false,
       types,
-      options: {
-        ...options,
-        webhookUrl: options.webhookUrl,
+      options: parsedOptions as Record<string, unknown> & {
+        webhookUrl: string;
       },
     },
   };
@@ -590,16 +810,24 @@ notificationRoutes.get('/discord', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.discord));
 });
 
-notificationRoutes.post('/discord', async (req, res) => {
+adminPost('/discord', async (req, res) => {
   const settings = getSettings();
-  const parsedBody = parseWebhookUrlNotificationBody(req.body, 'Discord');
+  const parsedBody = parseWebhookUrlNotificationBody(
+    req.body,
+    'Discord',
+    DISCORD_NOTIFICATION_SCHEMA
+  );
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
   const body = parsedBody.value;
-  const validationError = body.enabled
+  const merged = preserveRedactedSecrets(
+    body as NotificationAgentDiscord,
+    settings.notifications.agents.discord
+  );
+  const validationError = merged.enabled
     ? await validateNotificationUrl(
-        body.options.webhookUrl,
+        merged.options.webhookUrl,
         'Discord webhook URL'
       )
     : undefined;
@@ -608,16 +836,15 @@ notificationRoutes.post('/discord', async (req, res) => {
     return res.status(validationError.status).json(validationError);
   }
 
-  settings.notifications.agents.discord = preserveRedactedSecrets(
-    body as NotificationAgentDiscord,
-    settings.notifications.agents.discord
+  const discord = await persistNotificationAgent(
+    'discord',
+    body as NotificationAgentDiscord
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.discord));
+  res.status(200).json(redactSecrets(discord));
 });
 
-notificationRoutes.post('/discord/test', async (req, res, next) => {
+adminPost('/discord/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -625,11 +852,18 @@ notificationRoutes.post('/discord/test', async (req, res, next) => {
     });
   }
 
-  const parsedBody = parseWebhookUrlNotificationBody(req.body, 'Discord');
+  const parsedBody = parseWebhookUrlNotificationBody(
+    req.body,
+    'Discord',
+    DISCORD_NOTIFICATION_SCHEMA
+  );
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const body = parsedBody.value;
+  const body = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentDiscord,
+    getSettings().notifications.agents.discord
+  );
 
   const validationError = await validateNotificationUrl(
     body.options.webhookUrl,
@@ -657,16 +891,24 @@ notificationRoutes.get('/slack', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.slack));
 });
 
-notificationRoutes.post('/slack', async (req, res) => {
+adminPost('/slack', async (req, res) => {
   const settings = getSettings();
-  const parsedBody = parseWebhookUrlNotificationBody(req.body, 'Slack');
+  const parsedBody = parseWebhookUrlNotificationBody(
+    req.body,
+    'Slack',
+    SLACK_NOTIFICATION_SCHEMA
+  );
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
   const body = parsedBody.value;
-  const validationError = body.enabled
+  const merged = preserveRedactedSecrets(
+    body as NotificationAgentSlack,
+    settings.notifications.agents.slack
+  );
+  const validationError = merged.enabled
     ? await validateNotificationUrl(
-        body.options.webhookUrl,
+        merged.options.webhookUrl,
         'Slack webhook URL'
       )
     : undefined;
@@ -675,16 +917,15 @@ notificationRoutes.post('/slack', async (req, res) => {
     return res.status(validationError.status).json(validationError);
   }
 
-  settings.notifications.agents.slack = preserveRedactedSecrets(
-    body as NotificationAgentSlack,
-    settings.notifications.agents.slack
+  const slack = await persistNotificationAgent(
+    'slack',
+    body as NotificationAgentSlack
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.slack));
+  res.status(200).json(redactSecrets(slack));
 });
 
-notificationRoutes.post('/slack/test', async (req, res, next) => {
+adminPost('/slack/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -692,11 +933,18 @@ notificationRoutes.post('/slack/test', async (req, res, next) => {
     });
   }
 
-  const parsedBody = parseWebhookUrlNotificationBody(req.body, 'Slack');
+  const parsedBody = parseWebhookUrlNotificationBody(
+    req.body,
+    'Slack',
+    SLACK_NOTIFICATION_SCHEMA
+  );
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const body = parsedBody.value;
+  const body = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentSlack,
+    getSettings().notifications.agents.slack
+  );
 
   const validationError = await validateNotificationUrl(
     body.options.webhookUrl,
@@ -724,29 +972,26 @@ notificationRoutes.get('/telegram', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.telegram));
 });
 
-notificationRoutes.post('/telegram', async (req, res) => {
-  const settings = getSettings();
-  const parsedBody = parseGenericNotificationBody(
-    req.body,
-    'Telegram',
-    ['botAPI', 'chatId', 'messageThreadId'],
-    ['sendSilently']
-  );
+adminPost('/telegram', async (req, res) => {
+  const parsedBody = parseGenericNotificationBody(req.body, 'Telegram', {
+    requiredStringOptions: ['botAPI', 'chatId', 'messageThreadId'],
+    optionalStringOptions: [{ name: 'botUsername', maxLength: 256 }],
+    booleanOptions: ['sendSilently'],
+  });
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
   const body = parsedBody.value;
 
-  settings.notifications.agents.telegram = preserveRedactedSecrets(
-    body as NotificationAgentTelegram,
-    settings.notifications.agents.telegram
+  const telegram = await persistNotificationAgent(
+    'telegram',
+    body as NotificationAgentTelegram
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.telegram));
+  res.status(200).json(redactSecrets(telegram));
 });
 
-notificationRoutes.post('/telegram/test', async (req, res, next) => {
+adminPost('/telegram/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -754,18 +999,19 @@ notificationRoutes.post('/telegram/test', async (req, res, next) => {
     });
   }
 
-  const parsedBody = parseGenericNotificationBody(
-    req.body,
-    'Telegram',
-    ['botAPI', 'chatId', 'messageThreadId'],
-    ['sendSilently']
-  );
+  const parsedBody = parseGenericNotificationBody(req.body, 'Telegram', {
+    requiredStringOptions: ['botAPI', 'chatId', 'messageThreadId'],
+    optionalStringOptions: [{ name: 'botUsername', maxLength: 256 }],
+    booleanOptions: ['sendSilently'],
+  });
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const telegramAgent = new TelegramAgent(
-    parsedBody.value as NotificationAgentTelegram
+  const testSettings = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentTelegram,
+    getSettings().notifications.agents.telegram
   );
+  const telegramAgent = new TelegramAgent(testSettings);
   if (await sendTestNotification(telegramAgent, req.user)) {
     return res.status(204).send();
   } else {
@@ -782,26 +1028,25 @@ notificationRoutes.get('/pushbullet', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.pushbullet));
 });
 
-notificationRoutes.post('/pushbullet', async (req, res) => {
-  const settings = getSettings();
-  const parsedBody = parseGenericNotificationBody(req.body, 'Pushbullet', [
-    'accessToken',
-  ]);
+adminPost('/pushbullet', async (req, res) => {
+  const parsedBody = parseGenericNotificationBody(req.body, 'Pushbullet', {
+    requiredStringOptions: ['accessToken'],
+    optionalStringOptions: [{ name: 'channelTag' }],
+  });
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
   const body = parsedBody.value;
 
-  settings.notifications.agents.pushbullet = preserveRedactedSecrets(
-    body as NotificationAgentPushbullet,
-    settings.notifications.agents.pushbullet
+  const pushbullet = await persistNotificationAgent(
+    'pushbullet',
+    body as NotificationAgentPushbullet
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.pushbullet));
+  res.status(200).json(redactSecrets(pushbullet));
 });
 
-notificationRoutes.post('/pushbullet/test', async (req, res, next) => {
+adminPost('/pushbullet/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -809,15 +1054,18 @@ notificationRoutes.post('/pushbullet/test', async (req, res, next) => {
     });
   }
 
-  const parsedBody = parseGenericNotificationBody(req.body, 'Pushbullet', [
-    'accessToken',
-  ]);
+  const parsedBody = parseGenericNotificationBody(req.body, 'Pushbullet', {
+    requiredStringOptions: ['accessToken'],
+    optionalStringOptions: [{ name: 'channelTag' }],
+  });
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const pushbulletAgent = new PushbulletAgent(
-    parsedBody.value as NotificationAgentPushbullet
+  const testSettings = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentPushbullet,
+    getSettings().notifications.agents.pushbullet
   );
+  const pushbulletAgent = new PushbulletAgent(testSettings);
   if (await sendTestNotification(pushbulletAgent, req.user)) {
     return res.status(204).send();
   } else {
@@ -834,28 +1082,24 @@ notificationRoutes.get('/pushover', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.pushover));
 });
 
-notificationRoutes.post('/pushover', async (req, res) => {
-  const settings = getSettings();
-  const parsedBody = parseGenericNotificationBody(req.body, 'Pushover', [
-    'accessToken',
-    'userToken',
-    'sound',
-  ]);
+adminPost('/pushover', async (req, res) => {
+  const parsedBody = parseGenericNotificationBody(req.body, 'Pushover', {
+    requiredStringOptions: ['accessToken', 'userToken', 'sound'],
+  });
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
   const body = parsedBody.value;
 
-  settings.notifications.agents.pushover = preserveRedactedSecrets(
-    body as NotificationAgentPushover,
-    settings.notifications.agents.pushover
+  const pushover = await persistNotificationAgent(
+    'pushover',
+    body as NotificationAgentPushover
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.pushover));
+  res.status(200).json(redactSecrets(pushover));
 });
 
-notificationRoutes.post('/pushover/test', async (req, res, next) => {
+adminPost('/pushover/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -863,17 +1107,17 @@ notificationRoutes.post('/pushover/test', async (req, res, next) => {
     });
   }
 
-  const parsedBody = parseGenericNotificationBody(req.body, 'Pushover', [
-    'accessToken',
-    'userToken',
-    'sound',
-  ]);
+  const parsedBody = parseGenericNotificationBody(req.body, 'Pushover', {
+    requiredStringOptions: ['accessToken', 'userToken', 'sound'],
+  });
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const pushoverAgent = new PushoverAgent(
-    parsedBody.value as NotificationAgentPushover
+  const testSettings = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentPushover,
+    getSettings().notifications.agents.pushover
   );
+  const pushoverAgent = new PushoverAgent(testSettings);
   if (await sendTestNotification(pushoverAgent, req.user)) {
     return res.status(204).send();
   } else {
@@ -890,36 +1134,39 @@ notificationRoutes.get('/email', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.email));
 });
 
-notificationRoutes.post('/email', async (req, res) => {
-  const settings = getSettings();
-  const parsedBody = parseGenericNotificationBody(
-    req.body,
-    'Email',
-    ['emailFrom', 'smtpHost', 'senderName'],
-    [
+adminPost('/email', async (req, res) => {
+  const parsedBody = parseGenericNotificationBody(req.body, 'Email', {
+    requiredStringOptions: ['emailFrom', 'smtpHost', 'senderName'],
+    optionalStringOptions: [
+      { name: 'authUser' },
+      { name: 'authPass' },
+      { name: 'pgpPrivateKey', maxLength: MAX_PGP_PRIVATE_KEY_LENGTH },
+      { name: 'pgpPassword' },
+    ],
+    booleanOptions: [
       'userEmailRequired',
       'secure',
       'ignoreTls',
       'requireTls',
       'allowSelfSigned',
     ],
-    ['smtpPort']
-  );
+    numberOptions: ['smtpPort'],
+    typesRequired: false,
+  });
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
   const body = parsedBody.value;
 
-  settings.notifications.agents.email = preserveRedactedSecrets(
-    body as NotificationAgentEmail,
-    settings.notifications.agents.email
+  const email = await persistNotificationAgent(
+    'email',
+    body as NotificationAgentEmail
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.email));
+  res.status(200).json(redactSecrets(email));
 });
 
-notificationRoutes.post('/email/test', async (req, res, next) => {
+adminPost('/email/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -927,23 +1174,32 @@ notificationRoutes.post('/email/test', async (req, res, next) => {
     });
   }
 
-  const parsedBody = parseGenericNotificationBody(
-    req.body,
-    'Email',
-    ['emailFrom', 'smtpHost', 'senderName'],
-    [
+  const parsedBody = parseGenericNotificationBody(req.body, 'Email', {
+    requiredStringOptions: ['emailFrom', 'smtpHost', 'senderName'],
+    optionalStringOptions: [
+      { name: 'authUser' },
+      { name: 'authPass' },
+      { name: 'pgpPrivateKey', maxLength: MAX_PGP_PRIVATE_KEY_LENGTH },
+      { name: 'pgpPassword' },
+    ],
+    booleanOptions: [
       'userEmailRequired',
       'secure',
       'ignoreTls',
       'requireTls',
       'allowSelfSigned',
     ],
-    ['smtpPort']
-  );
+    numberOptions: ['smtpPort'],
+    typesRequired: false,
+  });
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const emailAgent = new EmailAgent(parsedBody.value as NotificationAgentEmail);
+  const testSettings = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentEmail,
+    getSettings().notifications.agents.email
+  );
+  const emailAgent = new EmailAgent(testSettings);
   if (await sendTestNotification(emailAgent, req.user)) {
     return res.status(204).send();
   } else {
@@ -960,24 +1216,22 @@ notificationRoutes.get('/webpush', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.webpush));
 });
 
-notificationRoutes.post('/webpush', async (req, res) => {
-  const settings = getSettings();
+adminPost('/webpush', async (req, res) => {
   const parsedBody = parseGenericNotificationBody(req.body, 'Web push');
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
   const body = parsedBody.value;
 
-  settings.notifications.agents.webpush = preserveRedactedSecrets(
-    body as NotificationAgentConfig,
-    settings.notifications.agents.webpush
+  const webpush = await persistNotificationAgent(
+    'webpush',
+    body as NotificationAgentConfig
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.webpush));
+  res.status(200).json(redactSecrets(webpush));
 });
 
-notificationRoutes.post('/webpush/test', async (req, res, next) => {
+adminPost('/webpush/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -989,9 +1243,11 @@ notificationRoutes.post('/webpush/test', async (req, res, next) => {
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const webpushAgent = new WebPushAgent(
-    parsedBody.value as NotificationAgentConfig
+  const testSettings = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentConfig,
+    getSettings().notifications.agents.webpush
   );
+  const webpushAgent = new WebPushAgent(testSettings);
   if (await sendTestNotification(webpushAgent, req.user)) {
     return res.status(204).send();
   } else {
@@ -1006,6 +1262,17 @@ notificationRoutes.get('/webhook', (_req, res) => {
   const settings = getSettings();
 
   const webhookSettings = settings.notifications.agents.webhook;
+  let jsonPayload = '{}';
+  try {
+    jsonPayload = decodeStoredWebhookPayloadTemplate(
+      webhookSettings.options.jsonPayload
+    ).raw;
+  } catch (error) {
+    logger.error('Stored webhook payload configuration is invalid.', {
+      label: 'Notifications',
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const response: typeof webhookSettings = {
     enabled: webhookSettings.enabled,
@@ -1013,12 +1280,10 @@ notificationRoutes.get('/webhook', (_req, res) => {
     types: webhookSettings.types,
     options: {
       ...webhookSettings.options,
-      jsonPayload: JSON.parse(
-        Buffer.from(webhookSettings.options.jsonPayload, 'base64').toString(
-          'utf8'
-        )
+      jsonPayload,
+      customHeaders: redactWebhookCustomHeaders(
+        webhookSettings.options.customHeaders
       ),
-      customHeaders: webhookSettings.options.customHeaders ?? [],
       supportVariables: webhookSettings.options.supportVariables ?? false,
     },
   };
@@ -1026,7 +1291,7 @@ notificationRoutes.get('/webhook', (_req, res) => {
   res.status(200).json(redactSecrets(response));
 });
 
-notificationRoutes.post('/webhook', async (req, res, next) => {
+adminPost('/webhook', async (req, res, next) => {
   const settings = getSettings();
   try {
     const parsedBody = parseWebhookBody(req.body);
@@ -1047,17 +1312,7 @@ notificationRoutes.post('/webhook', async (req, res, next) => {
       value: string;
     }[];
 
-    const validationError = body.enabled
-      ? await validateNotificationUrl(body.options.webhookUrl, 'Webhook URL', {
-          allowTemplates: body.options.supportVariables,
-        })
-      : undefined;
-
-    if (validationError) {
-      return next(validationError);
-    }
-
-    settings.notifications.agents.webhook = preserveRedactedSecrets(
+    const merged = preserveRedactedSecrets(
       {
         enabled: body.enabled,
         embedPoster: body.embedPoster,
@@ -1074,15 +1329,52 @@ notificationRoutes.post('/webhook', async (req, res, next) => {
       },
       settings.notifications.agents.webhook
     );
-    await settings.save();
+    const validationError = merged.enabled
+      ? await validateNotificationUrl(
+          merged.options.webhookUrl,
+          'Webhook URL',
+          {
+            allowTemplates: merged.options.supportVariables,
+          }
+        )
+      : undefined;
 
-    res.status(200).json(redactSecrets(settings.notifications.agents.webhook));
+    if (validationError) {
+      return next(validationError);
+    }
+
+    const webhook = await persistNotificationAgent('webhook', {
+      enabled: body.enabled,
+      embedPoster: body.embedPoster,
+      types: body.types,
+      options: {
+        jsonPayload: Buffer.from(
+          JSON.stringify(body.options.jsonPayload)
+        ).toString('base64'),
+        webhookUrl: body.options.webhookUrl,
+        authHeader: body.options.authHeader,
+        customHeaders,
+        supportVariables: body.options.supportVariables,
+      },
+    });
+
+    res.status(200).json(
+      redactSecrets({
+        ...webhook,
+        options: {
+          ...settings.notifications.agents.webhook.options,
+          customHeaders: redactWebhookCustomHeaders(
+            settings.notifications.agents.webhook.options.customHeaders
+          ),
+        },
+      })
+    );
   } catch (e) {
     next({ status: 500, message: e.message });
   }
 });
 
-notificationRoutes.post('/webhook/test', async (req, res, next) => {
+adminPost('/webhook/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -1109,30 +1401,32 @@ notificationRoutes.post('/webhook/test', async (req, res, next) => {
       value: string;
     }[];
 
+    const testBody = preserveRedactedSecrets(
+      {
+        enabled: body.enabled,
+        embedPoster: body.embedPoster,
+        types: body.types,
+        options: {
+          jsonPayload: Buffer.from(
+            JSON.stringify(body.options.jsonPayload)
+          ).toString('base64'),
+          webhookUrl: body.options.webhookUrl,
+          authHeader: body.options.authHeader,
+          customHeaders,
+          supportVariables: body.options.supportVariables,
+        },
+      },
+      getSettings().notifications.agents.webhook
+    );
     const validationError = await validateNotificationUrl(
-      body.options.webhookUrl,
+      testBody.options.webhookUrl,
       'Webhook URL',
-      { allowTemplates: body.options.supportVariables }
+      { allowTemplates: testBody.options.supportVariables }
     );
 
     if (validationError) {
       return next(validationError);
     }
-
-    const testBody = {
-      enabled: body.enabled,
-      embedPoster: body.embedPoster,
-      types: body.types,
-      options: {
-        jsonPayload: Buffer.from(
-          JSON.stringify(body.options.jsonPayload)
-        ).toString('base64'),
-        webhookUrl: body.options.webhookUrl,
-        authHeader: body.options.authHeader,
-        customHeaders,
-        supportVariables: body.options.supportVariables,
-      },
-    };
 
     const webhookAgent = new WebhookAgent(testBody);
     if (await sendTestNotification(webhookAgent, req.user)) {
@@ -1154,9 +1448,12 @@ notificationRoutes.get('/gotify', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.gotify));
 });
 
-notificationRoutes.post('/gotify', async (req, res) => {
-  const settings = getSettings();
-  const parsedBody = parseUrlNotificationBody(req.body, 'Gotify');
+adminPost('/gotify', async (req, res) => {
+  const parsedBody = parseUrlNotificationBody(
+    req.body,
+    'Gotify',
+    GOTIFY_NOTIFICATION_SCHEMA
+  );
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
@@ -1169,16 +1466,15 @@ notificationRoutes.post('/gotify', async (req, res) => {
     return res.status(validationError.status).json(validationError);
   }
 
-  settings.notifications.agents.gotify = preserveRedactedSecrets(
-    body as NotificationAgentGotify,
-    settings.notifications.agents.gotify
+  const gotify = await persistNotificationAgent(
+    'gotify',
+    body as NotificationAgentGotify
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.gotify));
+  res.status(200).json(redactSecrets(gotify));
 });
 
-notificationRoutes.post('/gotify/test', async (req, res, next) => {
+adminPost('/gotify/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -1186,11 +1482,18 @@ notificationRoutes.post('/gotify/test', async (req, res, next) => {
     });
   }
 
-  const parsedBody = parseUrlNotificationBody(req.body, 'Gotify');
+  const parsedBody = parseUrlNotificationBody(
+    req.body,
+    'Gotify',
+    GOTIFY_NOTIFICATION_SCHEMA
+  );
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const body = parsedBody.value;
+  const body = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentGotify,
+    getSettings().notifications.agents.gotify
+  );
 
   const validationError = await validateNotificationUrl(
     body.options.url,
@@ -1218,9 +1521,12 @@ notificationRoutes.get('/ntfy', (_req, res) => {
   res.status(200).json(redactSecrets(settings.notifications.agents.ntfy));
 });
 
-notificationRoutes.post('/ntfy', async (req, res) => {
-  const settings = getSettings();
-  const parsedBody = parseUrlNotificationBody(req.body, 'ntfy');
+adminPost('/ntfy', async (req, res) => {
+  const parsedBody = parseUrlNotificationBody(
+    req.body,
+    'ntfy',
+    NTFY_NOTIFICATION_SCHEMA
+  );
   if ('error' in parsedBody) {
     return res.status(parsedBody.error.status).json(parsedBody.error);
   }
@@ -1233,16 +1539,15 @@ notificationRoutes.post('/ntfy', async (req, res) => {
     return res.status(validationError.status).json(validationError);
   }
 
-  settings.notifications.agents.ntfy = preserveRedactedSecrets(
-    body as NotificationAgentNtfy,
-    settings.notifications.agents.ntfy
+  const ntfy = await persistNotificationAgent(
+    'ntfy',
+    body as NotificationAgentNtfy
   );
-  await settings.save();
 
-  res.status(200).json(redactSecrets(settings.notifications.agents.ntfy));
+  res.status(200).json(redactSecrets(ntfy));
 });
 
-notificationRoutes.post('/ntfy/test', async (req, res, next) => {
+adminPost('/ntfy/test', async (req, res, next) => {
   if (!req.user) {
     return next({
       status: 500,
@@ -1250,11 +1555,18 @@ notificationRoutes.post('/ntfy/test', async (req, res, next) => {
     });
   }
 
-  const parsedBody = parseUrlNotificationBody(req.body, 'ntfy');
+  const parsedBody = parseUrlNotificationBody(
+    req.body,
+    'ntfy',
+    NTFY_NOTIFICATION_SCHEMA
+  );
   if ('error' in parsedBody) {
     return next(parsedBody.error);
   }
-  const body = parsedBody.value;
+  const body = preserveRedactedSecrets(
+    parsedBody.value as NotificationAgentNtfy,
+    getSettings().notifications.agents.ntfy
+  );
 
   const validationError = await validateNotificationUrl(
     body.options.url,

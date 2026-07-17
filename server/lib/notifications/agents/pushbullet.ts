@@ -1,13 +1,13 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { MediaStatus } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
-import { User } from '@server/entity/User';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentPushbullet } from '@server/lib/settings';
 import { NotificationAgentKey, getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import { redactSecrets } from '@server/utils/security';
 import axios from 'axios';
 import {
@@ -16,7 +16,11 @@ import {
   shouldSendAdminNotification,
 } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
-import { BaseAgent, NOTIFICATION_HTTP_OPTIONS } from './agent';
+import {
+  BaseAgent,
+  NOTIFICATION_DELIVERY_CONCURRENCY,
+  NOTIFICATION_HTTP_OPTIONS,
+} from './agent';
 
 interface PushbulletPayload {
   type: string;
@@ -52,7 +56,7 @@ class PushbulletAgent
     const title = payload.event
       ? `${payload.event} - ${payload.subject}`
       : payload.subject;
-    let body = payload.message ?? '';
+    let body = payload.message && !payload.comment ? payload.message : '';
 
     if (payload.request) {
       body += `\n\n${intl.formatMessage(globalMessages.requestedBy)}: ${payload.request.requestedBy.displayName}`;
@@ -201,19 +205,18 @@ class PushbulletAgent
     }
 
     if (payload.notifyAdmin) {
-      const userRepository = getRepository(User);
-      const users = await userRepository.find();
-
-      await Promise.all(
-        users
-          .filter(
+      let adminDeliveryFailed = false;
+      await forEachNotificationUserBatch(async (users) => {
+        const adminDeliveries = await mapWithConcurrency(
+          users.filter(
             (user) =>
               user.settings?.hasNotificationType(
                 NotificationAgentKey.PUSHBULLET,
                 type
               ) && shouldSendAdminNotification(type, user, payload)
-          )
-          .map(async (user) => {
+          ),
+          NOTIFICATION_DELIVERY_CONCURRENCY,
+          async (user) => {
             if (
               user.settings?.pushbulletAccessToken &&
               (settings.options.channelTag ||
@@ -253,8 +256,15 @@ class PushbulletAgent
                 return false;
               }
             }
-          })
-      );
+          }
+        );
+        adminDeliveryFailed ||= adminDeliveries.some(
+          (delivered) => delivered === false
+        );
+      });
+      if (adminDeliveryFailed) {
+        return false;
+      }
     }
 
     return true;

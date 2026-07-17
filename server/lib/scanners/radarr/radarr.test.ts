@@ -73,6 +73,25 @@ describe('Radarr Scanner', () => {
   });
 
   describe('unmonitored movie handling', () => {
+    it('does not persist items fetched before service credentials rotate', async () => {
+      const mediaRepository = getRepository(Media);
+      configureRadarr([{ syncEnabled: true }]);
+      getMoviesImpl = async () => {
+        const settings = getSettings();
+        settings.radarr = [
+          { ...settings.radarr[0], apiKey: 'rotated-during-scan' },
+        ];
+        return [fakeRadarrMovie({ tmdbId: 549 })];
+      };
+
+      await radarrScanner.run();
+
+      assert.strictEqual(
+        await mediaRepository.findOne({ where: { tmdbId: 549 } }),
+        null
+      );
+    });
+
     it('resets PROCESSING to UNKNOWN when movie is unmonitored and has no file', async () => {
       const mediaRepository = getRepository(Media);
 
@@ -201,6 +220,31 @@ describe('Radarr Scanner', () => {
   });
 
   describe('orphaned movie cleanup', () => {
+    it('does not clean up against a server set expanded during the scan', async () => {
+      const mediaRepository = getRepository(Media);
+      const media = await mediaRepository.save(
+        new Media({
+          tmdbId: 546,
+          mediaType: MediaType.MOVIE,
+          status: MediaStatus.PROCESSING,
+        })
+      );
+      configureRadarr([{ syncEnabled: true }]);
+      getMoviesImpl = async () => {
+        const settings = getSettings();
+        settings.radarr = [
+          ...settings.radarr,
+          { ...settings.radarr[0], id: 1, name: 'Added during scan' },
+        ];
+        return [];
+      };
+
+      await radarrScanner.run();
+
+      const current = await mediaRepository.findOneByOrFail({ id: media.id });
+      assert.strictEqual(current.status, MediaStatus.PROCESSING);
+    });
+
     it('skips cleanup when a standard server has sync disabled', async () => {
       const mediaRepository = getRepository(Media);
 

@@ -1,5 +1,9 @@
 import TvDetails from '@app/components/TvDetails';
-import { getInternalApiBaseUrl } from '@app/utils/internalApi';
+import {
+  encodeInternalApiPathSegment,
+  getInternalApiBaseUrl,
+  INTERNAL_API_HTTP_OPTIONS,
+} from '@app/utils/internalApi';
 import type { TvDetails as TvDetailsType } from '@server/models/Tv';
 import axios from 'axios';
 import type { GetServerSideProps, NextPage } from 'next';
@@ -16,8 +20,11 @@ export const getServerSideProps: GetServerSideProps<TvPageProps> = async (
   ctx
 ) => {
   const response = await axios.get<TvDetailsType>(
-    `${getInternalApiBaseUrl()}/api/v1/tv/${ctx.query.tvId}`,
+    `${getInternalApiBaseUrl()}/api/v1/tv/${encodeInternalApiPathSegment(
+      ctx.query.tvId
+    )}`,
     {
+      ...INTERNAL_API_HTTP_OPTIONS,
       headers: ctx.req?.headers?.cookie
         ? { cookie: ctx.req.headers.cookie }
         : undefined,

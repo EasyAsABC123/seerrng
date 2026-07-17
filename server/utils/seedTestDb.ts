@@ -48,7 +48,7 @@ async function seedTestUsers(): Promise<void> {
     (await userRepository.findOne({
       where: { email: 'friend@seerr.dev' },
     })) ?? new User();
-  otherUser.plexId = admin?.plexId ?? 1;
+  otherUser.plexId = 2;
   otherUser.plexToken = '1234';
   otherUser.plexUsername = 'friend';
   otherUser.username = 'friend';

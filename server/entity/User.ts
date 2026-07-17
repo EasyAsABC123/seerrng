@@ -10,25 +10,28 @@ import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { DbAwareColumn, resolveDbType } from '@server/utils/DbColumnHelper';
 import { AfterDate } from '@server/utils/dateHelpers';
+import { normalizeJellyfinGuid } from '@server/utils/jellyfin';
 import bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { nanoid } from 'nanoid';
 import path from 'path';
 import {
   AfterLoad,
   Column,
   Entity,
+  In,
+  Index,
+  IsNull,
   Not,
   OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   RelationCount,
   UpdateDateColumn,
+  type Repository,
 } from 'typeorm';
 import Issue from './Issue';
 import { LinkedAccount } from './LinkedAccount';
 import { MediaRequest } from './MediaRequest';
-import SeasonRequest from './SeasonRequest';
 import { UserPushSubscription } from './UserPushSubscription';
 import { UserSettings } from './UserSettings';
 
@@ -38,6 +41,10 @@ const permissionColumnTransformer = {
 };
 
 @Entity()
+@Index('IDX_user_plex_id_unique', ['plexId'], { unique: true })
+@Index('IDX_user_jellyfin_user_id_unique', ['jellyfinUserId'], {
+  unique: true,
+})
 export class User {
   public static filterMany(
     users: User[],
@@ -49,13 +56,23 @@ export class User {
   static readonly filteredFields: (keyof User)[] = [
     'email',
     'plexId',
+    'jellyfinUserId',
+    'settings',
+    'linkedAccounts',
+  ];
+
+  static readonly credentialFields: (keyof User)[] = [
     'password',
+    'passwordChangedAt',
+    'failedLoginAttempts',
+    'lastFailedLoginAt',
+    'loginBlockedUntil',
     'resetPasswordGuid',
+    'recoveryLinkExpirationDate',
+    'resetPasswordDeliveryPending',
     'jellyfinDeviceId',
     'jellyfinAuthToken',
     'plexToken',
-    'settings',
-    'linkedAccounts',
   ];
 
   public displayName: string;
@@ -84,11 +101,26 @@ export class User {
   @Column({ nullable: true, select: false })
   public password?: string;
 
-  @Column({ nullable: true, select: false })
-  public resetPasswordGuid?: string;
+  @DbAwareColumn({ type: 'datetime', nullable: true })
+  public passwordChangedAt?: Date | null;
+
+  @Column({ type: 'integer', default: 0, select: false })
+  public failedLoginAttempts?: number;
+
+  @DbAwareColumn({ type: 'datetime', nullable: true, select: false })
+  public lastFailedLoginAt?: Date | null;
+
+  @DbAwareColumn({ type: 'datetime', nullable: true, select: false })
+  public loginBlockedUntil?: Date | null;
+
+  @Column({ type: 'varchar', nullable: true, select: false })
+  public resetPasswordGuid?: string | null;
 
   @DbAwareColumn({ type: 'datetime', nullable: true })
   public recoveryLinkExpirationDate?: Date | null;
+
+  @Column({ type: 'boolean', default: false, select: false })
+  public resetPasswordDeliveryPending?: boolean;
 
   @Column({ type: 'integer', default: UserType.PLEX })
   public userType: UserType;
@@ -96,7 +128,16 @@ export class User {
   @Column({ type: 'integer', nullable: true, select: true })
   public plexId?: number | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({
+    type: 'varchar',
+    nullable: true,
+    transformer: {
+      to: (value?: string | null) =>
+        value ? (normalizeJellyfinGuid(value) ?? value) : value,
+      from: (value?: string | null) =>
+        value ? (normalizeJellyfinGuid(value) ?? value) : value,
+    },
+  })
   public jellyfinUserId?: string | null;
 
   @Column({ type: 'varchar', nullable: true, select: false })
@@ -112,7 +153,7 @@ export class User {
   public linkedAccounts: LinkedAccount[];
 
   @Column({
-    type: 'bigint',
+    type: resolveDbType('bigint'),
     default: 0,
     transformer: permissionColumnTransformer,
   })
@@ -192,11 +233,50 @@ export class User {
     const filtered: Partial<User> = Object.assign(
       {},
       ...(Object.keys(this) as (keyof User)[])
-        .filter((k) => showFiltered || !User.filteredFields.includes(k))
+        .filter(
+          (k) =>
+            !User.credentialFields.includes(k) &&
+            (showFiltered || !User.filteredFields.includes(k))
+        )
         .map((k) => ({ [k]: this[k] }))
     );
 
+    if (showFiltered && this.settings) {
+      filtered.settings = this.settings.filter() as UserSettings;
+    }
+
     return filtered;
+  }
+
+  /**
+   * Minimal identity safe to embed in request, issue, and comment payloads.
+   * Operational account fields such as permission masks, quotas, provider
+   * usernames, and request counts belong only in explicitly authorized user
+   * endpoints.
+   */
+  public publicFilter(includeCreatedAt = false): Partial<User> {
+    return {
+      id: this.id,
+      displayName: this.displayName,
+      avatar: this.avatar,
+      ...(includeCreatedAt ? { createdAt: this.createdAt } : {}),
+    };
+  }
+
+  /**
+   * Identity and authorization data required by request managers when choosing
+   * a requester. Account-management and activity fields are intentionally
+   * excluded.
+   */
+  public requesterFilter(): Partial<User> {
+    return {
+      ...this.publicFilter(),
+      permissions: this.permissions,
+    };
+  }
+
+  public toJSON(): Partial<User> {
+    return this.filter();
   }
 
   public hasPermission(
@@ -230,75 +310,148 @@ export class User {
   public async setPassword(password: string): Promise<void> {
     const hashedPassword = await bcrypt.hash(password, 12);
     this.password = hashedPassword;
+    this.passwordChangedAt = new Date();
+    this.failedLoginAttempts = 0;
+    this.lastFailedLoginAt = null;
+    this.loginBlockedUntil = null;
+    // A password change supersedes every outstanding recovery link. Keeping a
+    // still-valid token usable after the account owner or an administrator has
+    // replaced the password would let an older token take the account back.
+    this.resetPasswordGuid = null;
+    this.recoveryLinkExpirationDate = null;
+    this.resetPasswordDeliveryPending = false;
   }
 
-  public async generatePassword(): Promise<void> {
-    const password = nanoid(16);
-    await this.setPassword(password);
-
-    const { applicationTitle, applicationUrl } = getSettings().main;
-    try {
-      logger.info(`Sending generated password email for ${this.email}`, {
-        label: 'User Management',
-      });
-
-      const email = new PreparedEmail(getSettings().notifications.agents.email);
-      await email.send({
-        template: path.join(__dirname, '../templates/email/generatedpassword'),
-        message: {
-          to: this.email,
-        },
-        locals: {
-          password: password,
-          applicationUrl,
-          applicationTitle,
-          recipientName: this.username,
-        },
-      });
-    } catch (e) {
-      logger.error('Failed to send out generated password email', {
-        label: 'User Management',
-        message: e.message,
-      });
+  public async preparePasswordResetDelivery(
+    claimRepository: Repository<User> = getRepository(User)
+  ): Promise<(() => Promise<boolean>) | undefined> {
+    const settings = getSettings();
+    if (
+      !settings.main.applicationUrl ||
+      !settings.notifications.agents.email.enabled
+    ) {
+      return undefined;
     }
+    const previousResetPasswordGuid = this.resetPasswordGuid;
+    const previousRecoveryLinkExpirationDate = this.recoveryLinkExpirationDate;
+    const now = new Date();
+    const canReuseExistingToken =
+      !!previousResetPasswordGuid &&
+      !!previousRecoveryLinkExpirationDate &&
+      previousRecoveryLinkExpirationDate > now;
+    const guid = canReuseExistingToken
+      ? previousResetPasswordGuid
+      : randomUUID();
+    let claimedNewToken = false;
+
+    if (!canReuseExistingToken) {
+      // 24 hours into the future
+      const targetDate = new Date(now);
+      targetDate.setDate(targetDate.getDate() + 1);
+      this.resetPasswordGuid = guid;
+      this.recoveryLinkExpirationDate = targetDate;
+
+      const tokenClaim = await claimRepository.update(
+        {
+          id: this.id,
+          resetPasswordGuid: previousResetPasswordGuid ?? IsNull(),
+          recoveryLinkExpirationDate:
+            previousRecoveryLinkExpirationDate ?? IsNull(),
+        },
+        {
+          resetPasswordGuid: guid,
+          recoveryLinkExpirationDate: targetDate,
+          resetPasswordDeliveryPending: true,
+        }
+      );
+
+      // Another reset request changed the token after this entity was loaded.
+      // Do not send an already-invalid link.
+      if (tokenClaim.affected !== 1) {
+        this.resetPasswordGuid = previousResetPasswordGuid;
+        this.recoveryLinkExpirationDate = previousRecoveryLinkExpirationDate;
+        return undefined;
+      }
+      claimedNewToken = true;
+    } else {
+      const deliveryClaim = await claimRepository.update(
+        { id: this.id, resetPasswordGuid: guid },
+        { resetPasswordDeliveryPending: true }
+      );
+      if (deliveryClaim.affected !== 1) {
+        return undefined;
+      }
+    }
+    this.resetPasswordDeliveryPending = true;
+
+    return async () => {
+      const userRepository = getRepository(User);
+      const { applicationTitle, applicationUrl } = settings.main;
+      const resetPasswordLink = `${applicationUrl}/resetpassword/${guid}`;
+
+      try {
+        logger.info(`Sending reset password email for ${this.email}`, {
+          label: 'User Management',
+        });
+        const email = new PreparedEmail(settings.notifications.agents.email);
+        await email.send({
+          template: path.join(__dirname, '../templates/email/resetpassword'),
+          message: {
+            to: this.email,
+          },
+          locals: {
+            resetPasswordLink,
+            applicationUrl,
+            applicationTitle,
+            recipientName: this.displayName,
+            recipientEmail: this.email,
+          },
+        });
+      } catch (e) {
+        // Do not replace a previously delivered recovery link with a token the
+        // user never received. The conditional update also avoids rolling back
+        // a newer token issued while email delivery was in progress.
+        if (claimedNewToken) {
+          await userRepository.update(
+            { id: this.id, resetPasswordGuid: guid },
+            {
+              resetPasswordGuid: previousResetPasswordGuid ?? null,
+              recoveryLinkExpirationDate:
+                previousRecoveryLinkExpirationDate ?? null,
+              resetPasswordDeliveryPending: false,
+            }
+          );
+          this.resetPasswordGuid = previousResetPasswordGuid;
+          this.recoveryLinkExpirationDate = previousRecoveryLinkExpirationDate;
+        } else {
+          await userRepository.update(
+            { id: this.id, resetPasswordGuid: guid },
+            { resetPasswordDeliveryPending: false }
+          );
+        }
+        this.resetPasswordDeliveryPending = false;
+        logger.error('Failed to send out reset password email', {
+          label: 'User Management',
+          message: e instanceof Error ? e.message : 'Unknown email error',
+        });
+        return false;
+      }
+
+      // Clear the durable recovery marker only after SMTP has accepted the
+      // message. If the process dies first, startup safely resends the same
+      // still-valid bearer token.
+      await userRepository.update(
+        { id: this.id, resetPasswordGuid: guid },
+        { resetPasswordDeliveryPending: false }
+      );
+      this.resetPasswordDeliveryPending = false;
+      return true;
+    };
   }
 
-  public async resetPassword(): Promise<void> {
-    const guid = randomUUID();
-    this.resetPasswordGuid = guid;
-
-    // 24 hours into the future
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + 1);
-    this.recoveryLinkExpirationDate = targetDate;
-
-    const { applicationTitle, applicationUrl } = getSettings().main;
-    const resetPasswordLink = `${applicationUrl}/resetpassword/${guid}`;
-
-    try {
-      logger.info(`Sending reset password email for ${this.email}`, {
-        label: 'User Management',
-      });
-      const email = new PreparedEmail(getSettings().notifications.agents.email);
-      await email.send({
-        template: path.join(__dirname, '../templates/email/resetpassword'),
-        message: {
-          to: this.email,
-        },
-        locals: {
-          resetPasswordLink,
-          applicationUrl,
-          applicationTitle,
-          recipientName: this.displayName,
-          recipientEmail: this.email,
-        },
-      });
-    } catch (e) {
-      logger.error('Failed to send out reset password email', {
-        label: 'User Management',
-        message: e.message,
-      });
-    }
+  public async resetPassword(): Promise<boolean> {
+    const delivery = await this.preparePasswordResetDelivery();
+    return delivery ? delivery() : false;
   }
 
   @AfterLoad()
@@ -335,7 +488,9 @@ export class User {
             },
             ...(movieQuotaDays ? { createdAt: AfterDate(movieDate) } : {}),
             type: MediaType.MOVIE,
-            status: Not(MediaRequestStatus.DECLINED),
+            status: Not(
+              In([MediaRequestStatus.DECLINED, MediaRequestStatus.FAILED])
+            ),
           },
         })
       : 0;
@@ -353,6 +508,8 @@ export class User {
     const tvQuotaStartDate = tvDate.toJSON();
     const tvQuotaUsedQuery = requestRepository
       .createQueryBuilder('request')
+      .innerJoin('request.seasons', 'season')
+      .select('COUNT(season.id)', 'count')
       .leftJoin('request.requestedBy', 'requestedBy')
       .where('request.type = :requestType', {
         requestType: MediaType.TV,
@@ -360,8 +517,11 @@ export class User {
       .andWhere('requestedBy.id = :userId', {
         userId: this.id,
       })
-      .andWhere('request.status != :declinedStatus', {
-        declinedStatus: MediaRequestStatus.DECLINED,
+      .andWhere('request.status NOT IN (:...inactiveStatuses)', {
+        inactiveStatuses: [
+          MediaRequestStatus.DECLINED,
+          MediaRequestStatus.FAILED,
+        ],
       });
 
     if (tvQuotaDays) {
@@ -370,19 +530,16 @@ export class User {
       });
     }
 
-    const tvQuotaUsed = tvQuotaLimit
-      ? (
-          await tvQuotaUsedQuery
-            .addSelect((subQuery) => {
-              return subQuery
-                .select('COUNT(season.id)', 'seasonCount')
-                .from(SeasonRequest, 'season')
-                .leftJoin('season.request', 'parentRequest')
-                .where('parentRequest.id = request.id');
-            }, 'seasonCount')
-            .getMany()
-        ).reduce((sum: number, req: MediaRequest) => sum + req.seasonCount, 0)
-      : 0;
+    let tvQuotaUsed = 0;
+    if (tvQuotaLimit) {
+      const rawCount = await tvQuotaUsedQuery.getRawOne<{
+        count: string | number | null;
+      }>();
+      tvQuotaUsed = Number(rawCount?.count ?? 0);
+      if (!Number.isSafeInteger(tvQuotaUsed) || tvQuotaUsed < 0) {
+        throw new Error('Invalid TV quota count returned by database.');
+      }
+    }
 
     const musicQuotaLimit = !canBypass
       ? (this.musicQuotaLimit ?? defaultQuotas.music.quotaLimit)
@@ -402,7 +559,9 @@ export class User {
             },
             ...(musicQuotaDays ? { createdAt: AfterDate(musicDate) } : {}),
             type: MediaType.MUSIC,
-            status: Not(MediaRequestStatus.DECLINED),
+            status: Not(
+              In([MediaRequestStatus.DECLINED, MediaRequestStatus.FAILED])
+            ),
           },
         })
       : 0;
@@ -425,7 +584,9 @@ export class User {
             },
             ...(bookQuotaDays ? { createdAt: AfterDate(bookDate) } : {}),
             type: MediaType.BOOK,
-            status: Not(MediaRequestStatus.DECLINED),
+            status: Not(
+              In([MediaRequestStatus.DECLINED, MediaRequestStatus.FAILED])
+            ),
           },
         })
       : 0;

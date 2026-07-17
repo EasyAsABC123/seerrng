@@ -2,6 +2,7 @@ import {
   DuplicateWatchlistRequestError,
   NotFoundError,
   Watchlist,
+  WatchlistActorUnavailableError,
 } from '@server/entity/Watchlist';
 import logger from '@server/logger';
 import { filterEntityResponse } from '@server/utils/entityResponse';
@@ -12,9 +13,12 @@ import { QueryFailedError } from 'typeorm';
 import { MediaType } from '@server/constants/media';
 import { watchlistCreate } from '@server/interfaces/api/watchlistCreate';
 import {
+  isValidMusicBrainzResourceId,
+  isValidOpenLibraryResourceId,
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { UserMutationActorUnauthorizedError } from '@server/lib/userSecurityMutation';
 
 const watchlistRoutes = Router();
 const maxWatchlistId = 1_000_000_000;
@@ -65,17 +69,32 @@ watchlistRoutes.post<never, Watchlist, Watchlist>(
         tmdbId: values.tmdbId,
       };
 
-      const request = await Watchlist.createWatchlist({
-        watchlistRequest: values,
-        user: req.user,
-      });
-      return res.status(201).json(filterEntityResponse(request));
+      const request = await Watchlist.createWatchlist(
+        {
+          watchlistRequest: values,
+          user: req.user,
+        },
+        {
+          expectedCredentialVersion:
+            req.session?.userId === req.user.id
+              ? (req.session.credentialVersion ?? 0)
+              : undefined,
+        }
+      );
+      return res.status(201).json(filterEntityResponse(request, req.user));
     } catch (error) {
       if (!(error instanceof Error)) {
-        return;
+        logger.error('Unexpected non-error thrown while creating watchlist', {
+          label: 'Watchlist',
+          thrownValue: String(error),
+        });
+        return next({ status: 500, message: 'Unable to create watchlist.' });
       }
 
       switch (error.constructor) {
+        case UserMutationActorUnauthorizedError:
+        case WatchlistActorUnavailableError:
+          return next({ status: 403, message: 'Access denied.' });
         case QueryFailedError:
           logger.warn('Something wrong with data watchlist', {
             tmdbId: logPayload.tmdbId,
@@ -128,10 +147,33 @@ watchlistRoutes.delete('/:mediaId', async (req, res, next) => {
         : mediaType === MediaType.BOOK
           ? normalizeOpenLibraryWorkId(parsedMediaId as string)
           : parsedMediaId;
+    if (
+      mediaType === MediaType.MUSIC &&
+      !isValidMusicBrainzResourceId(mediaId as string)
+    ) {
+      return next({ status: 400, message: 'Invalid mediaId parameter.' });
+    }
+    if (
+      mediaType === MediaType.BOOK &&
+      !isValidOpenLibraryResourceId(mediaId as string)
+    ) {
+      return next({ status: 400, message: 'Invalid mediaId parameter.' });
+    }
 
-    await Watchlist.deleteWatchlist(mediaId, mediaType, req.user);
+    await Watchlist.deleteWatchlist(mediaId, mediaType, req.user, {
+      expectedCredentialVersion:
+        req.session?.userId === req.user.id
+          ? (req.session.credentialVersion ?? 0)
+          : undefined,
+    });
     return res.status(204).send();
   } catch (e) {
+    if (
+      e instanceof UserMutationActorUnauthorizedError ||
+      e instanceof WatchlistActorUnavailableError
+    ) {
+      return next({ status: 403, message: 'Access denied.' });
+    }
     if (e instanceof NotFoundError) {
       return next({
         status: 404,

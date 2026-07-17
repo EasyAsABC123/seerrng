@@ -3,9 +3,42 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   getHttpErrorDetails,
+  hasHttpStatus,
   isTransientHttpError,
   withTransientHttpRetry,
 } from './httpError';
+
+describe('hasHttpStatus', () => {
+  it('recognizes structured, wrapped, and textual HTTP statuses', () => {
+    assert.equal(hasHttpStatus({ response: { status: 404 } }, 404), true);
+    assert.equal(
+      hasHttpStatus(
+        new Error('outer', {
+          cause: Object.assign(
+            new Error('Request failed with status code 404'),
+            {
+              statusCode: 404,
+            }
+          ),
+        }),
+        404
+      ),
+      true
+    );
+    assert.equal(hasHttpStatus(new Error('404'), 404), true);
+    assert.equal(
+      hasHttpStatus(new Error('resource id 404 is valid'), 404),
+      false
+    );
+    assert.equal(hasHttpStatus(new Error('status 500'), 404), false);
+  });
+
+  it('terminates on circular causes', () => {
+    const error = new Error('outer') as Error & { cause?: unknown };
+    error.cause = error;
+    assert.equal(hasHttpStatus(error, 404), false);
+  });
+});
 
 describe('HTTP error utilities', () => {
   it('retains Axios status and error code', () => {

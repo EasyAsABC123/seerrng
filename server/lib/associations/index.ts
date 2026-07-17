@@ -1,4 +1,5 @@
 import ListenBrainzAPI from '@server/api/listenbrainz';
+import type { LbSimilarArtistResponse } from '@server/api/listenbrainz/interfaces';
 import OpenLibraryAPI, {
   type OpenLibraryAuthorWork,
 } from '@server/api/openlibrary';
@@ -8,12 +9,9 @@ import TmdbPersonMapper from '@server/api/themoviedb/personMapper';
 import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
-import MediaIdentifier, {
-  MediaIdentifierProvider,
-} from '@server/entity/MediaIdentifier';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import type { User } from '@server/entity/User';
-import cacheManager from '@server/lib/cache';
+import { findBookMediaByOpenLibraryIds } from '@server/lib/bookMediaMatcher';
 import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
@@ -38,8 +36,6 @@ import type {
   AssociationOptions,
 } from './types';
 import { ASSOCIATION_LIMITS } from './types';
-
-const cache = cacheManager.getCache('associations');
 
 const ISO_639_1_TO_OPENLIBRARY: Record<string, string> = {
   ar: 'ara',
@@ -80,6 +76,55 @@ const ISO_639_1_TO_OPENLIBRARY: Record<string, string> = {
 };
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
+export const MAX_ASSOCIATION_PROVIDER_SIMILAR_ARTISTS = 500;
+
+export const prepareAssociationSimilarArtists = (
+  value: unknown
+): LbSimilarArtistResponse[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const artists: LbSimilarArtistResponse[] = [];
+  for (const candidate of value.slice(
+    0,
+    MAX_ASSOCIATION_PROVIDER_SIMILAR_ARTISTS
+  )) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+    const raw = candidate as Record<string, unknown>;
+    if (
+      typeof raw.artist_mbid !== 'string' ||
+      !raw.artist_mbid ||
+      raw.artist_mbid.length > 128 ||
+      typeof raw.name !== 'string' ||
+      !raw.name ||
+      raw.name.length > 512 ||
+      typeof raw.score !== 'number' ||
+      !Number.isFinite(raw.score)
+    ) {
+      continue;
+    }
+    const artistMbid = normalizeMusicBrainzId(raw.artist_mbid);
+    if (!artistMbid || seen.has(artistMbid)) {
+      continue;
+    }
+    seen.add(artistMbid);
+    artists.push({
+      artist_mbid: artistMbid,
+      name: raw.name,
+      score: raw.score,
+      type: raw.type === 'Group' || raw.type === 'Person' ? raw.type : null,
+      comment: '',
+      gender: null,
+      reference_mbid: '',
+    });
+  }
+
+  return artists;
+};
 
 const scoreScreenResult = (result: {
   popularity: number;
@@ -296,36 +341,6 @@ const hydrateSimilarArtists = async (
   };
 };
 
-const findBookMediaByOpenLibraryIds = async (
-  ids: string[],
-  userId?: number
-): Promise<Map<string, Media>> => {
-  if (!ids.length) {
-    return new Map();
-  }
-
-  const identifiers = await getRepository(MediaIdentifier).find({
-    where: {
-      provider: MediaIdentifierProvider.OPENLIBRARY,
-      value: In(ids),
-    },
-    relations: { media: { requests: true, watchlists: true } },
-  });
-
-  return new Map(
-    identifiers
-      .filter((identifier) => identifier.media.mediaType === MediaType.BOOK)
-      .map((identifier) => {
-        identifier.media.watchlists =
-          identifier.media.watchlists?.filter(
-            (watchlist) => watchlist.requestedBy.id === userId
-          ) ?? [];
-
-        return [identifier.value, identifier.media];
-      })
-  );
-};
-
 const scoreBookWork = (book: BookResult): number => {
   const recencyScore = book.firstPublishYear
     ? Math.max(
@@ -403,8 +418,9 @@ const buildArtistEdges = async (
   const listenbrainz = new ListenBrainzAPI();
   const artist = await listenbrainz.getArtist(normalizedArtistId);
 
-  const similar = (artist.similarArtists?.artists ?? [])
-    .filter((a) => a.artist_mbid)
+  const similar = prepareAssociationSimilarArtists(
+    artist.similarArtists?.artists
+  )
     .sort((a, b) => b.score - a.score)
     .slice(0, ASSOCIATION_LIMITS.MAX_SAME_MEDIUM);
 
@@ -543,7 +559,7 @@ const buildForBook = async (
   const bookIds = books.map((book) => normalizeOpenLibraryWorkId(book.key));
   const mediaByOpenLibraryId = await findBookMediaByOpenLibraryIds(
     bookIds,
-    user?.id
+    user
   );
 
   const edges = books.map((authorWork) => {
@@ -576,14 +592,6 @@ export const getAssociations = async (
   user: User | undefined,
   opts: AssociationOptions = {}
 ): Promise<AssociationGraph> => {
-  const cacheKey = `assoc:${user?.id ?? 'anon'}:${mediaType}:${id}:${
-    opts.includeWeak ? 1 : 0
-  }:${opts.limit ?? ASSOCIATION_LIMITS.DEFAULT_TOTAL}`;
-  const cached = cache.data.get<AssociationGraph>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
   let graph: AssociationGraph;
   switch (mediaType) {
     case 'movie':
@@ -606,6 +614,5 @@ export const getAssociations = async (
       };
   }
 
-  cache.data.set(cacheKey, graph);
   return graph;
 };

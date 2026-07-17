@@ -1,12 +1,23 @@
 import { MediaServerType } from '@server/constants/server';
+import { assertNoSymlinkDirectoryComponents } from '@server/lib/pathSecurity';
 import { Permission } from '@server/lib/permissions';
 import { runMigrations } from '@server/lib/settings/migrator';
 import type { AvailableLocale } from '@server/types/languages';
+import AsyncLock from '@server/utils/asyncLock';
 import { randomBytes, randomUUID } from 'crypto';
-import fs from 'fs/promises';
 import { mergeWith } from 'lodash';
+import fs from 'node:fs';
 import path from 'path';
 import webpush from 'web-push';
+import {
+  MAX_SETTINGS_FILE_BYTES,
+  assertSettingsFileSize,
+  readPrivateSettingsFile,
+  withSettingsFileLock,
+  writePrivateSettingsFile,
+} from './fileSecurity';
+
+export { MAX_SETTINGS_FILE_BYTES, assertSettingsFileSize };
 
 type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
@@ -433,19 +444,20 @@ const SETTINGS_PATH = process.env.CONFIG_DIRECTORY
   ? `${process.env.CONFIG_DIRECTORY}/settings.json`
   : path.join(__dirname, '../../../config/settings.json');
 
-export const MAX_SETTINGS_FILE_BYTES = 2 * 1024 * 1024;
-
-export const assertSettingsFileSize = (bytes: number) => {
-  if (!Number.isFinite(bytes) || bytes < 0 || bytes > MAX_SETTINGS_FILE_BYTES) {
-    throw new Error('Settings file exceeds maximum size');
-  }
-};
-
 class Settings {
   private data: AllSettings;
+  private readonly defaultData: AllSettings;
   private saveLock: Promise<void> = Promise.resolve();
+  private settingsSaveLock = new AsyncLock();
+  private persistenceOperations = 0;
+  private loadedFromDisk = false;
+  private persistedFileStamp?: string;
 
-  constructor(initialSettings?: AllSettings) {
+  constructor(
+    initialSettings?: AllSettings,
+    private readonly settingsPath = SETTINGS_PATH,
+    private readonly coordinateFileWrites = process.env.NODE_ENV !== 'test'
+  ) {
     this.data = {
       clientId: randomUUID(),
       sessionSecret: '',
@@ -692,8 +704,106 @@ class Settings {
       },
       migrations: [],
     };
+    // Persisted refreshes must be rebased on defaults rather than this
+    // process's prior in-memory state. Otherwise keys explicitly removed by
+    // another process are silently restored by lodash's deep merge.
+    this.defaultData = structuredClone(this.data);
     if (initialSettings) {
       this.data = mergeSettings(this.data, initialSettings);
+    }
+  }
+
+  private mergePersistedSettings(
+    persisted: DeepPartial<AllSettings>
+  ): AllSettings {
+    const merged = mergeSettings(structuredClone(this.defaultData), persisted);
+    if (process.env.API_KEY) merged.main.apiKey = process.env.API_KEY;
+    return merged;
+  }
+
+  private async withPersistenceLock<Result>(
+    callback: () => Promise<Result>
+  ): Promise<Result> {
+    if (!this.coordinateFileWrites) return callback();
+    this.persistenceOperations += 1;
+    try {
+      return await withSettingsFileLock(this.settingsPath, callback);
+    } finally {
+      this.persistenceOperations -= 1;
+    }
+  }
+
+  public refreshIfChangedSync(): void {
+    if (
+      !this.coordinateFileWrites ||
+      !this.loadedFromDisk ||
+      this.persistenceOperations > 0
+    ) {
+      return;
+    }
+
+    assertNoSymlinkDirectoryComponents(path.dirname(this.settingsPath), {
+      label: 'Settings directory',
+    });
+    let pathStat: fs.Stats;
+    try {
+      pathStat = fs.lstatSync(this.settingsPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    if (
+      !pathStat.isFile() ||
+      pathStat.isSymbolicLink() ||
+      pathStat.nlink !== 1
+    ) {
+      throw new Error('Settings path must be a regular file.');
+    }
+    assertSettingsFileSize(pathStat.size);
+    const pathStamp = `${pathStat.dev}:${pathStat.ino}:${pathStat.size}:${pathStat.mtimeMs}`;
+    if (pathStamp === this.persistedFileStamp) return;
+
+    const descriptor = fs.openSync(
+      this.settingsPath,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+    );
+    try {
+      const stat = fs.fstatSync(descriptor);
+      if (!stat.isFile() || stat.nlink !== 1) {
+        throw new Error('Settings path must be a regular file.');
+      }
+      assertSettingsFileSize(stat.size);
+      const persisted = JSON.parse(
+        fs.readFileSync(descriptor, { encoding: 'utf8' })
+      ) as DeepPartial<AllSettings>;
+      this.data = this.mergePersistedSettings(persisted);
+      this.persistedFileStamp = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+    } finally {
+      fs.closeSync(descriptor);
+    }
+  }
+
+  private async refreshFromPersistedSettings(): Promise<void> {
+    if (!this.coordinateFileWrites) return;
+    try {
+      const persisted = JSON.parse(
+        await readPrivateSettingsFile(this.settingsPath)
+      ) as DeepPartial<AllSettings>;
+      this.data = this.mergePersistedSettings(persisted);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+
+  private async persistCurrentSnapshot(): Promise<void> {
+    await this.writeSnapshot(JSON.stringify(this.data, undefined, ' '));
+  }
+
+  private async persistMutationSnapshot(): Promise<void> {
+    if (this.coordinateFileWrites) {
+      await this.persistCurrentSnapshot();
+    } else {
+      await this.save();
     }
   }
 
@@ -746,6 +856,63 @@ class Settings {
       this.data.metadataSettings,
       data
     );
+  }
+
+  public replaceSection<K extends keyof AllSettings>(
+    section: K,
+    value: AllSettings[K]
+  ): void {
+    this.data[section] = value;
+  }
+
+  public async persistSection<K extends keyof AllSettings>(
+    section: K,
+    update: AllSettings[K] | ((current: AllSettings[K]) => AllSettings[K])
+  ): Promise<AllSettings[K]> {
+    return this.settingsSaveLock.dispatch('settings', async () => {
+      return this.withPersistenceLock(async () => {
+        await this.refreshFromPersistedSettings();
+        const previous = this.data[section];
+        const candidate =
+          typeof update === 'function'
+            ? (update as (current: AllSettings[K]) => AllSettings[K])(previous)
+            : update;
+        this.data[section] = candidate;
+
+        try {
+          await this.persistMutationSnapshot();
+          return candidate;
+        } catch (error) {
+          if (this.data[section] === candidate) {
+            this.data[section] = previous;
+          }
+          throw error;
+        }
+      });
+    });
+  }
+
+  public async persistChanges(
+    update: (current: AllSettings) => Partial<AllSettings>
+  ): Promise<AllSettings> {
+    return this.settingsSaveLock.dispatch('settings', async () => {
+      return this.withPersistenceLock(async () => {
+        await this.refreshFromPersistedSettings();
+        const previous = this.data;
+        const candidate = { ...previous, ...update(previous) };
+        this.data = candidate;
+
+        try {
+          await this.persistMutationSnapshot();
+          return candidate;
+        } catch (error) {
+          if (this.data === candidate) {
+            this.data = previous;
+          }
+          throw error;
+        }
+      });
+    });
   }
 
   get radarr(): RadarrSettings[] {
@@ -880,9 +1047,10 @@ class Settings {
   }
 
   public async regenerateApiKey(): Promise<MainSettings> {
-    this.main.apiKey = this.generateApiKey();
-    await this.save();
-    return this.main;
+    return this.persistSection('main', (current) => ({
+      ...current,
+      apiKey: this.generateApiKey(),
+    }));
   }
 
   private generateApiKey(): string {
@@ -923,69 +1091,78 @@ class Settings {
       return this;
     }
 
-    let data;
-    try {
-      const stat = await fs.stat(SETTINGS_PATH);
-      assertSettingsFileSize(stat.size);
-      data = await fs.readFile(SETTINGS_PATH, 'utf-8');
-    } catch (e) {
-      if (e.code === 'ENOENT') {
-        await this.save();
-      } else {
-        throw e;
-      }
-    }
+    return this.settingsSaveLock.dispatch('settings', () =>
+      this.withPersistenceLock(async () => {
+        let data;
+        try {
+          data = await readPrivateSettingsFile(this.settingsPath);
+        } catch (e) {
+          if (e.code === 'ENOENT') {
+            await this.persistCurrentSnapshot();
+          } else {
+            throw e;
+          }
+        }
 
-    let change = false;
-    if (data && !raw) {
-      const parsedJson = JSON.parse(data);
-      const migratedData = await runMigrations(parsedJson, SETTINGS_PATH);
-      const merged = mergeSettings(this.data, migratedData);
+        let change = false;
+        if (data && !raw) {
+          const parsedJson = JSON.parse(data);
+          const migratedData = await runMigrations(
+            parsedJson,
+            this.settingsPath
+          );
+          const merged = mergeSettings(this.data, migratedData);
 
-      if (JSON.stringify(merged) !== JSON.stringify(migratedData)) {
-        change = true;
-      }
+          if (JSON.stringify(merged) !== JSON.stringify(migratedData)) {
+            change = true;
+          }
 
-      this.data = merged;
-    } else if (data) {
-      this.data = JSON.parse(data);
-    }
+          this.data = merged;
+        } else if (data) {
+          this.data = JSON.parse(data);
+        }
 
-    // generate keys and ids if it's missing
-    if (!this.data.main.apiKey) {
-      this.data.main.apiKey = this.generateApiKey();
-      change = true;
-    } else if (process.env.API_KEY) {
-      if (this.main.apiKey != process.env.API_KEY) {
-        this.main.apiKey = process.env.API_KEY;
-      }
-    }
-    if (!this.data.clientId) {
-      this.data.clientId = randomUUID();
-      change = true;
-    }
-    if (!this.data.sessionSecret) {
-      this.data.sessionSecret = randomBytes(32).toString('hex');
-      change = true;
-    }
-    if (!this.data.vapidPublic || !this.data.vapidPrivate) {
-      const vapidKeys = webpush.generateVAPIDKeys();
-      this.data.vapidPrivate = vapidKeys.privateKey;
-      this.data.vapidPublic = vapidKeys.publicKey;
-      change = true;
-    }
-    if (change) {
-      await this.save();
-    }
+        // generate keys and ids if it's missing
+        if (!this.data.main.apiKey) {
+          this.data.main.apiKey = this.generateApiKey();
+          change = true;
+        } else if (process.env.API_KEY) {
+          if (this.main.apiKey != process.env.API_KEY) {
+            this.main.apiKey = process.env.API_KEY;
+          }
+        }
+        if (!this.data.clientId) {
+          this.data.clientId = randomUUID();
+          change = true;
+        }
+        if (!this.data.sessionSecret) {
+          this.data.sessionSecret = randomBytes(32).toString('hex');
+          change = true;
+        }
+        if (!this.data.vapidPublic || !this.data.vapidPrivate) {
+          const vapidKeys = webpush.generateVAPIDKeys();
+          this.data.vapidPrivate = vapidKeys.privateKey;
+          this.data.vapidPublic = vapidKeys.publicKey;
+          change = true;
+        }
+        if (change) {
+          await this.persistCurrentSnapshot();
+        }
 
-    return this;
+        this.loadedFromDisk = true;
+        this.persistedFileStamp = undefined;
+        return this;
+      })
+    );
   }
 
   public async save(): Promise<void> {
+    // Capture the caller's completed mutation now. Serializing inside the
+    // queued callback lets a later request's in-memory changes leak into this
+    // save before its disk turn begins.
+    const snapshot = JSON.stringify(this.data, undefined, ' ');
     const savePromise = this.saveLock.then(async () => {
-      const tmp = SETTINGS_PATH + '.tmp';
-      await fs.writeFile(tmp, JSON.stringify(this.data, undefined, ' '));
-      await fs.rename(tmp, SETTINGS_PATH);
+      await this.withPersistenceLock(() => this.writeSnapshot(snapshot));
     });
 
     this.saveLock = savePromise.catch(() => {
@@ -993,6 +1170,10 @@ class Settings {
     });
 
     return savePromise;
+  }
+
+  protected async writeSnapshot(snapshot: string): Promise<void> {
+    await writePrivateSettingsFile(this.settingsPath, snapshot);
   }
 
   public reset() {
@@ -1220,7 +1401,7 @@ class Settings {
         },
       },
       network: {
-        csrfProtection: false,
+        csrfProtection: true,
         forceIpv4First: false,
         trustProxy: false,
         proxy: {
@@ -1251,6 +1432,8 @@ export const getSettings = (initialSettings?: AllSettings): Settings => {
   if (!settings) {
     settings = new Settings(initialSettings);
   }
+
+  settings.refreshIfChangedSync();
 
   return settings;
 };

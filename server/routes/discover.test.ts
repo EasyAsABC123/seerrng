@@ -6,13 +6,15 @@ import ListenBrainzAPI from '@server/api/listenbrainz';
 import MusicBrainz from '@server/api/musicbrainz';
 import OpenLibraryAPI from '@server/api/openlibrary';
 import PlexTvAPI from '@server/api/plextv';
-import { MediaType } from '@server/constants/media';
+import TheMovieDb from '@server/api/themoviedb';
+import { MediaRequestStatus, MediaType } from '@server/constants/media';
 import { UserType } from '@server/constants/user';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import MediaIdentifier, {
   MediaIdentifierProvider,
 } from '@server/entity/MediaIdentifier';
+import { MediaRequest } from '@server/entity/MediaRequest';
 import { User } from '@server/entity/User';
 import { Watchlist } from '@server/entity/Watchlist';
 import { getSettings } from '@server/lib/settings';
@@ -23,7 +25,11 @@ import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import authRoutes from './auth';
-import discoverRoutes from './discover';
+import discoverRoutes, {
+  EXTERNAL_DISCOVER_RATE_LIMIT,
+  GENRE_SLIDER_CONCURRENCY,
+  MAX_GENRE_SLIDER_ITEMS,
+} from './discover';
 
 let app: Express;
 
@@ -66,6 +72,48 @@ afterEach(() => {
 
 setupTestDb();
 
+describe('genre slider provider bounds', () => {
+  it('bounds external music and book discovery fan-out', () => {
+    assert.deepStrictEqual(EXTERNAL_DISCOVER_RATE_LIMIT, {
+      windowMs: 60_000,
+      limit: 30,
+    });
+  });
+
+  it('caps upstream cardinality and outbound hydration concurrency', async () => {
+    let active = 0;
+    let peak = 0;
+    let calls = 0;
+    mock.method(
+      TheMovieDb.prototype,
+      'getMovieGenres',
+      async function (this: TheMovieDb) {
+        this.getDiscoverMovies = async () => {
+          calls += 1;
+          active += 1;
+          peak = Math.max(peak, active);
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          active -= 1;
+          return { page: 1, total_pages: 1, total_results: 0, results: [] };
+        };
+
+        return Array.from({ length: MAX_GENRE_SLIDER_ITEMS + 10 }, (_, id) => ({
+          id: id + 1,
+          name: `Genre ${id + 1}`,
+        }));
+      }
+    );
+
+    const agent = await login();
+    const res = await agent.get('/discover/genreslider/movie');
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.length, MAX_GENRE_SLIDER_ITEMS);
+    assert.strictEqual(calls, MAX_GENRE_SLIDER_ITEMS);
+    assert.ok(peak <= GENRE_SLIDER_CONCURRENCY);
+  });
+});
+
 const mockPrivateMethod = mock.method as (
   object: object,
   methodName: string,
@@ -77,7 +125,7 @@ const mockPrivate = (
   implementation: (...args: unknown[]) => unknown
 ) => mockPrivateMethod.call(mock, object, methodName, implementation);
 
-async function login() {
+async function login(email = 'admin@seerr.dev') {
   const settings = getSettings();
   const priorLocalLogin = settings.main.localLogin;
   settings.main.localLogin = true;
@@ -86,7 +134,7 @@ async function login() {
     const agent = request.agent(app);
     const res = await agent
       .post('/auth/local')
-      .send({ email: 'admin@seerr.dev', password: 'test1234' });
+      .send({ email, password: 'test1234' });
     assert.strictEqual(res.status, 200);
     return agent;
   } finally {
@@ -174,11 +222,39 @@ describe('GET /discover/movies', () => {
     const dateRes = await agent.get(
       '/discover/movies?primaryReleaseDateGte=01/01/2026'
     );
+    const impossibleDateRes = await agent.get(
+      '/discover/movies?primaryReleaseDateGte=2026-02-30'
+    );
 
     assert.strictEqual(arrayRes.status, 400);
     assert.match(arrayRes.body.message, /Invalid discovery query/);
     assert.strictEqual(dateRes.status, 400);
     assert.match(dateRes.body.message, /Invalid discovery query/);
+    assert.strictEqual(impossibleDateRes.status, 400);
+    assert.match(impossibleDateRes.body.message, /Invalid discovery query/);
+    assert.strictEqual(
+      (tmdbGet as { mock: { callCount: () => number } }).mock.callCount(),
+      0
+    );
+  });
+
+  it('rejects malformed or excessive keyword fan-out before provider lookup', async () => {
+    const tmdbGet = mockPrivate(ExternalAPI.prototype, 'get', async () => {
+      throw new Error('TMDB should not be called for invalid keyword filters');
+    });
+
+    const agent = await login();
+    const malformed = await agent
+      .get('/discover/movies')
+      .query({ keywords: '1,not-an-id' });
+    const excessive = await agent.get('/discover/movies').query({
+      keywords: Array.from({ length: 21 }, (_, index) => index + 1).join(','),
+    });
+
+    assert.strictEqual(malformed.status, 400);
+    assert.match(malformed.body.message, /positive integer ids/);
+    assert.strictEqual(excessive.status, 400);
+    assert.match(excessive.body.message, /limited to 20 ids/);
     assert.strictEqual(
       (tmdbGet as { mock: { callCount: () => number } }).mock.callCount(),
       0
@@ -339,9 +415,19 @@ describe('GET /discover/movies', () => {
     const secondSeed = await agent.get(
       '/discover/movies?shuffleSeed=refresh-b'
     );
+    const repeatedFirstSeed = await agent.get(
+      '/discover/movies?shuffleSeed=refresh-a'
+    );
 
     assert.strictEqual(firstSeed.status, 200);
     assert.strictEqual(secondSeed.status, 200);
+    assert.strictEqual(repeatedFirstSeed.status, 200);
+    assert.deepStrictEqual(
+      firstSeed.body.results.map((result: { title: string }) => result.title),
+      repeatedFirstSeed.body.results.map(
+        (result: { title: string }) => result.title
+      )
+    );
     assert.notDeepStrictEqual(
       firstSeed.body.results.map((result: { title: string }) => result.title),
       secondSeed.body.results.map((result: { title: string }) => result.title)
@@ -518,11 +604,19 @@ describe('GET /discover/tv', () => {
     const agent = await login();
     const languageRes = await agent.get('/discover/tv?language=en&language=fr');
     const dateRes = await agent.get('/discover/tv?firstAirDateLte=01/01/2026');
+    const impossibleDateRes = await agent.get(
+      '/discover/tv?firstAirDateLte=2026-13-01'
+    );
+    const networkRes = await agent.get('/discover/tv?network=0x10');
 
     assert.strictEqual(languageRes.status, 400);
     assert.match(languageRes.body.message, /Invalid discovery query/);
     assert.strictEqual(dateRes.status, 400);
     assert.match(dateRes.body.message, /Invalid discovery query/);
+    assert.strictEqual(impossibleDateRes.status, 400);
+    assert.match(impossibleDateRes.body.message, /Invalid discovery query/);
+    assert.strictEqual(networkRes.status, 400);
+    assert.match(networkRes.body.message, /positive decimal identifier/);
     assert.strictEqual(
       (tmdbGet as { mock: { callCount: () => number } }).mock.callCount(),
       0
@@ -839,6 +933,28 @@ describe('GET /discover/music', () => {
     assert.strictEqual(res.status, 400);
     assert.match(res.body.message, /YYYY-MM-DD/);
     assert.strictEqual(searchReleaseGroupsByTag.mock.callCount(), 0);
+  });
+
+  it('rejects impossible music release dates before provider lookup', async () => {
+    const searchReleaseGroupsByTag = mock.method(
+      MusicBrainz.prototype,
+      'searchReleaseGroupsByTag'
+    );
+    const getFreshReleases = mock.method(
+      ListenBrainzAPI.prototype,
+      'getFreshReleases'
+    );
+
+    const agent = await login();
+    const res = await agent.get('/discover/music').query({
+      genre: 'jazz',
+      primaryReleaseDateGte: '2026-02-30',
+    });
+
+    assert.strictEqual(res.status, 400);
+    assert.match(res.body.message, /valid YYYY-MM-DD date/);
+    assert.strictEqual(searchReleaseGroupsByTag.mock.callCount(), 0);
+    assert.strictEqual(getFreshReleases.mock.callCount(), 0);
   });
 
   it('returns MusicBrainz album search results when a query is provided', async () => {
@@ -1985,6 +2101,9 @@ describe('GET /discover/music', () => {
         tmdbId: 0,
         mbId: 'album-other-user',
         mediaType: MediaType.MUSIC,
+        serviceUrl: 'http://lidarr.internal/album/1',
+        externalServiceSlug: 'other-user-album',
+        ratingKey: 'plex-music-key',
       })
     );
     await getRepository(Watchlist).save(
@@ -1996,12 +2115,43 @@ describe('GET /discover/music', () => {
         media,
       })
     );
+    await getRepository(MediaRequest).save([
+      new MediaRequest({
+        type: MediaType.MUSIC,
+        media,
+        requestedBy: otherUser,
+        status: MediaRequestStatus.FAILED,
+        is4k: false,
+      }),
+      new MediaRequest({
+        type: MediaType.MUSIC,
+        media,
+        requestedBy: otherUser,
+        status: MediaRequestStatus.PENDING,
+        is4k: false,
+      }),
+    ]);
 
-    const agent = await login();
+    const agent = await login('friend@seerr.dev');
     const res = await agent.get('/discover/music?releaseType=Album');
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.results[0].mediaInfo.watchlists.length, 0);
+    assert.strictEqual(res.body.results[0].mediaInfo.serviceUrl, undefined);
+    assert.strictEqual(
+      res.body.results[0].mediaInfo.externalServiceSlug,
+      undefined
+    );
+    assert.strictEqual(res.body.results[0].mediaInfo.ratingKey, undefined);
+    assert.deepStrictEqual(
+      res.body.results[0].mediaInfo.requests.map(
+        (mediaRequest: { status: number; requestedBy?: unknown }) => ({
+          status: mediaRequest.status,
+          requestedBy: mediaRequest.requestedBy,
+        })
+      ),
+      [{ status: MediaRequestStatus.PENDING, requestedBy: undefined }]
+    );
   });
 });
 
@@ -2468,6 +2618,9 @@ describe('GET /discover/books', () => {
       new Media({
         tmdbId: 0,
         mediaType: MediaType.BOOK,
+        serviceUrl: 'http://readarr.internal/book/1',
+        externalServiceSlug: 'other-user-book',
+        ratingKey: 'plex-book-key',
       })
     );
     await getRepository(MediaIdentifier).save(
@@ -2488,11 +2641,17 @@ describe('GET /discover/books', () => {
       })
     );
 
-    const agent = await login();
+    const agent = await login('friend@seerr.dev');
     const res = await agent.get('/discover/books?query=other');
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.results[0].mediaInfo.watchlists.length, 0);
+    assert.strictEqual(res.body.results[0].mediaInfo.serviceUrl, undefined);
+    assert.strictEqual(
+      res.body.results[0].mediaInfo.externalServiceSlug,
+      undefined
+    );
+    assert.strictEqual(res.body.results[0].mediaInfo.ratingKey, undefined);
   });
 });
 
@@ -2658,5 +2817,49 @@ describe('GET /discover/watchlist', () => {
     );
     assert.strictEqual(res.body.totalResults, 2);
     assert.strictEqual(res.body.totalPages, 1);
+  });
+
+  it('paginates renderable local watchlist rows in stable insertion order', async () => {
+    const userRepository = getRepository(User);
+    const admin = await userRepository.findOneOrFail({
+      where: { email: 'admin@seerr.dev' },
+    });
+    admin.plexToken = null;
+    await userRepository.save(admin);
+
+    await getRepository(Watchlist).save([
+      ...Array.from(
+        { length: 22 },
+        (_, index) =>
+          new Watchlist({
+            externalId: `OLPAGE${index}W`,
+            mediaType: MediaType.BOOK,
+            title: `Local Book ${index}`,
+            requestedBy: admin,
+          })
+      ),
+      new Watchlist({
+        mediaType: MediaType.MOVIE,
+        title: 'Incomplete Movie',
+        requestedBy: admin,
+      }),
+      new Watchlist({
+        mbId: '',
+        mediaType: MediaType.MUSIC,
+        title: 'Incomplete Album',
+        requestedBy: admin,
+      }),
+    ]);
+
+    const agent = await login();
+    const response = await agent.get('/discover/watchlist?page=2');
+
+    assert.strictEqual(response.status, 200);
+    assert.deepStrictEqual(
+      response.body.results.map((item: { title: string }) => item.title),
+      ['Local Book 20', 'Local Book 21']
+    );
+    assert.strictEqual(response.body.totalResults, 22);
+    assert.strictEqual(response.body.totalPages, 2);
   });
 });
