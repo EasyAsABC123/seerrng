@@ -96,6 +96,31 @@ describe('scheduled job lifecycle', () => {
     const logged = JSON.stringify(errorMock.calls[0].arguments);
     assert.match(logged, /Broken Job/);
     assert.match(logged, /job secret failure/);
+    const [, metadata] = errorMock.calls[0].arguments as unknown as [
+      string,
+      { durationMs: number },
+    ];
+    assert.equal(typeof metadata.durationMs, 'number');
+    assert.ok(metadata.durationMs >= 0);
+  });
+
+  it('logs completion and duration only when requested', async () => {
+    const infoMock = mock.method(logger, 'info', () => logger).mock;
+
+    await runTrackedJob('Quiet Job', async () => undefined);
+    await runTrackedJob('Observed Job', async () => undefined, {
+      logCompletion: true,
+    });
+
+    assert.strictEqual(infoMock.callCount(), 1);
+    const [message, metadata] = infoMock.calls[0].arguments as unknown as [
+      string,
+      { durationMs: number; label: string },
+    ];
+    assert.match(message, /Observed Job/);
+    assert.equal(metadata.label, 'Jobs');
+    assert.equal(typeof metadata.durationMs, 'number');
+    assert.ok(metadata.durationMs >= 0);
   });
 
   it('coalesces overlapping invocations of the same job', async () => {

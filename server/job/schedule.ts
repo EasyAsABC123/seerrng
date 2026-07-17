@@ -43,7 +43,10 @@ export const getScheduledJobLeaseName = (name: string): string =>
 export const runTrackedJob = (
   name: string,
   task: () => void | Promise<void>,
-  options: { scope?: 'cluster' | 'instance' } = {}
+  options: {
+    scope?: 'cluster' | 'instance';
+    logCompletion?: boolean;
+  } = {}
 ): Promise<void> => {
   const activeRun = activeJobRunsByName.get(name);
   if (activeRun) {
@@ -53,21 +56,35 @@ export const runTrackedJob = (
     return activeRun;
   }
 
+  const startedAt = Date.now();
+  let taskCompleted = false;
+  const executeTask = async (): Promise<void> => {
+    await task();
+    taskCompleted = true;
+  };
   const run = Promise.resolve()
     .then(async () => {
       if (options.scope === 'instance') {
-        await task();
-        return;
-      }
-      const result = await scheduledJobLeaseManager.run(
-        getScheduledJobLeaseName(name),
-        async () => {
-          await task();
+        await executeTask();
+      } else {
+        const result = await scheduledJobLeaseManager.run(
+          getScheduledJobLeaseName(name),
+          executeTask
+        );
+        if (!result.acquired) {
+          logger.debug(
+            `Scheduled job is running on another instance: ${name}`,
+            {
+              label: 'Jobs',
+            }
+          );
         }
-      );
-      if (!result.acquired) {
-        logger.debug(`Scheduled job is running on another instance: ${name}`, {
+      }
+
+      if (options.logCompletion && taskCompleted) {
+        logger.info(`Scheduled job completed: ${name}`, {
           label: 'Jobs',
+          durationMs: Date.now() - startedAt,
         });
       }
     })
@@ -78,6 +95,7 @@ export const runTrackedJob = (
           error instanceof Error
             ? error.message
             : 'Unknown scheduled job error',
+        durationMs: Date.now() - startedAt,
       });
     })
     .finally(() => {
@@ -209,8 +227,10 @@ export const startJobs = (): void => {
         logger.info('Starting scheduled job: Plex Watchlist Sync', {
           label: 'Jobs',
         });
-        return runTrackedJob('Plex Watchlist Sync', () =>
-          watchlistSync.syncWatchlist()
+        return runTrackedJob(
+          'Plex Watchlist Sync',
+          () => watchlistSync.syncWatchlist(),
+          { logCompletion: true }
         );
       }),
     });
@@ -328,8 +348,10 @@ export const startJobs = (): void => {
       logger.info('Starting scheduled job: Bookshelf Request Retry', {
         label: 'Jobs',
       });
-      return runTrackedJob('Bookshelf Request Retry', () =>
-        new MediaRequestSubscriber().retryApprovedReadarrRequests()
+      return runTrackedJob(
+        'Bookshelf Request Retry',
+        () => new MediaRequestSubscriber().retryApprovedReadarrRequests(),
+        { logCompletion: true }
       );
     }),
   });
