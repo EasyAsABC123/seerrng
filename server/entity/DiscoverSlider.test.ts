@@ -3,11 +3,46 @@ import { getRepository } from '@server/datasource';
 import { setupTestDb } from '@server/test/db';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { Repository } from 'typeorm';
 import DiscoverSlider from './DiscoverSlider';
 
 setupTestDb();
 
 describe('DiscoverSlider bootstrap', () => {
+  it('does not ask TypeORM to hydrate IDs for ignored inserts', async () => {
+    let updateEntity: boolean | undefined;
+    let executed = false;
+    const queryBuilder = {
+      insert() {
+        return this;
+      },
+      into() {
+        return this;
+      },
+      values() {
+        return this;
+      },
+      orIgnore() {
+        return this;
+      },
+      updateEntity(enabled: boolean) {
+        updateEntity = enabled;
+        return this;
+      },
+      async execute() {
+        executed = true;
+      },
+    };
+    const repository = {
+      createQueryBuilder: () => queryBuilder,
+    } as unknown as Repository<DiscoverSlider>;
+
+    await DiscoverSlider.bootstrapSliders(repository);
+
+    assert.equal(updateEntity, false);
+    assert.equal(executed, true);
+  });
+
   it('atomically creates one copy of each built-in across concurrent calls', async () => {
     await Promise.all(
       Array.from({ length: 5 }, () => DiscoverSlider.bootstrapSliders())

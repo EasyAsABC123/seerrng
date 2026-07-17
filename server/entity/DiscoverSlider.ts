@@ -26,6 +26,10 @@ class DiscoverSlider {
       .into(DiscoverSlider)
       .values(defaultSliders)
       .orIgnore()
+      // PostgreSQL returns no row for values skipped by ON CONFLICT DO
+      // NOTHING. TypeORM otherwise tries to copy generated IDs from those
+      // missing rows back into every input entity and aborts startup.
+      .updateEntity(false)
       .execute();
   }
 
