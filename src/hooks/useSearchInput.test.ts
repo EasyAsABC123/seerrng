@@ -72,21 +72,32 @@ describe('getSearchQuery', () => {
 describe('shouldNavigateToSearch', () => {
   it('does not navigate again when the URL already has the search query', () => {
     strictEqual(
-      shouldNavigateToSearch('/search', 'alien', 'alien', true),
+      shouldNavigateToSearch('/search', 'alien', 'alien', true, false),
       false
     );
   });
 
   it('navigates when a new debounced query is ready', () => {
     strictEqual(
-      shouldNavigateToSearch('/search', 'alien', 'aliens', true),
+      shouldNavigateToSearch('/search', 'alien', 'aliens', true, false),
       true
     );
   });
 
   it('does not navigate for a closed or empty search', () => {
-    strictEqual(shouldNavigateToSearch('/', '', 'alien', false), false);
-    strictEqual(shouldNavigateToSearch('/', '', '', true), false);
+    strictEqual(shouldNavigateToSearch('/', '', 'alien', false, true), false);
+    strictEqual(shouldNavigateToSearch('/', '', '', true, true), false);
+  });
+
+  it('navigates when search was opened on the current non-search route', () => {
+    strictEqual(shouldNavigateToSearch('/', '', 'alien', true, true), true);
+  });
+
+  it('does not reopen search after navigating from a result to details', () => {
+    strictEqual(
+      shouldNavigateToSearch('/movie/[movieId]', '', 'alien', true, false),
+      false
+    );
   });
 });
 
@@ -116,6 +127,65 @@ describe('shouldSyncSearchInput', () => {
 });
 
 describe('useSearchInput routing', () => {
+  it('leaves a clicked search result on top and preserves search in history', async () => {
+    dom = new JSDOM('<div id="root"></div>', {
+      url: 'http://localhost/search?query=alien',
+    });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: dom.window,
+    });
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: dom.window.document,
+    });
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+
+    const pushes: unknown[] = [];
+    let routeChangeStart: (() => void) | undefined;
+    const router = createRouter({
+      events: {
+        emit: () => undefined,
+        off: (event, handler) => {
+          if (event === 'routeChangeStart' && routeChangeStart === handler) {
+            routeChangeStart = undefined;
+          }
+        },
+        on: (event, handler) => {
+          if (event === 'routeChangeStart') {
+            routeChangeStart = handler;
+          }
+        },
+      },
+      push: async (...args) => {
+        pushes.push(args);
+        return true;
+      },
+    });
+    const Probe = () => {
+      useSearchInput();
+      return null;
+    };
+    const render = () =>
+      root?.render(
+        createElement(RouterProvider, { router }, createElement(Probe))
+      );
+
+    root = createRoot(dom.window.document.getElementById('root')!);
+    await act(async () => render());
+
+    routeChangeStart?.();
+    router.pathname = '/movie/[movieId]';
+    router.route = '/movie/[movieId]';
+    router.asPath = '/movie/348';
+    router.query = { movieId: '348' };
+    await act(async () => render());
+
+    strictEqual(pushes.length, 0);
+  });
+
   it('preserves newer typing through a stale route update and navigates once', async () => {
     dom = new JSDOM('<div id="root"></div>', {
       url: 'http://localhost/search',

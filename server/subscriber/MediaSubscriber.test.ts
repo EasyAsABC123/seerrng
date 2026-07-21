@@ -68,7 +68,8 @@ describe('MediaSubscriber', () => {
     const observedBatchSizes: number[] = [];
     let readIndex = 0;
     const requestRepository = {
-      maximum: async () => MEDIA_SUBSCRIBER_REQUEST_BATCH_SIZE + 2,
+      findOne: async () =>
+        new MediaRequest({ id: MEDIA_SUBSCRIBER_REQUEST_BATCH_SIZE + 2 }),
       find: async (options: { take: number }) => {
         observedLimits.push(options.take);
         if (readIndex === 0) {

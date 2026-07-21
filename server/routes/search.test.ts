@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, before, describe, it, mock } from 'node:test';
+import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
 import ExternalAPI from '@server/api/externalapi';
 import MusicBrainz from '@server/api/musicbrainz';
@@ -14,7 +14,11 @@ import MediaIdentifier, {
 } from '@server/entity/MediaIdentifier';
 import MetadataAlbum from '@server/entity/MetadataAlbum';
 import MetadataArtist from '@server/entity/MetadataArtist';
-import { getSettings } from '@server/lib/settings';
+import {
+  getSettings,
+  type LidarrSettings,
+  type ReadarrSettings,
+} from '@server/lib/settings';
 import { checkUser } from '@server/middleware/auth';
 import { setupTestDb } from '@server/test/db';
 import type { Express } from 'express';
@@ -90,8 +94,15 @@ before(async () => {
   app = createApp();
 });
 
+beforeEach(() => {
+  getSettings().lidarr = [{} as LidarrSettings];
+  getSettings().readarr = [{} as ReadarrSettings];
+});
+
 afterEach(() => {
   mock.restoreAll();
+  getSettings().lidarr = [];
+  getSettings().readarr = [];
 });
 
 setupTestDb();
@@ -123,6 +134,40 @@ async function loginAs(email: string, password: string) {
 }
 
 describe('GET /search', () => {
+  it('omits optional catalog providers without configured services', async () => {
+    const settings = getSettings();
+    const priorLidarr = settings.lidarr;
+    const priorReadarr = settings.readarr;
+    settings.lidarr = [];
+    settings.readarr = [];
+
+    const albumSearch = mock.method(MusicBrainz.prototype, 'searchAlbum');
+    const artistSearch = mock.method(MusicBrainz.prototype, 'searchArtist');
+    const bookSearch = mock.method(OpenLibraryAPI.prototype, 'searchBooks');
+    mockPrivate(ExternalAPI.prototype, 'get', async (endpoint) => {
+      if (endpoint === '/search/multi') {
+        return { page: 1, total_pages: 1, total_results: 0, results: [] };
+      }
+
+      throw new Error(`Unexpected endpoint: ${String(endpoint)}`);
+    });
+
+    try {
+      const agent = await loginAs('friend@seerr.dev', 'test1234');
+      const res = await agent.get('/search').query({ query: 'optional' });
+
+      assert.strictEqual(res.status, 200);
+      assert.deepStrictEqual(res.body.results, []);
+      assert.strictEqual(res.body.totalResults, 0);
+      assert.strictEqual(albumSearch.mock.callCount(), 0);
+      assert.strictEqual(artistSearch.mock.callCount(), 0);
+      assert.strictEqual(bookSearch.mock.callCount(), 0);
+    } finally {
+      settings.lidarr = priorLidarr;
+      settings.readarr = priorReadarr;
+    }
+  });
+
   it('rejects missing search queries before provider lookup', async () => {
     const agent = await loginAs('friend@seerr.dev', 'test1234');
     const res = await agent.get('/search');
