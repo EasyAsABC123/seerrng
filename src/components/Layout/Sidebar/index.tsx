@@ -1,8 +1,10 @@
 import Badge from '@app/components/Common/Badge';
 import VersionStatus from '@app/components/Layout/VersionStatus';
 import useClickOutside from '@app/hooks/useClickOutside';
+import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
 import defineMessages from '@app/utils/defineMessages';
+import { isOptionalCatalogPathEnabled } from '@app/utils/serviceAvailability';
 import versionedAsset from '@app/utils/versionedAsset';
 import { Transition } from '@headlessui/react';
 import {
@@ -147,7 +149,18 @@ const Sidebar = ({
   const router = useRouter();
   const intl = useIntl();
   const { hasPermission } = useUser();
+  const { currentSettings } = useSettings();
   useClickOutside(navRef, () => setClosed());
+
+  const visibleSidebarLinks = SidebarLinks.filter(
+    (link) =>
+      isOptionalCatalogPathEnabled(link.href, currentSettings) &&
+      (link.requiredPermission
+        ? hasPermission(link.requiredPermission, {
+            type: link.permissionType ?? 'and',
+          })
+        : true)
+  );
 
   useEffect(() => {
     if (openIssuesCount) {
@@ -219,13 +232,7 @@ const Sidebar = ({
                       </span>
                     </div>
                     <nav className="mt-10 flex-1 space-y-4 px-4">
-                      {SidebarLinks.filter((link) =>
-                        link.requiredPermission
-                          ? hasPermission(link.requiredPermission, {
-                              type: link.permissionType ?? 'and',
-                            })
-                          : true
-                      ).map((sidebarLink) => {
+                      {visibleSidebarLinks.map((sidebarLink) => {
                         return (
                           <Link
                             key={`mobile-${sidebarLink.messagesKey}`}
@@ -289,13 +296,7 @@ const Sidebar = ({
                 </span>
               </div>
               <nav className="mt-8 flex-1 space-y-4 px-4">
-                {SidebarLinks.filter((link) =>
-                  link.requiredPermission
-                    ? hasPermission(link.requiredPermission, {
-                        type: link.permissionType ?? 'and',
-                      })
-                    : true
-                ).map((sidebarLink) => {
+                {visibleSidebarLinks.map((sidebarLink) => {
                   return (
                     <Link
                       key={`desktop-${sidebarLink.messagesKey}`}

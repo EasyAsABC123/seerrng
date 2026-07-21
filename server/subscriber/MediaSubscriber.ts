@@ -25,7 +25,13 @@ export class MediaSubscriber implements EntitySubscriberInterface<Media> {
     callback: (requests: MediaRequest[]) => Promise<void>
   ): Promise<void> {
     const requestRepository = manager.getRepository(MediaRequest);
-    const maxId = await requestRepository.maximum('id', where);
+    const newestRequest = await requestRepository.findOne({
+      where,
+      select: { id: true },
+      order: { id: 'DESC' },
+      relationLoadStrategy: 'query',
+    });
+    const maxId = newestRequest?.id;
     if (!Number.isSafeInteger(maxId) || !maxId || maxId <= 0) {
       return;
     }

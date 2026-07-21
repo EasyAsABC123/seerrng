@@ -5,11 +5,14 @@ export const shouldNavigateToSearch = (
   pathname: string,
   currentQuery: string,
   nextQuery: string,
-  searchOpen: boolean
+  searchOpen: boolean,
+  searchOpenedOnCurrentRoute: boolean
 ): boolean =>
   searchOpen &&
   nextQuery !== '' &&
-  (!pathname.startsWith('/search') || currentQuery !== nextQuery);
+  (pathname.startsWith('/search')
+    ? currentQuery !== nextQuery
+    : searchOpenedOnCurrentRoute);
 
 export const shouldSyncSearchInput = (
   pathname: string,

@@ -245,6 +245,8 @@ interface FullPublicSettings extends PublicSettings {
   mediaServerLogin: boolean;
   movie4kEnabled: boolean;
   series4kEnabled: boolean;
+  musicEnabled: boolean;
+  booksEnabled: boolean;
   discoverRegion: string;
   streamingRegion: string;
   originalLanguage: string;
@@ -972,6 +974,8 @@ class Settings {
       series4kEnabled: this.data.sonarr.some(
         (sonarr) => sonarr.is4k && sonarr.isDefault
       ),
+      musicEnabled: this.data.lidarr.length > 0,
+      booksEnabled: this.data.readarr.length > 0,
       discoverRegion: this.data.main.discoverRegion,
       streamingRegion: this.data.main.streamingRegion,
       originalLanguage: this.data.main.originalLanguage,
