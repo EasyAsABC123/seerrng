@@ -2,11 +2,11 @@
 // Cache names change only when their stored data becomes incompatible. Normal
 // application builds keep compatible runtime data available for offline use.
 const OFFLINE_CACHE_NAME = 'seerrng-offline-v1';
-const DATA_CACHE_SCHEMA = 1;
+const DATA_CACHE_SCHEMA = 2;
 const DATA_CACHE_NAME = `seerrng-data-v${DATA_CACHE_SCHEMA}`;
 const STATIC_CACHE_SCHEMA = 1;
 const STATIC_CACHE_NAME = `seerrng-static-v${STATIC_CACHE_SCHEMA}`;
-const CLIENT_CACHE_SCHEMA = 1;
+const CLIENT_CACHE_SCHEMA = 2;
 const CLIENT_CACHE_NAME = `seerrng-client-v${CLIENT_CACHE_SCHEMA}`;
 const MANAGED_CACHE_PREFIXES = [
   'seerrng-offline-',
@@ -34,7 +34,7 @@ const OFFLINE_URL = '/offline.html';
 // A service worker serves every signed-in user of a browser profile. Cache API
 // matching does not partition entries by cookies, so clients explicitly tell
 // the worker which user owns each authenticated response.
-const clientUserIds = new Map();
+const clientUserPartitions = new Map();
 const lastExpirationCleanup = new Map();
 
 const CACHEABLE_API_PATHS = [
@@ -83,6 +83,13 @@ const getRuntimeCacheType = (request) => {
     return 'user-data';
   }
 
+  // Never let a file-like API path fall through into the shared static cache.
+  // Authenticated API routes must be explicitly allowlisted above and scoped
+  // to the active user partition.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+    return undefined;
+  }
+
   if (CACHEABLE_STATIC_PATHS.some((pattern) => pattern.test(url.pathname))) {
     return 'static';
   }
@@ -90,11 +97,21 @@ const getRuntimeCacheType = (request) => {
   return undefined;
 };
 
+const getCacheControlDirectives = (response) =>
+  new Set(
+    (response?.headers.get('cache-control') ?? '')
+      .split(',')
+      .map((directive) => directive.trim().toLowerCase().split('=', 1)[0])
+      .filter(Boolean)
+  );
+
 const isRuntimeCacheableResponse = (response) =>
   response &&
   response.ok &&
   response.status === 200 &&
-  (response.type === 'basic' || response.type === 'default');
+  (response.type === 'basic' || response.type === 'default') &&
+  !getCacheControlDirectives(response).has('no-store') &&
+  response.headers.get('vary')?.trim() !== '*';
 
 const getCachedAt = (response) => {
   const cachedAt = Number(response?.headers.get(CACHE_TIMESTAMP_HEADER));
@@ -102,9 +119,17 @@ const getCachedAt = (response) => {
 };
 
 const isFresh = (response, maxAgeMs) => {
-  const discoverFreshnessSeconds = Number(
-    response?.headers.get('x-discover-freshness')
-  );
+  if (getCacheControlDirectives(response).has('no-cache')) {
+    return false;
+  }
+
+  const discoverFreshnessHeader = response?.headers.get('x-discover-freshness');
+  const discoverFreshnessSeconds =
+    discoverFreshnessHeader === null ||
+    discoverFreshnessHeader === undefined ||
+    discoverFreshnessHeader.trim() === ''
+      ? Number.NaN
+      : Number(discoverFreshnessHeader);
   const effectiveMaxAge =
     Number.isFinite(discoverFreshnessSeconds) && discoverFreshnessSeconds >= 0
       ? discoverFreshnessSeconds * 1000
@@ -176,20 +201,20 @@ const getClientPartitionRequest = (clientId) =>
     )
   );
 
-const setClientUserId = async (clientId, userId) => {
+const setClientUserPartition = async (clientId, partition) => {
   const cache = await caches.open(CLIENT_CACHE_NAME);
   const partitionRequest = getClientPartitionRequest(clientId);
 
-  if (!userId) {
-    clientUserIds.delete(clientId);
+  if (!partition) {
+    clientUserPartitions.delete(clientId);
     await cache.delete(partitionRequest);
     return;
   }
 
-  clientUserIds.set(clientId, userId);
+  clientUserPartitions.set(clientId, partition);
   await cache.put(
     partitionRequest,
-    new Response(JSON.stringify({ userId, cachedAt: Date.now() }), {
+    new Response(JSON.stringify({ ...partition, cachedAt: Date.now() }), {
       headers: { 'content-type': 'application/json' },
     })
   );
@@ -221,10 +246,18 @@ const trimClientPartitions = async (cache) => {
   );
 };
 
-const getClientUserId = async (clientId) => {
-  const inMemoryUserId = clientUserIds.get(clientId);
-  if (inMemoryUserId) {
-    return inMemoryUserId;
+const isValidClientPartition = (partition) =>
+  Number.isSafeInteger(partition?.userId) &&
+  partition.userId > 0 &&
+  Number.isSafeInteger(partition?.permissions) &&
+  partition.permissions >= 0 &&
+  Number.isSafeInteger(partition?.userType) &&
+  partition.userType > 0;
+
+const getClientUserPartition = async (clientId) => {
+  const inMemoryPartition = clientUserPartitions.get(clientId);
+  if (inMemoryPartition) {
+    return inMemoryPartition;
   }
 
   if (!clientId) {
@@ -238,12 +271,17 @@ const getClientUserId = async (clientId) => {
     const partition = response ? await response.json() : undefined;
 
     if (
-      Number.isSafeInteger(partition?.userId) &&
-      partition.userId > 0 &&
+      isValidClientPartition(partition) &&
+      Number.isFinite(partition.cachedAt) &&
       Date.now() - partition.cachedAt <= CLIENT_PARTITION_RETENTION_MS
     ) {
-      clientUserIds.set(clientId, partition.userId);
-      return partition.userId;
+      const clientPartition = {
+        userId: partition.userId,
+        permissions: partition.permissions,
+        userType: partition.userType,
+      };
+      clientUserPartitions.set(clientId, clientPartition);
+      return clientPartition;
     }
 
     await cache.delete(partitionRequest);
@@ -255,14 +293,17 @@ const getClientUserId = async (clientId) => {
 };
 
 const getUserCacheRequest = async (request, clientId) => {
-  const userId = await getClientUserId(clientId);
+  const partition = await getClientUserPartition(clientId);
 
-  if (!userId) {
+  if (!partition) {
     return undefined;
   }
 
   const cacheUrl = new URL(request.url);
-  cacheUrl.searchParams.set(USER_CACHE_KEY_PARAM, String(userId));
+  cacheUrl.searchParams.set(
+    USER_CACHE_KEY_PARAM,
+    `${partition.userId}:${partition.permissions}:${partition.userType}`
+  );
   return new Request(cacheUrl, { method: 'GET' });
 };
 
@@ -305,6 +346,9 @@ const staleWhileRevalidate = async (request, cacheRequest, cacheType) => {
   const cachedResponse = await cache.match(cacheRequest);
   const networkResponsePromise = fetch(request)
     .then(async (networkResponse) => {
+      if ([401, 403, 404, 410].includes(networkResponse.status)) {
+        await cache.delete(cacheRequest);
+      }
       await cacheRuntimeResponse(cache, cacheRequest, networkResponse, config);
       return networkResponse;
     })
@@ -327,17 +371,26 @@ const staleWhileRevalidate = async (request, cacheRequest, cacheType) => {
 };
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type !== 'SET_CACHE_USER' || !event.source?.id) {
+  if (
+    event.origin !== self.location.origin ||
+    event.data?.type !== 'SET_CACHE_USER' ||
+    !event.source?.id
+  ) {
     return;
   }
 
-  const candidateUserId = Number(event.data.userId);
-  const userId =
-    Number.isSafeInteger(candidateUserId) && candidateUserId > 0
-      ? candidateUserId
-      : undefined;
+  const partition = {
+    userId: Number(event.data.userId),
+    permissions: Number(event.data.permissions),
+    userType: Number(event.data.userType),
+  };
 
-  event.waitUntil(setClientUserId(event.source.id, userId));
+  event.waitUntil(
+    setClientUserPartition(
+      event.source.id,
+      isValidClientPartition(partition) ? partition : undefined
+    )
+  );
 });
 
 self.addEventListener('install', (event) => {
@@ -479,8 +532,36 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+const getSafeNotificationActionPath = (value) => {
+  if (
+    typeof value !== 'string' ||
+    value.length > 2048 ||
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    /[\r\n]/.test(value)
+  ) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value, self.location.origin);
+    const path = value.split(/[?#]/, 1)[0];
+    return url.origin === self.location.origin && url.pathname === path
+      ? `${url.pathname}${url.search}${url.hash}`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 self.addEventListener('push', (event) => {
-  const payload = event.data ? event.data.json() : {};
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    // Ignore malformed push data rather than terminating the event handler.
+  }
+  const actionUrl = getSafeNotificationActionPath(payload.actionUrl);
 
   const options = {
     body: payload.message,
@@ -490,30 +571,19 @@ self.addEventListener('push', (event) => {
     data: {
       dateOfArrival: Date.now(),
       primaryKey: '2',
-      actionUrl: payload.actionUrl,
-      requestId: payload.requestId,
+      actionUrl,
     },
     actions: [],
   };
 
-  if (payload.actionUrl) {
+  if (actionUrl) {
     options.actions.push({
       action: 'view',
-      title: payload.actionUrlTitle ?? 'View',
+      title:
+        typeof payload.actionUrlTitle === 'string'
+          ? payload.actionUrlTitle.slice(0, 100)
+          : 'View',
     });
-  }
-
-  if (payload.notificationType === 'MEDIA_PENDING') {
-    options.actions.push(
-      {
-        action: 'approve',
-        title: 'Approve',
-      },
-      {
-        action: 'decline',
-        title: 'Decline',
-      }
-    );
   }
 
   // Set the badge with the amount of pending requests
@@ -541,22 +611,16 @@ self.addEventListener('push', (event) => {
 self.addEventListener(
   'notificationclick',
   (event) => {
-    const notificationData = event.notification.data;
+    const actionUrl = getSafeNotificationActionPath(
+      event.notification?.data?.actionUrl
+    );
 
     event.notification.close();
 
-    if (event.action === 'approve') {
-      fetch(`/api/v1/request/${notificationData.requestId}/approve`, {
-        method: 'POST',
-      });
-    } else if (event.action === 'decline') {
-      fetch(`/api/v1/request/${notificationData.requestId}/decline`, {
-        method: 'POST',
-      });
-    }
-
-    if (notificationData.actionUrl) {
-      clients.openWindow(notificationData.actionUrl);
+    if (actionUrl) {
+      event.waitUntil(
+        clients.openWindow(new URL(actionUrl, self.location.origin).href)
+      );
     }
   },
   false

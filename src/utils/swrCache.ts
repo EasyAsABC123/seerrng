@@ -1,59 +1,41 @@
 import { useEffect, useState } from 'react';
 import type { Cache } from 'swr';
+import {
+  readLocalStoredRecord,
+  removeLocalStorageValue,
+  writeLocalStoredRecord,
+} from './localStorage';
 
 const RESPONSE_CACHE_PREFIX = 'seerr-response-cache-v1:';
 const MAX_RESPONSE_CACHE_AGE = 1000 * 60 * 60 * 24;
-
-type CacheRecord<T> = {
-  timestamp: number;
-  data: T;
-};
-
-const canUseStorage = () =>
-  typeof window !== 'undefined' && !!window.localStorage;
-
-const readJson = <T>(key: string): T | undefined => {
-  if (!canUseStorage()) {
-    return undefined;
-  }
-
-  try {
-    const value = window.localStorage.getItem(key);
-
-    return value ? (JSON.parse(value) as T) : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-const writeJson = (key: string, value: unknown) => {
-  if (!canUseStorage()) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    window.localStorage.removeItem(key);
-  }
-};
 
 const getResponseCacheKey = (key: string) =>
   `${RESPONSE_CACHE_PREFIX}${encodeURIComponent(key)}`;
 
 export const getPersistentResponse = <T>(key: string): T | undefined => {
-  const record = readJson<CacheRecord<T>>(getResponseCacheKey(key));
+  const cacheKey = getResponseCacheKey(key);
+  const record = readLocalStoredRecord(cacheKey);
 
-  if (!record) {
+  if (
+    !record ||
+    typeof record.timestamp !== 'number' ||
+    !Number.isFinite(record.timestamp) ||
+    !Object.prototype.hasOwnProperty.call(record, 'data')
+  ) {
+    removeLocalStorageValue(cacheKey);
     return undefined;
   }
 
-  if (Date.now() - record.timestamp > MAX_RESPONSE_CACHE_AGE) {
-    window.localStorage.removeItem(getResponseCacheKey(key));
+  const now = Date.now();
+  if (
+    record.timestamp > now ||
+    now - record.timestamp > MAX_RESPONSE_CACHE_AGE
+  ) {
+    removeLocalStorageValue(cacheKey);
     return undefined;
   }
 
-  return record.data;
+  return record.data as T;
 };
 
 export const setPersistentResponse = <T>(key: string, data: T | undefined) => {
@@ -61,7 +43,7 @@ export const setPersistentResponse = <T>(key: string, data: T | undefined) => {
     return;
   }
 
-  writeJson(getResponseCacheKey(key), {
+  writeLocalStoredRecord(getResponseCacheKey(key), {
     timestamp: Date.now(),
     data,
   });

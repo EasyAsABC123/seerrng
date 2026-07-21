@@ -12,20 +12,38 @@ permissions:
 
 jobs:
   publish-aur:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Resolve version
         id: version
         shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
         run: |
-          tag="${{ github.event.inputs.tag || github.event.release.tag_name }}"
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          [[ "$tag" =~ ^v[0-9][0-9A-Za-z._+-]{0,127}$ ]] || { echo "Invalid release tag: $tag" >&2; exit 2; }
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "pkgver=${tag#v}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ steps.version.outputs.tag }}
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release tag is on main
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git show-ref --verify --quiet "refs/tags/$TAG"
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          git merge-base --is-ancestor HEAD refs/remotes/origin/main || {
+            echo "Release tag $TAG is not reachable from main." >&2
+            exit 1
+          }
 
       - name: Wait for Linux x64 release asset
         id: linux_asset
@@ -37,7 +55,7 @@ jobs:
           asset="seerrng-${TAG}-linux-x64.tar.gz"
           url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${asset}"
           for attempt in {1..80}; do
-            if curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/octet-stream" "$url" -o /tmp/seerrng.tar.gz; then
+            if printf 'Authorization: Bearer %s\n' "$GH_TOKEN" | curl -fsSL -H @- -H "Accept: application/octet-stream" "$url" -o /tmp/seerrng.tar.gz; then
               tar -tzf /tmp/seerrng.tar.gz > /tmp/seerrng-files.txt
               grep -q "seerrng-${TAG}-linux-x64/dist/index.js" /tmp/seerrng-files.txt
               echo "sha256=$(sha256sum /tmp/seerrng.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
@@ -60,29 +78,35 @@ jobs:
           bash ../scripts/validate-aur-pkgbuild-hashes.sh PKGBUILD-bin
 
       - name: Setup AUR SSH
+        id: aur-ssh
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${AUR_SSH_KEY:-}" ]; then
             echo "AUR_SSH_KEY is not configured; skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           tmp_key="$(mktemp)"
           trap 'rm -f "$tmp_key"' EXIT
           printf '%s\n' "$AUR_SSH_KEY" > "$tmp_key"
-          bash packaging/scripts/setup-aur-ssh.sh "$tmp_key"
+          env -u AUR_SSH_KEY bash packaging/scripts/setup-aur-ssh.sh "$tmp_key"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Push seerrng-bin
+        if: steps.aur-ssh.outputs.configured == 'true'
         env:
-          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
-          [ -n "${AUR_SSH_KEY:-}" ] || exit 0
           bash packaging/scripts/checkout-aur-repo.sh seerrng-bin aur-seerrng-bin
           cp packaging/aur/PKGBUILD-bin aur-seerrng-bin/PKGBUILD
           cp packaging/aur/seerrng.{service,env,sysusers,tmpfiles,install} aur-seerrng-bin/
           bash packaging/scripts/generate-aur-srcinfo.sh aur-seerrng-bin/PKGBUILD > aur-seerrng-bin/.SRCINFO
           (cd aur-seerrng-bin && git add -A)
           bash packaging/scripts/push-aur-repo.sh aur-seerrng-bin seerrng-bin "Update to ${TAG}"
+
+      - name: Remove AUR SSH credentials
+        if: always()
+        run: rm -f -- ~/.ssh/aur ~/.ssh/aur_config ~/.ssh/aur_known_hosts

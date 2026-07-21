@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 
+import type { User } from '@server/entity/User';
 import type { ImageResponse } from '@server/lib/imageproxy';
 import ImageProxy, { IMAGE_PROXY_HTTP_OPTIONS } from '@server/lib/imageproxy';
 import express from 'express';
@@ -24,9 +25,17 @@ const imageResponse: ImageResponse = {
   imageBuffer: Buffer.from('image-bytes'),
 };
 
-function createApp() {
+function createApp(authenticated = false) {
   const app = express();
   app.use(express.json());
+  if (authenticated) {
+    app.use((req, _res, next) => {
+      req.user = {
+        hasPermission: () => true,
+      } as unknown as User;
+      next();
+    });
+  }
   app.use('/imageproxy', imageproxyRoutes);
   return app;
 }
@@ -105,6 +114,7 @@ describe('GET /imageproxy/:type/*path', () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.headers['content-type'], 'image/jpeg');
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
     assert.equal(res.headers.etag, '"etag-value"');
     assert.equal(res.headers['last-modified'], 'Thu, 01 Jan 2026 00:00:00 GMT');
     assert.equal(
@@ -200,6 +210,27 @@ describe('GET /imageproxy/:type/*path', () => {
     assert.equal(getImage.mock.callCount(), 0);
   });
 
+  it('rejects backslash paths before URL canonicalization', async () => {
+    const getCachedImage = mock.method(
+      ImageProxy.prototype,
+      'getCachedImage',
+      async () => imageResponse
+    );
+    const getImage = mock.method(
+      ImageProxy.prototype,
+      'getImage',
+      async () => imageResponse
+    );
+
+    const res = await request(createApp()).get(
+      '/imageproxy/tmdb/%5C%5Cexample.com/poster.jpg'
+    );
+
+    assert.equal(res.status, 403);
+    assert.equal(getCachedImage.mock.callCount(), 0);
+    assert.equal(getImage.mock.callCount(), 0);
+  });
+
   it('supports HEAD requests with browser cache headers and no body', async () => {
     mock.method(ImageProxy.prototype, 'getImage', async () => imageResponse);
 
@@ -219,14 +250,22 @@ describe('GET /imageproxy/:type/*path', () => {
 });
 
 describe('POST /imageproxy/warm', () => {
+  it('rejects anonymous cache warming', async () => {
+    const res = await request(createApp())
+      .post('/imageproxy/warm')
+      .send({ urls: ['https://image.tmdb.org/t/p/w300/poster.jpg'] });
+
+    assert.equal(res.status, 403);
+  });
+
   it('rejects malformed warm payloads', async () => {
-    const missingUrls = await request(createApp())
+    const missingUrls = await request(createApp(true))
       .post('/imageproxy/warm')
       .send({});
-    const nonStringUrl = await request(createApp())
+    const nonStringUrl = await request(createApp(true))
       .post('/imageproxy/warm')
       .send({ urls: ['https://image.tmdb.org/t/p/w300/poster.jpg', 123] });
-    const oversizedUrl = await request(createApp())
+    const oversizedUrl = await request(createApp(true))
       .post('/imageproxy/warm')
       .send({ urls: [`https://${'x'.repeat(2042)}`] });
 
@@ -239,7 +278,7 @@ describe('POST /imageproxy/warm', () => {
   });
 
   it('rejects oversized warm URL batches', async () => {
-    const res = await request(createApp())
+    const res = await request(createApp(true))
       .post('/imageproxy/warm')
       .send({
         urls: Array.from({ length: 101 }, () => 'https://example.com/a.jpg'),
@@ -250,7 +289,7 @@ describe('POST /imageproxy/warm', () => {
   });
 
   it('accepts bounded warm URL batches', async () => {
-    const res = await request(createApp())
+    const res = await request(createApp(true))
       .post('/imageproxy/warm')
       .send({ urls: ['https://image.tmdb.org/t/p/w300/poster.jpg'] });
 

@@ -1,5 +1,8 @@
 import Discover from '@app/components/Discover';
-import { getInternalApiBaseUrl } from '@app/utils/internalApi';
+import {
+  getInternalApiBaseUrl,
+  INTERNAL_API_HTTP_OPTIONS,
+} from '@app/utils/internalApi';
 import type DiscoverSlider from '@server/entity/DiscoverSlider';
 import axios from 'axios';
 import type { GetServerSideProps, NextPage } from 'next';
@@ -19,6 +22,7 @@ export const getServerSideProps: GetServerSideProps<IndexPageProps> = async (
     const response = await axios.get<DiscoverSlider[]>(
       `${getInternalApiBaseUrl()}/api/v1/settings/discover`,
       {
+        ...INTERNAL_API_HTTP_OPTIONS,
         headers: ctx.req?.headers?.cookie
           ? { cookie: ctx.req.headers.cookie }
           : undefined,

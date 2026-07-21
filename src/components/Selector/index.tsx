@@ -12,6 +12,7 @@ import type {
   TmdbGenre,
   TmdbKeywordSearchResponse,
 } from '@server/api/themoviedb/interfaces';
+import { MAX_DISCOVER_KEYWORD_IDS } from '@server/constants/discover';
 import type { UserResultsResponse } from '@server/interfaces/api/userInterfaces';
 import type {
   Keyword,
@@ -74,26 +75,41 @@ export const CompanySelector = ({
   >(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const loadDefaultCompany = async (): Promise<void> => {
       if (!defaultValue) {
+        setDefaultDataValue(null);
         return;
       }
 
-      const response = await axios.get<ProductionCompany>(
-        `/api/v1/studio/${defaultValue}`
-      );
+      try {
+        const response = await axios.get<ProductionCompany>(
+          `/api/v1/studio/${defaultValue}`,
+          { signal: controller.signal }
+        );
 
-      const studio = response.data;
-
-      setDefaultDataValue([
-        {
-          label: studio.name ?? '',
-          value: studio.id ?? 0,
-        },
-      ]);
+        const studio = response.data;
+        if (active) {
+          setDefaultDataValue([
+            {
+              label: studio.name ?? '',
+              value: studio.id ?? 0,
+            },
+          ]);
+        }
+      } catch {
+        if (active) {
+          setDefaultDataValue(null);
+        }
+      }
     };
 
-    loadDefaultCompany();
+    void loadDefaultCompany();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [defaultValue]);
 
   const loadCompanyOptions = async (inputValue: string) => {
@@ -159,27 +175,47 @@ export const GenreSelector = ({
   >(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const loadDefaultGenre = async (): Promise<void> => {
       if (!defaultValue) {
+        setDefaultDataValue(null);
         return;
       }
 
-      const genres = defaultValue.split(',');
+      try {
+        const genres = defaultValue.split(',');
 
-      const response = await axios.get<TmdbGenre[]>(`/api/v1/genres/${type}`);
+        const response = await axios.get<TmdbGenre[]>(
+          `/api/v1/genres/${type}`,
+          { signal: controller.signal }
+        );
 
-      const genreData = genres
-        .filter((genre) => response.data.find((gd) => gd.id === Number(genre)))
-        .map((g) => response.data.find((gd) => gd.id === Number(g)))
-        .map((g) => ({
-          label: g?.name ?? '',
-          value: g?.id ?? 0,
-        }));
+        const genreData = genres
+          .filter((genre) =>
+            response.data.find((gd) => gd.id === Number(genre))
+          )
+          .map((g) => response.data.find((gd) => gd.id === Number(g)))
+          .map((g) => ({
+            label: g?.name ?? '',
+            value: g?.id ?? 0,
+          }));
 
-      setDefaultDataValue(genreData);
+        if (active) {
+          setDefaultDataValue(genreData);
+        }
+      } catch {
+        if (active) {
+          setDefaultDataValue(null);
+        }
+      }
     };
 
-    loadDefaultGenre();
+    void loadDefaultGenre();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [defaultValue, type]);
 
   const loadGenreOptions = async (inputValue: string) => {
@@ -239,23 +275,20 @@ export const StatusSelector = ({
   );
 
   useEffect(() => {
-    const loadDefaultStatus = async (): Promise<void> => {
-      if (!defaultValue) {
-        return;
-      }
-      const statuses = defaultValue.split('|');
+    if (!defaultValue) {
+      setDefaultDataValue(null);
+      return;
+    }
+    const statuses = defaultValue.split('|');
 
-      const statusData = options
-        .filter((opt) => statuses.find((s) => Number(s) === opt.id))
-        .map((o) => ({
-          label: o.name,
-          value: o.id,
-        }));
+    const statusData = options
+      .filter((opt) => statuses.find((s) => Number(s) === opt.id))
+      .map((o) => ({
+        label: o.name,
+        value: o.id,
+      }));
 
-      setDefaultDataValue(statusData);
-    };
-
-    loadDefaultStatus();
+    setDefaultDataValue(statusData);
   }, [defaultValue, options]);
 
   const loadStatusOptions = async () => {
@@ -298,33 +331,54 @@ export const KeywordSelector = ({
   >(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const loadDefaultKeywords = async (): Promise<void> => {
       if (!defaultValue) {
+        if (active) {
+          setDefaultDataValue(null);
+        }
         return;
       }
 
-      const keywords = await Promise.all(
-        defaultValue.split(',').map(async (keywordId) => {
-          const keyword = await axios.get<Keyword | null>(
-            `/api/v1/keyword/${keywordId}`
+      try {
+        const keywords = await Promise.all(
+          defaultValue
+            .split(',')
+            .slice(0, MAX_DISCOVER_KEYWORD_IDS)
+            .map(async (keywordId) => {
+              const keyword = await axios.get<Keyword | null>(
+                `/api/v1/keyword/${keywordId}`,
+                { signal: controller.signal }
+              );
+              return keyword.data;
+            })
+        );
+
+        const validKeywords: Keyword[] = keywords.filter(
+          (keyword): keyword is Keyword => keyword !== null
+        );
+
+        if (active) {
+          setDefaultDataValue(
+            validKeywords.map((keyword) => ({
+              label: keyword.name,
+              value: keyword.id,
+            }))
           );
-          return keyword.data;
-        })
-      );
-
-      const validKeywords: Keyword[] = keywords.filter(
-        (keyword): keyword is Keyword => keyword !== null
-      );
-
-      setDefaultDataValue(
-        validKeywords.map((keyword) => ({
-          label: keyword.name,
-          value: keyword.id,
-        }))
-      );
+        }
+      } catch {
+        if (active) {
+          setDefaultDataValue(null);
+        }
+      }
     };
 
-    loadDefaultKeywords();
+    void loadDefaultKeywords();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [defaultValue]);
 
   const loadKeywordOptions = async (inputValue: string) => {
@@ -573,30 +627,46 @@ export const UserSelector = ({
   >(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const loadUsers = async (): Promise<void> => {
       if (!defaultValue) {
+        setDefaultDataValue(null);
         return;
       }
 
-      const users = defaultValue.split(',');
+      try {
+        const users = defaultValue.split(',');
 
-      const res = await axios.get(
-        `/api/v1/user?includeIds=${encodeURIComponent(defaultValue)}`
-      );
-      const response: UserResultsResponse = res.data;
+        const res = await axios.get(
+          `/api/v1/user?includeIds=${encodeURIComponent(defaultValue)}`,
+          { signal: controller.signal }
+        );
+        const response: UserResultsResponse = res.data;
 
-      const genreData = users
-        .filter((u) => response.results.find((user) => user.id === Number(u)))
-        .map((u) => response.results.find((user) => user.id === Number(u)))
-        .map((u) => ({
-          label: u?.displayName ?? '',
-          value: u?.id ?? 0,
-        }));
+        const userData = users
+          .filter((u) => response.results.find((user) => user.id === Number(u)))
+          .map((u) => response.results.find((user) => user.id === Number(u)))
+          .map((u) => ({
+            label: u?.displayName ?? '',
+            value: u?.id ?? 0,
+          }));
 
-      setDefaultDataValue(genreData);
+        if (active) {
+          setDefaultDataValue(userData);
+        }
+      } catch {
+        if (active) {
+          setDefaultDataValue(null);
+        }
+      }
     };
 
-    loadUsers();
+    void loadUsers();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [defaultValue]);
 
   const loadUserOptions = async (inputValue: string) => {

@@ -1,7 +1,105 @@
 import logger from '@server/logger';
 import { redactSecrets } from '@server/utils/security';
 import axios from 'axios';
-import ServarrBase from './base';
+import ServarrBase, {
+  MAX_SERVARR_LIBRARY_RESULTS,
+  MAX_SERVARR_LOOKUP_RESULTS,
+  sanitizeServarrRecordArray,
+} from './base';
+
+const MAX_RADARR_TEXT_LENGTH = 10_000;
+const MAX_RADARR_TAGS = 1_000;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const text = (value: unknown): string =>
+  typeof value === 'string' ? value.slice(0, MAX_RADARR_TEXT_LENGTH) : '';
+const number = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+const integer = (value: unknown): number =>
+  Number.isSafeInteger(value) ? (value as number) : 0;
+const boolean = (value: unknown): boolean => value === true;
+const optionalText = (value: unknown): string | undefined => {
+  const normalized = text(value);
+  return normalized || undefined;
+};
+
+export const sanitizeRadarrMovie = (
+  value: unknown
+): RadarrMovie | undefined => {
+  if (!isRecord(value)) return undefined;
+  const tmdbId = integer(value.tmdbId);
+  const id = integer(value.id);
+  const title = text(value.title);
+  if (tmdbId <= 0 || !title) return undefined;
+
+  const movieFile = isRecord(value.movieFile)
+    ? {
+        id: integer(value.movieFile.id),
+        movieId: integer(value.movieFile.movieId),
+        relativePath: optionalText(value.movieFile.relativePath),
+        path: optionalText(value.movieFile.path),
+        size: number(value.movieFile.size),
+        dateAdded: text(value.movieFile.dateAdded),
+        sceneName: optionalText(value.movieFile.sceneName),
+        releaseGroup: optionalText(value.movieFile.releaseGroup),
+        edition: optionalText(value.movieFile.edition),
+        indexerFlags: Number.isSafeInteger(value.movieFile.indexerFlags)
+          ? (value.movieFile.indexerFlags as number)
+          : undefined,
+        mediaInfo: (() => {
+          const info = isRecord(value.movieFile.mediaInfo)
+            ? value.movieFile.mediaInfo
+            : {};
+          return {
+            id: integer(info.id),
+            audioBitrate: number(info.audioBitrate),
+            audioChannels: number(info.audioChannels),
+            audioCodec: optionalText(info.audioCodec),
+            audioLanguages: optionalText(info.audioLanguages),
+            audioStreamCount: number(info.audioStreamCount),
+            videoBitDepth: number(info.videoBitDepth),
+            videoBitrate: number(info.videoBitrate),
+            videoCodec: optionalText(info.videoCodec),
+            videoFps: number(info.videoFps),
+            videoDynamicRange: optionalText(info.videoDynamicRange),
+            videoDynamicRangeType: optionalText(info.videoDynamicRangeType),
+            resolution: optionalText(info.resolution),
+            runTime: optionalText(info.runTime),
+            scanType: optionalText(info.scanType),
+            subtitles: optionalText(info.subtitles),
+          };
+        })(),
+        originalFilePath: optionalText(value.movieFile.originalFilePath),
+        qualityCutoffNotMet: boolean(value.movieFile.qualityCutoffNotMet),
+      }
+    : undefined;
+
+  return {
+    id: id > 0 ? id : 0,
+    title,
+    isAvailable: boolean(value.isAvailable),
+    monitored: boolean(value.monitored),
+    tmdbId,
+    imdbId: text(value.imdbId),
+    titleSlug: text(value.titleSlug),
+    folderName: text(value.folderName),
+    path: text(value.path),
+    profileId: integer(value.profileId),
+    qualityProfileId: integer(value.qualityProfileId),
+    added: text(value.added),
+    hasFile: boolean(value.hasFile),
+    tags: (Array.isArray(value.tags) ? value.tags : [])
+      .slice(0, MAX_RADARR_TAGS)
+      .filter((tag): tag is number => Number.isSafeInteger(tag) && tag >= 0),
+    movieFile,
+  };
+};
+
+const requireRadarrMovie = (value: unknown): RadarrMovie => {
+  const movie = sanitizeRadarrMovie(value);
+  if (!movie) throw new Error('Radarr returned an invalid movie');
+  return movie;
+};
 
 const isConflictError = (error: unknown): boolean =>
   (typeof error === 'object' &&
@@ -126,7 +224,13 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
     try {
       const response = await this.axios.get<RadarrMovie[]>('/movie');
 
-      return response.data;
+      return sanitizeServarrRecordArray<Record<string, unknown>>(
+        response.data,
+        MAX_SERVARR_LIBRARY_RESULTS
+      ).flatMap((movie) => {
+        const normalized = sanitizeRadarrMovie(movie);
+        return normalized ? [normalized] : [];
+      });
     } catch (e) {
       throw new Error(`[Radarr] Failed to retrieve movies: ${e.message}`, {
         cause: e,
@@ -138,7 +242,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
     try {
       const response = await this.axios.get<RadarrMovie>(`/movie/${id}`);
 
-      return response.data;
+      return requireRadarrMovie(response.data);
     } catch (e) {
       throw new Error(`[Radarr] Failed to retrieve movie: ${e.message}`, {
         cause: e,
@@ -216,11 +320,18 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
         },
       });
 
-      if (!response.data[0]) {
+      const movies = sanitizeServarrRecordArray<Record<string, unknown>>(
+        response.data,
+        MAX_SERVARR_LOOKUP_RESULTS
+      ).flatMap((movie) => {
+        const normalized = sanitizeRadarrMovie(movie);
+        return normalized ? [normalized] : [];
+      });
+      if (!movies[0]) {
         throw new Error('Movie not found');
       }
 
-      return response.data[0];
+      return movies[0];
     } catch (e) {
       logger.error('Error retrieving movie by TMDB ID', {
         label: 'Radarr API',
@@ -267,25 +378,30 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
           },
         });
 
-        if (response.data.monitored) {
+        const updatedMovie = requireRadarrMovie(
+          isRecord(response.data)
+            ? { ...movie, ...response.data }
+            : response.data
+        );
+        if (updatedMovie.monitored) {
           logger.info(
             'Found existing title in Radarr and set it to monitored.',
             {
               label: 'Radarr',
-              movieId: response.data.id,
-              movieTitle: response.data.title,
+              movieId: updatedMovie.id,
+              movieTitle: updatedMovie.title,
             }
           );
           logger.debug('Radarr update details', {
             label: 'Radarr',
-            movie: response.data,
+            movie: updatedMovie,
           });
 
           if (options.searchNow) {
-            this.searchMovie(response.data.id);
+            await this.searchMovie(updatedMovie.id);
           }
 
-          return response.data;
+          return updatedMovie;
         } else {
           logger.error('Failed to update existing movie in Radarr.', {
             label: 'Radarr',
@@ -314,7 +430,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
               movieTitle: movie.title,
             }
           );
-          this.searchMovie(movie.id);
+          await this.searchMovie(movie.id);
         }
 
         return movie;
@@ -336,11 +452,20 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
         },
       });
 
-      if (response.data.id) {
+      const addedMovie = requireRadarrMovie(
+        isRecord(response.data)
+          ? {
+              tmdbId: options.tmdbId,
+              title: options.title,
+              ...(response.data as unknown as Record<string, unknown>),
+            }
+          : response.data
+      );
+      if (addedMovie.id) {
         logger.info('Radarr accepted request', { label: 'Radarr' });
         logger.debug('Radarr add details', {
           label: 'Radarr',
-          movie: response.data,
+          movie: addedMovie,
         });
       } else {
         logger.error('Failed to add movie to Radarr', {
@@ -349,7 +474,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
         });
         throw new Error('Failed to add movie to Radarr');
       }
-      return response.data;
+      return addedMovie;
     } catch (e) {
       if (isConflictError(e)) {
         const existingMovie = await this.recoverExistingMovie(options).catch(
@@ -420,11 +545,13 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
         },
       });
 
-      return response.data;
+      return requireRadarrMovie(
+        isRecord(response.data) ? { ...movie, ...response.data } : response.data
+      );
     }
 
     if (options.searchNow && !movie.hasFile) {
-      this.searchMovie(movie.id);
+      await this.searchMovie(movie.id);
     }
 
     return movie;

@@ -40,12 +40,13 @@ const ButtonWithDropdown = ({
   }
 
   const TriggerElement = props.as ?? 'button';
+  const disabled = props.as !== 'a' && props.disabled === true;
 
   return (
     <Menu as="div" className="relative z-10 inline-flex">
       <TriggerElement
         type="button"
-        className={`relative z-10 inline-flex h-full items-center px-4 py-2 text-sm font-medium leading-5 transition duration-150 ease-in-out hover:z-20 focus:z-20 focus:outline-none ${
+        className={`relative z-10 inline-flex h-full items-center px-4 py-2 text-sm font-medium leading-5 transition duration-150 ease-in-out hover:z-20 focus:z-20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
           styleClasses.mainButtonClasses
         } ${children ? 'rounded-l-md' : 'rounded-md'} ${className}`}
         {...(props as Record<string, string>)}
@@ -56,6 +57,7 @@ const ButtonWithDropdown = ({
         <span className="relative -ml-px block">
           <Menu.Button
             type="button"
+            disabled={disabled}
             className={`relative z-10 inline-flex h-full items-center rounded-r-md px-2 py-2 text-sm font-medium leading-5 text-white transition duration-150 ease-in-out hover:z-20 focus:z-20 ${styleClasses.dropdownSideButtonClasses}`}
             aria-label="Expand"
           >

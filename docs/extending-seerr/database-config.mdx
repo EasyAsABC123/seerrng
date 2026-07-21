@@ -31,11 +31,11 @@ If your PostgreSQL server is configured to accept TCP connections, you can speci
 ```dotenv
 DB_TYPE=postgres # Which DB engine to use, either sqlite or postgres. The default is sqlite.
 DB_HOST=localhost # (optional) The host (URL) of the database. The default is "localhost".
-DB_PORT="5432" # (optional) The port to connect to. The default is "5432".
+DB_PORT="5432" # (optional) The port to connect to, from 1 through 65535. The default is "5432".
 DB_USER= # (required) Username used to connect to the database.
 DB_PASS= # (required) Password of the user used to connect to the database.
 DB_NAME="seerr" # (optional) The name of the database to connect to. The default is "seerr".
-DB_POOL_SIZE="10" # (optional) The number of connections to maintain in the connection pool. The default is "10".
+DB_POOL_SIZE="10" # (optional) The number of connections to maintain in the connection pool, from 1 through 100. Values below 2 are raised to 2. The default is "10".
 DB_LOG_QUERIES="false" # (optional) Whether to log the DB queries for debugging. The default is "false".
 ```
 
@@ -49,7 +49,7 @@ DB_SOCKET_PATH="/var/run/postgresql" # (required) The path to the PostgreSQL Uni
 DB_USER= # (required) Username used to connect to the database.
 DB_PASS= # (optional) Password of the user used to connect to the database, depending on the server's authentication configuration.
 DB_NAME="seerr" # (optional) The name of the database to connect to. The default is "seerr".
-DB_POOL_SIZE="10" # (optional) The number of connections to maintain in the connection pool. The default is "10".
+DB_POOL_SIZE="10" # (optional) The number of connections to maintain in the connection pool, from 1 through 100. Values below 2 are raised to 2. The default is "10".
 DB_LOG_QUERIES="false" # (optional) Whether to log the DB queries for debugging. The default is "false".
 ```
 
@@ -77,6 +77,8 @@ sudo -u postgres psql -c "SHOW unix_socket_directories;"
 ### SSL configuration
 
 The following options can be used to further configure ssl. Certificates can be provided as a string or a file path, with the string version taking precedence.
+
+Boolean database options accept only `true` or `false` (case-insensitive). TLS material read through a `_FILE` option must resolve to a regular file no larger than 1 MiB; symlinked secret mounts are supported.
 
 ```dotenv
 DB_USE_SSL="false" # (optional) Whether to enable ssl for database connection. This must be "true" to use the other ssl options. The default is "false".

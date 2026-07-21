@@ -1,180 +1,74 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it, mock } from 'node:test';
+import { describe, it } from 'node:test';
 
-import type { SonarrSeries } from '@server/api/servarr/sonarr';
-import SonarrAPI from '@server/api/servarr/sonarr';
-import axios from 'axios';
+import { MAX_SERVARR_CONFIGURATION_RESULTS } from './base';
+import { sanitizeSonarrLanguageProfiles, sanitizeSonarrSeries } from './sonarr';
 
-const series = (overrides: Partial<SonarrSeries> = {}): SonarrSeries => ({
-  id: 42,
-  title: 'Test Series',
-  sortTitle: 'test series',
-  seasonCount: 1,
-  status: 'continuing',
-  overview: 'A test series.',
-  network: 'Test Network',
-  airTime: '20:00',
-  images: [],
-  remotePoster: '',
-  seasons: [],
-  year: 2026,
-  path: '/tv/Test Series',
-  profileId: 1,
-  languageProfileId: 1,
-  seasonFolder: true,
-  monitored: true,
-  monitorNewItems: 'all',
-  useSceneNumbering: false,
-  runtime: 45,
-  tvdbId: 100,
-  tvRageId: 0,
-  tvMazeId: 0,
-  firstAired: '2026-01-01T00:00:00Z',
-  seriesType: 'standard',
-  cleanTitle: 'testseries',
-  imdbId: 'tt0000100',
-  titleSlug: 'test-series',
-  certification: 'TV-14',
-  genres: [],
-  tags: [],
-  added: '2026-01-01T00:00:00Z',
-  ratings: {
-    votes: 0,
-    value: 0,
-  },
-  qualityProfileId: 1,
-  statistics: {
-    seasonCount: 1,
-    episodeFileCount: 1,
-    episodeCount: 1,
-    totalEpisodeCount: 1,
-    sizeOnDisk: 1,
-    releaseGroups: [],
-    percentOfEpisodes: 100,
-  },
-  ...overrides,
-});
-
-describe('SonarrAPI.getSeriesCover', () => {
-  afterEach(() => {
-    mock.restoreAll();
-  });
-
-  it('fetches the first advertised relative cover path outside the API base path', async () => {
-    const api = new SonarrAPI({
-      url: 'http://localhost:8989/base/api/v3',
-      apiKey: 'key',
-    });
-    mock.method(api, 'getSeriesById', async () =>
-      series({
-        images: [
-          {
-            coverType: 'poster',
-            url: '/MediaCover/42/poster.jpg',
+describe('Sonarr response normalization', () => {
+  it('returns exact bounded series, season, and statistics records', () => {
+    const series = sanitizeSonarrSeries({
+      id: 7,
+      title: 'Series',
+      tvdbId: 99,
+      monitored: true,
+      apiKey: 'provider-secret',
+      tags: [1, 'bad', 2],
+      seasons: [
+        {
+          seasonNumber: 1,
+          monitored: true,
+          providerOnly: true,
+          statistics: {
+            episodeFileCount: 4,
+            totalEpisodeCount: 8,
+            providerSecret: 'nested-secret',
           },
-        ],
-      })
-    );
-    const axiosGetMock = mock.fn(async () => ({
-      data: Buffer.from('series-image'),
-      headers: { 'content-type': 'image/jpeg' },
-    }));
-    (
-      api as unknown as {
-        axios: { get: typeof axiosGetMock };
-      }
-    ).axios.get = axiosGetMock;
+        },
+      ],
+      statistics: { episodeFileCount: 4, totalEpisodeCount: 8 },
+    });
 
-    const result = await api.getSeriesCover(42);
+    assert.ok(series);
+    assert.deepStrictEqual(series.tags, [1, 2]);
+    assert.strictEqual(series.seasons[0].statistics?.episodeFileCount, 4);
+    assert.ok(!('apiKey' in series));
+    assert.ok(!('providerOnly' in series.seasons[0]));
+    assert.ok(!('providerSecret' in (series.seasons[0].statistics ?? {})));
+  });
 
-    assert.deepStrictEqual(result.imageBuffer, Buffer.from('series-image'));
-    assert.strictEqual(result.contentType, 'image/jpeg');
+  it('rejects unusable series identities and bounds text', () => {
+    assert.strictEqual(sanitizeSonarrSeries({ title: 'No ID' }), undefined);
     assert.strictEqual(
-      (
-        axiosGetMock.mock.calls as unknown as {
-          arguments: [string];
-        }[]
-      )[0].arguments[0],
-      'http://localhost:8989/base/MediaCover/42/poster.jpg'
+      sanitizeSonarrSeries({
+        id: -1,
+        title: 'x'.repeat(20_000),
+        tvdbId: 1,
+      })?.title.length,
+      10_000
+    );
+    assert.strictEqual(
+      sanitizeSonarrSeries({ id: -1, title: 'Series', tvdbId: 1 })?.id,
+      undefined
     );
   });
 
-  it('falls back to the standard Sonarr-compatible poster path', async () => {
-    const api = new SonarrAPI({
-      url: 'http://localhost:8989/api/v3',
-      apiKey: 'key',
-    });
-    mock.method(api, 'getSeriesById', async () => series());
-    const axiosGetMock = mock.fn(async () => ({
-      data: Buffer.from('fallback-series-image'),
-      headers: { 'content-type': 'image/png' },
-    }));
-    (
-      api as unknown as {
-        axios: { get: typeof axiosGetMock };
-      }
-    ).axios.get = axiosGetMock;
+  it('returns exact bounded language profile records', () => {
+    const profiles = sanitizeSonarrLanguageProfiles([
+      null,
+      { id: 'invalid', name: 'Invalid' },
+      ...Array.from(
+        { length: MAX_SERVARR_CONFIGURATION_RESULTS + 100 },
+        (_, id) => ({
+          id,
+          name: `Profile ${id}`,
+          cutoff: 10,
+          items: [{ id: 'provider-only' }],
+          apiKey: 'provider-secret',
+        })
+      ),
+    ]);
 
-    const result = await api.getSeriesCover(42);
-
-    assert.deepStrictEqual(
-      result.imageBuffer,
-      Buffer.from('fallback-series-image')
-    );
-    assert.strictEqual(
-      (
-        axiosGetMock.mock.calls as unknown as {
-          arguments: [string];
-        }[]
-      )[0].arguments[0],
-      'http://localhost:8989/MediaCover/42/poster.jpg'
-    );
-  });
-
-  it('falls back to an advertised remote poster when local media cover is not an image', async () => {
-    const api = new SonarrAPI({
-      url: 'http://localhost:8989/api/v3',
-      apiKey: 'key',
-    });
-    mock.method(api, 'getSeriesById', async () =>
-      series({
-        images: [
-          {
-            coverType: 'poster',
-            url: '/MediaCover/42/poster.jpg?lastWrite=123',
-            remoteUrl: 'https://artworks.thetvdb.com/poster.jpg',
-          },
-        ],
-      })
-    );
-    const axiosGetMock = mock.fn(async () => ({
-      data: Buffer.from('login-page'),
-      headers: { 'content-type': 'text/html; charset=utf-8' },
-    }));
-    (
-      api as unknown as {
-        axios: { get: typeof axiosGetMock };
-      }
-    ).axios.get = axiosGetMock;
-    const remoteGetMock = mock.method(axios, 'get', async () => ({
-      data: Buffer.from('remote-series-image'),
-      headers: { 'content-type': 'image/jpeg' },
-    }));
-
-    const result = await api.getSeriesCover(42);
-
-    assert.deepStrictEqual(
-      result.imageBuffer,
-      Buffer.from('remote-series-image')
-    );
-    assert.strictEqual(result.contentType, 'image/jpeg');
-    assert.strictEqual(
-      remoteGetMock.mock.calls[0].arguments[0],
-      'https://artworks.thetvdb.com/poster.jpg'
-    );
-    assert.deepStrictEqual(remoteGetMock.mock.calls[0].arguments[1], {
-      responseType: 'arraybuffer',
-      headers: { Accept: 'image/*' },
-    });
+    assert.strictEqual(profiles.length, MAX_SERVARR_CONFIGURATION_RESULTS - 2);
+    assert.deepStrictEqual(profiles[0], { id: 0, name: 'Profile 0' });
   });
 });

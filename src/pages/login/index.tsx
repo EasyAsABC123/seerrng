@@ -1,5 +1,8 @@
 import Login from '@app/components/Login';
-import { getInternalApiBaseUrl } from '@app/utils/internalApi';
+import {
+  getInternalApiBaseUrl,
+  INTERNAL_API_HTTP_OPTIONS,
+} from '@app/utils/internalApi';
 import axios from 'axios';
 import type { GetServerSideProps, NextPage } from 'next';
 
@@ -16,7 +19,8 @@ export const getServerSideProps: GetServerSideProps<
 > = async () => {
   try {
     const response = await axios.get<string[]>(
-      `${getInternalApiBaseUrl()}/api/v1/backdrops`
+      `${getInternalApiBaseUrl()}/api/v1/backdrops`,
+      INTERNAL_API_HTTP_OPTIONS
     );
 
     return { props: { initialBackdrops: response.data } };

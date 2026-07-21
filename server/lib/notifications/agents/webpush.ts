@@ -6,14 +6,22 @@ import { User } from '@server/entity/User';
 import { UserPushSubscription } from '@server/entity/UserPushSubscription';
 import { defineMessages, getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentConfig } from '@server/lib/settings';
 import { NotificationAgentKey, getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
+import { mapWithConcurrency } from '@server/utils/concurrency';
+import { createSafeHttpRequestOptions } from '@server/utils/security';
+import axios from 'axios';
 import webpush from 'web-push';
 import { Notification, shouldSendAdminNotification } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
-import { BaseAgent, getNotificationMediaUrl } from './agent';
+import {
+  BaseAgent,
+  NOTIFICATION_HTTP_OPTIONS,
+  getNotificationMediaUrl,
+} from './agent';
 
 const messages = defineMessages('notifications.agents.webpush', {
   autoRequested: 'Automatically submitted a new {quality}{mediaType} request.',
@@ -33,6 +41,22 @@ const messages = defineMessages('notifications.agents.webpush', {
   viewMedia: 'View Media',
 });
 
+const WEB_PUSH_HTTP_OPTIONS = {
+  ...NOTIFICATION_HTTP_OPTIONS,
+  ...createSafeHttpRequestOptions(
+    () => process.env.SEERR_ALLOW_PRIVATE_PUSH_ENDPOINTS === 'true',
+    false
+  ),
+  // Subscription endpoints are user-controlled. Resolving them through an
+  // HTTP proxy would move DNS resolution outside the guarded socket lookup and
+  // reopen DNS-rebinding SSRF. Explicit false values also override any proxy
+  // agents installed on Axios defaults by the application proxy setting.
+  proxy: false as const,
+  httpAgent: false,
+  httpsAgent: false,
+};
+export const WEB_PUSH_DELIVERY_CONCURRENCY = 10;
+
 interface PushNotificationPayload {
   notificationType: string;
   subject: string;
@@ -51,8 +75,24 @@ interface WebPushError extends Error {
   body?: string | unknown;
   response?: {
     body?: string | unknown;
+    status?: number;
   };
 }
+
+export const sendWebPushRequest = async (
+  subscription: webpush.PushSubscription,
+  payload: Buffer
+): Promise<void> => {
+  const request = webpush.generateRequestDetails(subscription, payload);
+
+  await axios.request({
+    ...WEB_PUSH_HTTP_OPTIONS,
+    url: request.endpoint,
+    method: request.method,
+    headers: request.headers,
+    data: request.body,
+  });
+};
 
 class WebPushAgent
   extends BaseAgent<NotificationAgentConfig>
@@ -68,13 +108,13 @@ class WebPushAgent
     return settings.notifications.agents.webpush;
   }
 
-  private getNotificationPayload(
+  public buildPayload(
     type: Notification,
     payload: NotificationPayload,
     locale?: AvailableLocale
   ): PushNotificationPayload {
     const intl = getIntl(locale);
-    const { embedPoster } = getSettings().notifications.agents.webpush;
+    const { embedPoster } = this.getSettings();
 
     const mediaType = payload.media
       ? payload.media.mediaType === MediaType.MOVIE
@@ -215,19 +255,20 @@ class WebPushAgent
 
     const pushSubs: { sub: UserPushSubscription; locale?: AvailableLocale }[] =
       [];
+    let deliveryFailed = false;
 
     const mainUser = await userRepository.findOne({ where: { id: 1 } });
 
     const requestRepository = getRepository(MediaRequest);
 
-    const pendingRequests = await requestRepository.find({
+    const pendingRequestCount = await requestRepository.count({
       where: { status: MediaRequestStatus.PENDING },
     });
 
     const webPushNotification = async (
       pushSub: UserPushSubscription,
       notificationPayload: Buffer
-    ) => {
+    ): Promise<boolean> => {
       logger.debug('Sending web push notification', {
         label: 'Notifications',
         recipient: pushSub.user.displayName,
@@ -236,7 +277,7 @@ class WebPushAgent
       });
 
       try {
-        await webpush.sendNotification(
+        await sendWebPushRequest(
           {
             endpoint: pushSub.endpoint,
             keys: {
@@ -246,9 +287,13 @@ class WebPushAgent
           },
           notificationPayload
         );
+        return true;
       } catch (e) {
         const webPushError = e as WebPushError;
-        const statusCode = webPushError.statusCode || webPushError.status;
+        const statusCode =
+          webPushError.statusCode ||
+          webPushError.status ||
+          webPushError.response?.status;
         const errorMessage = webPushError.message || String(e);
 
         // RFC 8030: 410/404 are permanent failures, others are transient
@@ -270,7 +315,9 @@ class WebPushAgent
 
         if (isPermanentFailure) {
           await userPushSubRepository.remove(pushSub);
+          return true;
         }
+        return false;
       }
     };
 
@@ -301,76 +348,79 @@ class WebPushAgent
       type === Notification.MEDIA_APPROVED ||
       type === Notification.MEDIA_DECLINED
     ) {
-      const users = await userRepository.find();
+      if (mainUser) {
+        await forEachNotificationUserBatch(async (users) => {
+          const manageUsers = users.filter(
+            (user) =>
+              // Check if user has webpush notifications enabled and fallback to true if undefined
+              // since web push should default to true
+              (user.settings?.hasNotificationType(
+                NotificationAgentKey.WEBPUSH,
+                type
+              ) ??
+                true) &&
+              shouldSendAdminNotification(type, user, payload)
+          );
+          const allSubs =
+            manageUsers.length > 0
+              ? await userPushSubRepository
+                  .createQueryBuilder('pushSub')
+                  .leftJoinAndSelect('pushSub.user', 'user')
+                  .leftJoinAndSelect('user.settings', 'settings')
+                  .where('pushSub.userId IN (:...users)', {
+                    users: manageUsers.map((user) => user.id),
+                  })
+                  .getMany()
+              : [];
 
-      const manageUsers = users.filter(
-        (user) =>
-          // Check if user has webpush notifications enabled and fallback to true if undefined
-          // since web push should default to true
-          (user.settings?.hasNotificationType(
-            NotificationAgentKey.WEBPUSH,
-            type
-          ) ??
-            true) &&
-          shouldSendAdminNotification(type, user, payload)
-      );
+          if (allSubs.length === 0) {
+            return;
+          }
 
-      const allSubs =
-        manageUsers.length > 0
-          ? await userPushSubRepository
-              .createQueryBuilder('pushSub')
-              .leftJoinAndSelect('pushSub.user', 'user')
-              .leftJoinAndSelect('user.settings', 'settings')
-              .where('pushSub.userId IN (:...users)', {
-                users: manageUsers.map((user) => user.id),
-              })
-              .getMany()
-          : [];
-
-      // We only want to send the custom notification when type is approved or declined
-      // Otherwise, default to the normal notification
-      if (
-        type === Notification.MEDIA_APPROVED ||
-        type === Notification.MEDIA_DECLINED
-      ) {
-        if (mainUser && allSubs.length > 0) {
           webpush.setVapidDetails(
             `mailto:${mainUser.email}`,
             settings.vapidPublic,
             settings.vapidPrivate
           );
 
-          await Promise.all(
-            allSubs.map(async (sub) => {
+          const adminDeliveries = await mapWithConcurrency(
+            allSubs,
+            WEB_PUSH_DELIVERY_CONCURRENCY,
+            async (sub) => {
               const locale = sub.user?.settings?.locale as AvailableLocale;
-              // Custom payload only for updating the app badge
               const notificationBadgePayload = Buffer.from(
                 JSON.stringify(
-                  this.getNotificationPayload(
-                    type,
-                    {
-                      subject: payload.subject,
-                      notifySystem: false,
-                      notifyAdmin: true,
-                      isAdmin: true,
-                      pendingRequestsCount: pendingRequests.length,
-                    },
-                    locale
-                  )
+                  type === Notification.MEDIA_APPROVED ||
+                    type === Notification.MEDIA_DECLINED
+                    ? this.buildPayload(
+                        type,
+                        {
+                          subject: payload.subject,
+                          notifySystem: false,
+                          notifyAdmin: true,
+                          isAdmin: true,
+                          pendingRequestsCount: pendingRequestCount,
+                        },
+                        locale
+                      )
+                    : this.buildPayload(
+                        type,
+                        type === Notification.MEDIA_PENDING
+                          ? {
+                              ...payload,
+                              pendingRequestsCount: pendingRequestCount,
+                            }
+                          : payload,
+                        locale
+                      )
                 ),
                 'utf-8'
               );
-              await webPushNotification(sub, notificationBadgePayload);
-            })
+              return webPushNotification(sub, notificationBadgePayload);
+            }
           );
-        }
-      } else {
-        pushSubs.push(
-          ...allSubs.map((sub) => ({
-            sub,
-            locale: sub.user?.settings?.locale as AvailableLocale,
-          }))
-        );
+          deliveryFailed ||= adminDeliveries.some((delivered) => !delivered);
+        });
       }
     }
 
@@ -382,21 +432,24 @@ class WebPushAgent
       );
 
       if (type === Notification.MEDIA_PENDING) {
-        payload = { ...payload, pendingRequestsCount: pendingRequests.length };
+        payload = { ...payload, pendingRequestsCount: pendingRequestCount };
       }
 
-      await Promise.all(
-        pushSubs.map(async ({ sub, locale }) => {
+      const pushDeliveries = await mapWithConcurrency(
+        pushSubs,
+        WEB_PUSH_DELIVERY_CONCURRENCY,
+        async ({ sub, locale }) => {
           const notificationPayload = Buffer.from(
-            JSON.stringify(this.getNotificationPayload(type, payload, locale)),
+            JSON.stringify(this.buildPayload(type, payload, locale)),
             'utf-8'
           );
-          await webPushNotification(sub, notificationPayload);
-        })
+          return webPushNotification(sub, notificationPayload);
+        }
       );
+      deliveryFailed ||= pushDeliveries.some((delivered) => !delivered);
     }
 
-    return true;
+    return !deliveryFailed;
   }
 }
 

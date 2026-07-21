@@ -4,16 +4,18 @@ import type {
 } from '@server/api/openlibrary';
 import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
-import type Media from '@server/entity/Media';
+import Media from '@server/entity/Media';
 import MediaIdentifier, {
   MediaIdentifierProvider,
 } from '@server/entity/MediaIdentifier';
+import type { User } from '@server/entity/User';
 import {
   normalizeOpenLibraryEditionId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
 import { normalizeValidIsbn } from '@server/lib/isbn';
-import { In } from 'typeorm';
+import { hydrateMediaSummaryRelations } from '@server/lib/mediaSummaryHydration';
+import { Brackets, In } from 'typeorm';
 
 type BookMediaLookupResult = {
   id: string;
@@ -74,7 +76,8 @@ const getEditionIsbns = (editions: OpenLibraryEdition[]): string[] => [
 
 const findBookMediaByIdentifiers = async (
   lookups: IdentifierLookup[],
-  userId?: number
+  user?: User,
+  options: { includeIssues?: boolean } = {}
 ): Promise<Map<string, Media>> => {
   const uniqueLookups = uniqIdentifierLookups(lookups);
 
@@ -89,41 +92,82 @@ const findBookMediaByIdentifiers = async (
     return acc;
   }, new Map<MediaIdentifierProvider, string[]>());
 
-  const identifiers = await getRepository(MediaIdentifier).find({
-    where: [...groupedLookups.entries()].map(([provider, values]) => ({
-      provider,
-      value: In(values),
-    })),
-    relations: {
-      media: {
-        requests: {
-          requestedBy: true,
-          modifiedBy: true,
+  // Resolve identifiers separately from relation hydration. Joining up to 200
+  // identifiers directly through requests, watchlists, issues, and comments
+  // multiplies all of those relation counts into one potentially enormous
+  // intermediate result set.
+  const identifiers = await getRepository(MediaIdentifier)
+    .createQueryBuilder('identifier')
+    .innerJoin('identifier.media', 'media')
+    .select('identifier.provider', 'provider')
+    .addSelect('identifier.value', 'value')
+    .addSelect('media.id', 'mediaId')
+    .where(
+      new Brackets((query) => {
+        [...groupedLookups.entries()].forEach(([provider, values], index) => {
+          query.orWhere(
+            `(identifier.provider = :provider${index} AND identifier.value IN (:...values${index}))`,
+            {
+              [`provider${index}`]: provider,
+              [`values${index}`]: values,
+            }
+          );
+        });
+      })
+    )
+    .getRawMany<{
+      provider: MediaIdentifierProvider;
+      value: string;
+      mediaId: number | string;
+    }>();
+
+  const mediaIds = [
+    ...new Set(
+      identifiers
+        .map(({ mediaId }) => Number(mediaId))
+        .filter((id) => Number.isSafeInteger(id) && id > 0)
+    ),
+  ];
+  const media = mediaIds.length
+    ? await getRepository(Media).find({
+        where: { id: In(mediaIds), mediaType: MediaType.BOOK },
+        relations: {
+          ...(options.includeIssues
+            ? {
+                issues: {
+                  createdBy: true,
+                  modifiedBy: true,
+                  comments: {
+                    user: true,
+                  },
+                },
+              }
+            : {}),
         },
-        issues: {
-          createdBy: true,
-          modifiedBy: true,
-          comments: {
-            user: true,
-          },
-        },
-        watchlists: true,
-      },
-    },
-  });
+        // Separate relation queries prevent issues and comments from forming a
+        // cartesian product for the same media row.
+        relationLoadStrategy: 'query',
+      })
+    : [];
+  await hydrateMediaSummaryRelations(media, user);
+  const mediaById = new Map(media.map((item) => [item.id, item]));
 
   const mediaByIdentifier = new Map<string, Media>();
 
   identifiers
-    .filter((identifier) => identifier.media.mediaType === MediaType.BOOK)
+    .map((identifier) => ({
+      identifier,
+      media: mediaById.get(Number(identifier.mediaId)),
+    }))
+    .filter(
+      (
+        entry
+      ): entry is { identifier: (typeof identifiers)[number]; media: Media } =>
+        !!entry.media
+    )
     .forEach((identifier) => {
-      identifier.media.watchlists =
-        identifier.media.watchlists?.filter(
-          (watchlist) => watchlist.requestedBy.id === userId
-        ) ?? [];
-
       mediaByIdentifier.set(
-        `${identifier.provider}:${identifier.value}`,
+        `${identifier.identifier.provider}:${identifier.identifier.value}`,
         identifier.media
       );
     });
@@ -131,9 +175,32 @@ const findBookMediaByIdentifiers = async (
   return mediaByIdentifier;
 };
 
+export const findBookMediaByOpenLibraryIds = async (
+  ids: string[],
+  user?: User
+): Promise<Map<string, Media>> => {
+  const normalizedIds = ids.map(normalizeOpenLibraryWorkId);
+  const mediaByIdentifier = await findBookMediaByIdentifiers(
+    normalizedIds.map((value) => ({
+      provider: MediaIdentifierProvider.OPENLIBRARY,
+      value,
+    })),
+    user
+  );
+
+  return new Map(
+    normalizedIds.flatMap((value) => {
+      const media = mediaByIdentifier.get(
+        `${MediaIdentifierProvider.OPENLIBRARY}:${value}`
+      );
+      return media ? [[value, media] as const] : [];
+    })
+  );
+};
+
 export const findBookMediaForSearchDocs = async (
   docs: OpenLibrarySearchDoc[],
-  userId?: number
+  user?: User
 ): Promise<Map<string, Media>> => {
   const lookups = docs.flatMap((doc) => {
     const workId = doc.key ? normalizeOpenLibraryWorkId(doc.key) : undefined;
@@ -149,7 +216,7 @@ export const findBookMediaForSearchDocs = async (
       ...isbnLookups,
     ];
   });
-  const mediaByIdentifier = await findBookMediaByIdentifiers(lookups, userId);
+  const mediaByIdentifier = await findBookMediaByIdentifiers(lookups, user);
   const mediaByWorkId = new Map<string, Media>();
 
   docs.forEach((doc) => {
@@ -176,7 +243,7 @@ export const findBookMediaForSearchDocs = async (
 
 export const findBookMediaForBookResults = async (
   books: BookMediaLookupResult[],
-  userId?: number
+  user?: User
 ): Promise<Map<string, Media>> => {
   const lookups = books.flatMap((book) => {
     const workId = normalizeOpenLibraryWorkId(book.id);
@@ -192,7 +259,7 @@ export const findBookMediaForBookResults = async (
       })),
     ];
   });
-  const mediaByIdentifier = await findBookMediaByIdentifiers(lookups, userId);
+  const mediaByIdentifier = await findBookMediaByIdentifiers(lookups, user);
   const mediaByWorkId = new Map<string, Media>();
 
   books.forEach((book) => {
@@ -221,7 +288,7 @@ export const findBookMediaForBookResults = async (
 export const findBookMediaForWork = async (
   workId: string,
   editions: OpenLibraryEdition[],
-  userId?: number
+  user?: User
 ): Promise<Media | undefined> => {
   const editionLookups = editions
     .map((edition) =>
@@ -242,7 +309,8 @@ export const findBookMediaForWork = async (
       ...editionLookups,
       ...isbnLookups,
     ],
-    userId
+    user,
+    { includeIssues: true }
   );
 
   return (

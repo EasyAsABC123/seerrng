@@ -1,6 +1,6 @@
 services:
   rreading-glasses-postgres:
-    image: postgres:16-alpine
+    image: ${RREADING_GLASSES_POSTGRES_IMAGE:-postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777}
     container_name: ${RREADING_GLASSES_POSTGRES_CONTAINER_NAME:-rreading-glasses-postgres}
     profiles:
       - softcover
@@ -15,7 +15,7 @@ services:
       - ${RREADING_GLASSES_POSTGRES_DIR:-/mnt/datapool_lvm_media/rreading-glasses-postgres/data}:/var/lib/postgresql/data
 
   rreading-glasses:
-    image: blampe/rreading-glasses:latest
+    image: ${RREADING_GLASSES_IMAGE:-blampe/rreading-glasses:latest@sha256:dd996a1db19ac4ef18df47f1671f608c0f097ed43c4776ebde94dee20c6b43c8}
     container_name: ${RREADING_GLASSES_CONTAINER_NAME:-rreading-glasses}
     profiles:
       - softcover
@@ -39,7 +39,7 @@ services:
       ]
 
   bookshelf-ebooks:
-    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover}
+    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2}
     container_name: ${BOOKSHELF_EBOOKS_CONTAINER_NAME:-bookshelf-ebooks}
     network_mode: host
     restart: unless-stopped
@@ -58,7 +58,7 @@ services:
       - ${PLEX_ROOT:-/mnt/datapool_lvm_media/plex}:/media/plex
 
   bookshelf-audiobooks:
-    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover}
+    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2}
     container_name: ${BOOKSHELF_AUDIOBOOKS_CONTAINER_NAME:-bookshelf-audiobooks}
     network_mode: host
     restart: unless-stopped

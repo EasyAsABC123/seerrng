@@ -4,9 +4,21 @@ import { afterEach, describe, it, mock } from 'node:test';
 import type Media from '@server/entity/Media';
 import { MediaIdentifierProvider } from '@server/entity/MediaIdentifier';
 import { Notification } from '@server/lib/notifications';
+import { requiresDirectSafeHttpConnection } from '@server/utils/security';
 import axios from 'axios';
-import { getNotificationMediaUrl, NOTIFICATION_HTTP_OPTIONS } from './agent';
-import WebhookAgent, { MAX_WEBHOOK_URL_LENGTH } from './webhook';
+import {
+  CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS,
+  getNotificationMediaUrl,
+  NOTIFICATION_DELIVERY_CONCURRENCY,
+  NOTIFICATION_HTTP_OPTIONS,
+  truncateNotificationText,
+  truncateNotificationUtf8,
+} from './agent';
+import WebhookAgent, {
+  decodeStoredWebhookPayloadTemplate,
+  MAX_WEBHOOK_URL_LENGTH,
+  parseWebhookPayloadTemplate,
+} from './webhook';
 
 afterEach(() => {
   mock.restoreAll();
@@ -18,6 +30,34 @@ describe('NOTIFICATION_HTTP_OPTIONS', () => {
     assert.equal(NOTIFICATION_HTTP_OPTIONS.timeout, 10_000);
     assert.equal(NOTIFICATION_HTTP_OPTIONS.maxBodyLength, 128 * 1024);
     assert.equal(NOTIFICATION_HTTP_OPTIONS.maxContentLength, 128 * 1024);
+    assert.equal(NOTIFICATION_DELIVERY_CONCURRENCY, 10);
+    assert.equal('proxy' in NOTIFICATION_HTTP_OPTIONS, false);
+    assert.equal(
+      requiresDirectSafeHttpConnection(
+        CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS.lookup
+      ),
+      true
+    );
+    assert.equal(CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS.proxy, false);
+  });
+});
+
+describe('truncateNotificationText', () => {
+  it('bounds text without splitting Unicode surrogate pairs', () => {
+    assert.equal(truncateNotificationText('abcdef', 5), 'abcd…');
+    assert.equal(truncateNotificationText('abc😀def', 6), 'abc😀…');
+    assert.equal(truncateNotificationText('abc', 0), '');
+  });
+});
+
+describe('truncateNotificationUtf8', () => {
+  it('bounds encoded bytes without splitting code points', () => {
+    assert.equal(truncateNotificationUtf8('ab😀cd', 7), 'ab…');
+    assert.equal(
+      Buffer.byteLength(truncateNotificationUtf8('😀'.repeat(5), 9)),
+      7
+    );
+    assert.equal(truncateNotificationUtf8('abc', 2), '');
   });
 });
 
@@ -51,6 +91,37 @@ describe('getNotificationMediaUrl', () => {
 });
 
 describe('WebhookAgent', () => {
+  it('accepts only bounded object or array payload templates', () => {
+    assert.deepStrictEqual(parseWebhookPayloadTemplate('{"ok":true}'), {
+      ok: true,
+    });
+    assert.deepStrictEqual(parseWebhookPayloadTemplate('[{"ok":true}]'), [
+      { ok: true },
+    ]);
+    assert.throws(
+      () => parseWebhookPayloadTemplate('null'),
+      /root must be an object or array/
+    );
+    assert.throws(
+      () => parseWebhookPayloadTemplate('"string"'),
+      /root must be an object or array/
+    );
+  });
+
+  it('validates decoded persisted payloads before rendering', () => {
+    const raw = '{"subject":"{{subject}}"}';
+    const encoded = Buffer.from(JSON.stringify(raw)).toString('base64');
+
+    assert.deepStrictEqual(decodeStoredWebhookPayloadTemplate(encoded), {
+      raw,
+      template: { subject: '{{subject}}' },
+    });
+    assert.throws(
+      () => decodeStoredWebhookPayloadTemplate('not-base64'),
+      /Stored webhook payload is invalid/
+    );
+  });
+
   it('rejects oversized rendered webhook URLs before sending', async () => {
     process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS = 'true';
     const postMock = mock.method(axios, 'post', async () => ({ data: {} }));

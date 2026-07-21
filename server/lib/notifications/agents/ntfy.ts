@@ -11,9 +11,19 @@ import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
 import {
   BaseAgent,
-  NOTIFICATION_HTTP_OPTIONS,
+  CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS,
   getNotificationActionUrl,
+  truncateNotificationUtf8,
 } from './agent';
+
+export const NTFY_MESSAGE_BYTE_LIMIT = 4_096;
+export const NTFY_TITLE_BYTE_LIMIT = 256;
+
+export const escapeNtfyMarkdownText = (text: string): string =>
+  text.replace(/([\\`*_{}[\]()#+\-.!|>~<])/g, '\\$1');
+
+const ntfyMarkdownToPlainText = (text: string): string =>
+  text.replace(/\\([\\`*_{}[\]()#+\-.!|>~<])/g, '$1').replace(/\*\*/g, '');
 
 class NtfyAgent
   extends BaseAgent<NotificationAgentNtfy>
@@ -29,11 +39,7 @@ class NtfyAgent
     return settings.notifications.agents.ntfy;
   }
 
-  private escapeMarkdown(text: string): string {
-    return text.replace(/([\\`*_{}[\]()#+\-.!|>~<])/g, '\\$1');
-  }
-
-  private buildPayload(type: Notification, payload: NotificationPayload) {
+  public buildPayload(type: Notification, payload: NotificationPayload) {
     const settings = this.getSettings();
     const intl = getIntl(settings.options.locale as AvailableLocale);
     const { applicationUrl } = getSettings().main;
@@ -42,13 +48,19 @@ class NtfyAgent
     const topic = settings.options.topic;
     const priority = settings.options.priority ?? 3;
 
-    const title = payload.event
-      ? `${payload.event} - ${payload.subject}`
-      : payload.subject;
-    let message = payload.message ?? '';
+    const title = truncateNotificationUtf8(
+      payload.event ? `${payload.event} - ${payload.subject}` : payload.subject,
+      NTFY_TITLE_BYTE_LIMIT
+    );
+    let message =
+      payload.message && !payload.comment
+        ? escapeNtfyMarkdownText(payload.message)
+        : '';
 
     if (payload.request) {
-      message += `${message ? '\n\n' : ''}**${intl.formatMessage(globalMessages.requestedBy)}:** ${this.escapeMarkdown(payload.request.requestedBy.displayName)}`;
+      message += `${message ? '\n\n' : ''}**${escapeNtfyMarkdownText(
+        intl.formatMessage(globalMessages.requestedBy)
+      )}:** ${escapeNtfyMarkdownText(payload.request.requestedBy.displayName)}`;
 
       let status = '';
       switch (type) {
@@ -74,13 +86,13 @@ class NtfyAgent
         message += `\n**${intl.formatMessage(globalMessages.requestStatus)}:** ${status}`;
       }
     } else if (payload.comment) {
-      message += `\n**${this.escapeMarkdown(
+      message += `\n**${escapeNtfyMarkdownText(
         intl.formatMessage(globalMessages.commentFrom, {
           userName: payload.comment.user.displayName,
         })
-      )}:**\n${payload.comment.message}`;
+      )}:**\n${escapeNtfyMarkdownText(payload.comment.message)}`;
     } else if (payload.issue) {
-      message += `\n\n**${intl.formatMessage(globalMessages.reportedBy)}:** ${this.escapeMarkdown(payload.issue.createdBy.displayName)}`;
+      message += `\n\n**${intl.formatMessage(globalMessages.reportedBy)}:** ${escapeNtfyMarkdownText(payload.issue.createdBy.displayName)}`;
       message += `\n**${intl.formatMessage(globalMessages.issueType)}:** ${IssueTypeName[payload.issue.issueType]}`;
       message += `\n**${intl.formatMessage(globalMessages.issueStatus)}:** ${
         payload.issue.status === IssueStatus.OPEN
@@ -90,7 +102,18 @@ class NtfyAgent
     }
 
     for (const extra of payload.extra ?? []) {
-      message += `\n\n**${extra.name}**\n${extra.value}`;
+      message += `\n\n**${escapeNtfyMarkdownText(
+        extra.name
+      )}**\n${escapeNtfyMarkdownText(extra.value)}`;
+    }
+
+    let markdown = true;
+    if (Buffer.byteLength(message, 'utf8') > NTFY_MESSAGE_BYTE_LIMIT) {
+      message = truncateNotificationUtf8(
+        ntfyMarkdownToPlainText(message),
+        NTFY_MESSAGE_BYTE_LIMIT
+      );
+      markdown = false;
     }
 
     const attach = embedPoster ? payload.image : undefined;
@@ -102,7 +125,7 @@ class NtfyAgent
       priority,
       title,
       message,
-      markdown: true,
+      markdown,
     };
     if (attach) {
       ntfyPayload.attach = attach;
@@ -178,12 +201,12 @@ class NtfyAgent
         this.buildPayload(type, payload),
         authHeader
           ? {
-              ...NOTIFICATION_HTTP_OPTIONS,
+              ...CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS,
               headers: {
                 Authorization: authHeader,
               },
             }
-          : NOTIFICATION_HTTP_OPTIONS
+          : CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS
       );
 
       return true;

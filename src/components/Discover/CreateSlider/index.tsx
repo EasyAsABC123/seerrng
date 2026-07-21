@@ -6,6 +6,7 @@ import { WatchProviderSelector } from '@app/components/Selector';
 import { encodeURIExtraParams } from '@app/hooks/useDiscover';
 import useToasts from '@app/hooks/useToasts';
 import defineMessages from '@app/utils/defineMessages';
+import { parseWatchProviderIds } from '@app/utils/discoverSliderData';
 import type {
   TmdbCompanySearchResponse,
   TmdbGenre,
@@ -13,6 +14,7 @@ import type {
 } from '@server/api/themoviedb/interfaces';
 import {
   DiscoverSliderType,
+  MAX_DISCOVER_KEYWORD_IDS,
   MAX_DISCOVER_SLIDER_DATA_LENGTH,
   MAX_DISCOVER_SLIDER_TITLE_LENGTH,
 } from '@server/constants/discover';
@@ -99,89 +101,91 @@ const CreateSlider = ({ onCreate, slider }: CreateSliderProps) => {
   >(null);
 
   useEffect(() => {
-    if (slider) {
-      const loadDefaultKeywords = async (): Promise<void> => {
-        if (!slider.data) {
-          return;
+    const controller = new AbortController();
+    let active = true;
+    const loadDefaultData = async (): Promise<void> => {
+      if (!slider?.data) {
+        if (active) {
+          setDefaultDataValue(null);
         }
-
-        const keywords = await Promise.all(
-          slider.data.split(',').map(async (keywordId) => {
-            const keyword = await axios.get<Keyword | null>(
-              `/api/v1/keyword/${keywordId}`
-            );
-            return keyword.data;
-          })
-        );
-
-        const validKeywords: Keyword[] = keywords.filter(
-          (keyword): keyword is Keyword => keyword !== null
-        );
-
-        setDefaultDataValue(
-          validKeywords.map((keyword) => ({
-            label: keyword.name,
-            value: keyword.id,
-          }))
-        );
-      };
-
-      const loadDefaultGenre = async (): Promise<void> => {
-        if (!slider.data) {
-          return;
-        }
-
-        const response = await axios.get<TmdbGenre[]>(
-          `/api/v1/genres/${
-            slider.type === DiscoverSliderType.TMDB_MOVIE_GENRE ? 'movie' : 'tv'
-          }`
-        );
-
-        const genre = response.data.find(
-          (genre) => genre.id === Number(slider.data)
-        );
-
-        setDefaultDataValue([
-          {
-            label: genre?.name ?? '',
-            value: genre?.id ?? 0,
-          },
-        ]);
-      };
-
-      const loadDefaultCompany = async (): Promise<void> => {
-        if (!slider.data) {
-          return;
-        }
-
-        const response = await axios.get<ProductionCompany>(
-          `/api/v1/studio/${slider.data}`
-        );
-
-        const studio = response.data;
-
-        setDefaultDataValue([
-          {
-            label: studio.name ?? '',
-            value: studio.id ?? 0,
-          },
-        ]);
-      };
-
-      switch (slider.type) {
-        case DiscoverSliderType.TMDB_MOVIE_KEYWORD:
-        case DiscoverSliderType.TMDB_TV_KEYWORD:
-          loadDefaultKeywords();
-          break;
-        case DiscoverSliderType.TMDB_MOVIE_GENRE:
-        case DiscoverSliderType.TMDB_TV_GENRE:
-          loadDefaultGenre();
-          break;
-        case DiscoverSliderType.TMDB_STUDIO:
-          loadDefaultCompany();
-          break;
+        return;
       }
-    }
+
+      try {
+        let nextValue: { label: string; value: number }[] | null = null;
+        switch (slider.type) {
+          case DiscoverSliderType.TMDB_MOVIE_KEYWORD:
+          case DiscoverSliderType.TMDB_TV_KEYWORD: {
+            const keywords = await Promise.all(
+              slider.data
+                .split(',')
+                .slice(0, MAX_DISCOVER_KEYWORD_IDS)
+                .map(async (keywordId) => {
+                  const keyword = await axios.get<Keyword | null>(
+                    `/api/v1/keyword/${keywordId}`,
+                    { signal: controller.signal }
+                  );
+                  return keyword.data;
+                })
+            );
+            nextValue = keywords
+              .filter((keyword): keyword is Keyword => keyword !== null)
+              .map((keyword) => ({
+                label: keyword.name,
+                value: keyword.id,
+              }));
+            break;
+          }
+          case DiscoverSliderType.TMDB_MOVIE_GENRE:
+          case DiscoverSliderType.TMDB_TV_GENRE: {
+            const response = await axios.get<TmdbGenre[]>(
+              `/api/v1/genres/${
+                slider.type === DiscoverSliderType.TMDB_MOVIE_GENRE
+                  ? 'movie'
+                  : 'tv'
+              }`,
+              { signal: controller.signal }
+            );
+            const genre = response.data.find(
+              (item) => item.id === Number(slider.data)
+            );
+            nextValue = genre
+              ? [{ label: genre.name ?? '', value: genre.id }]
+              : null;
+            break;
+          }
+          case DiscoverSliderType.TMDB_STUDIO: {
+            const response = await axios.get<ProductionCompany>(
+              `/api/v1/studio/${slider.data}`,
+              { signal: controller.signal }
+            );
+            nextValue = response.data?.id
+              ? [
+                  {
+                    label: response.data.name ?? '',
+                    value: response.data.id,
+                  },
+                ]
+              : null;
+            break;
+          }
+        }
+
+        if (active) {
+          setDefaultDataValue(nextValue);
+        }
+      } catch {
+        if (active) {
+          setDefaultDataValue(null);
+        }
+      }
+    };
+
+    void loadDefaultData();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [slider]);
 
   const CreateSliderSchema = Yup.object().shape({
@@ -486,6 +490,9 @@ const CreateSlider = ({ onCreate, slider }: CreateSliderProps) => {
                 }
                 defaultValue={defaultDataValue}
                 loadOptions={loadKeywordOptions}
+                isOptionDisabled={(_option, selectedOptions) =>
+                  selectedOptions.length >= MAX_DISCOVER_KEYWORD_IDS
+                }
                 placeholder={intl.formatMessage(messages.searchKeywords)}
                 onChange={(value) => {
                   const keywords = value.map((item) => item.value).join(',');
@@ -551,12 +558,9 @@ const CreateSlider = ({ onCreate, slider }: CreateSliderProps) => {
               <WatchProviderSelector
                 type={'movie'}
                 region={slider?.data?.split(',')[0]}
-                activeProviders={
-                  slider?.data
-                    ?.split(',')[1]
-                    .split('|')
-                    .map((v) => Number(v)) ?? []
-                }
+                activeProviders={parseWatchProviderIds(
+                  slider?.data?.split(',')[1]
+                )}
                 onChange={(region, providers) => {
                   setFieldValue('data', `${region},${providers.join('|')}`);
                 }}
@@ -568,12 +572,9 @@ const CreateSlider = ({ onCreate, slider }: CreateSliderProps) => {
               <WatchProviderSelector
                 type={'tv'}
                 region={slider?.data?.split(',')[0]}
-                activeProviders={
-                  slider?.data
-                    ?.split(',')[1]
-                    .split('|')
-                    .map((v) => Number(v)) ?? []
-                }
+                activeProviders={parseWatchProviderIds(
+                  slider?.data?.split(',')[1]
+                )}
                 onChange={(region, providers) => {
                   setFieldValue('data', `${region},${providers.join('|')}`);
                 }}

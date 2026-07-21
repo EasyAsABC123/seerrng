@@ -41,6 +41,14 @@ export const MAX_PERMISSION_VALUE = Object.values(Permission)
   .filter((value): value is number => typeof value === 'number')
   .reduce((sum, value) => sum + value, 0);
 
+export const isValidPermissionValue = (value: number): boolean => {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    return false;
+  }
+
+  return (BigInt(value) & ~BigInt(MAX_PERMISSION_VALUE)) === 0n;
+};
+
 export interface PermissionCheckOptions {
   type: 'and' | 'or';
 }
@@ -64,7 +72,11 @@ export const hasPermission = (
     return true;
   }
 
-  if (isNaN(value)) {
+  // Permission values can come from persisted data as well as validated API
+  // writes. Fail closed on corrupt or unsupported masks instead of allowing a
+  // negative value to behave like an all-bits mask or letting BigInt throw on
+  // fractional/infinite values.
+  if (!isValidPermissionValue(value)) {
     return false;
   }
 

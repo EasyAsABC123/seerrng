@@ -2,6 +2,7 @@ import Modal from '@app/components/Common/Modal';
 import Tooltip from '@app/components/Common/Tooltip';
 import CopyButton from '@app/components/Settings/CopyButton';
 import { encodeURIExtraParams } from '@app/hooks/useDiscover';
+import { mapWithConcurrency } from '@app/utils/concurrency';
 import defineMessages from '@app/utils/defineMessages';
 import { Transition } from '@headlessui/react';
 import { ArrowDownIcon } from '@heroicons/react/24/solid';
@@ -44,6 +45,7 @@ const messages = defineMessages('components.Settings', {
     'Configuration must be a comma delimited list of TMDB keyword ids, and must not start or end with a comma.',
   invalidKeyword: '{keywordId} is not a TMDB keyword.',
 });
+const KEYWORD_LOOKUP_CONCURRENCY = 8;
 
 type SingleVal = {
   label: string;
@@ -118,36 +120,53 @@ const ControlledKeywordSelector = ({
   value,
 }: BaseSelectorMultiProps) => {
   const intl = useIntl();
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const loadDefaultKeywords = async (): Promise<void> => {
       if (!defaultValue) {
         return;
       }
 
-      const keywords = await Promise.all(
-        defaultValue.split(',').map(async (keywordId) => {
-          const { data } = await axios.get<Keyword | null>(
-            `/api/v1/keyword/${keywordId}`
+      try {
+        const keywords = await mapWithConcurrency(
+          defaultValue.split(','),
+          KEYWORD_LOOKUP_CONCURRENCY,
+          async (keywordId) => {
+            const { data } = await axios.get<Keyword | null>(
+              `/api/v1/keyword/${keywordId}`,
+              { signal: controller.signal }
+            );
+            return data;
+          }
+        );
+
+        const validKeywords: TmdbKeyword[] = keywords.filter(
+          (keyword): keyword is TmdbKeyword => keyword !== null
+        );
+
+        if (active) {
+          onChangeRef.current(
+            validKeywords.map((keyword) => ({
+              label: keyword.name,
+              value: keyword.id,
+            }))
           );
-          return data;
-        })
-      );
-
-      const validKeywords: TmdbKeyword[] = keywords.filter(
-        (keyword): keyword is TmdbKeyword => keyword !== null
-      );
-
-      onChange(
-        validKeywords.map((keyword) => ({
-          label: keyword.name,
-          value: keyword.id,
-        }))
-      );
+        }
+      } catch {
+        // Default labels are optional; failed or superseded lookups are ignored.
+      }
     };
 
-    loadDefaultKeywords();
-  }, [defaultValue, onChange]);
+    void loadDefaultKeywords();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [defaultValue]);
 
   const loadKeywordOptions = async (inputValue: string) => {
     const { data } = await axios.get<TmdbKeywordSearchResponse>(
@@ -266,20 +285,25 @@ const BlocklistedTagImportForm = forwardRef<
       return false;
     }
 
-    const keywords = await Promise.allSettled(
-      formValue.split(',').map(async (keywordId) => {
+    const keywords = await mapWithConcurrency(
+      formValue.split(','),
+      KEYWORD_LOOKUP_CONCURRENCY,
+      async (keywordId): Promise<PromiseSettledResult<SingleVal>> => {
         try {
           const { data } = await axios.get<Keyword>(
             `/api/v1/keyword/${keywordId}`
           );
           return {
-            label: data.name,
-            value: data.id,
+            status: 'fulfilled',
+            value: { label: data.name, value: data.id },
           };
         } catch {
-          throw intl.formatMessage(messages.invalidKeyword, { keywordId });
+          return {
+            status: 'rejected',
+            reason: intl.formatMessage(messages.invalidKeyword, { keywordId }),
+          };
         }
-      })
+      }
     );
 
     const failures = keywords.filter(

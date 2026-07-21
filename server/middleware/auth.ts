@@ -5,25 +5,53 @@ import type {
   PermissionCheckOptions,
 } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
+import {
+  isUserSessionCredentialVersionCurrent,
+  runWithUserApiKeyAuthorityContext,
+  runWithUserCredentialVersionContext,
+} from '@server/lib/userSecurityMutation';
+import logger from '@server/logger';
 import { safeStringEqual } from '@server/utils/security';
 
-export const checkUser: Middleware = async (req, _res, next) => {
+export const checkUser: Middleware = async (req, res, next) => {
   const settings = getSettings();
   let user: User | undefined | null;
 
   const apiKey = req.header('X-API-Key');
-  if (safeStringEqual(apiKey, settings.main.apiKey)) {
-    const userRepository = getRepository(User);
+  if (apiKey !== undefined) {
+    if (safeStringEqual(apiKey, settings.main.apiKey)) {
+      const userRepository = getRepository(User);
 
-    // API key access is a service-level credential. Keep it bound to the
-    // owner account instead of allowing callers to impersonate arbitrary users.
-    user = await userRepository.findOne({ where: { id: 1 } });
+      // API key access is a service-level credential. Keep it bound to the
+      // owner account instead of allowing callers to impersonate arbitrary users.
+      user = await userRepository.findOne({ where: { id: 1 } });
+    }
   } else if (req.session?.userId) {
     const userRepository = getRepository(User);
 
     user = await userRepository.findOne({
       where: { id: req.session.userId },
     });
+
+    if (
+      user &&
+      !isUserSessionCredentialVersionCurrent(
+        user,
+        req.session.credentialVersion
+      )
+    ) {
+      const staleUserId = user.id;
+      user = null;
+      req.session.destroy((error) => {
+        if (error) {
+          logger.error('Failed to destroy session with stale credentials', {
+            label: 'Auth',
+            error: error.message,
+            userId: staleUserId,
+          });
+        }
+      });
+    }
   }
 
   if (user) {
@@ -33,6 +61,36 @@ export const checkUser: Middleware = async (req, _res, next) => {
   req.locale = user?.settings?.locale
     ? user.settings.locale
     : settings.main.locale;
+
+  if (user && apiKey !== undefined) {
+    let credentialContextActive = true;
+    const deactivateCredentialContext = () => {
+      credentialContextActive = false;
+    };
+    res.once('finish', deactivateCredentialContext);
+    res.once('close', deactivateCredentialContext);
+    return runWithUserApiKeyAuthorityContext(
+      user.id,
+      () => safeStringEqual(apiKey, getSettings().main.apiKey),
+      next,
+      () => credentialContextActive
+    );
+  }
+
+  if (user && req.session?.userId === user.id) {
+    let credentialContextActive = true;
+    const deactivateCredentialContext = () => {
+      credentialContextActive = false;
+    };
+    res.once('finish', deactivateCredentialContext);
+    res.once('close', deactivateCredentialContext);
+    return runWithUserCredentialVersionContext(
+      user.id,
+      req.session.credentialVersion ?? 0,
+      next,
+      () => credentialContextActive
+    );
+  }
 
   next();
 };

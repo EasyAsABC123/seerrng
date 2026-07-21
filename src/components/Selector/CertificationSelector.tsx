@@ -24,6 +24,22 @@ interface CertificationOption {
   certification?: string;
 }
 
+export const getCertificationOptions = (
+  certifications: readonly Certification[]
+): CertificationOption[] =>
+  [...certifications]
+    .sort((a, b) => {
+      if (a.order !== undefined && b.order !== undefined) {
+        return a.order - b.order;
+      }
+      return a.certification.localeCompare(b.certification);
+    })
+    .map((cert) => ({
+      value: cert.certification,
+      label: `${cert.certification}${cert.meaning ? ` - ${cert.meaning}` : ''}`,
+      certification: cert.certification,
+    }));
+
 interface CertificationSelectorProps {
   type: string;
   certificationCountry?: string;
@@ -97,46 +113,32 @@ const CertificationSelector: React.FC<CertificationSelectorProps> = ({
         value: certificationCountry,
         label: getCountryName(certificationCountry),
       });
+    } else if (!certificationCountry) {
+      setSelectedCountry(null);
     }
   }, [certificationCountry, regionsData, getCountryName]);
 
   useEffect(() => {
-    if (!certificationData || !certificationCountry) return;
+    if (!certificationData || !certificationCountry) {
+      setSelectedCertification(null);
+      setSelectedCertificationGte(null);
+      setSelectedCertificationLte(null);
+      return;
+    }
 
-    const certifications = (
+    const certifications = getCertificationOptions(
       certificationData.certifications[certificationCountry] || []
-    )
-      .sort((a, b) => {
-        if (a.order !== undefined && b.order !== undefined) {
-          return a.order - b.order;
-        }
-        return a.certification.localeCompare(b.certification);
-      })
-      .map((cert) => ({
-        value: cert.certification,
-        label: `${cert.certification}${
-          cert.meaning ? ` - ${cert.meaning}` : ''
-        }`,
-        certification: cert.certification,
-      }));
+    );
 
-    if (certification) {
-      setSelectedCertification(
-        certifications.find((c) => c.value === certification) || null
-      );
-    }
-
-    if (certificationGte) {
-      setSelectedCertificationGte(
-        certifications.find((c) => c.value === certificationGte) || null
-      );
-    }
-
-    if (certificationLte) {
-      setSelectedCertificationLte(
-        certifications.find((c) => c.value === certificationLte) || null
-      );
-    }
+    setSelectedCertification(
+      certifications.find((c) => c.value === certification) || null
+    );
+    setSelectedCertificationGte(
+      certifications.find((c) => c.value === certificationGte) || null
+    );
+    setSelectedCertificationLte(
+      certifications.find((c) => c.value === certificationLte) || null
+    );
   }, [
     certificationData,
     certificationCountry,
@@ -180,23 +182,11 @@ const CertificationSelector: React.FC<CertificationSelectorProps> = ({
   const loadCertificationOptions = async (inputValue: string) => {
     if (!certificationData || !certificationCountry) return [];
 
-    return (certificationData.certifications[certificationCountry] || [])
-      .sort((a, b) => {
-        if (a.order !== undefined && b.order !== undefined) {
-          return a.order - b.order;
-        }
-        return a.certification.localeCompare(b.certification);
-      })
-      .map((cert) => ({
-        value: cert.certification,
-        label: `${cert.certification}${
-          cert.meaning ? ` - ${cert.meaning}` : ''
-        }`,
-        certification: cert.certification,
-      }))
-      .filter((cert) =>
-        cert.label.toLowerCase().includes(inputValue.toLowerCase())
-      );
+    return getCertificationOptions(
+      certificationData.certifications[certificationCountry] || []
+    ).filter((cert) =>
+      cert.label.toLowerCase().includes(inputValue.toLowerCase())
+    );
   };
 
   const handleCountryChange = (option: CertificationOption | null) => {

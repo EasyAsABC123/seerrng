@@ -2,7 +2,7 @@ import ListenBrainzAPI from '@server/api/listenbrainz';
 import OpenLibraryAPI from '@server/api/openlibrary';
 import TheMovieDb from '@server/api/themoviedb';
 import { MediaType } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
+import dataSource, { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import MediaIdentifier, {
   MediaIdentifierProvider,
@@ -14,14 +14,21 @@ import {
   NoSeasonsAvailableError,
   QuotaRestrictedError,
   RequestPermissionError,
+  runWithRequestAdmission,
 } from '@server/entity/MediaRequest';
 import { User } from '@server/entity/User';
 import {
+  isValidMusicBrainzResourceId,
+  isValidOpenLibraryResourceId,
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
+import {
+  isUserCredentialVersionCurrent,
+  runUserSecurityMutation,
+} from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { DbAwareColumn, resolveDbType } from '@server/utils/DbColumnHelper';
 import {
@@ -36,6 +43,7 @@ import {
 import type { ZodNumber, ZodOptional, ZodString } from 'zod';
 
 export class DuplicateWatchlistRequestError extends Error {}
+export class WatchlistActorUnavailableError extends Error {}
 export class NotFoundError extends Error {
   constructor(message = 'Not found') {
     super(message);
@@ -65,11 +73,11 @@ export class Watchlist {
   public tmdbId?: number;
 
   @Column({ nullable: true, type: 'varchar' })
-  @Index()
+  @Index('IDX_watchlist_mbId')
   public mbId?: string;
 
   @Column({ nullable: true, type: 'varchar' })
-  @Index()
+  @Index('IDX_watchlist_external_id')
   public externalId?: string;
 
   @ManyToOne(() => User, (user) => user.watchlists, {
@@ -99,23 +107,27 @@ export class Watchlist {
     Object.assign(this, init);
   }
 
-  public static async createWatchlist({
-    watchlistRequest,
-    user,
-  }: {
-    watchlistRequest: {
-      mediaType: MediaType;
-      ratingKey?: ZodOptional<ZodString>['_output'];
-      title?: ZodOptional<ZodString>['_output'];
-      tmdbId?: ZodNumber['_output'];
-      mbId?: ZodOptional<ZodString>['_output'];
-      externalId?: ZodOptional<ZodString>['_output'];
-    };
-    user: User;
-  }): Promise<Watchlist> {
-    const watchlistRepository = getRepository(this);
-    const mediaRepository = getRepository(Media);
-    const tmdb = new TheMovieDb();
+  public static async createWatchlist(
+    {
+      watchlistRequest,
+      user,
+    }: {
+      watchlistRequest: {
+        mediaType: MediaType;
+        ratingKey?: ZodOptional<ZodString>['_output'];
+        title?: ZodOptional<ZodString>['_output'];
+        tmdbId?: ZodNumber['_output'];
+        mbId?: ZodOptional<ZodString>['_output'];
+        externalId?: ZodOptional<ZodString>['_output'];
+      };
+      user: User;
+    },
+    options: {
+      admissionGranted?: boolean;
+      expectedCredentialVersion?: number;
+      securityGranted?: boolean;
+    } = {}
+  ): Promise<Watchlist> {
     watchlistRequest = {
       ...watchlistRequest,
       mbId: watchlistRequest.mbId
@@ -125,6 +137,93 @@ export class Watchlist {
         ? normalizeOpenLibraryWorkId(watchlistRequest.externalId)
         : undefined,
     };
+
+    if (
+      watchlistRequest.mediaType === MediaType.MUSIC &&
+      (!watchlistRequest.mbId ||
+        !isValidMusicBrainzResourceId(watchlistRequest.mbId))
+    ) {
+      throw new Error('MusicBrainz ID is invalid for music watchlists.');
+    }
+
+    if (
+      watchlistRequest.mediaType === MediaType.BOOK &&
+      (!watchlistRequest.externalId ||
+        !isValidOpenLibraryResourceId(watchlistRequest.externalId))
+    ) {
+      throw new Error('Open Library ID is invalid for book watchlists.');
+    }
+
+    if (!options.securityGranted) {
+      let activeUser!: User;
+      const watchlist = await runUserSecurityMutation(user.id, async () => {
+        const currentUser = await getRepository(User).findOneBy({
+          id: user.id,
+        });
+        if (
+          !currentUser ||
+          !isUserCredentialVersionCurrent(
+            currentUser,
+            options.expectedCredentialVersion
+          )
+        ) {
+          throw new WatchlistActorUnavailableError(
+            'Watchlist actor changed before admission.'
+          );
+        }
+        activeUser = currentUser;
+        return this.createWatchlist(
+          { watchlistRequest, user: currentUser },
+          { ...options, securityGranted: true }
+        );
+      });
+
+      // Auto-requesting acquires the user-security and canonical media locks
+      // itself. Run it after the watchlist critical section to preserve the
+      // global user-security -> media-admission lock order.
+      if (watchlistRequest.mediaType === MediaType.MUSIC) {
+        await this.requestMusicFromWatchlist(
+          watchlistRequest.mbId!,
+          activeUser,
+          options.expectedCredentialVersion
+        );
+      } else if (watchlistRequest.mediaType === MediaType.BOOK) {
+        await this.requestBookFromWatchlist(
+          watchlistRequest.externalId!,
+          activeUser,
+          options.expectedCredentialVersion
+        );
+      }
+
+      return watchlist;
+    }
+
+    if (!options.admissionGranted) {
+      const identity =
+        watchlistRequest.mediaType === MediaType.MUSIC
+          ? watchlistRequest.mbId
+          : watchlistRequest.mediaType === MediaType.BOOK
+            ? watchlistRequest.externalId
+            : watchlistRequest.tmdbId;
+      const identityKey =
+        watchlistRequest.mediaType === MediaType.MUSIC
+          ? `request-canonical:music:${identity}`
+          : watchlistRequest.mediaType === MediaType.BOOK
+            ? `request-canonical:book:${MediaIdentifierProvider.OPENLIBRARY}:${identity}`
+            : `request-media:${watchlistRequest.mediaType}:${identity}`;
+
+      const watchlist = await runWithRequestAdmission([identityKey], () =>
+        this.createWatchlist(
+          { watchlistRequest, user },
+          { ...options, admissionGranted: true }
+        )
+      );
+
+      return watchlist;
+    }
+
+    const watchlistRepository = getRepository(this);
+    const tmdb = new TheMovieDb();
 
     if (watchlistRequest.mediaType === MediaType.MUSIC) {
       if (!watchlistRequest.mbId) {
@@ -155,32 +254,35 @@ export class Watchlist {
         watchlistRequest.title ??
         album.release_group_metadata.release_group.name;
 
-      let media = await mediaRepository.findOne({
-        where: {
-          mbId: watchlistRequest.mbId,
-          mediaType: MediaType.MUSIC,
-        },
-      });
-
-      if (!media) {
-        media = new Media({
-          tmdbId: 0,
-          mbId: watchlistRequest.mbId,
-          mediaType: MediaType.MUSIC,
+      return dataSource.transaction(async (manager) => {
+        const transactionalMediaRepository = manager.getRepository(Media);
+        const transactionalWatchlistRepository = manager.getRepository(this);
+        let media = await transactionalMediaRepository.findOne({
+          where: {
+            mbId: watchlistRequest.mbId,
+            mediaType: MediaType.MUSIC,
+          },
         });
-      }
 
-      const watchlist = new this({
-        ...watchlistRequest,
-        title,
-        requestedBy: user,
-        media,
+        if (!media) {
+          media = new Media({
+            tmdbId: 0,
+            mbId: watchlistRequest.mbId,
+            mediaType: MediaType.MUSIC,
+          });
+        }
+
+        const watchlist = new this({
+          ...watchlistRequest,
+          title,
+          requestedBy: user,
+          media,
+        });
+
+        await transactionalMediaRepository.save(media);
+        await transactionalWatchlistRepository.save(watchlist);
+        return watchlist;
       });
-
-      await mediaRepository.save(media);
-      await watchlistRepository.save(watchlist);
-      await this.requestMusicFromWatchlist(watchlistRequest.mbId, user);
-      return watchlist;
     }
 
     if (watchlistRequest.mediaType === MediaType.BOOK) {
@@ -209,56 +311,54 @@ export class Watchlist {
       const openLibrary = new OpenLibraryAPI();
       const work = await openLibrary.getWork(watchlistRequest.externalId);
       const title = watchlistRequest.title ?? work.title;
-      const identifierRepository = getRepository(MediaIdentifier);
-      const identifier = await identifierRepository.findOne({
-        where: {
-          provider: MediaIdentifierProvider.OPENLIBRARY,
-          value: watchlistRequest.externalId,
-        },
-        relations: { media: true },
-      });
-      let media =
-        identifier?.media.mediaType === MediaType.BOOK
-          ? identifier.media
-          : undefined;
-
-      if (!media) {
-        media = await mediaRepository.save(
-          new Media({
-            tmdbId: 0,
-            mediaType: MediaType.BOOK,
-          })
-        );
-        await identifierRepository.save(
-          new MediaIdentifier({
-            media,
+      return dataSource.transaction(async (manager) => {
+        const transactionalMediaRepository = manager.getRepository(Media);
+        const identifierRepository = manager.getRepository(MediaIdentifier);
+        const transactionalWatchlistRepository = manager.getRepository(this);
+        const identifier = await identifierRepository.findOne({
+          where: {
             provider: MediaIdentifierProvider.OPENLIBRARY,
             value: watchlistRequest.externalId,
-            canonical: true,
-          })
-        );
-      }
+          },
+          relations: { media: true },
+        });
+        let media =
+          identifier?.media.mediaType === MediaType.BOOK
+            ? identifier.media
+            : undefined;
 
-      const watchlist = new this({
-        ...watchlistRequest,
-        title,
-        requestedBy: user,
-        media,
+        if (!media) {
+          media = await transactionalMediaRepository.save(
+            new Media({
+              tmdbId: 0,
+              mediaType: MediaType.BOOK,
+            })
+          );
+          await identifierRepository.save(
+            new MediaIdentifier({
+              media,
+              provider: MediaIdentifierProvider.OPENLIBRARY,
+              value: watchlistRequest.externalId,
+              canonical: true,
+            })
+          );
+        }
+
+        const watchlist = new this({
+          ...watchlistRequest,
+          title,
+          requestedBy: user,
+          media,
+        });
+
+        await transactionalWatchlistRepository.save(watchlist);
+        return watchlist;
       });
-
-      await watchlistRepository.save(watchlist);
-      await this.requestBookFromWatchlist(watchlistRequest.externalId, user);
-      return watchlist;
     }
 
     if (!watchlistRequest.tmdbId) {
       throw new Error('TMDB ID is required for movie and series watchlists.');
     }
-
-    const tmdbMedia =
-      watchlistRequest.mediaType === MediaType.MOVIE
-        ? await tmdb.getMovie({ movieId: watchlistRequest.tmdbId })
-        : await tmdb.getTvShow({ tvId: watchlistRequest.tmdbId });
 
     const existing = await watchlistRepository
       .createQueryBuilder('watchlist')
@@ -282,37 +382,74 @@ export class Watchlist {
       throw new DuplicateWatchlistRequestError();
     }
 
-    let media = await mediaRepository.findOne({
-      where: {
-        tmdbId: watchlistRequest.tmdbId,
-        mediaType: watchlistRequest.mediaType,
-      },
-    });
+    const tmdbMedia =
+      watchlistRequest.mediaType === MediaType.MOVIE
+        ? await tmdb.getMovie({ movieId: watchlistRequest.tmdbId })
+        : await tmdb.getTvShow({ tvId: watchlistRequest.tmdbId });
 
-    if (!media) {
-      media = new Media({
-        tmdbId: tmdbMedia.id,
-        tvdbId: tmdbMedia.external_ids.tvdb_id,
-        mediaType: watchlistRequest.mediaType,
+    return dataSource.transaction(async (manager) => {
+      const transactionalMediaRepository = manager.getRepository(Media);
+      const transactionalWatchlistRepository = manager.getRepository(this);
+      let media = await transactionalMediaRepository.findOne({
+        where: {
+          tmdbId: watchlistRequest.tmdbId,
+          mediaType: watchlistRequest.mediaType,
+        },
       });
-    }
 
-    const watchlist = new this({
-      ...watchlistRequest,
-      requestedBy: user,
-      media,
+      if (!media) {
+        media = new Media({
+          tmdbId: tmdbMedia.id,
+          tvdbId: tmdbMedia.external_ids.tvdb_id,
+          mediaType: watchlistRequest.mediaType,
+        });
+      }
+
+      const watchlist = new this({
+        ...watchlistRequest,
+        requestedBy: user,
+        media,
+      });
+
+      await transactionalMediaRepository.save(media);
+      await transactionalWatchlistRepository.save(watchlist);
+      return watchlist;
     });
-
-    await mediaRepository.save(media);
-    await watchlistRepository.save(watchlist);
-    return watchlist;
   }
 
   public static async deleteWatchlist(
     id: Watchlist['tmdbId'] | Watchlist['mbId'] | Watchlist['externalId'],
     mediaType: MediaType,
-    user: User
+    user: User,
+    options: {
+      expectedCredentialVersion?: number;
+      securityGranted?: boolean;
+    } = {}
   ): Promise<Watchlist | null> {
+    if (!options.securityGranted) {
+      return runUserSecurityMutation(user.id, async () => {
+        const currentUser = await getRepository(User).findOneBy({
+          id: user.id,
+        });
+        if (
+          !currentUser ||
+          !isUserCredentialVersionCurrent(
+            currentUser,
+            options.expectedCredentialVersion
+          )
+        ) {
+          throw new WatchlistActorUnavailableError(
+            'Watchlist actor changed before admission.'
+          );
+        }
+
+        return this.deleteWatchlist(id, mediaType, currentUser, {
+          ...options,
+          securityGranted: true,
+        });
+      });
+    }
+
     const watchlistRepository = getRepository(this);
     const watchlist = await watchlistRepository.findOneBy({
       ...(mediaType === MediaType.MUSIC
@@ -324,7 +461,7 @@ export class Watchlist {
       requestedBy: { id: user.id },
     });
     if (!watchlist) {
-      throw new NotFoundError('not Found');
+      throw new NotFoundError('Watchlist item not found.');
     }
 
     if (watchlist) {
@@ -336,7 +473,8 @@ export class Watchlist {
 
   private static async requestBookFromWatchlist(
     openLibraryId: string,
-    user: User
+    user: User,
+    expectedCredentialVersion?: number
   ): Promise<void> {
     if (
       !user.settings?.watchlistSyncBooks ||
@@ -372,7 +510,7 @@ export class Watchlist {
           format,
         },
         user,
-        { isAutoRequest: true }
+        { expectedCredentialVersion, isAutoRequest: true }
       );
     } catch (e) {
       if (!(e instanceof Error)) {
@@ -406,7 +544,8 @@ export class Watchlist {
 
   private static async requestMusicFromWatchlist(
     mbId: string,
-    user: User
+    user: User,
+    expectedCredentialVersion?: number
   ): Promise<void> {
     if (
       !user.settings?.watchlistSyncMusic ||
@@ -427,7 +566,7 @@ export class Watchlist {
           mediaType: MediaType.MUSIC,
         },
         user,
-        { isAutoRequest: true }
+        { expectedCredentialVersion, isAutoRequest: true }
       );
     } catch (e) {
       if (!(e instanceof Error)) {

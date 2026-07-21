@@ -2,9 +2,23 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  MAX_BOOK_ISBN_CANDIDATES,
   mapOpenLibrarySearchDoc,
   mapOpenLibraryWork,
 } from '@server/models/Book';
+
+const makeIsbn13 = (body: number): string => {
+  const firstTwelve = `978${body.toString().padStart(9, '0')}`;
+  const sum = firstTwelve
+    .split('')
+    .reduce(
+      (total, digit, index) =>
+        total + Number(digit) * (index % 2 === 0 ? 1 : 3),
+      0
+    );
+
+  return `${firstTwelve}${(10 - (sum % 10)) % 10}`;
+};
 
 describe('mapOpenLibraryWork', () => {
   it('extracts and ranks unique ISBN candidates from editions', () => {
@@ -66,6 +80,24 @@ describe('mapOpenLibraryWork', () => {
 
     assert.strictEqual(result.id, 'OL123W');
     assert.strictEqual(result.editionId, 'OL1M');
+  });
+
+  it('bounds ISBN candidates returned from provider edition data', () => {
+    const result = mapOpenLibraryWork(
+      { key: '/works/OL123W', title: 'Test Book' },
+      undefined,
+      [
+        {
+          key: '/books/OL1M',
+          isbn_13: Array.from(
+            { length: MAX_BOOK_ISBN_CANDIDATES + 100 },
+            (_, index) => makeIsbn13(index)
+          ),
+        },
+      ]
+    );
+
+    assert.strictEqual(result.isbnCandidates?.length, MAX_BOOK_ISBN_CANDIDATES);
   });
 });
 

@@ -28,13 +28,6 @@ export interface PlexLibraryItem {
   Media: Media[];
 }
 
-interface PlexLibraryResponse {
-  MediaContainer: {
-    totalSize: number;
-    Metadata: PlexLibraryItem[];
-  };
-}
-
 export interface PlexLibrary {
   type: 'show' | 'movie';
   key: string;
@@ -42,23 +35,17 @@ export interface PlexLibrary {
   agent: string;
 }
 
-interface PlexLibrariesResponse {
-  MediaContainer: {
-    Directory: PlexLibrary[];
-  };
-}
-
 export interface PlexMetadata {
   ratingKey: string;
   parentRatingKey?: string;
   guid: string;
-  type: 'movie' | 'show' | 'season';
+  type: 'movie' | 'show' | 'season' | 'episode';
   title: string;
   Guid: {
     id: string;
   }[];
   Children?: {
-    size: 12;
+    size: number;
     Metadata: PlexMetadata[];
   };
   index: number;
@@ -86,11 +73,135 @@ interface Media {
   videoProfile: string;
 }
 
-interface PlexMetadataResponse {
-  MediaContainer: {
-    Metadata: PlexMetadata[];
+export const MAX_PLEX_LIBRARIES = 10_000;
+export const MAX_PLEX_LIBRARY_ITEMS = 100_000;
+export const MAX_PLEX_METADATA_ITEMS = 10_000;
+export const MAX_PLEX_GUIDS = 100;
+export const MAX_PLEX_MEDIA_VARIANTS = 100;
+const MAX_PLEX_TEXT_LENGTH = 2_048;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const boundedPlexText = (value: unknown, maximum = MAX_PLEX_TEXT_LENGTH) =>
+  typeof value === 'string' ? value.slice(0, maximum) : '';
+
+const plexNumber = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.min(value, Number.MAX_SAFE_INTEGER)
+    : 0;
+
+const plexInteger = (value: unknown): number => Math.floor(plexNumber(value));
+
+const sanitizePlexMedia = (value: unknown): Media | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    id: plexInteger(value.id),
+    duration: plexNumber(value.duration),
+    bitrate: plexNumber(value.bitrate),
+    width: plexNumber(value.width),
+    height: plexNumber(value.height),
+    aspectRatio: plexNumber(value.aspectRatio),
+    audioChannels: plexNumber(value.audioChannels),
+    audioCodec: boundedPlexText(value.audioCodec, 128),
+    videoCodec: boundedPlexText(value.videoCodec, 128),
+    videoResolution: boundedPlexText(value.videoResolution, 128),
+    container: boundedPlexText(value.container, 128),
+    videoFrameRate: boundedPlexText(value.videoFrameRate, 128),
+    videoProfile: boundedPlexText(value.videoProfile, 128),
   };
-}
+};
+
+const sanitizePlexGuids = (value: unknown): { id: string }[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_PLEX_GUIDS)
+    .flatMap((guid) => {
+      const id = isRecord(guid) ? boundedPlexText(guid.id, 512) : '';
+      return id ? [{ id }] : [];
+    });
+
+const plexItemTypes = ['movie', 'show', 'season', 'episode'] as const;
+
+export const sanitizePlexLibraryItem = (
+  value: unknown
+): PlexLibraryItem | undefined => {
+  if (!isRecord(value) || !plexItemTypes.includes(value.type as never)) {
+    return undefined;
+  }
+  const ratingKey = boundedPlexText(value.ratingKey, 128);
+  if (!ratingKey) {
+    return undefined;
+  }
+
+  return {
+    ratingKey,
+    parentRatingKey: boundedPlexText(value.parentRatingKey, 128) || undefined,
+    grandparentRatingKey:
+      boundedPlexText(value.grandparentRatingKey, 128) || undefined,
+    title: boundedPlexText(value.title, 512),
+    guid: boundedPlexText(value.guid, 512),
+    parentGuid: boundedPlexText(value.parentGuid, 512) || undefined,
+    grandparentGuid: boundedPlexText(value.grandparentGuid, 512) || undefined,
+    addedAt: plexInteger(value.addedAt),
+    updatedAt: plexInteger(value.updatedAt),
+    Guid: sanitizePlexGuids(value.Guid),
+    type: value.type as PlexLibraryItem['type'],
+    Media: (Array.isArray(value.Media) ? value.Media : [])
+      .slice(0, MAX_PLEX_MEDIA_VARIANTS)
+      .flatMap((media) => {
+        const normalized = sanitizePlexMedia(media);
+        return normalized ? [normalized] : [];
+      }),
+  };
+};
+
+export const sanitizePlexMetadata = (
+  value: unknown,
+  includeChildren = true
+): PlexMetadata | undefined => {
+  const item = sanitizePlexLibraryItem(value);
+  if (!item || !isRecord(value)) {
+    return undefined;
+  }
+  const children = isRecord(value.Children) ? value.Children : undefined;
+
+  return {
+    ratingKey: item.ratingKey,
+    parentRatingKey: item.parentRatingKey,
+    guid: item.guid,
+    type: item.type,
+    title: item.title,
+    Guid: item.Guid ?? [],
+    Children:
+      includeChildren && children
+        ? {
+            size: plexInteger(children.size),
+            Metadata: (Array.isArray(children.Metadata)
+              ? children.Metadata
+              : []
+            )
+              .slice(0, MAX_PLEX_METADATA_ITEMS)
+              .flatMap((child) => {
+                const normalized = sanitizePlexMetadata(child, false);
+                return normalized ? [normalized] : [];
+              }),
+          }
+        : undefined,
+    index: plexInteger(value.index),
+    parentIndex:
+      typeof value.parentIndex === 'number'
+        ? plexInteger(value.parentIndex)
+        : undefined,
+    leafCount: plexInteger(value.leafCount),
+    viewedLeafCount: plexInteger(value.viewedLeafCount),
+    addedAt: item.addedAt,
+    updatedAt: item.updatedAt,
+    Media: item.Media,
+  };
+};
 
 class PlexAPI extends ExternalAPI {
   constructor({
@@ -115,6 +226,7 @@ class PlexAPI extends ExternalAPI {
       baseUrl,
       {},
       {
+        allowPrivateAddresses: true,
         timeout,
         headers: {
           'X-Plex-Token': plexToken ?? '',
@@ -128,72 +240,133 @@ class PlexAPI extends ExternalAPI {
   }
 
   public async getStatus(): Promise<PlexStatusResponse> {
-    return await this.get('/');
+    const response = await this.get<unknown>('/');
+    const mediaContainer =
+      isRecord(response) && isRecord(response.MediaContainer)
+        ? response.MediaContainer
+        : {};
+    return {
+      MediaContainer: {
+        machineIdentifier: boundedPlexText(
+          mediaContainer.machineIdentifier,
+          128
+        ),
+        friendlyName: boundedPlexText(mediaContainer.friendlyName, 512),
+      },
+    };
   }
 
   public async getLibraries(): Promise<PlexLibrary[]> {
-    const response = await this.get<PlexLibrariesResponse>('/library/sections');
+    const response = await this.get<unknown>('/library/sections');
+    const mediaContainer =
+      isRecord(response) && isRecord(response.MediaContainer)
+        ? response.MediaContainer
+        : {};
 
-    return response.MediaContainer.Directory;
+    return (
+      Array.isArray(mediaContainer.Directory) ? mediaContainer.Directory : []
+    )
+      .slice(0, MAX_PLEX_LIBRARIES)
+      .flatMap((library) => {
+        if (!isRecord(library)) return [];
+        const type = library.type;
+        const key = boundedPlexText(library.key, 128);
+        const title = boundedPlexText(library.title, 512);
+        if ((type !== 'movie' && type !== 'show') || !key || !title) return [];
+        return [
+          {
+            type,
+            key,
+            title,
+            agent: boundedPlexText(library.agent, 512),
+          },
+        ];
+      });
   }
 
-  public async syncLibraries(): Promise<void> {
+  public async syncLibraries({
+    enabledLibraryIds,
+  }: { enabledLibraryIds?: string[] } = {}): Promise<Library[]> {
     const settings = getSettings();
 
     try {
       const libraries = await this.getLibraries();
 
-      const newLibraries: Library[] = libraries
-        // Remove libraries that are not movie or show
-        .filter(
-          (library) => library.type === 'movie' || library.type === 'show'
-        )
-        // Remove libraries that do not have a metadata agent set (usually personal video libraries)
-        .filter((library) => library.agent !== 'com.plexapp.agents.none')
-        .map((library) => {
-          const existing = settings.plex.libraries.find(
-            (l) => l.id === library.key && l.name === library.title
-          );
+      const plex = await settings.persistSection('plex', (current) => ({
+        ...current,
+        libraries: libraries
+          // Remove libraries that are not movie or show
+          .filter(
+            (library) => library.type === 'movie' || library.type === 'show'
+          )
+          // Remove libraries that do not have a metadata agent set (usually personal video libraries)
+          .filter((library) => library.agent !== 'com.plexapp.agents.none')
+          .map((library) => {
+            const existing = current.libraries.find(
+              (item) => item.id === library.key && item.name === library.title
+            );
 
-          return {
-            id: library.key,
-            name: library.title,
-            enabled: existing?.enabled ?? false,
-            type: library.type,
-            lastScan: existing?.lastScan,
-          };
-        });
+            return {
+              id: library.key,
+              name: library.title,
+              enabled:
+                enabledLibraryIds?.includes(library.key) ??
+                existing?.enabled ??
+                false,
+              type: library.type,
+              lastScan: existing?.lastScan,
+            };
+          }),
+      }));
 
-      settings.plex.libraries = newLibraries;
+      return plex.libraries;
     } catch (e) {
-      logger.error('Failed to fetch Plex libraries', {
+      logger.error('Failed to synchronize Plex libraries', {
         label: 'Plex API',
         message: e.message,
       });
-
-      settings.plex.libraries = [];
+      throw e;
     }
-
-    await settings.save();
   }
 
   public async getLibraryContents(
     id: string,
     { offset = 0, size = 50 }: { offset?: number; size?: number } = {}
   ): Promise<{ totalSize: number; items: PlexLibraryItem[] }> {
-    const response = await this.get<PlexLibraryResponse>(
-      `/library/sections/${id}/all?includeGuids=1`,
+    const safeOffset =
+      Number.isSafeInteger(offset) && offset >= 0
+        ? Math.min(offset, MAX_PLEX_LIBRARY_ITEMS)
+        : 0;
+    const safeSize =
+      Number.isSafeInteger(size) && size > 0
+        ? Math.min(size, MAX_PLEX_LIBRARY_ITEMS)
+        : 50;
+    const response = await this.get<unknown>(
+      `/library/sections/${encodeURIComponent(boundedPlexText(id, 128))}/all`,
       {
+        params: { includeGuids: 1 },
         headers: {
-          'X-Plex-Container-Start': `${offset}`,
-          'X-Plex-Container-Size': `${size}`,
+          'X-Plex-Container-Start': `${safeOffset}`,
+          'X-Plex-Container-Size': `${safeSize}`,
         },
       }
     );
+    const mediaContainer =
+      isRecord(response) && isRecord(response.MediaContainer)
+        ? response.MediaContainer
+        : {};
 
     return {
-      totalSize: response.MediaContainer.totalSize,
-      items: response.MediaContainer.Metadata ?? [],
+      totalSize: plexInteger(mediaContainer.totalSize),
+      items: (Array.isArray(mediaContainer.Metadata)
+        ? mediaContainer.Metadata
+        : []
+      )
+        .slice(0, MAX_PLEX_LIBRARY_ITEMS)
+        .flatMap((item) => {
+          const normalized = sanitizePlexLibraryItem(item);
+          return normalized ? [normalized] : [];
+        }),
     };
   }
 
@@ -201,21 +374,46 @@ class PlexAPI extends ExternalAPI {
     key: string,
     options: { includeChildren?: boolean } = {}
   ): Promise<PlexMetadata> {
-    const response = await this.get<PlexMetadataResponse>(
-      `/library/metadata/${key}${
-        options.includeChildren ? '?includeChildren=1' : ''
-      }`
+    const response = await this.get<unknown>(
+      `/library/metadata/${encodeURIComponent(boundedPlexText(key, 128))}`,
+      {
+        params: options.includeChildren ? { includeChildren: 1 } : undefined,
+      }
     );
-
-    return response.MediaContainer.Metadata[0];
+    const mediaContainer =
+      isRecord(response) && isRecord(response.MediaContainer)
+        ? response.MediaContainer
+        : {};
+    const metadata = sanitizePlexMetadata(
+      Array.isArray(mediaContainer.Metadata)
+        ? mediaContainer.Metadata[0]
+        : undefined
+    );
+    if (!metadata) {
+      throw new Error('Plex returned invalid metadata');
+    }
+    return metadata;
   }
 
   public async getChildrenMetadata(key: string): Promise<PlexMetadata[]> {
-    const response = await this.get<PlexMetadataResponse>(
-      `/library/metadata/${key}/children`
+    const response = await this.get<unknown>(
+      `/library/metadata/${encodeURIComponent(
+        boundedPlexText(key, 128)
+      )}/children`
     );
+    const mediaContainer =
+      isRecord(response) && isRecord(response.MediaContainer)
+        ? response.MediaContainer
+        : {};
 
-    return response.MediaContainer.Metadata;
+    return (
+      Array.isArray(mediaContainer.Metadata) ? mediaContainer.Metadata : []
+    )
+      .slice(0, MAX_PLEX_METADATA_ITEMS)
+      .flatMap((item) => {
+        const normalized = sanitizePlexMetadata(item);
+        return normalized ? [normalized] : [];
+      });
   }
 
   public async getRecentlyAdded(
@@ -225,19 +423,39 @@ class PlexAPI extends ExternalAPI {
     },
     mediaType: 'movie' | 'show'
   ): Promise<PlexLibraryItem[]> {
-    const response = await this.get<PlexLibraryResponse>(
-      `/library/sections/${id}/all?type=${
-        mediaType === 'show' ? '4' : '1'
-      }&sort=addedAt%3Adesc&addedAt>>=${Math.floor(options.addedAt / 1000)}`,
+    const addedAt =
+      typeof options.addedAt === 'number' &&
+      Number.isFinite(options.addedAt) &&
+      options.addedAt >= 0
+        ? Math.floor(options.addedAt / 1000)
+        : 0;
+    const response = await this.get<unknown>(
+      `/library/sections/${encodeURIComponent(boundedPlexText(id, 128))}/all`,
       {
+        params: {
+          type: mediaType === 'show' ? 4 : 1,
+          sort: 'addedAt:desc',
+          'addedAt>>': addedAt,
+        },
         headers: {
           'X-Plex-Container-Start': '0',
           'X-Plex-Container-Size': '500',
         },
       }
     );
+    const mediaContainer =
+      isRecord(response) && isRecord(response.MediaContainer)
+        ? response.MediaContainer
+        : {};
 
-    return response.MediaContainer.Metadata;
+    return (
+      Array.isArray(mediaContainer.Metadata) ? mediaContainer.Metadata : []
+    )
+      .slice(0, 500)
+      .flatMap((item) => {
+        const normalized = sanitizePlexLibraryItem(item);
+        return normalized ? [normalized] : [];
+      });
   }
 }
 

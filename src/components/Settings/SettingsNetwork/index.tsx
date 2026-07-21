@@ -22,9 +22,10 @@ const messages = defineMessages('components.Settings.SettingsNetwork', {
   networksettingsDescription:
     'Configure network settings for your Seerr instance.',
   csrfProtection: 'Enable CSRF Protection',
-  csrfProtectionTip: 'Set external API access to read-only (requires HTTPS)',
-  csrfProtectionHoverTip:
-    'Do NOT enable this setting unless you understand what you are doing!',
+  csrfProtectionDescription:
+    'Reject cross-site state-changing browser requests (requires HTTPS)',
+  csrfProtectionWarning:
+    'Keep this enabled for browser-session security. Disable it only when a trusted external API client must make write requests and cannot send CSRF tokens.',
   trustProxy: 'Enable Proxy Support',
   trustProxyTip:
     'Allow Seerr to correctly register client IP addresses behind a proxy',
@@ -235,13 +236,13 @@ const SettingsNetwork = () => {
                     <SettingsBadge badgeType="advanced" className="mr-2" />
                     <SettingsBadge badgeType="restartRequired" />
                     <span className="label-tip">
-                      {intl.formatMessage(messages.csrfProtectionTip)}
+                      {intl.formatMessage(messages.csrfProtectionDescription)}
                     </span>
                   </label>
                   <div className="form-input-area">
                     <Tooltip
                       content={intl.formatMessage(
-                        messages.csrfProtectionHoverTip
+                        messages.csrfProtectionWarning
                       )}
                     >
                       <Field

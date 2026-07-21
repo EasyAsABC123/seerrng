@@ -11,6 +11,8 @@ import { Watchlist } from '@server/entity/Watchlist';
 import type { DownloadingItem } from '@server/lib/downloadtracker';
 import downloadTracker from '@server/lib/downloadtracker';
 import { normalizeMusicBrainzId } from '@server/lib/externalIds';
+import { restrictMediaRelationsForUser } from '@server/lib/mediaResponse';
+import { hydrateMediaSummaryRelations } from '@server/lib/mediaSummaryHydration';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { DbAwareColumn, resolveDbType } from '@server/utils/DbColumnHelper';
@@ -32,6 +34,15 @@ import Season from './Season';
 
 @Entity()
 @Index(['tmdbId', 'mediaType'])
+@Index('IDX_media_mbId', ['mbId'])
+@Index('UQ_media_screen_tmdb_type', ['tmdbId', 'mediaType'], {
+  unique: true,
+  where: `"mediaType" IN ('movie', 'tv') AND "tmdbId" > 0`,
+})
+@Index('UQ_media_music_mbid', ['mbId'], {
+  unique: true,
+  where: `"mediaType" = 'music' AND "mbId" IS NOT NULL`,
+})
 class Media {
   public static async getRelatedMedia(
     user: User | undefined,
@@ -74,11 +85,15 @@ class Media {
         )
         .getMany();
 
+      const restrictedMedia = media.map(
+        (item) => restrictMediaRelationsForUser(item, user) as Media
+      );
+
       if (!isLegacyItem) {
-        return media;
+        return restrictedMedia;
       }
 
-      return media.filter((m) =>
+      return restrictedMedia.filter((m) =>
         (items as { tmdbId: number; mediaType: string }[]).some(
           (i) => i.tmdbId === m.tmdbId && i.mediaType === m.mediaType
         )
@@ -91,15 +106,29 @@ class Media {
 
   public static async getMedia(
     id: number,
-    mediaType: MediaType
+    mediaType: MediaType,
+    user?: User
   ): Promise<Media | undefined> {
     const mediaRepository = getRepository(Media);
 
     try {
       const media = await mediaRepository.findOne({
         where: { tmdbId: id, mediaType: mediaType },
-        relations: { requests: true, issues: true },
+        relations: {
+          issues: {
+            createdBy: true,
+            modifiedBy: true,
+            comments: { user: true },
+          },
+        },
+        relationLoadStrategy: 'query',
       });
+
+      if (media) {
+        await hydrateMediaSummaryRelations([media], user, {
+          includeRequestSeasons: mediaType === MediaType.TV,
+        });
+      }
 
       return media ?? undefined;
     } catch (e) {
@@ -227,7 +256,6 @@ class Media {
   public jellyfinMediaId4k?: string | null;
 
   @Column({ nullable: true, type: 'varchar' })
-  @Index()
   public mbId?: string | null;
 
   public serviceUrl?: string;
@@ -250,20 +278,29 @@ class Media {
     Object.assign(this, init);
   }
 
-  public resetServiceData(): void {
+  public resetServiceDataForResolution(is4k: boolean): void {
+    if (is4k) {
+      this.serviceId4k = null;
+      this.externalServiceId4k = null;
+      this.externalServiceSlug4k = null;
+      this.ratingKey4k = null;
+      this.jellyfinMediaId4k = null;
+      return;
+    }
+
     this.serviceId = null;
-    this.serviceId4k = null;
     this.externalServiceId = null;
-    this.externalServiceId4k = null;
     this.externalServiceSlug = null;
-    this.externalServiceSlug4k = null;
+    this.ratingKey = null;
+    this.jellyfinMediaId = null;
+  }
+
+  public resetServiceData(): void {
+    this.resetServiceDataForResolution(false);
+    this.resetServiceDataForResolution(true);
     this.audiobookServiceId = null;
     this.audiobookExternalServiceId = null;
     this.audiobookExternalServiceSlug = null;
-    this.ratingKey = null;
-    this.ratingKey4k = null;
-    this.jellyfinMediaId = null;
-    this.jellyfinMediaId4k = null;
   }
 
   @AfterLoad()

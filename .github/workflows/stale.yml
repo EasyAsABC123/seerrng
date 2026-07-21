@@ -15,9 +15,8 @@ concurrency:
 jobs:
   stale:
     name: Close stale issues and PRs
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
-      actions: write
       issues: write
       pull-requests: write
     steps:

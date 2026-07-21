@@ -6,11 +6,13 @@ import {
   Index,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { MediaRequest } from './MediaRequest';
 
 @Entity()
+@Unique('UNIQUE_REQUEST_SEASON', ['request', 'seasonNumber'])
 class SeasonRequest {
   @PrimaryGeneratedColumn()
   public id: number;
@@ -23,6 +25,7 @@ class SeasonRequest {
 
   @ManyToOne(() => MediaRequest, (request) => request.seasons, {
     onDelete: 'CASCADE',
+    nullable: false,
   })
   @Index()
   public request: MediaRequest;

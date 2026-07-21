@@ -14,6 +14,7 @@ import { getRemoteAvatarCacheUrl } from '@server/lib/remoteAvatarCache';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { getAppVersion } from '@server/utils/appVersion';
+import { trackBackgroundTask } from '@server/utils/backgroundTasks';
 import { getHostname } from '@server/utils/getHostname';
 import { getRateLimitKey } from '@server/utils/security';
 import { parseOptionalBoundedString } from '@server/utils/validation';
@@ -31,6 +32,7 @@ const REMOTE_AVATAR_FALLBACK_URL = gravatarUrl('none', {
   size: 200,
 });
 const REMOTE_PLEX_AVATAR_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+const MAX_REMOTE_PLEX_AVATAR_RETRY_ENTRIES = 1000;
 const remotePlexAvatarRetryAfter = new Map<string, number>();
 export const AVATAR_HEAD_REQUEST_OPTIONS = {
   timeout: 5_000,
@@ -48,6 +50,11 @@ const avatarProxyRateLimit = rateLimit({
 });
 
 let _avatarImageProxy: ImageProxy | null = null;
+let _avatarImageProxySettingsKey: string | null = null;
+let _avatarImageProxyInitialization:
+  | { key: string; promise: Promise<ImageProxy> }
+  | undefined;
+let _remoteAvatarImageProxy: ImageProxy | null = null;
 
 const isPlexAvatarUrl = (avatarUrl: string): boolean => {
   const hostname = new URL(avatarUrl).hostname.toLowerCase();
@@ -70,34 +77,103 @@ const refreshPlexAvatarInBackground = (
     return;
   }
 
+  while (
+    remotePlexAvatarRetryAfter.size >= MAX_REMOTE_PLEX_AVATAR_RETRY_ENTRIES
+  ) {
+    const oldestUrl = remotePlexAvatarRetryAfter.keys().next().value as
+      | string
+      | undefined;
+    if (!oldestUrl) {
+      break;
+    }
+    remotePlexAvatarRetryAfter.delete(oldestUrl);
+  }
+
   remotePlexAvatarRetryAfter.set(
     avatarUrl,
     now + REMOTE_PLEX_AVATAR_RETRY_COOLDOWN_MS
   );
-  void avatarImageCache.getImage(avatarUrl).catch(() => undefined);
+  trackBackgroundTask('Plex avatar refresh', () =>
+    avatarImageCache.getImage(avatarUrl)
+  );
 };
 
-async function initAvatarImageProxy() {
-  if (!_avatarImageProxy) {
-    const userRepository = getRepository(User);
-    const admin = await userRepository.findOne({
+export const getAvatarImageProxySettingsKey = (): string => {
+  const settings = getSettings();
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        getHostname(),
+        settings.main.mediaServerType,
+        settings.jellyfin.apiKey,
+        getAppVersion(),
+      ])
+    )
+    .digest('hex');
+};
+
+async function initAvatarImageProxy(): Promise<ImageProxy> {
+  const settingsKey = getAvatarImageProxySettingsKey();
+  if (_avatarImageProxy && _avatarImageProxySettingsKey === settingsKey) {
+    return _avatarImageProxy;
+  }
+  if (_avatarImageProxyInitialization?.key === settingsKey) {
+    return _avatarImageProxyInitialization.promise;
+  }
+
+  const settings = getSettings();
+  const hostname = getHostname();
+  const mediaServerType = settings.main.mediaServerType;
+  const authToken = settings.jellyfin.apiKey;
+  const initialization = (async () => {
+    const admin = await getRepository(User).findOne({
       where: { id: 1 },
       select: ['id', 'jellyfinUserId', 'jellyfinDeviceId'],
       order: { id: 'ASC' },
     });
     const deviceId = admin?.jellyfinDeviceId || 'BOT_seerr';
-    const authToken = getSettings().jellyfin.apiKey;
-    _avatarImageProxy = new ImageProxy('avatar', '', {
+    const cacheKeyScope = createHash('sha256')
+      .update(JSON.stringify([settingsKey, deviceId]))
+      .digest('hex');
+    return new ImageProxy('avatar', hostname, {
+      allowPrivateAddresses: true,
+      cacheKeyScope,
       headers: {
         'X-Emby-Authorization': `MediaBrowser Client="Seerr", Device="Seerr", DeviceId="${deviceId}", Version="${
-          getSettings().main.mediaServerType === MediaServerType.EMBY
-            ? '1.0.0'
-            : getAppVersion()
+          mediaServerType === MediaServerType.EMBY ? '1.0.0' : getAppVersion()
         }", Token="${authToken}"`,
       },
+      requestValidator: () => {
+        if (getAvatarImageProxySettingsKey() !== settingsKey) {
+          throw new Error('Media-server avatar configuration changed.');
+        }
+      },
     });
+  })();
+  _avatarImageProxyInitialization = {
+    key: settingsKey,
+    promise: initialization,
+  };
+
+  try {
+    const proxy = await initialization;
+    if (getAvatarImageProxySettingsKey() === settingsKey) {
+      _avatarImageProxy = proxy;
+      _avatarImageProxySettingsKey = settingsKey;
+    }
+    return proxy;
+  } finally {
+    if (_avatarImageProxyInitialization?.promise === initialization) {
+      _avatarImageProxyInitialization = undefined;
+    }
   }
-  return _avatarImageProxy;
+}
+
+function initRemoteAvatarImageProxy() {
+  if (!_remoteAvatarImageProxy) {
+    _remoteAvatarImageProxy = new ImageProxy('avatar', '');
+  }
+  return _remoteAvatarImageProxy;
 }
 
 async function sendCachedAvatarImage({
@@ -198,10 +274,7 @@ export async function checkAvatarChanged(
 
     const avatarImageCache = await initAvatarImageProxy();
     await avatarImageCache.clearCachedImage(jellyfinAvatarUrl);
-    const imageData = await avatarImageCache.getImage(
-      jellyfinAvatarUrl,
-      gravatarUrl(user.email || 'none', { default: 'mm', size: 200 })
-    );
+    const imageData = await avatarImageCache.getImage(jellyfinAvatarUrl);
 
     if (!imageData.imageBuffer) {
       return { changed: false, etag: user.avatarETag ?? undefined };
@@ -216,7 +289,13 @@ export async function checkAvatarChanged(
       user.avatarETag = newHash;
     }
 
-    await getRepository(User).save(user);
+    // This check performs external I/O, so the entity may be stale by the time
+    // the image is fetched. Persist only the avatar cache metadata to avoid
+    // reverting concurrent permission, password, or profile changes.
+    await getRepository(User).update(user.id, {
+      avatarVersion: user.avatarVersion,
+      ...(hasChanged ? { avatarETag: user.avatarETag } : {}),
+    });
 
     return { changed: hasChanged, etag: newHash };
   } catch (error) {
@@ -239,7 +318,7 @@ router.get('/remote', avatarProxyRateLimit, async (req, res) => {
       return res.status(400).json({ error: 'Unsupported avatar URL' });
     }
 
-    const avatarImageCache = await initAvatarImageProxy();
+    const avatarImageCache = initRemoteAvatarImageProxy();
     let imageData;
     if (isPlexAvatarUrl(avatarUrl)) {
       imageData = await avatarImageCache.getCachedImage(avatarUrl);
@@ -266,7 +345,7 @@ router.get('/remote', avatarProxyRateLimit, async (req, res) => {
     });
 
     if (!res.headersSent) {
-      return res.status(400).json({ error: e.message });
+      return res.status(502).json({ error: 'Unable to load avatar image.' });
     }
   }
 });
@@ -290,6 +369,7 @@ router.get('/:jellyfinUserId', avatarProxyRateLimit, async (req, res) => {
     }
 
     const avatarImageCache = await initAvatarImageProxy();
+    const remoteAvatarImageCache = initRemoteAvatarImageProxy();
 
     const userEtag = req.headers['if-none-match'];
 
@@ -314,15 +394,16 @@ router.get('/:jellyfinUserId', avatarProxyRateLimit, async (req, res) => {
 
     let imageData;
     if (user?.avatarVersion) {
-      imageData = await avatarImageCache.getImage(
-        jellyfinAvatarUrl,
-        fallbackUrl
-      );
+      try {
+        imageData = await avatarImageCache.getImage(jellyfinAvatarUrl);
+      } catch {
+        imageData = await remoteAvatarImageCache.getImage(fallbackUrl);
+      }
       if (imageData.meta.extension === 'json') {
-        imageData = await avatarImageCache.getImage(fallbackUrl);
+        imageData = await remoteAvatarImageCache.getImage(fallbackUrl);
       }
     } else {
-      imageData = await avatarImageCache.getImage(fallbackUrl);
+      imageData = await remoteAvatarImageCache.getImage(fallbackUrl);
     }
 
     await sendCachedAvatarImage({
@@ -339,7 +420,7 @@ router.get('/:jellyfinUserId', avatarProxyRateLimit, async (req, res) => {
     });
 
     if (!res.headersSent) {
-      return res.status(400).json({ error: e.message });
+      return res.status(502).json({ error: 'Unable to load avatar image.' });
     }
   }
 });

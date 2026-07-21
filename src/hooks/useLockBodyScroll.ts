@@ -1,3 +1,4 @@
+import { acquireInlineStyleLease } from '@app/utils/inlineStyleLease';
 import { useEffect } from 'react';
 
 /**
@@ -19,16 +20,17 @@ export const useLockBodyScroll = (
       return;
     }
 
-    const bodyStyle = window.getComputedStyle(document.body);
-    const originalOverflowStyle = bodyStyle.overflow;
-    const originalTouchActionStyle = bodyStyle.touchAction;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
+    const body = document.body;
+    const releaseOverflow = acquireInlineStyleLease(body, 'overflow', 'hidden');
+    const releaseTouchAction = acquireInlineStyleLease(
+      body,
+      'touchAction',
+      'none'
+    );
 
     return () => {
-      document.body.style.overflow = originalOverflowStyle;
-      document.body.style.touchAction = originalTouchActionStyle;
+      releaseTouchAction();
+      releaseOverflow();
     };
   }, [isLocked, disabled]);
 };

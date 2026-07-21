@@ -5,12 +5,18 @@ import type {
   UserSettingsCardTextResponse,
 } from '@server/interfaces/api/userSettingsInterfaces';
 import axios from 'axios';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
+import { CardTextVisibilityMutationState } from './cardTextVisibilityMutation';
 
 type CardTextMediaType = keyof UserSettingsCardTextResponse;
 
-const storageKey = 'seerr.cardTextVisibility';
+const storageKeyPrefix = 'seerr.cardTextVisibility';
+
+export const getCardTextVisibilityStorageKey = (userId?: number): string =>
+  `${storageKeyPrefix}:${
+    Number.isSafeInteger(userId) && (userId ?? 0) > 0 ? userId : 'anonymous'
+  }`;
 
 const defaultCardTextVisibility: Required<UserSettingsCardTextResponse> = {
   movie: 'hover',
@@ -22,7 +28,9 @@ const defaultCardTextVisibility: Required<UserSettingsCardTextResponse> = {
 const isCardTextVisibility = (value: unknown): value is CardTextVisibility =>
   value === 'always' || value === 'hover';
 
-const readStoredVisibility = (): UserSettingsCardTextResponse => {
+const readStoredVisibility = (
+  storageKey: string
+): UserSettingsCardTextResponse => {
   if (typeof window === 'undefined') {
     return {};
   }
@@ -44,6 +52,7 @@ const readStoredVisibility = (): UserSettingsCardTextResponse => {
 };
 
 const writeStoredVisibility = (
+  storageKey: string,
   visibility: UserSettingsCardTextResponse
 ): void => {
   if (typeof window === 'undefined') {
@@ -70,8 +79,16 @@ const fromUserSettings = (
 
 const useCardTextVisibility = () => {
   const { user, revalidate: revalidateUser } = useUser();
-  const [localVisibility, setLocalVisibility] =
-    useState<UserSettingsCardTextResponse>({});
+  const localStorageKey = getCardTextVisibilityStorageKey(user?.id);
+  const [storedVisibility, setStoredVisibility] = useState<{
+    key?: string;
+    value: UserSettingsCardTextResponse;
+  }>({ value: {} });
+  const localVisibility = useMemo(
+    () =>
+      storedVisibility.key === localStorageKey ? storedVisibility.value : {},
+    [localStorageKey, storedVisibility]
+  );
   const endpoint = user?.id
     ? `/api/v1/user/${user.id}/settings/card-text`
     : null;
@@ -81,8 +98,11 @@ const useCardTextVisibility = () => {
   });
 
   useEffect(() => {
-    setLocalVisibility(readStoredVisibility());
-  }, []);
+    setStoredVisibility({
+      key: localStorageKey,
+      value: readStoredVisibility(localStorageKey),
+    });
+  }, [localStorageKey]);
 
   const visibility = useMemo(
     () => ({
@@ -93,27 +113,26 @@ const useCardTextVisibility = () => {
     }),
     [data, localVisibility, user?.settings]
   );
+  const mutationState = useRef(new CardTextVisibilityMutationState());
+  mutationState.current.synchronize(localStorageKey, visibility);
 
   const setVisibility = useCallback(
     async (
       mediaType: CardTextMediaType,
       nextVisibility: CardTextVisibility
     ): Promise<void> => {
-      const previousLocalVisibility = localVisibility;
-      const nextValue = {
-        ...visibility,
-        [mediaType]: nextVisibility,
-      };
+      const mutation = mutationState.current.begin(mediaType, nextVisibility);
+      const nextValue = mutation.next;
 
-      setLocalVisibility(nextValue);
-      writeStoredVisibility(nextValue);
+      setStoredVisibility({ key: localStorageKey, value: nextValue });
+      writeStoredVisibility(localStorageKey, nextValue);
 
       if (!endpoint) {
         return;
       }
 
       try {
-        await mutate(
+        const savedVisibility = await mutate(
           async () => {
             const response = await axios.post<UserSettingsCardTextResponse>(
               endpoint,
@@ -121,23 +140,37 @@ const useCardTextVisibility = () => {
                 [mediaType]: nextVisibility,
               }
             );
-            await revalidateUser();
-
             return response.data;
           },
           {
             optimisticData: nextValue,
-            rollbackOnError: true,
+            rollbackOnError: () => mutationState.current.isCurrent(mutation),
             revalidate: false,
           }
         );
+        if (mutationState.current.isCurrent(mutation) && savedVisibility) {
+          mutationState.current.synchronize(localStorageKey, savedVisibility);
+          setStoredVisibility({
+            key: localStorageKey,
+            value: savedVisibility,
+          });
+          writeStoredVisibility(localStorageKey, savedVisibility);
+          await revalidateUser();
+        }
       } catch (e) {
-        setLocalVisibility(previousLocalVisibility);
-        writeStoredVisibility(previousLocalVisibility);
+        const rollbackVisibility = mutationState.current.rollback(mutation);
+        if (!rollbackVisibility) {
+          throw e;
+        }
+        setStoredVisibility({
+          key: localStorageKey,
+          value: rollbackVisibility,
+        });
+        writeStoredVisibility(localStorageKey, rollbackVisibility);
         throw e;
       }
     },
-    [endpoint, localVisibility, mutate, revalidateUser, visibility]
+    [endpoint, localStorageKey, mutate, revalidateUser]
   );
 
   const toggleVisibility = useCallback(

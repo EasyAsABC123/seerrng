@@ -58,6 +58,8 @@ export interface BookIsbnCandidate {
   format?: string;
 }
 
+export const MAX_BOOK_ISBN_CANDIDATES = 200;
+
 const getEditionId = (key?: string): string | undefined =>
   key ? normalizeOpenLibraryEditionId(key) : undefined;
 
@@ -66,12 +68,15 @@ const mapEditionIsbnCandidates = (
 ): BookIsbnCandidate[] => {
   const candidates = new Map<string, BookIsbnCandidate>();
 
-  editions.forEach((edition) => {
+  for (const edition of editions) {
     const editionId = getEditionId(edition.key);
     const title = edition.title;
     const format = edition.physical_format;
 
-    [...(edition.isbn_13 ?? []), ...(edition.isbn_10 ?? [])].forEach((isbn) => {
+    for (const isbn of [
+      ...(edition.isbn_13 ?? []),
+      ...(edition.isbn_10 ?? []),
+    ]) {
       const normalized = normalizeValidIsbn(isbn);
 
       if (normalized && !candidates.has(normalized)) {
@@ -81,9 +86,17 @@ const mapEditionIsbnCandidates = (
           title,
           format,
         });
+
+        if (candidates.size >= MAX_BOOK_ISBN_CANDIDATES) {
+          break;
+        }
       }
-    });
-  });
+    }
+
+    if (candidates.size >= MAX_BOOK_ISBN_CANDIDATES) {
+      break;
+    }
+  }
 
   return [...candidates.values()].sort((a, b) => {
     if (a.isbn.length !== b.isbn.length) {

@@ -19,7 +19,8 @@ concurrency:
 jobs:
   semantic-title:
     name: Validate PR Title
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
@@ -38,7 +39,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const message = process.env.ERROR_MESSAGE;
+            const message = String(process.env.ERROR_MESSAGE ?? '')
+              .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+              .replace(/@/g, '@\u200b')
+              .slice(0, 4000);
             const prNumber = context.payload.pull_request.number;
 
             const body = [
@@ -49,15 +53,13 @@ jobs:
               `*This check will re-run when you update your PR title.*`,
             ].join('\n');
 
-            const allComments = await github.paginate(
-              github.rest.issues.listComments,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                per_page: 100,
-              }
-            );
+            const { data: allComments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+              page: 1,
+            });
 
             const botComment = allComments.find(
               c => c.user.type === 'Bot' && c.body && c.body.includes('### PR Title Validation Failed')
@@ -86,15 +88,13 @@ jobs:
           script: |
             const prNumber = context.payload.pull_request.number;
 
-            const allComments = await github.paginate(
-              github.rest.issues.listComments,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                per_page: 100,
-              }
-            );
+            const { data: allComments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+              page: 1,
+            });
 
             const botComment = allComments.find(
               c => c.user.type === 'Bot' && c.body && c.body.includes('### PR Title Validation Failed')
@@ -110,15 +110,16 @@ jobs:
 
   template-check:
     name: Validate PR Template
+    timeout-minutes: 30
     if: github.event.action != 'synchronize' && github.actor != 'renovate[bot]'
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -183,15 +184,13 @@ jobs:
               `*This check will automatically re-run when you edit your PR description.*`,
             ].join('\n');
 
-            const allComments = await github.paginate(
-              github.rest.issues.listComments,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                per_page: 100,
-              }
-            );
+            const { data: allComments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+              page: 1,
+            });
 
             const botComment = allComments.find(
               c => c.user.type === 'Bot' && c.body && c.body.includes('### Issues found:')
@@ -262,15 +261,13 @@ jobs:
               console.log('Could not remove label', e.message);
             }
 
-            const allComments = await github.paginate(
-              github.rest.issues.listComments,
-              {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                per_page: 100,
-              }
-            );
+            const { data: allComments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+              page: 1,
+            });
 
             const botComment = allComments.find(
               c => c.user.type === 'Bot' && c.body && c.body.includes('### Issues found:')

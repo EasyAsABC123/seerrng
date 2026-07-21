@@ -13,7 +13,11 @@ import type { Express } from 'express';
 import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
-import artistRoutes from './artist';
+import artistRoutes, {
+  MAX_ARTIST_PROVIDER_RELEASE_GROUPS,
+  MAX_ARTIST_RELEASE_GROUP_TYPES,
+  MAX_DEFAULT_ARTIST_RELEASE_GROUPS,
+} from './artist';
 import authRoutes from './auth';
 
 let app: Express;
@@ -171,6 +175,16 @@ describe('GET /artist/:id', () => {
     assert.strictEqual(getArtist.mock.callCount(), 0);
   });
 
+  it('rejects path-control artist IDs before provider lookup', async () => {
+    const getArtist = mock.method(ListenBrainzAPI.prototype, 'getArtist');
+
+    const agent = await login();
+    const res = await agent.get('/artist/artist%3Fredirect%3D%2Faccount');
+
+    assert.strictEqual(res.status, 404);
+    assert.strictEqual(getArtist.mock.callCount(), 0);
+  });
+
   it('rejects oversized album type filters before provider lookup', async () => {
     const getArtist = mock.method(ListenBrainzAPI.prototype, 'getArtist');
     const getWikipedia = mock.method(
@@ -264,5 +278,128 @@ describe('GET /artist/:id', () => {
       ),
       ['ep-old']
     );
+  });
+
+  it('caps provider-defined release types and the default SQL hydration set', async () => {
+    mock.method(ListenBrainzAPI.prototype, 'getArtist', async () => ({
+      ...artistDetails(0),
+      releaseGroups: Array.from({ length: 800 }, (_, index) => ({
+        mbid: `release-${index}`,
+        name: `Release ${index}`,
+        type:
+          index < 20 ? '__proto__' : `Provider Type ${Math.floor(index / 20)}`,
+        date: `2024-01-${String((index % 28) + 1).padStart(2, '0')}`,
+        artist_credit_name: 'Root Artist',
+        artists: [],
+        total_listen_count: 800 - index,
+      })),
+    }));
+    mock.method(
+      MusicBrainz.prototype,
+      'getArtistWikipediaExtract',
+      async () => null
+    );
+    mock.method(TheAudioDb.prototype, 'getArtistImages', async () => null);
+
+    const agent = await login();
+    const res = await agent.get('/artist/root-artist');
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(
+      res.body.releaseGroups.length,
+      MAX_DEFAULT_ARTIST_RELEASE_GROUPS
+    );
+    assert.ok(
+      Object.keys(res.body.typeCounts).length <= MAX_ARTIST_RELEASE_GROUP_TYPES
+    );
+    assert.ok(res.body.typeCounts.Other > 0);
+  });
+
+  it('does not expose unused raw ListenBrainz artist payloads', async () => {
+    mock.method(
+      ListenBrainzAPI.prototype,
+      'getArtist',
+      async () =>
+        ({
+          ...artistDetails(1),
+          coverArt: 'https://provider.example/raw-cover',
+          listeningStats: {
+            total_listen_count: 10,
+            total_user_count: 5,
+            listeners: [{ user_name: 'listener-secret', listen_count: 10 }],
+          },
+          popularRecordings: [{ recording_name: 'unused-recording' }],
+          unexpectedProviderField: 'must-not-cross-boundary',
+        }) as never
+    );
+    mock.method(
+      MusicBrainz.prototype,
+      'getArtistWikipediaExtract',
+      async () => null
+    );
+    mock.method(TheAudioDb.prototype, 'getArtistImages', async () => null);
+
+    const agent = await login();
+    const res = await agent.get('/artist/root-artist');
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(res.body.artist, {
+      name: 'Root Artist',
+      area: 'US',
+    });
+    assert.ok(!('coverArt' in res.body));
+    assert.ok(!('listeningStats' in res.body));
+    assert.ok(!('popularRecordings' in res.body));
+    assert.ok(!('similarArtists' in res.body));
+    assert.ok(!('unexpectedProviderField' in res.body));
+  });
+
+  it('bounds and validates provider discography records before deduplication', async () => {
+    mock.method(
+      ListenBrainzAPI.prototype,
+      'getArtist',
+      async () =>
+        ({
+          ...artistDetails(0),
+          releaseGroups: [
+            null,
+            { mbid: 'invalid', name: 123, artist_credit_name: 'Artist' },
+            ...Array.from(
+              { length: MAX_ARTIST_PROVIDER_RELEASE_GROUPS + 100 },
+              (_, index) => ({
+                mbid: `release-${index}`,
+                name: `Release ${index}`,
+                type: 'Album',
+                date: '2026-01-01',
+                artist_credit_name: 'Root Artist',
+                artists:
+                  index === 0
+                    ? Array.from({ length: 1_000 }, () => ({ raw: 'unused' }))
+                    : [],
+                total_listen_count: index,
+              })
+            ),
+          ],
+        }) as never
+    );
+    mock.method(
+      MusicBrainz.prototype,
+      'getArtistWikipediaExtract',
+      async () => null
+    );
+    mock.method(TheAudioDb.prototype, 'getArtistImages', async () => null);
+
+    const agent = await login();
+    const res = await agent.get(
+      '/artist/root-artist?albumType=All&page=1&pageSize=1'
+    );
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(
+      res.body.pagination.totalItems,
+      MAX_ARTIST_PROVIDER_RELEASE_GROUPS - 2
+    );
+    assert.strictEqual(res.body.releaseGroups.length, 1);
+    assert.ok(!('artists' in res.body.releaseGroups[0]));
   });
 });

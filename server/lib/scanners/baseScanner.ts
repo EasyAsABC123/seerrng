@@ -1,9 +1,10 @@
 import TheMovieDb from '@server/api/themoviedb';
 import { MediaStatus, MediaType } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
+import dataSource, { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import type { MediaIdentifierProvider } from '@server/entity/MediaIdentifier';
 import MediaIdentifier from '@server/entity/MediaIdentifier';
+import { runWithRequestAdmission } from '@server/entity/MediaRequest';
 import Season from '@server/entity/Season';
 import {
   normalizeExternalBookId,
@@ -78,6 +79,10 @@ export interface ProcessOptions {
     value: string;
   }[];
   bookServiceType?: 'ebook' | 'audiobook';
+  mutationGuard?: <Result>(callback: () => Promise<Result>) => Promise<Result>;
+  outerMutationGuard?: <Result>(
+    callback: () => Promise<Result>
+  ) => Promise<Result>;
 }
 
 export interface ProcessableSeason {
@@ -102,6 +107,13 @@ class BaseScanner<T> {
   protected running = false;
   readonly asyncLock = new AsyncLock();
   readonly tmdb = new TheMovieDb();
+
+  private runProcessMutation<Result>(
+    guard: ProcessOptions['mutationGuard'],
+    callback: () => Promise<Result>
+  ): Promise<Result> {
+    return guard ? guard(callback) : callback();
+  }
 
   protected constructor(
     scannerName: string,
@@ -142,155 +154,187 @@ class BaseScanner<T> {
       processing = false,
       title = 'Unknown Title',
       hasFile = true,
+      mutationGuard,
+      outerMutationGuard,
     }: ProcessOptions = {}
   ): Promise<void> {
     const mediaRepository = getRepository(Media);
 
-    await this.asyncLock.dispatch(tmdbId, async () => {
-      const existing = await this.getExisting(tmdbId, MediaType.MOVIE);
+    await this.runProcessMutation(outerMutationGuard, () =>
+      runWithRequestAdmission(
+        [`request-media:${MediaType.MOVIE}:${tmdbId}`],
+        () =>
+          this.asyncLock.dispatch(tmdbId, () =>
+            this.runProcessMutation(mutationGuard, async () => {
+              const existing = await this.getExisting(tmdbId, MediaType.MOVIE);
 
-      if (existing) {
-        let changedExisting = false;
+              if (existing) {
+                let changedExisting = false;
 
-        if (existing[is4k ? 'status4k' : 'status'] !== MediaStatus.AVAILABLE) {
-          const statusField = is4k ? 'status4k' : 'status';
-          const previousStatus = existing[statusField];
+                if (
+                  existing[is4k ? 'status4k' : 'status'] !==
+                  MediaStatus.AVAILABLE
+                ) {
+                  const statusField = is4k ? 'status4k' : 'status';
+                  const previousStatus = existing[statusField];
 
-          existing[statusField] =
-            !processing && hasFile
-              ? MediaStatus.AVAILABLE
-              : !processing &&
-                  !hasFile &&
-                  previousStatus === MediaStatus.PROCESSING
-                ? MediaStatus.UNKNOWN
-                : processing
-                  ? previousStatus === MediaStatus.DELETED
-                    ? MediaStatus.DELETED
-                    : MediaStatus.PROCESSING
-                  : previousStatus;
+                  existing[statusField] =
+                    !processing && hasFile
+                      ? MediaStatus.AVAILABLE
+                      : !processing &&
+                          !hasFile &&
+                          previousStatus === MediaStatus.PROCESSING
+                        ? MediaStatus.UNKNOWN
+                        : processing
+                          ? previousStatus === MediaStatus.DELETED
+                            ? MediaStatus.DELETED
+                            : MediaStatus.PROCESSING
+                          : previousStatus;
 
-          if (existing[statusField] !== previousStatus) {
-            if (mediaAddedAt) {
-              existing.mediaAddedAt = mediaAddedAt;
-            }
-            changedExisting = true;
-          }
-        }
+                  if (existing[statusField] !== previousStatus) {
+                    if (mediaAddedAt) {
+                      existing.mediaAddedAt = mediaAddedAt;
+                    }
+                    changedExisting = true;
+                  }
+                }
 
-        if (!changedExisting && !existing.mediaAddedAt && mediaAddedAt) {
-          existing.mediaAddedAt = mediaAddedAt;
-          changedExisting = true;
-        }
+                if (
+                  !changedExisting &&
+                  !existing.mediaAddedAt &&
+                  mediaAddedAt
+                ) {
+                  existing.mediaAddedAt = mediaAddedAt;
+                  changedExisting = true;
+                }
 
-        if (
-          ratingKey &&
-          existing[is4k ? 'ratingKey4k' : 'ratingKey'] !== ratingKey
-        ) {
-          existing[is4k ? 'ratingKey4k' : 'ratingKey'] = ratingKey;
-          changedExisting = true;
-        }
+                if (
+                  ratingKey &&
+                  existing[is4k ? 'ratingKey4k' : 'ratingKey'] !== ratingKey
+                ) {
+                  existing[is4k ? 'ratingKey4k' : 'ratingKey'] = ratingKey;
+                  changedExisting = true;
+                }
 
-        if (
-          jellyfinMediaId &&
-          existing[is4k ? 'jellyfinMediaId4k' : 'jellyfinMediaId'] !==
-            jellyfinMediaId
-        ) {
-          existing[is4k ? 'jellyfinMediaId4k' : 'jellyfinMediaId'] =
-            jellyfinMediaId;
-          changedExisting = true;
-        }
+                if (
+                  jellyfinMediaId &&
+                  existing[is4k ? 'jellyfinMediaId4k' : 'jellyfinMediaId'] !==
+                    jellyfinMediaId
+                ) {
+                  existing[is4k ? 'jellyfinMediaId4k' : 'jellyfinMediaId'] =
+                    jellyfinMediaId;
+                  changedExisting = true;
+                }
 
-        if (imdbId && !existing.imdbId) {
-          existing.imdbId = imdbId;
-          changedExisting = true;
-        }
+                if (imdbId && !existing.imdbId) {
+                  existing.imdbId = imdbId;
+                  changedExisting = true;
+                }
 
-        if (
-          serviceId !== undefined &&
-          existing[is4k ? 'serviceId4k' : 'serviceId'] !== serviceId
-        ) {
-          existing[is4k ? 'serviceId4k' : 'serviceId'] = serviceId;
-          changedExisting = true;
-        }
+                if (
+                  serviceId !== undefined &&
+                  existing[is4k ? 'serviceId4k' : 'serviceId'] !== serviceId
+                ) {
+                  existing[is4k ? 'serviceId4k' : 'serviceId'] = serviceId;
+                  changedExisting = true;
+                }
 
-        if (
-          externalServiceId !== undefined &&
-          existing[is4k ? 'externalServiceId4k' : 'externalServiceId'] !==
-            externalServiceId
-        ) {
-          existing[is4k ? 'externalServiceId4k' : 'externalServiceId'] =
-            externalServiceId;
-          changedExisting = true;
-        }
+                if (
+                  externalServiceId !== undefined &&
+                  existing[
+                    is4k ? 'externalServiceId4k' : 'externalServiceId'
+                  ] !== externalServiceId
+                ) {
+                  existing[is4k ? 'externalServiceId4k' : 'externalServiceId'] =
+                    externalServiceId;
+                  changedExisting = true;
+                }
 
-        if (
-          externalServiceSlug !== undefined &&
-          existing[is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'] !==
-            externalServiceSlug
-        ) {
-          existing[is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'] =
-            externalServiceSlug;
-          changedExisting = true;
-        }
+                if (
+                  externalServiceSlug !== undefined &&
+                  existing[
+                    is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'
+                  ] !== externalServiceSlug
+                ) {
+                  existing[
+                    is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'
+                  ] = externalServiceSlug;
+                  changedExisting = true;
+                }
 
-        if (changedExisting) {
-          await mediaRepository.save(existing);
-          this.log(
-            `Media for ${title} exists. Changes were detected and the title will be updated.`,
-            'info'
-          );
-        } else {
-          this.log(`Title already exists and no changes detected for ${title}`);
-        }
-      } else {
-        if (!processing && !hasFile) {
-          return;
-        }
+                if (changedExisting) {
+                  await mediaRepository.save(existing);
+                  this.log(
+                    `Media for ${title} exists. Changes were detected and the title will be updated.`,
+                    'info'
+                  );
+                } else {
+                  this.log(
+                    `Title already exists and no changes detected for ${title}`
+                  );
+                }
+              } else {
+                if (!processing && !hasFile) {
+                  return;
+                }
 
-        const newMedia = new Media();
-        newMedia.tmdbId = tmdbId;
-        newMedia.imdbId = imdbId;
+                const newMedia = new Media();
+                newMedia.tmdbId = tmdbId;
+                newMedia.imdbId = imdbId;
 
-        newMedia.status =
-          !is4k && !processing
-            ? MediaStatus.AVAILABLE
-            : !is4k && processing
-              ? MediaStatus.PROCESSING
-              : MediaStatus.UNKNOWN;
-        newMedia.status4k =
-          is4k && this.enable4kMovie && !processing
-            ? MediaStatus.AVAILABLE
-            : is4k && this.enable4kMovie && processing
-              ? MediaStatus.PROCESSING
-              : MediaStatus.UNKNOWN;
-        newMedia.mediaType = MediaType.MOVIE;
-        newMedia.serviceId = !is4k ? serviceId : undefined;
-        newMedia.serviceId4k = is4k ? serviceId : undefined;
-        newMedia.externalServiceId = !is4k ? externalServiceId : undefined;
-        newMedia.externalServiceId4k = is4k ? externalServiceId : undefined;
-        newMedia.externalServiceSlug = !is4k ? externalServiceSlug : undefined;
-        newMedia.externalServiceSlug4k = is4k ? externalServiceSlug : undefined;
+                newMedia.status =
+                  !is4k && !processing
+                    ? MediaStatus.AVAILABLE
+                    : !is4k && processing
+                      ? MediaStatus.PROCESSING
+                      : MediaStatus.UNKNOWN;
+                newMedia.status4k =
+                  is4k && this.enable4kMovie && !processing
+                    ? MediaStatus.AVAILABLE
+                    : is4k && this.enable4kMovie && processing
+                      ? MediaStatus.PROCESSING
+                      : MediaStatus.UNKNOWN;
+                newMedia.mediaType = MediaType.MOVIE;
+                newMedia.serviceId = !is4k ? serviceId : undefined;
+                newMedia.serviceId4k = is4k ? serviceId : undefined;
+                newMedia.externalServiceId = !is4k
+                  ? externalServiceId
+                  : undefined;
+                newMedia.externalServiceId4k = is4k
+                  ? externalServiceId
+                  : undefined;
+                newMedia.externalServiceSlug = !is4k
+                  ? externalServiceSlug
+                  : undefined;
+                newMedia.externalServiceSlug4k = is4k
+                  ? externalServiceSlug
+                  : undefined;
 
-        if (mediaAddedAt) {
-          newMedia.mediaAddedAt = mediaAddedAt;
-        }
+                if (mediaAddedAt) {
+                  newMedia.mediaAddedAt = mediaAddedAt;
+                }
 
-        if (ratingKey) {
-          newMedia.ratingKey = !is4k ? ratingKey : undefined;
-          newMedia.ratingKey4k =
-            is4k && this.enable4kMovie ? ratingKey : undefined;
-        }
+                if (ratingKey) {
+                  newMedia.ratingKey = !is4k ? ratingKey : undefined;
+                  newMedia.ratingKey4k =
+                    is4k && this.enable4kMovie ? ratingKey : undefined;
+                }
 
-        if (jellyfinMediaId) {
-          newMedia.jellyfinMediaId = !is4k ? jellyfinMediaId : undefined;
-          newMedia.jellyfinMediaId4k =
-            is4k && this.enable4kMovie ? jellyfinMediaId : undefined;
-        }
+                if (jellyfinMediaId) {
+                  newMedia.jellyfinMediaId = !is4k
+                    ? jellyfinMediaId
+                    : undefined;
+                  newMedia.jellyfinMediaId4k =
+                    is4k && this.enable4kMovie ? jellyfinMediaId : undefined;
+                }
 
-        await mediaRepository.save(newMedia);
-        this.log(`Saved new media: ${title}`);
-      }
-    });
+                await mediaRepository.save(newMedia);
+                this.log(`Saved new media: ${title}`);
+              }
+            })
+          )
+      )
+    );
   }
 
   protected async processMusic(
@@ -303,92 +347,105 @@ class BaseScanner<T> {
       processing = false,
       title = 'Unknown Album',
       hasFile = true,
+      mutationGuard,
+      outerMutationGuard,
     }: ProcessOptions = {}
   ): Promise<void> {
     const mediaRepository = getRepository(Media);
     const normalizedMbId = normalizeMusicBrainzId(mbId);
 
-    await this.asyncLock.dispatch(normalizedMbId, async () => {
-      const existing = await mediaRepository.findOne({
-        where: { mbId: normalizedMbId, mediaType: MediaType.MUSIC },
-      });
+    await this.runProcessMutation(outerMutationGuard, () =>
+      runWithRequestAdmission(
+        [`request-canonical:music:${normalizedMbId}`],
+        () =>
+          this.asyncLock.dispatch(normalizedMbId, () =>
+            this.runProcessMutation(mutationGuard, async () => {
+              const existing = await mediaRepository.findOne({
+                where: { mbId: normalizedMbId, mediaType: MediaType.MUSIC },
+              });
 
-      if (existing) {
-        let changedExisting = false;
-        const previousStatus = existing.status;
+              if (existing) {
+                let changedExisting = false;
+                const previousStatus = existing.status;
 
-        existing.status =
-          !processing && hasFile
-            ? MediaStatus.AVAILABLE
-            : !processing &&
-                !hasFile &&
-                previousStatus === MediaStatus.PROCESSING
-              ? MediaStatus.UNKNOWN
-              : processing
-                ? previousStatus === MediaStatus.DELETED
-                  ? MediaStatus.DELETED
-                  : MediaStatus.PROCESSING
-                : previousStatus;
+                existing.status =
+                  !processing && hasFile
+                    ? MediaStatus.AVAILABLE
+                    : !processing &&
+                        !hasFile &&
+                        previousStatus === MediaStatus.PROCESSING
+                      ? MediaStatus.UNKNOWN
+                      : processing
+                        ? previousStatus === MediaStatus.DELETED
+                          ? MediaStatus.DELETED
+                          : MediaStatus.PROCESSING
+                        : previousStatus;
 
-        if (existing.status !== previousStatus) {
-          changedExisting = true;
-          if (mediaAddedAt) {
-            existing.mediaAddedAt = mediaAddedAt;
-          }
-        }
+                if (existing.status !== previousStatus) {
+                  changedExisting = true;
+                  if (mediaAddedAt) {
+                    existing.mediaAddedAt = mediaAddedAt;
+                  }
+                }
 
-        if (!existing.mediaAddedAt && mediaAddedAt) {
-          existing.mediaAddedAt = mediaAddedAt;
-          changedExisting = true;
-        }
+                if (!existing.mediaAddedAt && mediaAddedAt) {
+                  existing.mediaAddedAt = mediaAddedAt;
+                  changedExisting = true;
+                }
 
-        if (serviceId !== undefined && existing.serviceId !== serviceId) {
-          existing.serviceId = serviceId;
-          changedExisting = true;
-        }
+                if (
+                  serviceId !== undefined &&
+                  existing.serviceId !== serviceId
+                ) {
+                  existing.serviceId = serviceId;
+                  changedExisting = true;
+                }
 
-        if (
-          externalServiceId !== undefined &&
-          existing.externalServiceId !== externalServiceId
-        ) {
-          existing.externalServiceId = externalServiceId;
-          changedExisting = true;
-        }
+                if (
+                  externalServiceId !== undefined &&
+                  existing.externalServiceId !== externalServiceId
+                ) {
+                  existing.externalServiceId = externalServiceId;
+                  changedExisting = true;
+                }
 
-        if (
-          externalServiceSlug !== undefined &&
-          existing.externalServiceSlug !== externalServiceSlug
-        ) {
-          existing.externalServiceSlug = externalServiceSlug;
-          changedExisting = true;
-        }
+                if (
+                  externalServiceSlug !== undefined &&
+                  existing.externalServiceSlug !== externalServiceSlug
+                ) {
+                  existing.externalServiceSlug = externalServiceSlug;
+                  changedExisting = true;
+                }
 
-        if (changedExisting) {
-          await mediaRepository.save(existing);
-          this.log(`Updating existing album: ${title}`, 'info');
-        }
-      } else if (processing || hasFile) {
-        await mediaRepository.save(
-          new Media({
-            tmdbId: 0,
-            mbId: normalizedMbId,
-            mediaType: MediaType.MUSIC,
-            mediaAddedAt,
-            serviceId,
-            externalServiceId,
-            externalServiceSlug,
-            status:
-              !processing && hasFile
-                ? MediaStatus.AVAILABLE
-                : processing
-                  ? MediaStatus.PROCESSING
-                  : MediaStatus.UNKNOWN,
-            status4k: MediaStatus.UNKNOWN,
-          })
-        );
-        this.log(`Saved new album: ${title}`);
-      }
-    });
+                if (changedExisting) {
+                  await mediaRepository.save(existing);
+                  this.log(`Updating existing album: ${title}`, 'info');
+                }
+              } else if (processing || hasFile) {
+                await mediaRepository.save(
+                  new Media({
+                    tmdbId: 0,
+                    mbId: normalizedMbId,
+                    mediaType: MediaType.MUSIC,
+                    mediaAddedAt,
+                    serviceId,
+                    externalServiceId,
+                    externalServiceSlug,
+                    status:
+                      !processing && hasFile
+                        ? MediaStatus.AVAILABLE
+                        : processing
+                          ? MediaStatus.PROCESSING
+                          : MediaStatus.UNKNOWN,
+                    status4k: MediaStatus.UNKNOWN,
+                  })
+                );
+                this.log(`Saved new album: ${title}`);
+              }
+            })
+          )
+      )
+    );
   }
 
   protected async processBook(
@@ -404,216 +461,251 @@ class BaseScanner<T> {
       hasFile = true,
       secondaryIdentifiers = [],
       bookServiceType = 'ebook',
+      mutationGuard,
+      outerMutationGuard,
     }: ProcessOptions = {}
   ): Promise<void> {
-    const mediaRepository = getRepository(Media);
-    const identifierRepository = getRepository(MediaIdentifier);
     const normalizedValue = normalizeExternalBookId(value, provider);
     const lockKey = `${provider}:${normalizedValue}`;
+    const identifierCandidates = dedupeIdentifierCandidates([
+      { provider, value: normalizedValue },
+      ...secondaryIdentifiers,
+    ]);
 
-    await this.asyncLock.dispatch(lockKey, async () => {
-      const identifierCandidates = dedupeIdentifierCandidates([
-        { provider, value: normalizedValue },
-        ...secondaryIdentifiers,
-      ]);
-      const candidateKeys = new Set(
+    await this.runProcessMutation(outerMutationGuard, () =>
+      runWithRequestAdmission(
         identifierCandidates.map(
-          (identifier) => `${identifier.provider}:${identifier.value}`
-        )
-      );
-      const existingIdentifiers = await identifierRepository.find({
-        where: identifierCandidates.map((identifier) => ({
-          provider: identifier.provider,
-          value: identifier.value,
-        })),
-        relations: { media: true },
-        order: { id: 'ASC' },
-      });
-      const existingIdentifier =
-        existingIdentifiers.find(
           (identifier) =>
-            identifier.provider === provider &&
-            identifier.value === normalizedValue &&
-            identifier.media.mediaType === MediaType.BOOK
-        ) ??
-        existingIdentifiers.find(
-          (identifier) => identifier.media.mediaType === MediaType.BOOK
-        );
-      const existing =
-        existingIdentifier?.media.mediaType === MediaType.BOOK
-          ? existingIdentifier.media
-          : undefined;
+            `request-canonical:book:${identifier.provider}:${identifier.value}`
+        ),
+        () =>
+          this.asyncLock.dispatch(lockKey, () =>
+            this.runProcessMutation(mutationGuard, () =>
+              dataSource.transaction(async (manager) => {
+                const mediaRepository = manager.getRepository(Media);
+                const identifierRepository =
+                  manager.getRepository(MediaIdentifier);
+                const candidateKeys = new Set(
+                  identifierCandidates.map(
+                    (identifier) => `${identifier.provider}:${identifier.value}`
+                  )
+                );
+                const existingIdentifiers = await identifierRepository.find({
+                  where: identifierCandidates.map((identifier) => ({
+                    provider: identifier.provider,
+                    value: identifier.value,
+                  })),
+                  relations: { media: true },
+                  order: { id: 'ASC' },
+                });
+                const existingIdentifier =
+                  existingIdentifiers.find(
+                    (identifier) =>
+                      identifier.provider === provider &&
+                      identifier.value === normalizedValue &&
+                      identifier.media.mediaType === MediaType.BOOK
+                  ) ??
+                  existingIdentifiers.find(
+                    (identifier) =>
+                      identifier.media.mediaType === MediaType.BOOK
+                  );
+                const existing =
+                  existingIdentifier?.media.mediaType === MediaType.BOOK
+                    ? existingIdentifier.media
+                    : undefined;
 
-      if (existing) {
-        let changedExisting = false;
-        const previousStatus = existing.status;
-        const hasAvailableOtherBookFormat =
-          previousStatus === MediaStatus.AVAILABLE &&
-          processing &&
-          (bookServiceType === 'audiobook'
-            ? existing.serviceId !== null && existing.externalServiceId !== null
-            : existing.audiobookServiceId !== null &&
-              existing.audiobookExternalServiceId !== null);
+                if (existing) {
+                  let changedExisting = false;
+                  const previousStatus = existing.status;
+                  const hasAvailableOtherBookFormat =
+                    previousStatus === MediaStatus.AVAILABLE &&
+                    processing &&
+                    (bookServiceType === 'audiobook'
+                      ? existing.serviceId !== null &&
+                        existing.externalServiceId !== null
+                      : existing.audiobookServiceId !== null &&
+                        existing.audiobookExternalServiceId !== null);
 
-        existing.status =
-          !processing && hasFile
-            ? MediaStatus.AVAILABLE
-            : !processing &&
-                !hasFile &&
-                previousStatus === MediaStatus.PROCESSING
-              ? MediaStatus.UNKNOWN
-              : processing
-                ? hasAvailableOtherBookFormat
-                  ? MediaStatus.AVAILABLE
-                  : previousStatus === MediaStatus.DELETED
-                    ? MediaStatus.DELETED
-                    : MediaStatus.PROCESSING
-                : previousStatus;
+                  existing.status =
+                    !processing && hasFile
+                      ? MediaStatus.AVAILABLE
+                      : !processing &&
+                          !hasFile &&
+                          previousStatus === MediaStatus.PROCESSING
+                        ? MediaStatus.UNKNOWN
+                        : processing
+                          ? hasAvailableOtherBookFormat
+                            ? MediaStatus.AVAILABLE
+                            : previousStatus === MediaStatus.DELETED
+                              ? MediaStatus.DELETED
+                              : MediaStatus.PROCESSING
+                          : previousStatus;
 
-        if (existing.status !== previousStatus) {
-          changedExisting = true;
-          if (mediaAddedAt) {
-            existing.mediaAddedAt = mediaAddedAt;
-          }
-        }
+                  if (existing.status !== previousStatus) {
+                    changedExisting = true;
+                    if (mediaAddedAt) {
+                      existing.mediaAddedAt = mediaAddedAt;
+                    }
+                  }
 
-        if (!existing.mediaAddedAt && mediaAddedAt) {
-          existing.mediaAddedAt = mediaAddedAt;
-          changedExisting = true;
-        }
+                  if (!existing.mediaAddedAt && mediaAddedAt) {
+                    existing.mediaAddedAt = mediaAddedAt;
+                    changedExisting = true;
+                  }
 
-        if (
-          bookServiceType === 'audiobook' &&
-          serviceId !== undefined &&
-          existing.audiobookServiceId !== serviceId
-        ) {
-          existing.audiobookServiceId = serviceId;
-          changedExisting = true;
-        } else if (
-          bookServiceType === 'ebook' &&
-          serviceId !== undefined &&
-          existing.serviceId !== serviceId
-        ) {
-          existing.serviceId = serviceId;
-          changedExisting = true;
-        }
+                  if (
+                    bookServiceType === 'audiobook' &&
+                    serviceId !== undefined &&
+                    existing.audiobookServiceId !== serviceId
+                  ) {
+                    existing.audiobookServiceId = serviceId;
+                    changedExisting = true;
+                  } else if (
+                    bookServiceType === 'ebook' &&
+                    serviceId !== undefined &&
+                    existing.serviceId !== serviceId
+                  ) {
+                    existing.serviceId = serviceId;
+                    changedExisting = true;
+                  }
 
-        if (
-          bookServiceType === 'audiobook' &&
-          externalServiceId !== undefined &&
-          existing.audiobookExternalServiceId !== externalServiceId
-        ) {
-          existing.audiobookExternalServiceId = externalServiceId;
-          changedExisting = true;
-        } else if (
-          bookServiceType === 'ebook' &&
-          externalServiceId !== undefined &&
-          existing.externalServiceId !== externalServiceId
-        ) {
-          existing.externalServiceId = externalServiceId;
-          changedExisting = true;
-        }
+                  if (
+                    bookServiceType === 'audiobook' &&
+                    externalServiceId !== undefined &&
+                    existing.audiobookExternalServiceId !== externalServiceId
+                  ) {
+                    existing.audiobookExternalServiceId = externalServiceId;
+                    changedExisting = true;
+                  } else if (
+                    bookServiceType === 'ebook' &&
+                    externalServiceId !== undefined &&
+                    existing.externalServiceId !== externalServiceId
+                  ) {
+                    existing.externalServiceId = externalServiceId;
+                    changedExisting = true;
+                  }
 
-        if (
-          bookServiceType === 'audiobook' &&
-          externalServiceSlug !== undefined &&
-          existing.audiobookExternalServiceSlug !== externalServiceSlug
-        ) {
-          existing.audiobookExternalServiceSlug = externalServiceSlug;
-          changedExisting = true;
-        } else if (
-          bookServiceType === 'ebook' &&
-          externalServiceSlug !== undefined &&
-          existing.externalServiceSlug !== externalServiceSlug
-        ) {
-          existing.externalServiceSlug = externalServiceSlug;
-          changedExisting = true;
-        }
+                  if (
+                    bookServiceType === 'audiobook' &&
+                    externalServiceSlug !== undefined &&
+                    existing.audiobookExternalServiceSlug !==
+                      externalServiceSlug
+                  ) {
+                    existing.audiobookExternalServiceSlug = externalServiceSlug;
+                    changedExisting = true;
+                  } else if (
+                    bookServiceType === 'ebook' &&
+                    externalServiceSlug !== undefined &&
+                    existing.externalServiceSlug !== externalServiceSlug
+                  ) {
+                    existing.externalServiceSlug = externalServiceSlug;
+                    changedExisting = true;
+                  }
 
-        if (changedExisting) {
-          await mediaRepository.save(existing);
-          this.log(`Updating existing book: ${title}`, 'info');
-        }
+                  if (changedExisting) {
+                    await mediaRepository.save(existing);
+                    this.log(`Updating existing book: ${title}`, 'info');
+                  }
 
-        const existingKeys = new Set(
-          (
-            await identifierRepository.find({
-              where: [
-                { media: { id: existing.id } },
-                ...identifierCandidates.map((identifier) => ({
-                  provider: identifier.provider,
-                  value: identifier.value,
-                })),
-              ],
-              relations: { media: true },
-            })
-          )
-            .filter(
-              (identifier) =>
-                identifier.media.id !== existing.id ||
-                candidateKeys.has(`${identifier.provider}:${identifier.value}`)
-            )
-            .map((identifier) => `${identifier.provider}:${identifier.value}`)
-        );
-        const missingIdentifiers = identifierCandidates.filter(
-          (identifier) =>
-            !existingKeys.has(`${identifier.provider}:${identifier.value}`)
-        );
+                  const existingKeys = new Set(
+                    (
+                      await identifierRepository.find({
+                        where: [
+                          { media: { id: existing.id } },
+                          ...identifierCandidates.map((identifier) => ({
+                            provider: identifier.provider,
+                            value: identifier.value,
+                          })),
+                        ],
+                        relations: { media: true },
+                      })
+                    )
+                      .filter(
+                        (identifier) =>
+                          identifier.media.id !== existing.id ||
+                          candidateKeys.has(
+                            `${identifier.provider}:${identifier.value}`
+                          )
+                      )
+                      .map(
+                        (identifier) =>
+                          `${identifier.provider}:${identifier.value}`
+                      )
+                  );
+                  const missingIdentifiers = identifierCandidates.filter(
+                    (identifier) =>
+                      !existingKeys.has(
+                        `${identifier.provider}:${identifier.value}`
+                      )
+                  );
 
-        if (missingIdentifiers.length) {
-          await identifierRepository.save(
-            missingIdentifiers.map(
-              (identifier) =>
-                new MediaIdentifier({
-                  media: existing,
-                  provider: identifier.provider,
-                  value: identifier.value,
-                  canonical: false,
-                })
-            )
-          );
-        }
-      } else if (processing || hasFile) {
-        const media = await mediaRepository.save(
-          new Media({
-            tmdbId: 0,
-            mediaType: MediaType.BOOK,
-            mediaAddedAt,
-            serviceId: bookServiceType === 'ebook' ? serviceId : undefined,
-            externalServiceId:
-              bookServiceType === 'ebook' ? externalServiceId : undefined,
-            externalServiceSlug:
-              bookServiceType === 'ebook' ? externalServiceSlug : undefined,
-            audiobookServiceId:
-              bookServiceType === 'audiobook' ? serviceId : undefined,
-            audiobookExternalServiceId:
-              bookServiceType === 'audiobook' ? externalServiceId : undefined,
-            audiobookExternalServiceSlug:
-              bookServiceType === 'audiobook' ? externalServiceSlug : undefined,
-            status:
-              !processing && hasFile
-                ? MediaStatus.AVAILABLE
-                : processing
-                  ? MediaStatus.PROCESSING
-                  : MediaStatus.UNKNOWN,
-            status4k: MediaStatus.UNKNOWN,
-          })
-        );
+                  if (missingIdentifiers.length) {
+                    await identifierRepository.save(
+                      missingIdentifiers.map(
+                        (identifier) =>
+                          new MediaIdentifier({
+                            media: existing,
+                            provider: identifier.provider,
+                            value: identifier.value,
+                            canonical: false,
+                          })
+                      )
+                    );
+                  }
+                } else if (processing || hasFile) {
+                  const media = await mediaRepository.save(
+                    new Media({
+                      tmdbId: 0,
+                      mediaType: MediaType.BOOK,
+                      mediaAddedAt,
+                      serviceId:
+                        bookServiceType === 'ebook' ? serviceId : undefined,
+                      externalServiceId:
+                        bookServiceType === 'ebook'
+                          ? externalServiceId
+                          : undefined,
+                      externalServiceSlug:
+                        bookServiceType === 'ebook'
+                          ? externalServiceSlug
+                          : undefined,
+                      audiobookServiceId:
+                        bookServiceType === 'audiobook' ? serviceId : undefined,
+                      audiobookExternalServiceId:
+                        bookServiceType === 'audiobook'
+                          ? externalServiceId
+                          : undefined,
+                      audiobookExternalServiceSlug:
+                        bookServiceType === 'audiobook'
+                          ? externalServiceSlug
+                          : undefined,
+                      status:
+                        !processing && hasFile
+                          ? MediaStatus.AVAILABLE
+                          : processing
+                            ? MediaStatus.PROCESSING
+                            : MediaStatus.UNKNOWN,
+                      status4k: MediaStatus.UNKNOWN,
+                    })
+                  );
 
-        await identifierRepository.save(
-          identifierCandidates.map(
-            (identifier, index) =>
-              new MediaIdentifier({
-                media,
-                provider: identifier.provider,
-                value: identifier.value,
-                canonical: index === 0,
+                  await identifierRepository.save(
+                    identifierCandidates.map(
+                      (identifier, index) =>
+                        new MediaIdentifier({
+                          media,
+                          provider: identifier.provider,
+                          value: identifier.value,
+                          canonical: index === 0,
+                        })
+                    )
+                  );
+                  this.log(`Saved new book: ${title}`);
+                }
               })
+            )
           )
-        );
-        this.log(`Saved new book: ${title}`);
-      }
-    });
+      )
+    );
   }
 
   /**
@@ -639,348 +731,374 @@ class BaseScanner<T> {
       externalServiceSlug,
       is4k = false,
       title = 'Unknown Title',
+      mutationGuard,
+      outerMutationGuard,
     }: ProcessOptions = {}
   ): Promise<void> {
     const mediaRepository = getRepository(Media);
 
-    await this.asyncLock.dispatch(tmdbId, async () => {
-      const media = await this.getExisting(tmdbId, MediaType.TV);
+    await this.runProcessMutation(outerMutationGuard, () =>
+      runWithRequestAdmission([`request-media:${MediaType.TV}:${tmdbId}`], () =>
+        this.asyncLock.dispatch(tmdbId, () =>
+          this.runProcessMutation(mutationGuard, async () => {
+            const media = await this.getExisting(tmdbId, MediaType.TV);
 
-      const newSeasons: Season[] = [];
+            const newSeasons: Season[] = [];
 
-      const currentStandardSeasonsAvailable = (
-        media?.seasons.filter(
-          (season) => season.status === MediaStatus.AVAILABLE
-        ) ?? []
-      ).length;
+            const currentStandardSeasonsAvailable = (
+              media?.seasons.filter(
+                (season) => season.status === MediaStatus.AVAILABLE
+              ) ?? []
+            ).length;
 
-      const current4kSeasonsAvailable = (
-        media?.seasons.filter(
-          (season) => season.status4k === MediaStatus.AVAILABLE
-        ) ?? []
-      ).length;
+            const current4kSeasonsAvailable = (
+              media?.seasons.filter(
+                (season) => season.status4k === MediaStatus.AVAILABLE
+              ) ?? []
+            ).length;
 
-      for (const season of seasons) {
-        const existingSeason = media?.seasons.find(
-          (es) => es.seasonNumber === season.seasonNumber
-        );
+            for (const season of seasons) {
+              const existingSeason = media?.seasons.find(
+                (es) => es.seasonNumber === season.seasonNumber
+              );
 
-        // We update the rating keys and jellyfinMediaId in the seasons loop because we need episode counts
-        if (media && season.episodes > 0 && media.ratingKey !== ratingKey) {
-          media.ratingKey = ratingKey;
-        }
+              // We update the rating keys and jellyfinMediaId in the seasons loop because we need episode counts
+              if (
+                media &&
+                season.episodes > 0 &&
+                media.ratingKey !== ratingKey
+              ) {
+                media.ratingKey = ratingKey;
+              }
 
-        if (
-          media &&
-          season.episodes4k > 0 &&
-          this.enable4kShow &&
-          media.ratingKey4k !== ratingKey
-        ) {
-          media.ratingKey4k = ratingKey;
-        }
-
-        if (
-          media &&
-          season.episodes > 0 &&
-          media.jellyfinMediaId !== jellyfinMediaId
-        ) {
-          media.jellyfinMediaId = jellyfinMediaId;
-        }
-
-        if (
-          media &&
-          season.episodes4k > 0 &&
-          this.enable4kShow &&
-          media.jellyfinMediaId4k !== jellyfinMediaId
-        ) {
-          media.jellyfinMediaId4k = jellyfinMediaId;
-        }
-
-        if (existingSeason) {
-          // Here we update seasons if they already exist.
-          // If the season is already marked as available, we
-          // force it to stay available (to avoid competing scanners)
-          existingSeason.status =
-            (season.totalEpisodes === season.episodes && season.episodes > 0) ||
-            existingSeason.status === MediaStatus.AVAILABLE
-              ? MediaStatus.AVAILABLE
-              : season.episodes > 0
-                ? MediaStatus.PARTIALLY_AVAILABLE
-                : !season.is4kOverride &&
-                    season.processing &&
-                    existingSeason.status !== MediaStatus.DELETED
-                  ? MediaStatus.PROCESSING
-                  : !season.is4kOverride &&
-                      !season.processing &&
-                      season.episodes === 0 &&
-                      existingSeason.status === MediaStatus.PROCESSING
-                    ? MediaStatus.UNKNOWN
-                    : existingSeason.status;
-
-          // Same thing here, except we only do updates if 4k is enabled
-          existingSeason.status4k =
-            (this.enable4kShow &&
-              season.episodes4k === season.totalEpisodes &&
-              season.episodes4k > 0) ||
-            existingSeason.status4k === MediaStatus.AVAILABLE
-              ? MediaStatus.AVAILABLE
-              : this.enable4kShow && season.episodes4k > 0
-                ? MediaStatus.PARTIALLY_AVAILABLE
-                : season.is4kOverride &&
-                    season.processing &&
-                    existingSeason.status4k !== MediaStatus.DELETED
-                  ? MediaStatus.PROCESSING
-                  : season.is4kOverride &&
-                      !season.processing &&
-                      season.episodes4k === 0 &&
-                      existingSeason.status4k === MediaStatus.PROCESSING
-                    ? MediaStatus.UNKNOWN
-                    : existingSeason.status4k;
-        } else {
-          newSeasons.push(
-            new Season({
-              seasonNumber: season.seasonNumber,
-              status:
-                season.totalEpisodes === season.episodes && season.episodes > 0
-                  ? MediaStatus.AVAILABLE
-                  : season.episodes > 0
-                    ? MediaStatus.PARTIALLY_AVAILABLE
-                    : !season.is4kOverride && season.processing
-                      ? MediaStatus.PROCESSING
-                      : MediaStatus.UNKNOWN,
-              status4k:
+              if (
+                media &&
+                season.episodes4k > 0 &&
                 this.enable4kShow &&
-                season.totalEpisodes === season.episodes4k &&
-                season.episodes4k > 0
+                media.ratingKey4k !== ratingKey
+              ) {
+                media.ratingKey4k = ratingKey;
+              }
+
+              if (
+                media &&
+                season.episodes > 0 &&
+                media.jellyfinMediaId !== jellyfinMediaId
+              ) {
+                media.jellyfinMediaId = jellyfinMediaId;
+              }
+
+              if (
+                media &&
+                season.episodes4k > 0 &&
+                this.enable4kShow &&
+                media.jellyfinMediaId4k !== jellyfinMediaId
+              ) {
+                media.jellyfinMediaId4k = jellyfinMediaId;
+              }
+
+              if (existingSeason) {
+                // Here we update seasons if they already exist.
+                // If the season is already marked as available, we
+                // force it to stay available (to avoid competing scanners)
+                existingSeason.status =
+                  (season.totalEpisodes === season.episodes &&
+                    season.episodes > 0) ||
+                  existingSeason.status === MediaStatus.AVAILABLE
+                    ? MediaStatus.AVAILABLE
+                    : season.episodes > 0
+                      ? MediaStatus.PARTIALLY_AVAILABLE
+                      : !season.is4kOverride &&
+                          season.processing &&
+                          existingSeason.status !== MediaStatus.DELETED
+                        ? MediaStatus.PROCESSING
+                        : !season.is4kOverride &&
+                            !season.processing &&
+                            season.episodes === 0 &&
+                            existingSeason.status === MediaStatus.PROCESSING
+                          ? MediaStatus.UNKNOWN
+                          : existingSeason.status;
+
+                // Same thing here, except we only do updates if 4k is enabled
+                existingSeason.status4k =
+                  (this.enable4kShow &&
+                    season.episodes4k === season.totalEpisodes &&
+                    season.episodes4k > 0) ||
+                  existingSeason.status4k === MediaStatus.AVAILABLE
+                    ? MediaStatus.AVAILABLE
+                    : this.enable4kShow && season.episodes4k > 0
+                      ? MediaStatus.PARTIALLY_AVAILABLE
+                      : season.is4kOverride &&
+                          season.processing &&
+                          existingSeason.status4k !== MediaStatus.DELETED
+                        ? MediaStatus.PROCESSING
+                        : season.is4kOverride &&
+                            !season.processing &&
+                            season.episodes4k === 0 &&
+                            existingSeason.status4k === MediaStatus.PROCESSING
+                          ? MediaStatus.UNKNOWN
+                          : existingSeason.status4k;
+              } else {
+                newSeasons.push(
+                  new Season({
+                    seasonNumber: season.seasonNumber,
+                    status:
+                      season.totalEpisodes === season.episodes &&
+                      season.episodes > 0
+                        ? MediaStatus.AVAILABLE
+                        : season.episodes > 0
+                          ? MediaStatus.PARTIALLY_AVAILABLE
+                          : !season.is4kOverride && season.processing
+                            ? MediaStatus.PROCESSING
+                            : MediaStatus.UNKNOWN,
+                    status4k:
+                      this.enable4kShow &&
+                      season.totalEpisodes === season.episodes4k &&
+                      season.episodes4k > 0
+                        ? MediaStatus.AVAILABLE
+                        : this.enable4kShow && season.episodes4k > 0
+                          ? MediaStatus.PARTIALLY_AVAILABLE
+                          : season.is4kOverride && season.processing
+                            ? MediaStatus.PROCESSING
+                            : MediaStatus.UNKNOWN,
+                  })
+                );
+              }
+            }
+
+            if (media) {
+              media.seasons = [...media.seasons, ...newSeasons];
+
+              const newStandardSeasonsAvailable = (
+                media.seasons.filter(
+                  (season) => season.status === MediaStatus.AVAILABLE
+                ) ?? []
+              ).length;
+
+              const new4kSeasonsAvailable = (
+                media.seasons.filter(
+                  (season) => season.status4k === MediaStatus.AVAILABLE
+                ) ?? []
+              ).length;
+
+              // If at least one new season has become available, update
+              // the lastSeasonChange field so we can trigger notifications
+              if (
+                newStandardSeasonsAvailable > currentStandardSeasonsAvailable
+              ) {
+                this.log(
+                  `Detected ${
+                    newStandardSeasonsAvailable -
+                    currentStandardSeasonsAvailable
+                  } new standard season(s) for ${title}`,
+                  'debug'
+                );
+                media.lastSeasonChange = new Date();
+
+                if (mediaAddedAt) {
+                  media.mediaAddedAt = mediaAddedAt;
+                }
+              }
+
+              if (new4kSeasonsAvailable > current4kSeasonsAvailable) {
+                this.log(
+                  `Detected ${
+                    new4kSeasonsAvailable - current4kSeasonsAvailable
+                  } new 4K season(s) for ${title}`,
+                  'debug'
+                );
+                media.lastSeasonChange = new Date();
+              }
+
+              if (!media.mediaAddedAt && mediaAddedAt) {
+                media.mediaAddedAt = mediaAddedAt;
+              }
+
+              if (serviceId !== undefined) {
+                media[is4k ? 'serviceId4k' : 'serviceId'] = serviceId;
+              }
+
+              if (externalServiceId !== undefined) {
+                media[is4k ? 'externalServiceId4k' : 'externalServiceId'] =
+                  externalServiceId;
+              }
+
+              if (externalServiceSlug !== undefined) {
+                media[is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'] =
+                  externalServiceSlug;
+              }
+
+              const nonSpecialSeasons = media.seasons.filter(
+                (s) => s.seasonNumber !== 0
+              );
+
+              // Check the actual season objects instead scanner input
+              // to determine overall availability status
+              // UNKNOWN seasons are treated as neutral (no signal) rather than
+              // blockers, so a stale/orphan placeholder season can't hold the
+              // show at PARTIALLY_AVAILABLE indefinitely.
+              const isAllStandardSeasonsAvailable =
+                nonSpecialSeasons.length > 0 &&
+                nonSpecialSeasons
+                  .filter((s) => s.status !== MediaStatus.UNKNOWN)
+                  .every((s) => s.status === MediaStatus.AVAILABLE) &&
+                nonSpecialSeasons.some(
+                  (s) => s.status === MediaStatus.AVAILABLE
+                );
+
+              const isAll4kSeasonsAvailable =
+                nonSpecialSeasons.length > 0 &&
+                nonSpecialSeasons
+                  .filter((s) => s.status4k !== MediaStatus.UNKNOWN)
+                  .every((s) => s.status4k === MediaStatus.AVAILABLE) &&
+                nonSpecialSeasons.some(
+                  (s) => s.status4k === MediaStatus.AVAILABLE
+                );
+
+              media.status = isAllStandardSeasonsAvailable
+                ? MediaStatus.AVAILABLE
+                : media.seasons.some(
+                      (season) =>
+                        season.status === MediaStatus.PARTIALLY_AVAILABLE ||
+                        season.status === MediaStatus.AVAILABLE
+                    )
+                  ? MediaStatus.PARTIALLY_AVAILABLE
+                  : (!seasons.length && media.status !== MediaStatus.DELETED) ||
+                      media.seasons.some(
+                        (season) => season.status === MediaStatus.PROCESSING
+                      )
+                    ? MediaStatus.PROCESSING
+                    : media.status === MediaStatus.DELETED
+                      ? MediaStatus.DELETED
+                      : MediaStatus.UNKNOWN;
+              media.status4k =
+                isAll4kSeasonsAvailable && this.enable4kShow
                   ? MediaStatus.AVAILABLE
-                  : this.enable4kShow && season.episodes4k > 0
+                  : this.enable4kShow &&
+                      media.seasons.some(
+                        (season) =>
+                          season.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
+                          season.status4k === MediaStatus.AVAILABLE
+                      )
                     ? MediaStatus.PARTIALLY_AVAILABLE
-                    : season.is4kOverride && season.processing
+                    : (!seasons.length &&
+                          media.status4k !== MediaStatus.DELETED) ||
+                        media.seasons.some(
+                          (season) => season.status4k === MediaStatus.PROCESSING
+                        )
+                      ? MediaStatus.PROCESSING
+                      : media.status4k === MediaStatus.DELETED
+                        ? MediaStatus.DELETED
+                        : MediaStatus.UNKNOWN;
+              await mediaRepository.save(media);
+              this.log(`Updating existing title: ${title}`);
+            } else {
+              // For new media, check actual newSeasons objects instead of scanner
+              // input to determine overall availability status
+              const nonSpecialNewSeasons = newSeasons.filter(
+                (s) => s.seasonNumber !== 0
+              );
+
+              const isAllStandardSeasonsAvailable =
+                nonSpecialNewSeasons.length > 0 &&
+                nonSpecialNewSeasons
+                  .filter((s) => s.status !== MediaStatus.UNKNOWN)
+                  .every((s) => s.status === MediaStatus.AVAILABLE) &&
+                nonSpecialNewSeasons.some(
+                  (s) => s.status === MediaStatus.AVAILABLE
+                );
+
+              const isAll4kSeasonsAvailable =
+                nonSpecialNewSeasons.length > 0 &&
+                nonSpecialNewSeasons
+                  .filter((s) => s.status4k !== MediaStatus.UNKNOWN)
+                  .every((s) => s.status4k === MediaStatus.AVAILABLE) &&
+                nonSpecialNewSeasons.some(
+                  (s) => s.status4k === MediaStatus.AVAILABLE
+                );
+
+              const newMedia = new Media({
+                mediaType: MediaType.TV,
+                seasons: newSeasons,
+                tmdbId,
+                tvdbId,
+                mediaAddedAt,
+                serviceId: !is4k ? serviceId : undefined,
+                serviceId4k: is4k ? serviceId : undefined,
+                externalServiceId: !is4k ? externalServiceId : undefined,
+                externalServiceId4k: is4k ? externalServiceId : undefined,
+                externalServiceSlug: !is4k ? externalServiceSlug : undefined,
+                externalServiceSlug4k: is4k ? externalServiceSlug : undefined,
+                ratingKey: newSeasons.some(
+                  (sn) =>
+                    sn.status === MediaStatus.PARTIALLY_AVAILABLE ||
+                    sn.status === MediaStatus.AVAILABLE
+                )
+                  ? ratingKey
+                  : undefined,
+                ratingKey4k:
+                  this.enable4kShow &&
+                  newSeasons.some(
+                    (sn) =>
+                      sn.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
+                      sn.status4k === MediaStatus.AVAILABLE
+                  )
+                    ? ratingKey
+                    : undefined,
+                jellyfinMediaId: newSeasons.some(
+                  (sn) =>
+                    sn.status === MediaStatus.PARTIALLY_AVAILABLE ||
+                    sn.status === MediaStatus.AVAILABLE
+                )
+                  ? jellyfinMediaId
+                  : undefined,
+                jellyfinMediaId4k:
+                  this.enable4kShow &&
+                  newSeasons.some(
+                    (sn) =>
+                      sn.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
+                      sn.status4k === MediaStatus.AVAILABLE
+                  )
+                    ? jellyfinMediaId
+                    : undefined,
+                status: isAllStandardSeasonsAvailable
+                  ? MediaStatus.AVAILABLE
+                  : newSeasons.some(
+                        (season) =>
+                          season.status === MediaStatus.PARTIALLY_AVAILABLE ||
+                          season.status === MediaStatus.AVAILABLE
+                      )
+                    ? MediaStatus.PARTIALLY_AVAILABLE
+                    : newSeasons.some(
+                          (season) => season.status === MediaStatus.PROCESSING
+                        )
                       ? MediaStatus.PROCESSING
                       : MediaStatus.UNKNOWN,
-            })
-          );
-        }
-      }
-
-      if (media) {
-        media.seasons = [...media.seasons, ...newSeasons];
-
-        const newStandardSeasonsAvailable = (
-          media.seasons.filter(
-            (season) => season.status === MediaStatus.AVAILABLE
-          ) ?? []
-        ).length;
-
-        const new4kSeasonsAvailable = (
-          media.seasons.filter(
-            (season) => season.status4k === MediaStatus.AVAILABLE
-          ) ?? []
-        ).length;
-
-        // If at least one new season has become available, update
-        // the lastSeasonChange field so we can trigger notifications
-        if (newStandardSeasonsAvailable > currentStandardSeasonsAvailable) {
-          this.log(
-            `Detected ${
-              newStandardSeasonsAvailable - currentStandardSeasonsAvailable
-            } new standard season(s) for ${title}`,
-            'debug'
-          );
-          media.lastSeasonChange = new Date();
-
-          if (mediaAddedAt) {
-            media.mediaAddedAt = mediaAddedAt;
-          }
-        }
-
-        if (new4kSeasonsAvailable > current4kSeasonsAvailable) {
-          this.log(
-            `Detected ${
-              new4kSeasonsAvailable - current4kSeasonsAvailable
-            } new 4K season(s) for ${title}`,
-            'debug'
-          );
-          media.lastSeasonChange = new Date();
-        }
-
-        if (!media.mediaAddedAt && mediaAddedAt) {
-          media.mediaAddedAt = mediaAddedAt;
-        }
-
-        if (serviceId !== undefined) {
-          media[is4k ? 'serviceId4k' : 'serviceId'] = serviceId;
-        }
-
-        if (externalServiceId !== undefined) {
-          media[is4k ? 'externalServiceId4k' : 'externalServiceId'] =
-            externalServiceId;
-        }
-
-        if (externalServiceSlug !== undefined) {
-          media[is4k ? 'externalServiceSlug4k' : 'externalServiceSlug'] =
-            externalServiceSlug;
-        }
-
-        const nonSpecialSeasons = media.seasons.filter(
-          (s) => s.seasonNumber !== 0
-        );
-
-        // Check the actual season objects instead scanner input
-        // to determine overall availability status
-        // UNKNOWN seasons are treated as neutral (no signal) rather than
-        // blockers, so a stale/orphan placeholder season can't hold the
-        // show at PARTIALLY_AVAILABLE indefinitely.
-        const isAllStandardSeasonsAvailable =
-          nonSpecialSeasons.length > 0 &&
-          nonSpecialSeasons
-            .filter((s) => s.status !== MediaStatus.UNKNOWN)
-            .every((s) => s.status === MediaStatus.AVAILABLE) &&
-          nonSpecialSeasons.some((s) => s.status === MediaStatus.AVAILABLE);
-
-        const isAll4kSeasonsAvailable =
-          nonSpecialSeasons.length > 0 &&
-          nonSpecialSeasons
-            .filter((s) => s.status4k !== MediaStatus.UNKNOWN)
-            .every((s) => s.status4k === MediaStatus.AVAILABLE) &&
-          nonSpecialSeasons.some((s) => s.status4k === MediaStatus.AVAILABLE);
-
-        media.status = isAllStandardSeasonsAvailable
-          ? MediaStatus.AVAILABLE
-          : media.seasons.some(
-                (season) =>
-                  season.status === MediaStatus.PARTIALLY_AVAILABLE ||
-                  season.status === MediaStatus.AVAILABLE
-              )
-            ? MediaStatus.PARTIALLY_AVAILABLE
-            : (!seasons.length && media.status !== MediaStatus.DELETED) ||
-                media.seasons.some(
-                  (season) => season.status === MediaStatus.PROCESSING
-                )
-              ? MediaStatus.PROCESSING
-              : media.status === MediaStatus.DELETED
-                ? MediaStatus.DELETED
-                : MediaStatus.UNKNOWN;
-        media.status4k =
-          isAll4kSeasonsAvailable && this.enable4kShow
-            ? MediaStatus.AVAILABLE
-            : this.enable4kShow &&
-                media.seasons.some(
-                  (season) =>
-                    season.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
-                    season.status4k === MediaStatus.AVAILABLE
-                )
-              ? MediaStatus.PARTIALLY_AVAILABLE
-              : (!seasons.length && media.status4k !== MediaStatus.DELETED) ||
-                  media.seasons.some(
-                    (season) => season.status4k === MediaStatus.PROCESSING
-                  )
-                ? MediaStatus.PROCESSING
-                : media.status4k === MediaStatus.DELETED
-                  ? MediaStatus.DELETED
-                  : MediaStatus.UNKNOWN;
-        await mediaRepository.save(media);
-        this.log(`Updating existing title: ${title}`);
-      } else {
-        // For new media, check actual newSeasons objects instead of scanner
-        // input to determine overall availability status
-        const nonSpecialNewSeasons = newSeasons.filter(
-          (s) => s.seasonNumber !== 0
-        );
-
-        const isAllStandardSeasonsAvailable =
-          nonSpecialNewSeasons.length > 0 &&
-          nonSpecialNewSeasons
-            .filter((s) => s.status !== MediaStatus.UNKNOWN)
-            .every((s) => s.status === MediaStatus.AVAILABLE) &&
-          nonSpecialNewSeasons.some((s) => s.status === MediaStatus.AVAILABLE);
-
-        const isAll4kSeasonsAvailable =
-          nonSpecialNewSeasons.length > 0 &&
-          nonSpecialNewSeasons
-            .filter((s) => s.status4k !== MediaStatus.UNKNOWN)
-            .every((s) => s.status4k === MediaStatus.AVAILABLE) &&
-          nonSpecialNewSeasons.some(
-            (s) => s.status4k === MediaStatus.AVAILABLE
-          );
-
-        const newMedia = new Media({
-          mediaType: MediaType.TV,
-          seasons: newSeasons,
-          tmdbId,
-          tvdbId,
-          mediaAddedAt,
-          serviceId: !is4k ? serviceId : undefined,
-          serviceId4k: is4k ? serviceId : undefined,
-          externalServiceId: !is4k ? externalServiceId : undefined,
-          externalServiceId4k: is4k ? externalServiceId : undefined,
-          externalServiceSlug: !is4k ? externalServiceSlug : undefined,
-          externalServiceSlug4k: is4k ? externalServiceSlug : undefined,
-          ratingKey: newSeasons.some(
-            (sn) =>
-              sn.status === MediaStatus.PARTIALLY_AVAILABLE ||
-              sn.status === MediaStatus.AVAILABLE
-          )
-            ? ratingKey
-            : undefined,
-          ratingKey4k:
-            this.enable4kShow &&
-            newSeasons.some(
-              (sn) =>
-                sn.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
-                sn.status4k === MediaStatus.AVAILABLE
-            )
-              ? ratingKey
-              : undefined,
-          jellyfinMediaId: newSeasons.some(
-            (sn) =>
-              sn.status === MediaStatus.PARTIALLY_AVAILABLE ||
-              sn.status === MediaStatus.AVAILABLE
-          )
-            ? jellyfinMediaId
-            : undefined,
-          jellyfinMediaId4k:
-            this.enable4kShow &&
-            newSeasons.some(
-              (sn) =>
-                sn.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
-                sn.status4k === MediaStatus.AVAILABLE
-            )
-              ? jellyfinMediaId
-              : undefined,
-          status: isAllStandardSeasonsAvailable
-            ? MediaStatus.AVAILABLE
-            : newSeasons.some(
-                  (season) =>
-                    season.status === MediaStatus.PARTIALLY_AVAILABLE ||
-                    season.status === MediaStatus.AVAILABLE
-                )
-              ? MediaStatus.PARTIALLY_AVAILABLE
-              : newSeasons.some(
-                    (season) => season.status === MediaStatus.PROCESSING
-                  )
-                ? MediaStatus.PROCESSING
-                : MediaStatus.UNKNOWN,
-          status4k:
-            isAll4kSeasonsAvailable && this.enable4kShow
-              ? MediaStatus.AVAILABLE
-              : this.enable4kShow &&
-                  newSeasons.some(
-                    (season) =>
-                      season.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
-                      season.status4k === MediaStatus.AVAILABLE
-                  )
-                ? MediaStatus.PARTIALLY_AVAILABLE
-                : newSeasons.some(
-                      (season) => season.status4k === MediaStatus.PROCESSING
-                    )
-                  ? MediaStatus.PROCESSING
-                  : MediaStatus.UNKNOWN,
-        });
-        await mediaRepository.save(newMedia);
-        this.log(`Saved ${title}`);
-      }
-    });
+                status4k:
+                  isAll4kSeasonsAvailable && this.enable4kShow
+                    ? MediaStatus.AVAILABLE
+                    : this.enable4kShow &&
+                        newSeasons.some(
+                          (season) =>
+                            season.status4k ===
+                              MediaStatus.PARTIALLY_AVAILABLE ||
+                            season.status4k === MediaStatus.AVAILABLE
+                        )
+                      ? MediaStatus.PARTIALLY_AVAILABLE
+                      : newSeasons.some(
+                            (season) =>
+                              season.status4k === MediaStatus.PROCESSING
+                          )
+                        ? MediaStatus.PROCESSING
+                        : MediaStatus.UNKNOWN,
+              });
+              await mediaRepository.save(newMedia);
+              this.log(`Saved ${title}`);
+            }
+          })
+        )
+      )
+    );
   }
 
   /**
@@ -989,7 +1107,15 @@ class BaseScanner<T> {
    *
    * Returns the session ID which is requried for the cleanup method
    */
-  protected startRun(): string {
+  protected startRun(): string | undefined {
+    if (this.running) {
+      this.log(
+        'Scan already running. Skipping overlapping invocation.',
+        'warn'
+      );
+      return;
+    }
+
     const settings = getSettings();
     const sessionId = randomUUID();
     this.sessionId = sessionId;

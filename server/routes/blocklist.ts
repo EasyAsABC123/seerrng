@@ -3,16 +3,25 @@ import { MediaStatus, MediaType } from '@server/constants/media';
 import dataSource, { getRepository } from '@server/datasource';
 import { Blocklist } from '@server/entity/Blocklist';
 import Media from '@server/entity/Media';
-import MediaIdentifier, {
-  MediaIdentifierProvider,
-} from '@server/entity/MediaIdentifier';
+import { MediaIdentifierProvider } from '@server/entity/MediaIdentifier';
+import { runWithRequestAdmission } from '@server/entity/MediaRequest';
 import type { BlocklistResultsResponse } from '@server/interfaces/api/blocklistInterfaces';
-import { normalizeExternalMediaId } from '@server/lib/externalIds';
+import {
+  isValidExternalMediaId,
+  normalizeExternalMediaId,
+} from '@server/lib/externalIds';
 import { Permission } from '@server/lib/permissions';
+import {
+  UserMutationActorUnauthorizedError,
+  runAuthorizedUserSecurityMutation,
+} from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
+import { authorizedRouteScope } from '@server/middleware/authorizedMutation';
 import { filterEntityResponse } from '@server/utils/entityResponse';
+import { MAX_PAGINATION_OFFSET } from '@server/utils/pagination';
 import { parsePositiveRouteId } from '@server/utils/routeId';
+import { escapeSqlLikePattern } from '@server/utils/sqlLike';
 import { Router } from 'express';
 import { EntityNotFoundError, In, QueryFailedError } from 'typeorm';
 import { z } from 'zod';
@@ -20,7 +29,7 @@ import { z } from 'zod';
 const blocklistRoutes = Router();
 const maxBlocklistId = 1_000_000_000;
 const maxBlocklistTextLength = 512;
-const maxBlocklistedTagsLength = 4096;
+export const MAX_BLOCKLIST_COLLECTION_PARTS = 250;
 
 const strictPositiveInteger = z.preprocess(
   (value) =>
@@ -39,13 +48,35 @@ export const blocklistAdd = z.object({
   externalProvider: z.nativeEnum(MediaIdentifierProvider).optional(),
   mediaType: z.nativeEnum(MediaType),
   title: z.string().trim().max(maxBlocklistTextLength).optional(),
-  user: strictPositiveInteger.optional(),
-  blocklistedTags: z.string().trim().max(maxBlocklistedTagsLength).optional(),
 });
+
+const blocklistCollectionParts = z
+  .array(
+    z.object({
+      id: strictPositiveInteger,
+      title: z.string().trim().min(1).max(maxBlocklistTextLength),
+    })
+  )
+  .max(MAX_BLOCKLIST_COLLECTION_PARTS);
+
+export const parseBlocklistCollectionParts = (parts: unknown) => {
+  const parsed = blocklistCollectionParts.safeParse(parts);
+  if (!parsed.success) {
+    return {
+      error: 'TMDB collection parts are invalid or too large.',
+    } as const;
+  }
+
+  return {
+    value: [...new Map(parsed.data.map((part) => [part.id, part])).values()],
+  } as const;
+};
 
 const blocklistGet = z.object({
   take: strictPositiveInteger.pipe(z.number().max(100)).default(25),
-  skip: strictNonNegativeInteger.default(0),
+  skip: strictNonNegativeInteger
+    .pipe(z.number().max(MAX_PAGINATION_OFFSET))
+    .default(0),
   search: z.string().trim().max(maxBlocklistTextLength).optional(),
   filter: z.enum(['all', 'manual', 'blocklistedTags']).optional(),
 });
@@ -91,11 +122,32 @@ const isSupportedBlocklistType = (mediaType: unknown): mediaType is MediaType =>
   mediaType === MediaType.MUSIC ||
   mediaType === MediaType.BOOK;
 
+const getBlocklistAdmissionKey = (item: {
+  mediaType: MediaType;
+  tmdbId?: number;
+  externalId?: string | null;
+  externalProvider?: MediaIdentifierProvider | null;
+}): string => {
+  if (item.mediaType === MediaType.MUSIC) {
+    return `request-canonical:music:${item.externalId ?? ''}`;
+  }
+  if (item.mediaType === MediaType.BOOK) {
+    return `request-canonical:book:${
+      item.externalProvider ?? MediaIdentifierProvider.OPENLIBRARY
+    }:${item.externalId ?? ''}`;
+  }
+  return `request-media:${item.mediaType}:${item.tmdbId}`;
+};
+
 blocklistRoutes.get(
   '/',
   isAuthenticated([Permission.MANAGE_BLOCKLIST, Permission.VIEW_BLOCKLIST], {
     type: 'or',
   }),
+  authorizedRouteScope([
+    Permission.MANAGE_BLOCKLIST,
+    Permission.VIEW_BLOCKLIST,
+  ]),
   async (req, res, next) => {
     const parsedQuery = blocklistGet.safeParse(req.query);
     if (!parsedQuery.success) {
@@ -122,9 +174,12 @@ blocklistRoutes.get(
       }
 
       if (search) {
-        query = query.andWhere('blocklist.title like :title', {
-          title: `%${search}%`,
-        });
+        query = query.andWhere(
+          `LOWER(blocklist.title) LIKE :title ESCAPE '\\'`,
+          {
+            title: `%${escapeSqlLikePattern(search.toLowerCase())}%`,
+          }
+        );
       }
 
       const [blocklistedItems, itemsCount] = await query
@@ -140,7 +195,7 @@ blocklistRoutes.get(
           results: itemsCount,
           page: Math.ceil(skip / take) + 1,
         },
-        results: filterEntityResponse(blocklistedItems),
+        results: filterEntityResponse(blocklistedItems, req.user),
       } as BlocklistResultsResponse);
     } catch (error) {
       logger.error('Something went wrong while retrieving blocklisted items', {
@@ -155,11 +210,12 @@ blocklistRoutes.get(
   }
 );
 
-blocklistRoutes.get(
+blocklistRoutes.get<{ id: string }>(
   '/:id',
   isAuthenticated([Permission.MANAGE_BLOCKLIST], {
     type: 'or',
   }),
+  authorizedRouteScope(Permission.MANAGE_BLOCKLIST),
   async (req, res, next) => {
     const mediaType = req.query.mediaType;
     if (!isSupportedBlocklistType(mediaType)) {
@@ -183,12 +239,14 @@ blocklistRoutes.get(
         where: lookup,
       });
 
-      return res.status(200).send(filterEntityResponse(blocklistItem));
+      return res
+        .status(200)
+        .send(filterEntityResponse(blocklistItem, req.user));
     } catch (e) {
       if (e instanceof EntityNotFoundError) {
         return next({
           status: 404,
-          message: e.message,
+          message: 'Blocklisted item not found.',
         });
       }
       return next({ status: 500, message: e.message });
@@ -232,29 +290,80 @@ blocklistRoutes.post(
       if (
         (values.mediaType === MediaType.MOVIE ||
           values.mediaType === MediaType.TV) &&
-        values.tmdbId === undefined
+        (values.tmdbId === undefined ||
+          values.externalId !== undefined ||
+          values.externalProvider !== undefined)
       ) {
-        return next({ status: 400, message: 'Missing tmdbId.' });
+        return next({ status: 400, message: 'Invalid screen media identity.' });
       }
       if (
-        (values.mediaType === MediaType.MUSIC ||
-          values.mediaType === MediaType.BOOK) &&
-        !values.externalId
+        values.mediaType === MediaType.MUSIC &&
+        (!values.externalId ||
+          !isValidExternalMediaId(
+            values.externalId,
+            values.mediaType,
+            values.externalProvider
+          ) ||
+          values.tmdbId !== undefined ||
+          (values.externalProvider !== undefined &&
+            values.externalProvider !== MediaIdentifierProvider.MUSICBRAINZ))
       ) {
-        return next({ status: 400, message: 'Missing externalId.' });
+        return next({ status: 400, message: 'Invalid music identity.' });
+      }
+      if (
+        values.mediaType === MediaType.BOOK &&
+        (!values.externalId ||
+          !isValidExternalMediaId(
+            values.externalId,
+            values.mediaType,
+            values.externalProvider
+          ) ||
+          values.tmdbId !== undefined ||
+          (values.externalProvider !== undefined &&
+            ![
+              MediaIdentifierProvider.OPENLIBRARY,
+              MediaIdentifierProvider.OPENLIBRARY_EDITION,
+              MediaIdentifierProvider.ISBN,
+            ].includes(values.externalProvider)))
+      ) {
+        return next({ status: 400, message: 'Invalid book identity.' });
       }
 
-      await Blocklist.addToBlocklist({
-        blocklistRequest: {
-          ...values,
-          user: req.user,
-        },
-      });
+      await runAuthorizedUserSecurityMutation(
+        req.user!.id,
+        req.user!.id,
+        Permission.MANAGE_BLOCKLIST,
+        (actor) =>
+          runWithRequestAdmission([getBlocklistAdmissionKey(values)], () =>
+            dataSource.transaction((em) =>
+              Blocklist.addToBlocklist(
+                {
+                  blocklistRequest: {
+                    ...values,
+                    user: actor,
+                  },
+                },
+                em
+              )
+            )
+          )
+      );
 
       return res.status(201).send();
     } catch (error) {
       if (!(error instanceof Error)) {
-        return;
+        logger.error('Unexpected non-error thrown while creating blocklist', {
+          label: 'Blocklist',
+          thrownValue: String(error),
+        });
+        return next({ status: 500, message: 'Unable to create blocklist.' });
+      }
+
+      if (error instanceof UserMutationActorUnauthorizedError) {
+        return next({
+          status: 403,
+          message: 'You no longer have permission to manage the blocklist.',
+        });
       }
 
       if (error instanceof z.ZodError) {
@@ -301,84 +410,111 @@ blocklistRoutes.post(
         language: req.locale,
       });
 
-      const uniqueParts = [
-        ...new Map(collection.parts.map((p) => [p.id, p])).values(),
-      ];
+      const parsedParts = parseBlocklistCollectionParts(collection.parts);
+      if ('error' in parsedParts) {
+        return next({ status: 502, message: parsedParts.error });
+      }
+      const uniqueParts = parsedParts.value;
       const partIds = uniqueParts.map((p) => p.id);
       if (partIds.length === 0) {
         return res.status(201).send();
       }
 
-      await dataSource.transaction(async (em) => {
-        const blocklistRepository = em.getRepository(Blocklist);
-        const mediaRepository = em.getRepository(Media);
-
-        const [existingBlocklists, existingMedia] = await Promise.all([
-          blocklistRepository.find({
-            where: { tmdbId: In(partIds), mediaType: MediaType.MOVIE },
-          }),
-          mediaRepository.find({
-            where: { tmdbId: In(partIds), mediaType: MediaType.MOVIE },
-          }),
-        ]);
-        const blocklistByTmdbId = new Map(
-          existingBlocklists.map((b) => [b.tmdbId, b])
-        );
-        const mediaByTmdbId = new Map(existingMedia.map((m) => [m.tmdbId, m]));
-
-        await Promise.all(
-          uniqueParts.map(async (part) => {
-            if (blocklistByTmdbId.has(part.id)) {
-              return;
-            }
-
-            let blocklist = new Blocklist({
-              tmdbId: part.id,
-              mediaType: MediaType.MOVIE,
-              title: part.title,
-              user: req.user,
-            });
-
-            try {
-              await blocklistRepository.save(blocklist);
-            } catch (error) {
-              if (
-                !(error instanceof QueryFailedError) ||
-                error.driverError.errno !== 19
-              ) {
-                throw error;
-              }
-              const row = await blocklistRepository.findOne({
-                where: { tmdbId: part.id, mediaType: MediaType.MOVIE },
-              });
-              if (!row) {
-                throw error;
-              }
-              blocklist = row;
-            }
-
-            let media = mediaByTmdbId.get(part.id);
-            if (!media) {
-              media = new Media({
-                tmdbId: part.id,
-                status: MediaStatus.BLOCKLISTED,
-                status4k: MediaStatus.BLOCKLISTED,
+      await runAuthorizedUserSecurityMutation(
+        req.user!.id,
+        req.user!.id,
+        Permission.MANAGE_BLOCKLIST,
+        (actor) =>
+          runWithRequestAdmission(
+            partIds.map((tmdbId) =>
+              getBlocklistAdmissionKey({
                 mediaType: MediaType.MOVIE,
-                blocklist: Promise.resolve(blocklist),
-              });
-            } else {
-              media.status = MediaStatus.BLOCKLISTED;
-              media.status4k = MediaStatus.BLOCKLISTED;
-              media.blocklist = Promise.resolve(blocklist);
-            }
+                tmdbId,
+              })
+            ),
+            () =>
+              dataSource.transaction(async (em) => {
+                const blocklistRepository = em.getRepository(Blocklist);
+                const mediaRepository = em.getRepository(Media);
 
-            await mediaRepository.save(media);
-          })
-        );
-      });
+                const [existingBlocklists, existingMedia] = await Promise.all([
+                  blocklistRepository.find({
+                    where: { tmdbId: In(partIds), mediaType: MediaType.MOVIE },
+                  }),
+                  mediaRepository.find({
+                    where: { tmdbId: In(partIds), mediaType: MediaType.MOVIE },
+                  }),
+                ]);
+                const blocklistByTmdbId = new Map(
+                  existingBlocklists.map((b) => [b.tmdbId, b])
+                );
+                const mediaByTmdbId = new Map(
+                  existingMedia.map((m) => [m.tmdbId, m])
+                );
+
+                for (const part of uniqueParts) {
+                  if (blocklistByTmdbId.has(part.id)) {
+                    continue;
+                  }
+
+                  const candidate = new Blocklist({
+                    tmdbId: part.id,
+                    mediaType: MediaType.MOVIE,
+                    title: part.title,
+                    user: actor,
+                  });
+                  // PostgreSQL aborts a transaction after a unique violation,
+                  // so catching Repository.save() here cannot recover the
+                  // transaction. Ignore a concurrent insert at the statement
+                  // boundary and then load the authoritative row instead.
+                  await blocklistRepository
+                    .createQueryBuilder()
+                    .insert()
+                    .into(Blocklist)
+                    .values(candidate)
+                    .orIgnore()
+                    .execute();
+                  const blocklist = await blocklistRepository.findOne({
+                    where: { tmdbId: part.id, mediaType: MediaType.MOVIE },
+                  });
+                  if (!blocklist) {
+                    throw new Error('Unable to persist collection blocklist.');
+                  }
+
+                  let media = mediaByTmdbId.get(part.id);
+                  if (!media) {
+                    blocklist.isMediaPlaceholder = true;
+                    media = new Media({
+                      tmdbId: part.id,
+                      status: MediaStatus.BLOCKLISTED,
+                      status4k: MediaStatus.BLOCKLISTED,
+                      mediaType: MediaType.MOVIE,
+                      blocklist: Promise.resolve(blocklist),
+                    });
+                  } else {
+                    blocklist.previousStatus = media.status;
+                    blocklist.previousStatus4k = media.status4k;
+                    blocklist.isMediaPlaceholder = false;
+                    media.status = MediaStatus.BLOCKLISTED;
+                    media.status4k = MediaStatus.BLOCKLISTED;
+                    media.blocklist = Promise.resolve(blocklist);
+                  }
+
+                  await blocklistRepository.save(blocklist);
+                  await mediaRepository.save(media);
+                }
+              })
+          )
+      );
 
       return res.status(201).send();
     } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError) {
+        return next({
+          status: 403,
+          message: 'You no longer have permission to manage the blocklist.',
+        });
+      }
       logger.error('Error blocklisting collection', {
         label: 'Blocklist',
         errorMessage: e.message,
@@ -404,7 +540,6 @@ blocklistRoutes.delete(
     }
 
     try {
-      const blocklisteRepository = getRepository(Blocklist);
       const lookup = getBlocklistLookup(req.params.id, mediaType);
       if (!lookup) {
         return next({
@@ -413,58 +548,36 @@ blocklistRoutes.delete(
         });
       }
 
-      const blocklistItem = await blocklisteRepository.findOneOrFail({
+      const existing = await getRepository(Blocklist).findOneOrFail({
         where: lookup,
       });
-
-      await blocklisteRepository.remove(blocklistItem);
-
-      const mediaRepository = getRepository(Media);
-
-      let mediaItem: Media | null = null;
-      if (mediaType === MediaType.MUSIC) {
-        mediaItem = await mediaRepository.findOne({
-          where: { mbId: lookup.externalId, mediaType },
-        });
-      } else if (mediaType === MediaType.BOOK) {
-        const identifier = await getRepository(MediaIdentifier).findOne({
-          where: {
-            provider:
-              blocklistItem.externalProvider ??
-              MediaIdentifierProvider.OPENLIBRARY,
-            value: lookup.externalId,
-          },
-          relations: { media: true },
-        });
-        mediaItem =
-          identifier?.media.mediaType === mediaType ? identifier.media : null;
-      } else {
-        const tmdbId = lookup.tmdbId;
-        if (!tmdbId) {
-          return next({
-            status: 400,
-            message: 'Invalid blocklist identifier.',
-          });
-        }
-
-        mediaItem = await mediaRepository.findOne({
-          where: {
-            tmdbId,
-            mediaType,
-          },
-        });
-      }
-
-      if (mediaItem) {
-        await mediaRepository.remove(mediaItem);
-      }
+      await runAuthorizedUserSecurityMutation(
+        req.user!.id,
+        req.user!.id,
+        Permission.MANAGE_BLOCKLIST,
+        () =>
+          runWithRequestAdmission([getBlocklistAdmissionKey(existing)], () =>
+            dataSource.transaction(async (em) => {
+              const blocklistItem = await em
+                .getRepository(Blocklist)
+                .findOneOrFail({ where: { id: existing.id } });
+              await Blocklist.removeFromBlocklist(blocklistItem, em);
+            })
+          )
+      );
 
       return res.status(204).send();
     } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError) {
+        return next({
+          status: 403,
+          message: 'You no longer have permission to manage the blocklist.',
+        });
+      }
       if (e instanceof EntityNotFoundError) {
         return next({
           status: 404,
-          message: e.message,
+          message: 'Blocklisted item not found.',
         });
       }
       return next({ status: 500, message: e.message });
@@ -490,33 +603,47 @@ blocklistRoutes.delete(
         language: req.locale,
       });
 
-      await dataSource.transaction(async (em) => {
-        const blocklistRepository = em.getRepository(Blocklist);
-        const mediaRepository = em.getRepository(Media);
-
-        await Promise.all(
-          collection.parts.map(async (part) => {
-            const blocklistItem = await blocklistRepository.findOne({
-              where: { tmdbId: part.id, mediaType: MediaType.MOVIE },
-            });
-
-            if (blocklistItem) {
-              await blocklistRepository.remove(blocklistItem);
-
-              const mediaItem = await mediaRepository.findOne({
-                where: { tmdbId: part.id, mediaType: MediaType.MOVIE },
-              });
-
-              if (mediaItem) {
-                await mediaRepository.remove(mediaItem);
-              }
-            }
-          })
-        );
-      });
+      const parsedParts = parseBlocklistCollectionParts(collection.parts);
+      if ('error' in parsedParts) {
+        return next({ status: 502, message: parsedParts.error });
+      }
+      const partIds = parsedParts.value.map((part) => part.id);
+      if (partIds.length === 0) {
+        return res.status(204).send();
+      }
+      await runAuthorizedUserSecurityMutation(
+        req.user!.id,
+        req.user!.id,
+        Permission.MANAGE_BLOCKLIST,
+        () =>
+          runWithRequestAdmission(
+            partIds.map((tmdbId) =>
+              getBlocklistAdmissionKey({
+                mediaType: MediaType.MOVIE,
+                tmdbId,
+              })
+            ),
+            () =>
+              dataSource.transaction(async (em) => {
+                const blocklistRepository = em.getRepository(Blocklist);
+                const blocklistItems = await blocklistRepository.find({
+                  where: { tmdbId: In(partIds), mediaType: MediaType.MOVIE },
+                });
+                for (const blocklistItem of blocklistItems) {
+                  await Blocklist.removeFromBlocklist(blocklistItem, em);
+                }
+              })
+          )
+      );
 
       return res.status(204).send();
     } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError) {
+        return next({
+          status: 403,
+          message: 'You no longer have permission to manage the blocklist.',
+        });
+      }
       logger.error('Error unblocklisting collection', {
         label: 'Blocklist',
         errorMessage: e.message,

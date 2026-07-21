@@ -3,11 +3,18 @@ import RadarrAPI from '@server/api/servarr/radarr';
 import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
+import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import type {
   RunnableScanner,
   StatusBase,
 } from '@server/lib/scanners/baseScanner';
 import BaseScanner from '@server/lib/scanners/baseScanner';
+import { forEachMediaCleanupBatch } from '@server/lib/scanners/mediaCleanupBatches';
+import {
+  ServarrServiceAuthorityChangedError,
+  runWithServarrServiceSnapshot,
+  runWithServarrServiceSnapshots,
+} from '@server/lib/serviceAdmission';
 import type { RadarrSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import { uniqWith } from 'lodash';
@@ -46,19 +53,25 @@ class RadarrScanner
   public async run(): Promise<void> {
     const settings = getSettings();
     const sessionId = this.startRun();
+    if (!sessionId) {
+      return;
+    }
     this.scannedTmdbIds.clear();
     this.scanned4kTmdbIds.clear();
     this.didScanStandard = false;
     this.didScan4k = false;
 
     try {
-      this.servers = uniqWith(settings.radarr, (radarrA, radarrB) => {
-        return (
-          radarrA.hostname === radarrB.hostname &&
-          radarrA.port === radarrB.port &&
-          radarrA.baseUrl === radarrB.baseUrl
-        );
-      });
+      this.servers = uniqWith(
+        structuredClone(settings.radarr),
+        (radarrA, radarrB) => {
+          return (
+            radarrA.hostname === radarrB.hostname &&
+            radarrA.port === radarrB.port &&
+            radarrA.baseUrl === radarrB.baseUrl
+          );
+        }
+      );
 
       for (const server of this.servers) {
         this.currentServer = server;
@@ -68,12 +81,17 @@ class RadarrScanner
             'info'
           );
 
-          this.radarrApi = new RadarrAPI({
-            apiKey: server.apiKey,
-            url: RadarrAPI.buildUrl(server, '/api/v3'),
-          });
-
-          this.items = await this.radarrApi.getMovies();
+          this.items = await runWithServarrServiceSnapshot(
+            'radarr',
+            server,
+            async (current) => {
+              this.radarrApi = new RadarrAPI({
+                apiKey: current.apiKey,
+                url: RadarrAPI.buildUrl(current, '/api/v3'),
+              });
+              return this.radarrApi.getMovies();
+            }
+          );
 
           const server4k = this.enable4kMovie && server.is4k;
           if (server4k) {
@@ -132,8 +150,11 @@ class RadarrScanner
         title: radarrMovie.title,
         processing: !radarrMovie.hasFile && radarrMovie.monitored,
         hasFile: radarrMovie.hasFile,
+        mutationGuard: (callback) =>
+          runWithServarrServiceSnapshot('radarr', this.currentServer, callback),
       });
     } catch (e) {
+      if (e instanceof ServarrServiceAuthorityChangedError) throw e;
       this.log('Failed to process Radarr media', 'error', {
         errorMessage: e.message,
         title: radarrMovie.title,
@@ -145,20 +166,43 @@ class RadarrScanner
     const mediaRepository = getRepository(Media);
 
     if (this.didScanStandard) {
-      const processingMovies = await mediaRepository.find({
-        where: { mediaType: MediaType.MOVIE, status: MediaStatus.PROCESSING },
-      });
-
-      for (const media of processingMovies) {
-        if (!this.scannedTmdbIds.has(media.tmdbId)) {
-          media.status = MediaStatus.UNKNOWN;
-          await mediaRepository.save(media);
-          this.log(
-            `Movie ${media.tmdbId} not found in any Radarr server. Status reset to UNKNOWN.`,
-            'info'
-          );
+      await forEachMediaCleanupBatch(
+        { mediaType: MediaType.MOVIE, status: MediaStatus.PROCESSING },
+        async (media) => {
+          if (!this.scannedTmdbIds.has(media.tmdbId)) {
+            const changed = await runMediaEntityMutation(media, () =>
+              runWithServarrServiceSnapshots(
+                'radarr',
+                this.servers.filter(
+                  (server) => server.syncEnabled && !server.is4k
+                ),
+                async () => {
+                  const current = await mediaRepository.findOneBy({
+                    id: media.id,
+                  });
+                  if (!current || current.status !== MediaStatus.PROCESSING) {
+                    return false;
+                  }
+                  current.status = MediaStatus.UNKNOWN;
+                  await mediaRepository.save(current);
+                  return true;
+                },
+                {
+                  requireExactAuthoritySet: true,
+                  includeCurrent: (server) =>
+                    server.syncEnabled && !server.is4k,
+                }
+              )
+            );
+            if (changed) {
+              this.log(
+                `Movie ${media.tmdbId} not found in any Radarr server. Status reset to UNKNOWN.`,
+                'info'
+              );
+            }
+          }
         }
-      }
+      );
     } else {
       this.log(
         'Skipping orphaned movie cleanup: no standard Radarr servers were scanned.',
@@ -167,23 +211,45 @@ class RadarrScanner
     }
 
     if (this.didScan4k) {
-      const processing4kMovies = await mediaRepository.find({
-        where: {
+      await forEachMediaCleanupBatch(
+        {
           mediaType: MediaType.MOVIE,
           status4k: MediaStatus.PROCESSING,
         },
-      });
-
-      for (const media of processing4kMovies) {
-        if (!this.scanned4kTmdbIds.has(media.tmdbId)) {
-          media.status4k = MediaStatus.UNKNOWN;
-          await mediaRepository.save(media);
-          this.log(
-            `Movie ${media.tmdbId} not found in any 4K Radarr server. 4K status reset to UNKNOWN.`,
-            'info'
-          );
+        async (media) => {
+          if (!this.scanned4kTmdbIds.has(media.tmdbId)) {
+            const changed = await runMediaEntityMutation(media, () =>
+              runWithServarrServiceSnapshots(
+                'radarr',
+                this.servers.filter(
+                  (server) => server.syncEnabled && server.is4k
+                ),
+                async () => {
+                  const current = await mediaRepository.findOneBy({
+                    id: media.id,
+                  });
+                  if (!current || current.status4k !== MediaStatus.PROCESSING) {
+                    return false;
+                  }
+                  current.status4k = MediaStatus.UNKNOWN;
+                  await mediaRepository.save(current);
+                  return true;
+                },
+                {
+                  requireExactAuthoritySet: true,
+                  includeCurrent: (server) => server.syncEnabled && server.is4k,
+                }
+              )
+            );
+            if (changed) {
+              this.log(
+                `Movie ${media.tmdbId} not found in any 4K Radarr server. 4K status reset to UNKNOWN.`,
+                'info'
+              );
+            }
+          }
         }
-      }
+      );
     } else if (this.enable4kMovie) {
       this.log(
         'Skipping orphaned 4K movie cleanup: no 4K Radarr servers were scanned.',

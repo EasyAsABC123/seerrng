@@ -1,8 +1,11 @@
+import { assertNoSymlinkDirectoryComponents } from '@server/lib/pathSecurity';
 import logger from '@server/logger';
+import { createSafeHttpRequestOptions } from '@server/utils/security';
 import axios from 'axios';
+import { randomUUID } from 'crypto';
 import fs, { promises as fsp } from 'fs';
 import path from 'path';
-import { Transform } from 'stream';
+import { Transform, type Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import xml2js from 'xml2js';
 
@@ -18,6 +21,12 @@ const LOCAL_PATH = process.env.CONFIG_DIRECTORY
   : path.join(__dirname, '../../config/anime-list.xml');
 
 const mappingRegexp = new RegExp(/;[0-9]+-([0-9]+)/g);
+export const MAX_ANIME_MAPPING_ENTRIES = 100_000;
+export const MAX_ANIME_MAPPING_RULES = 500_000;
+const MAX_ANIME_EXTERNAL_IDS = 100;
+const MAX_ANIME_PROVIDER_ID = 1_000_000_000;
+const MAX_ANIME_EPISODE = 100_000;
+const MAX_ANIME_MAPPING_TEXT_LENGTH = 100_000;
 
 export const createSizeLimitTransform = (maxBytes: number): Transform => {
   let bytes = 0;
@@ -39,6 +48,54 @@ export const createSizeLimitTransform = (maxBytes: number): Transform => {
 export const assertMappingFileSize = (bytes: number) => {
   if (!Number.isFinite(bytes) || bytes < 0 || bytes > MAX_MAPPING_FILE_BYTES) {
     throw new Error('Anime-List mapping file exceeds maximum size');
+  }
+};
+
+export const readMappingFile = async (filePath: string) => {
+  assertNoSymlinkDirectoryComponents(path.dirname(filePath), {
+    label: 'Anime-List mapping directory',
+  });
+  const handle = await fsp.open(
+    filePath,
+    fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
+  );
+
+  try {
+    const fileStat = await handle.stat();
+    if (!fileStat.isFile()) {
+      throw new Error('Anime-List mapping path is not a regular file');
+    }
+    assertMappingFileSize(fileStat.size);
+    return { data: await handle.readFile(), modified: fileStat.mtime };
+  } finally {
+    await handle.close();
+  }
+};
+
+export const writeMappingFileAtomically = async (
+  source: Readable,
+  filePath: string
+) => {
+  assertNoSymlinkDirectoryComponents(path.dirname(filePath), {
+    label: 'Anime-List mapping directory',
+  });
+  const temporaryPath = `${filePath}.tmp-${randomUUID()}`;
+
+  try {
+    await pipeline(
+      source,
+      createSizeLimitTransform(MAX_MAPPING_DOWNLOAD_BYTES),
+      fs.createWriteStream(temporaryPath, {
+        flags: 'wx',
+        mode: 0o600,
+      })
+    );
+    await fsp.rename(temporaryPath, filePath);
+  } catch (error) {
+    await fsp.rm(temporaryPath, { force: true }).catch(() => {
+      // Best-effort cleanup only.
+    });
+    throw error;
   }
 };
 
@@ -79,6 +136,135 @@ export interface AnidbItem {
   tvdbSeason?: number;
 }
 
+export const parseAnimeListMappings = (
+  value: unknown
+): {
+  mapping: { [anidbId: number]: AnidbItem };
+  specials: { [tvdbId: number]: { [episode: number]: AnidbItem } };
+} => {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Anime-List mapping document is invalid');
+  }
+  const root = (value as Record<string, unknown>)['anime-list'];
+  const animeEntries =
+    root && typeof root === 'object'
+      ? (root as Record<string, unknown>).anime
+      : undefined;
+  if (!Array.isArray(animeEntries)) {
+    throw new Error('Anime-List mapping entries are invalid');
+  }
+  if (animeEntries.length > MAX_ANIME_MAPPING_ENTRIES) {
+    throw new Error('Anime-List mapping contains too many entries');
+  }
+
+  const mapping: { [anidbId: number]: AnidbItem } = {};
+  const specials: {
+    [tvdbId: number]: { [episode: number]: AnidbItem };
+  } = {};
+  let mappingRules = 0;
+  const positiveId = (id: unknown): number | undefined => {
+    const parsed = typeof id === 'number' ? id : Number(id);
+    return Number.isSafeInteger(parsed) &&
+      parsed > 0 &&
+      parsed <= MAX_ANIME_PROVIDER_ID
+      ? parsed
+      : undefined;
+  };
+
+  for (const rawAnime of animeEntries) {
+    if (!rawAnime || typeof rawAnime !== 'object') {
+      continue;
+    }
+    const anime = rawAnime as unknown as Anime;
+    if (!anime.$ || typeof anime.$ !== 'object') {
+      continue;
+    }
+    const anidbId = positiveId(anime.$.anidbid);
+    if (!anidbId) {
+      continue;
+    }
+    const tvdbId = positiveId(anime.$.tvdbid);
+    const tmdbId = positiveId(anime.$.tmdbid);
+    const defaultSeason = Number(anime.$.defaulttvdbseason);
+    const tvdbSeason =
+      Number.isSafeInteger(defaultSeason) &&
+      defaultSeason >= 0 &&
+      defaultSeason <= MAX_ANIME_EPISODE
+        ? defaultSeason
+        : undefined;
+    const imdbIds =
+      typeof anime.$.imdbid === 'string'
+        ? anime.$.imdbid
+            .split(',')
+            .slice(0, MAX_ANIME_EXTERNAL_IDS)
+            .map((id) => id.trim())
+            .filter((id) => /^tt[0-9]{1,20}$/.test(id))
+        : [];
+
+    mapping[anidbId] = {
+      tvdbId: tvdbSeason === 0 ? undefined : tvdbId,
+      tmdbId,
+      imdbId: imdbIds[0],
+      tvdbSeason,
+    };
+
+    if (!tvdbId) {
+      continue;
+    }
+    const mappingList = Array.isArray(anime['mapping-list'])
+      ? anime['mapping-list'][0]
+      : undefined;
+    const rules = Array.isArray(mappingList?.mapping)
+      ? mappingList.mapping
+      : [];
+
+    if (rules.length) {
+      let imdbIndex = 0;
+      for (const rule of rules) {
+        mappingRules += 1;
+        if (mappingRules > MAX_ANIME_MAPPING_RULES) {
+          throw new Error('Anime-List mapping contains too many rules');
+        }
+        if (
+          !rule ||
+          typeof rule !== 'object' ||
+          !rule.$ ||
+          rule.$.tvdbseason !== '0' ||
+          typeof rule._ !== 'string' ||
+          rule._.length > MAX_ANIME_MAPPING_TEXT_LENGTH
+        ) {
+          continue;
+        }
+        mappingRegexp.lastIndex = 0;
+        let matches: RegExpExecArray | null;
+        while ((matches = mappingRegexp.exec(rule._)) !== null) {
+          const episode = positiveId(matches[1]);
+          if (!episode || episode > MAX_ANIME_EPISODE) {
+            continue;
+          }
+          specials[tvdbId] ??= {};
+          const imdbId = imdbIds[imdbIndex];
+          if (tmdbId || imdbId) {
+            specials[tvdbId][episode] = { tmdbId, imdbId };
+            imdbIndex += 1;
+          }
+        }
+      }
+    } else if ((imdbIds.length || tmdbId) && tvdbSeason === 0) {
+      specials[tvdbId] ??= {};
+      const itemCount = Math.max(1, imdbIds.length);
+      for (let index = 0; index < itemCount; index += 1) {
+        specials[tvdbId][index + 1] = {
+          tmdbId,
+          imdbId: imdbIds[index],
+        };
+      }
+    }
+  }
+
+  return { mapping, specials };
+};
+
 class AnimeListMapping {
   private syncing = false;
 
@@ -95,87 +281,15 @@ class AnimeListMapping {
   private loadFromFile = async () => {
     logger.info('Loading mapping file', { label: 'Anime-List Sync' });
     try {
-      const mappingStat = await fsp.stat(LOCAL_PATH);
-      assertMappingFileSize(mappingStat.size);
-      const file = await fsp.readFile(LOCAL_PATH);
-      const xml = (await xml2js.parseStringPromise(file)) as AnimeList;
+      const mappingFile = await readMappingFile(LOCAL_PATH);
+      const xml = (await xml2js.parseStringPromise(
+        mappingFile.data
+      )) as AnimeList;
 
-      this.mapping = {};
-      this.specials = {};
-      for (const anime of xml['anime-list'].anime) {
-        // tvdbId can be nonnumber, like 'movie' string
-        let tvdbId: number | undefined;
-        if (anime.$.tvdbid && !isNaN(Number(anime.$.tvdbid))) {
-          tvdbId = Number(anime.$.tvdbid);
-        } else {
-          tvdbId = undefined;
-        }
-
-        let imdbIds: (string | undefined)[];
-        if (anime.$.imdbid) {
-          // if there are multiple imdb entries, then they map to different movies
-          imdbIds = anime.$.imdbid.split(',');
-        } else {
-          // in case there is no imdbid, that's ok as there will be tmdbid
-          imdbIds = [undefined];
-        }
-
-        const tmdbId = anime.$.tmdbid ? Number(anime.$.tmdbid) : undefined;
-        const anidbId = Number(anime.$.anidbid);
-        this.mapping[anidbId] = {
-          // for season 0 ignore tvdbid, because this must be movie/OVA
-          tvdbId: anime.$.defaulttvdbseason === '0' ? undefined : tvdbId,
-          tmdbId: tmdbId,
-          imdbId: imdbIds[0], // this is used for one AniDB -> one imdb movie mapping
-          tvdbSeason: Number(anime.$.defaulttvdbseason),
-        };
-
-        if (tvdbId) {
-          const mappingList = anime['mapping-list'];
-          if (mappingList && mappingList.length != 0) {
-            let imdbIndex = 0;
-            for (const mapping of mappingList[0].mapping) {
-              const text = mapping._;
-              if (text && mapping.$.tvdbseason === '0') {
-                let matches;
-                while ((matches = mappingRegexp.exec(text)) !== null) {
-                  const episode = Number(matches[1]);
-                  if (!this.specials[tvdbId]) {
-                    this.specials[tvdbId] = {};
-                  }
-                  // map next available imdbid to episode in s0
-                  const imdbId =
-                    imdbIndex > imdbIds.length ? undefined : imdbIds[imdbIndex];
-                  if (tmdbId || imdbId) {
-                    this.specials[tvdbId][episode] = {
-                      tmdbId: tmdbId,
-                      imdbId: imdbId,
-                    };
-                    imdbIndex++;
-                  }
-                }
-              }
-            }
-          } else {
-            // some movies do not have mapping-list, so map episode 1,2,3,..to movies
-            // movies must have imdbId or tmdbId
-            const hasImdb = imdbIds.length > 1 || imdbIds[0] !== undefined;
-            if ((hasImdb || tmdbId) && anime.$.defaulttvdbseason === '0') {
-              if (!this.specials[tvdbId]) {
-                this.specials[tvdbId] = {};
-              }
-              // map each imdbid to episode in s0, episode index starts with 1
-              for (let idx = 0; idx < imdbIds.length; idx++) {
-                this.specials[tvdbId][idx + 1] = {
-                  tmdbId: tmdbId,
-                  imdbId: imdbIds[idx],
-                };
-              }
-            }
-          }
-        }
-      }
-      this.mappingModified = mappingStat.mtime;
+      const parsed = parseAnimeListMappings(xml);
+      this.mapping = parsed.mapping;
+      this.specials = parsed.specials;
+      this.mappingModified = mappingFile.modified;
       logger.info(
         `Loaded ${
           Object.keys(this.mapping).length
@@ -193,24 +307,24 @@ class AnimeListMapping {
     logger.info('Downloading latest mapping file', {
       label: 'Anime-List Sync',
     });
-    const tempPath = `${LOCAL_PATH}.tmp`;
     try {
       const response = await axios.get(MAPPING_URL, {
+        ...createSafeHttpRequestOptions(),
         responseType: 'stream',
         timeout: DOWNLOAD_TIMEOUT_MS,
         maxRedirects: 3,
       });
-      await fsp.mkdir(path.dirname(LOCAL_PATH), { recursive: true });
-      await pipeline(
-        response.data,
-        createSizeLimitTransform(MAX_MAPPING_DOWNLOAD_BYTES),
-        fs.createWriteStream(tempPath)
-      );
-      await fsp.rename(tempPath, LOCAL_PATH);
-    } catch (e) {
-      await fsp.rm(tempPath, { force: true }).catch(() => {
-        // Best-effort cleanup only.
+      const mappingDirectory = path.dirname(LOCAL_PATH);
+      assertNoSymlinkDirectoryComponents(mappingDirectory, {
+        allowMissing: true,
+        label: 'Anime-List mapping directory',
       });
+      await fsp.mkdir(mappingDirectory, { recursive: true, mode: 0o700 });
+      assertNoSymlinkDirectoryComponents(mappingDirectory, {
+        label: 'Anime-List mapping directory',
+      });
+      await writeMappingFileAtomically(response.data, LOCAL_PATH);
+    } catch (e) {
       throw new Error(`Failed to download Anime-List mapping: ${e.message}`, {
         cause: e,
       });
@@ -228,7 +342,13 @@ class AnimeListMapping {
       // check if local file is not "expired" yet
       if (fs.existsSync(LOCAL_PATH)) {
         const now = new Date();
-        const stat = await fsp.stat(LOCAL_PATH);
+        assertNoSymlinkDirectoryComponents(path.dirname(LOCAL_PATH), {
+          label: 'Anime-List mapping directory',
+        });
+        const stat = await fsp.lstat(LOCAL_PATH);
+        if (!stat.isFile() || stat.isSymbolicLink()) {
+          throw new Error('Anime-List mapping path is not a regular file');
+        }
         if (now.getTime() - stat.mtime.getTime() < UPDATE_INTERVAL_MSEC) {
           if (!this.isLoaded()) {
             // no need to download, but make sure file is loaded

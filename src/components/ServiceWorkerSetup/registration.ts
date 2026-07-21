@@ -10,22 +10,55 @@ export const shouldVerifyPushSubscription = ({
   userId: number | undefined;
 }) => Boolean(userId && pushNotificationsEnabled);
 
-export const createCacheUserMessage = (userId: number | undefined) => ({
+export const getPushNotificationsEnabledStorageKey = (
+  userId: number | undefined
+): string | undefined =>
+  Number.isSafeInteger(userId) && (userId ?? 0) > 0
+    ? `pushNotificationsEnabled:${userId}`
+    : undefined;
+
+export interface ServiceWorkerCacheUser {
+  id: number;
+  permissions: number;
+  userType: number;
+}
+
+export const hasCurrentPushSubscription = (
+  endpoint: string | undefined,
+  devices: readonly { endpoint: string }[] | undefined
+): boolean =>
+  Boolean(endpoint && devices?.some((device) => device.endpoint === endpoint));
+
+export const createServiceWorkerLifecycleGuard = () => {
+  let active = true;
+  return {
+    isActive: () => active,
+    cancel: () => {
+      active = false;
+    },
+  };
+};
+
+export const createCacheUserMessage = (
+  user: ServiceWorkerCacheUser | undefined
+) => ({
   type: 'SET_CACHE_USER' as const,
-  userId: userId ?? null,
+  userId: user?.id ?? null,
+  permissions: user?.permissions ?? null,
+  userType: user?.userType ?? null,
 });
 
 export const postCacheUserToWorker = (
   worker: Pick<ServiceWorker, 'postMessage'> | null | undefined,
-  userId: number | undefined
-) => worker?.postMessage(createCacheUserMessage(userId));
+  user: ServiceWorkerCacheUser | undefined
+) => worker?.postMessage(createCacheUserMessage(user));
 
 export const syncRegistrationCacheUser = (
   registration: Pick<
     ServiceWorkerRegistration,
     'active' | 'installing' | 'waiting'
   >,
-  userId: number | undefined
+  user: ServiceWorkerCacheUser | undefined
 ) => {
   const workers = [
     registration.active,
@@ -33,5 +66,5 @@ export const syncRegistrationCacheUser = (
     registration.installing,
   ];
 
-  workers.forEach((worker) => postCacheUserToWorker(worker, userId));
+  workers.forEach((worker) => postCacheUserToWorker(worker, user));
 };

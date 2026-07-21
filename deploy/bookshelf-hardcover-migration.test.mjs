@@ -11,8 +11,11 @@ import {
   buildRebuildArtifacts,
   buildSourceBook,
   chooseStrictMatch,
+  clampRetryDelay,
+  MAX_MIGRATION_JSON_BYTES,
   parseRetryAfter,
   parseTags,
+  readMigrationJson,
 } from './bookshelf-hardcover-migration.mjs';
 
 const writeJson = async (filePath, value) => {
@@ -125,6 +128,33 @@ const createMigrationDir = async () => {
 };
 
 describe('bookshelf-hardcover-migration helpers', () => {
+  it('reads only bounded single-link regular JSON artifacts', async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'bookshelf-hardcover-json-')
+    );
+    try {
+      const regularPath = path.join(directory, 'regular.json');
+      const symlinkPath = path.join(directory, 'symlink.json');
+      const hardlinkPath = path.join(directory, 'hardlink.json');
+      const oversizedPath = path.join(directory, 'oversized.json');
+      await fs.writeFile(regularPath, '{"ok":true}');
+      assert.deepEqual(await readMigrationJson(regularPath), { ok: true });
+
+      await fs.symlink(regularPath, symlinkPath);
+      await assert.rejects(readMigrationJson(symlinkPath), /symlink/i);
+
+      await fs.link(regularPath, hardlinkPath);
+      await assert.rejects(readMigrationJson(regularPath), /single-link/i);
+
+      const oversized = await fs.open(oversizedPath, 'w');
+      await oversized.truncate(MAX_MIGRATION_JSON_BYTES + 1);
+      await oversized.close();
+      await assert.rejects(readMigrationJson(oversizedPath), /exceeds/i);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('builds source records with profile names and tag labels', () => {
     const source = buildSourceBook({
       inventory: {
@@ -295,9 +325,129 @@ describe('bookshelf-hardcover-migration helpers', () => {
       );
     }
   });
+
+  it('caps server-directed retry delays', () => {
+    assert.equal(clampRetryDelay(999_999_999_000), 300_000);
+    assert.equal(clampRetryDelay(-1), 0);
+  });
 });
 
 describe('bookshelf-hardcover-migration CLI pipeline', () => {
+  it('does not follow planted output or legacy temporary symlinks', async () => {
+    const migrationDir = await createMigrationDir();
+    const outputPath = path.join(migrationDir, 'matched-books.json');
+    const legacyTemporaryPath = `${outputPath}.tmp`;
+    const outsideOutput = path.join(migrationDir, 'outside-output');
+    const outsideTemporary = path.join(migrationDir, 'outside-temporary');
+    await fs.writeFile(outsideOutput, 'unchanged-output');
+    await fs.writeFile(outsideTemporary, 'unchanged-temporary');
+    await fs.symlink(outsideOutput, outputPath);
+    await fs.symlink(outsideTemporary, legacyTemporaryPath);
+
+    const result = await runCli([migrationDir]);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(await fs.readFile(outsideOutput, 'utf8'), 'unchanged-output');
+    assert.equal(
+      await fs.readFile(outsideTemporary, 'utf8'),
+      'unchanged-temporary'
+    );
+    assert.equal((await fs.lstat(outputPath)).isSymbolicLink(), false);
+    assert.equal((await fs.stat(outputPath)).mode & 0o777, 0o600);
+    assert.deepEqual(await readJson(outputPath), []);
+  });
+
+  it('does not forward API keys across redirects to another origin', async () => {
+    const migrationDir = await createMigrationDir();
+    const receivedApiKeys = [];
+    const receiver = http.createServer((req, res) => {
+      receivedApiKeys.push(req.headers['x-api-key']);
+      res.setHeader('content-type', 'application/json');
+      res.end('[]');
+    });
+    await new Promise((resolve) => receiver.listen(0, '127.0.0.1', resolve));
+    const redirector = http.createServer((_req, res) => {
+      res.writeHead(302, {
+        location: `http://127.0.0.1:${receiver.address().port}/stolen`,
+      });
+      res.end();
+    });
+    await new Promise((resolve) => redirector.listen(0, '127.0.0.1', resolve));
+
+    try {
+      const result = await runCli([migrationDir], {
+        HARDCOVER_EBOOK_API_KEY: 'ebook-secret',
+        HARDCOVER_EBOOK_BASE_URL: `http://127.0.0.1:${redirector.address().port}`,
+        HARDCOVER_AUDIOBOOK_API_KEY: 'audiobook-secret',
+        HARDCOVER_AUDIOBOOK_BASE_URL: `http://127.0.0.1:${redirector.address().port}`,
+      });
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.deepEqual(receivedApiKeys, []);
+      assert.equal(
+        (await readJson(path.join(migrationDir, 'unmatched-books.json')))[0]
+          .reason,
+        'lookup_failed'
+      );
+    } finally {
+      await Promise.all([
+        new Promise((resolve) => redirector.close(resolve)),
+        new Promise((resolve) => receiver.close(resolve)),
+      ]);
+    }
+  });
+
+  it('times out when a response stalls after sending headers', async () => {
+    const migrationDir = await createMigrationDir();
+
+    await withMockBookshelf(
+      (_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.write('[');
+      },
+      async (baseUrl) => {
+        const startedAt = Date.now();
+        const result = await runCli([migrationDir], {
+          HARDCOVER_API_TIMEOUT_MS: '50',
+          HARDCOVER_EBOOK_API_KEY: 'key',
+          HARDCOVER_EBOOK_BASE_URL: baseUrl,
+          HARDCOVER_OPENLIBRARY_RECOVERY: 'false',
+        });
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.ok(Date.now() - startedAt < 2000);
+        assert.equal(
+          (await readJson(path.join(migrationDir, 'unmatched-books.json')))[0]
+            .reason,
+          'lookup_failed'
+        );
+      }
+    );
+  });
+
+  it('cancels response deadlines after an HTTP lookup error', async () => {
+    const migrationDir = await createMigrationDir();
+
+    await withMockBookshelf(
+      (_req, res) => {
+        res.statusCode = 500;
+        res.end('failed');
+      },
+      async (baseUrl) => {
+        const startedAt = Date.now();
+        const result = await runCli([migrationDir], {
+          HARDCOVER_API_TIMEOUT_MS: '10000',
+          HARDCOVER_EBOOK_API_KEY: 'key',
+          HARDCOVER_EBOOK_BASE_URL: baseUrl,
+          HARDCOVER_OPENLIBRARY_RECOVERY: 'false',
+        });
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.ok(Date.now() - startedAt < 2000);
+      }
+    );
+  });
+
   it('matches, rebuilds, applies, validates, and approves cutover with a Bookshelf-compatible API', async () => {
     const migrationDir = await createMigrationDir();
     const requests = [];

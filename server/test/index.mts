@@ -56,8 +56,10 @@ if (positionals.length > 0) {
   files = positionals.map((f) => resolve(f));
 } else {
   files = [];
-  for await (const entry of glob(join(BASE_DIR, 'server/**/*.test.ts'))) {
-    files.push(resolve(entry));
+  for (const pattern of ['server/**/*.test.ts', 'src/**/*.test.ts']) {
+    for await (const entry of glob(join(BASE_DIR, pattern))) {
+      files.push(resolve(entry));
+    }
   }
   files.sort();
 }
@@ -90,6 +92,13 @@ const stream = run({
   testNamePatterns: opts.testNamePattern,
   // ensure test process doesn't hang when tests fail
   forceExit: true,
+});
+
+// Unlike `node --test`, the programmatic runner does not set a failing process
+// status for us. Propagate any failed test file, assertion, or compilation to
+// callers and CI.
+stream.on('test:fail', () => {
+  process.exitCode = 1;
 });
 
 // In CI, write a JUnit report to a file for use by GitHub

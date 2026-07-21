@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  MAX_PAGINATION_OFFSET,
   parseNonNegativeInt,
   parseOptionalPositiveInt,
   parsePageParams,
@@ -65,6 +66,16 @@ describe('parsePageParams', () => {
         { take: 20, maxTake: 100, maxSkip: 1000 }
       ),
       { pageSize: 50, skip: 100 }
+    );
+  });
+
+  it('caps SQL offsets when a route does not provide a narrower bound', () => {
+    assert.deepEqual(
+      parsePageParams(
+        { take: '20', skip: String(Number.MAX_SAFE_INTEGER) },
+        { take: 20 }
+      ),
+      { pageSize: 20, skip: MAX_PAGINATION_OFFSET }
     );
   });
 });

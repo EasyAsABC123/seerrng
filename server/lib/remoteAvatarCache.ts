@@ -6,6 +6,7 @@ const REMOTE_AVATAR_HOSTS = new Set([
 ]);
 
 const REMOTE_AVATAR_DOMAIN_SUFFIXES = ['.gravatar.com', '.plex.tv'];
+export const MAX_REMOTE_AVATAR_URL_LENGTH = 2048;
 
 export const isRemoteAvatarCacheUrlAllowed = (avatarUrl: URL): boolean => {
   if (avatarUrl.protocol !== 'https:') {
@@ -28,6 +29,10 @@ export const getRemoteAvatarCacheUrl = (value: unknown): string | undefined => {
   const rawValue = Array.isArray(value) ? value[0] : value;
 
   if (typeof rawValue !== 'string') {
+    return undefined;
+  }
+
+  if (rawValue.length > MAX_REMOTE_AVATAR_URL_LENGTH) {
     return undefined;
   }
 

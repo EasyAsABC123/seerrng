@@ -9,7 +9,7 @@
   packageRules: [
     {
       matchManagers: ['docker-compose'],
-      pinDigests: false,
+      pinDigests: true,
     },
   ],
 }

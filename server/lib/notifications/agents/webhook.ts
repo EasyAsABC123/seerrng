@@ -13,15 +13,89 @@ import axios from 'axios';
 import { get } from 'lodash';
 import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
-import { BaseAgent, NOTIFICATION_HTTP_OPTIONS } from './agent';
+import { BaseAgent, CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS } from './agent';
 
-const MAX_WEBHOOK_PAYLOAD_BYTES = 64 * 1024;
+export const MAX_WEBHOOK_PAYLOAD_BYTES = 64 * 1024;
 const MAX_WEBHOOK_PAYLOAD_DEPTH = 32;
 const MAX_WEBHOOK_PAYLOAD_NODES = 2_000;
 const MAX_WEBHOOK_CUSTOM_HEADERS = 20;
 const MAX_WEBHOOK_HEADER_VALUE_LENGTH = 4096;
 export const MAX_WEBHOOK_URL_LENGTH = 4096;
 const WEBHOOK_HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+type WebhookPayloadTemplate = Record<string, unknown> | unknown[];
+
+const assertWebhookPayloadTemplateBounds = (
+  value: unknown,
+  depth = 0,
+  nodes = { count: 0 }
+): void => {
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+  if (depth > MAX_WEBHOOK_PAYLOAD_DEPTH) {
+    throw new Error('Webhook payload exceeds maximum depth.');
+  }
+  nodes.count += 1;
+  if (nodes.count > MAX_WEBHOOK_PAYLOAD_NODES) {
+    throw new Error('Webhook payload exceeds maximum object count.');
+  }
+  for (const child of Object.values(value)) {
+    assertWebhookPayloadTemplateBounds(child, depth + 1, nodes);
+  }
+};
+
+export const parseWebhookPayloadTemplate = (
+  value: unknown
+): WebhookPayloadTemplate => {
+  if (typeof value !== 'string') {
+    throw new Error('Webhook payload must be a JSON string.');
+  }
+  if (Buffer.byteLength(value, 'utf8') > MAX_WEBHOOK_PAYLOAD_BYTES) {
+    throw new Error('Webhook payload is too large.');
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error('Webhook payload must be valid JSON.');
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Webhook payload root must be an object or array.');
+  }
+  assertWebhookPayloadTemplateBounds(parsed);
+  return parsed as WebhookPayloadTemplate;
+};
+
+export const decodeStoredWebhookPayloadTemplate = (
+  encoded: unknown
+): { raw: string; template: WebhookPayloadTemplate } => {
+  if (typeof encoded !== 'string') {
+    throw new Error('Stored webhook payload is invalid.');
+  }
+  const maxEncodedLength =
+    Math.ceil((MAX_WEBHOOK_PAYLOAD_BYTES * 2 + 2) / 3) * 4 + 4;
+  if (encoded.length > maxEncodedLength) {
+    throw new Error('Stored webhook payload is too large.');
+  }
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  if (Buffer.byteLength(decoded, 'utf8') > MAX_WEBHOOK_PAYLOAD_BYTES * 2 + 2) {
+    throw new Error('Stored webhook payload is too large.');
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(decoded);
+  } catch {
+    throw new Error('Stored webhook payload is invalid.');
+  }
+  if (typeof raw !== 'string') {
+    throw new Error('Stored webhook payload is invalid.');
+  }
+
+  return { raw, template: parseWebhookPayloadTemplate(raw) };
+};
 
 type KeyMapFunction = (
   payload: NotificationPayload,
@@ -208,18 +282,11 @@ class WebhookAgent
   }
 
   private buildPayload(type: Notification, payload: NotificationPayload) {
-    const payloadString = Buffer.from(
-      this.getSettings().options.jsonPayload,
-      'base64'
-    ).toString('utf8');
+    const parsedJSON = decodeStoredWebhookPayloadTemplate(
+      this.getSettings().options.jsonPayload
+    ).template;
 
-    if (Buffer.byteLength(payloadString, 'utf8') > MAX_WEBHOOK_PAYLOAD_BYTES) {
-      throw new Error('Webhook payload exceeds maximum size.');
-    }
-
-    const parsedJSON = JSON.parse(JSON.parse(payloadString));
-
-    return this.parseKeys(parsedJSON, payload, type);
+    return this.parseKeys(parsedJSON as Record<string, unknown>, payload, type);
   }
 
   public shouldSend(): boolean {
@@ -331,8 +398,8 @@ class WebhookAgent
         webhookUrl,
         this.buildPayload(type, payload),
         Object.keys(headers).length > 0
-          ? { ...NOTIFICATION_HTTP_OPTIONS, headers }
-          : NOTIFICATION_HTTP_OPTIONS
+          ? { ...CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS, headers }
+          : CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS
       );
 
       return true;

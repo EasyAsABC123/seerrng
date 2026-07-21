@@ -10,7 +10,7 @@ import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
 import {
   BaseAgent,
-  NOTIFICATION_HTTP_OPTIONS,
+  CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS,
   getNotificationActionUrl,
 } from './agent';
 
@@ -30,6 +30,12 @@ const trimPathTrailingSlashes = (value: string): string => {
 
   return end === value.length ? value : value.slice(0, end);
 };
+
+export const escapeGotifyMarkdownText = (text: string): string =>
+  text.replace(/([\\`*_{}[\]()#+\-.!|>~<])/g, '\\$1');
+
+const escapeGotifyMarkdownUrl = (value: string): string =>
+  value.replace(/[\\)]/g, '\\$&');
 
 class GotifyAgent
   extends BaseAgent<NotificationAgentGotify>
@@ -60,7 +66,7 @@ class GotifyAgent
     return false;
   }
 
-  private getNotificationPayload(
+  public buildPayload(
     type: Notification,
     payload: NotificationPayload
   ): GotifyPayload {
@@ -73,10 +79,17 @@ class GotifyAgent
       ? `${payload.event} - ${payload.subject}`
       : payload.subject;
 
-    let message = payload.message ? `${payload.message}  \n\n` : '';
+    let message =
+      payload.message && !payload.comment
+        ? `${escapeGotifyMarkdownText(payload.message)}  \n\n`
+        : '';
 
     if (payload.request) {
-      message += `\n**${intl.formatMessage(globalMessages.requestedBy)}:** ${payload.request.requestedBy.displayName}  `;
+      message += `\n**${escapeGotifyMarkdownText(
+        intl.formatMessage(globalMessages.requestedBy)
+      )}:** ${escapeGotifyMarkdownText(
+        payload.request.requestedBy.displayName
+      )}  `;
 
       let status = '';
       switch (type) {
@@ -99,12 +112,20 @@ class GotifyAgent
       }
 
       if (status) {
-        message += `\n**${intl.formatMessage(globalMessages.requestStatus)}:** ${status}  `;
+        message += `\n**${escapeGotifyMarkdownText(
+          intl.formatMessage(globalMessages.requestStatus)
+        )}:** ${escapeGotifyMarkdownText(status)}  `;
       }
     } else if (payload.comment) {
-      message += `\n${intl.formatMessage(globalMessages.commentFrom, { userName: payload.comment.user.displayName })}:\n${payload.comment.message}  `;
+      message += `\n${escapeGotifyMarkdownText(
+        intl.formatMessage(globalMessages.commentFrom, {
+          userName: payload.comment.user.displayName,
+        })
+      )}:\n${escapeGotifyMarkdownText(payload.comment.message)}  `;
     } else if (payload.issue) {
-      message += `\n\n**${intl.formatMessage(globalMessages.reportedBy)}:** ${payload.issue.createdBy.displayName}  `;
+      message += `\n\n**${escapeGotifyMarkdownText(
+        intl.formatMessage(globalMessages.reportedBy)
+      )}:** ${escapeGotifyMarkdownText(payload.issue.createdBy.displayName)}  `;
       message += `\n**${intl.formatMessage(globalMessages.issueType)}:** ${IssueTypeName[payload.issue.issueType]}  `;
       message += `\n**${intl.formatMessage(globalMessages.issueStatus)}:** ${
         payload.issue.status === IssueStatus.OPEN
@@ -114,7 +135,9 @@ class GotifyAgent
     }
 
     for (const extra of payload.extra ?? []) {
-      message += `\n\n**${extra.name}**\n${extra.value}  `;
+      message += `\n\n**${escapeGotifyMarkdownText(
+        extra.name
+      )}**\n${escapeGotifyMarkdownText(extra.value)}  `;
     }
 
     const actionUrl = getNotificationActionUrl(payload, applicationUrl);
@@ -122,7 +145,11 @@ class GotifyAgent
     if (actionUrl) {
       const displayUrl =
         actionUrl.length > 40 ? `${actionUrl.slice(0, 41)}...` : actionUrl;
-      message += `\n\n**${intl.formatMessage(globalMessages.openIn, { applicationTitle })}:** [${displayUrl}](${actionUrl})  `;
+      message += `\n\n**${escapeGotifyMarkdownText(
+        intl.formatMessage(globalMessages.openIn, { applicationTitle })
+      )}:** [${escapeGotifyMarkdownText(
+        displayUrl
+      )}](${escapeGotifyMarkdownUrl(actionUrl)})  `;
     }
 
     return {
@@ -174,13 +201,13 @@ class GotifyAgent
       const endpoint = new URL(gotifyBaseUrl.toString());
       endpoint.pathname = `${trimPathTrailingSlashes(endpoint.pathname)}/message`;
       endpoint.searchParams.set('token', settings.options.token);
-      const notificationPayload = this.getNotificationPayload(type, payload);
+      const notificationPayload = this.buildPayload(type, payload);
 
       // codeql[js/request-forgery]
       await axios.post(
         endpoint.toString(),
         notificationPayload,
-        NOTIFICATION_HTTP_OPTIONS
+        CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS
       );
 
       return true;

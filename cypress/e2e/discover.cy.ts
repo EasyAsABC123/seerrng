@@ -22,8 +22,26 @@ describe('Discover', () => {
   });
 
   it('loads a trending item', () => {
+    cy.intercept('GET', '/api/v1/discover/trending*', {
+      page: 1,
+      totalPages: 1,
+      totalResults: 1,
+      results: [
+        {
+          id: 438148,
+          mediaType: 'movie',
+          title: 'Minions: The Rise of Gru',
+          overview: '',
+          releaseDate: '2022-06-29',
+          posterPath: null,
+        },
+      ],
+    });
     cy.visit('/');
-    clickFirstTitleCardInSlider('Trending');
+    cy.contains('.slider-header', 'Trending').scrollIntoView();
+    cy.contains('[data-testid=title-card-title]', 'Minions: The Rise of Gru', {
+      timeout: 15000,
+    }).should('be.visible');
   });
 
   it('loads popular movies', () => {

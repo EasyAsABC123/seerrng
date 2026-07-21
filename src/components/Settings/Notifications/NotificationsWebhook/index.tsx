@@ -5,6 +5,7 @@ import SettingsBadge from '@app/components/Settings/SettingsBadge';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { isRedactedSecret } from '@app/utils/secret';
 import { isValidURL } from '@app/utils/urlValidationHelper';
 import {
   ArrowDownOnSquareIcon,
@@ -142,7 +143,9 @@ const NotificationsWebhook = () => {
         intl.formatMessage(messages.validationWebhookUrl),
         function (value) {
           const { supportVariables } = this.parent;
-          return supportVariables || isValidURL(value);
+          return (
+            supportVariables || isRedactedSecret(value) || isValidURL(value)
+          );
         }
       ),
 

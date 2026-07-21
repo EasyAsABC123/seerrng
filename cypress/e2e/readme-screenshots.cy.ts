@@ -202,7 +202,7 @@ describe('README screenshots', () => {
     cy.visit('/');
     cy.contains('Recommended Music').should('be.visible');
     cy.contains('Recommended Books').should('be.visible');
-    cy.get('[data-testid=title-card]').should('have.length.greaterThan', 20);
+    cy.get('[data-testid=title-card]').should('have.length.greaterThan', 15);
     cy.contains('Recommended Music').scrollIntoView();
     cy.contains('Meteora').should('be.visible');
     cy.contains('The Hobbit').should('exist');

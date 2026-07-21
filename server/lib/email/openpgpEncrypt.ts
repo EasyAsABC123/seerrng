@@ -1,5 +1,6 @@
 import logger from '@server/logger';
 import { randomBytes } from 'crypto';
+import type Mail from 'nodemailer/lib/mailer';
 import * as openpgp from 'openpgp';
 import type { TransformCallback } from 'stream';
 import { Transform } from 'stream';
@@ -10,7 +11,9 @@ interface EncryptorOptions {
   encryptionKeys: string[];
 }
 
-class PGPEncryptor extends Transform {
+export const MAX_PGP_MESSAGE_BYTES = 16 * 1024 * 1024;
+
+export class PGPEncryptor extends Transform {
   private _messageChunks: Uint8Array[] = [];
   private _messageLength = 0;
   private _signingKey?: string;
@@ -31,6 +34,10 @@ class PGPEncryptor extends Transform {
     _encoding: BufferEncoding,
     callback: TransformCallback
   ): void => {
+    if (this._messageLength + chunk.length > MAX_PGP_MESSAGE_BYTES) {
+      callback(new Error('OpenPGP email message exceeds the size limit'));
+      return;
+    }
     this._messageChunks.push(chunk);
     this._messageLength += chunk.length;
     callback();
@@ -164,35 +171,36 @@ class PGPEncryptor extends Transform {
       this.push(Buffer.from(emailHeadersRaw + emailPartDelimiter + body));
       callback();
     } catch (e) {
+      const encryptionError =
+        e instanceof Error
+          ? e
+          : new Error('Unknown OpenPGP email encryption failure');
       logger.error(
-        'Something went wrong while encrypting email message with OpenPGP. Sending email without encryption',
+        'Unable to encrypt email message with OpenPGP. Refusing plaintext delivery',
         {
           label: 'Notifications',
-          errorMessage: e.message,
+          errorMessage: encryptionError.message,
         }
       );
-
-      this.push(message);
-      callback();
+      callback(encryptionError);
     }
   };
 }
 
-export const openpgpEncrypt = (options: EncryptorOptions) => {
-  // Disabling this line because I don't want to fix it but I am tired
-  // of seeing the lint warning
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return function (mail: any, callback: () => unknown): void {
+export const openpgpEncrypt = (
+  options: EncryptorOptions
+): Mail.PluginFunction => {
+  return function (mail, callback): void {
     if (!options.encryptionKeys.length) {
       setImmediate(callback);
+      return;
     }
     mail.message.transform(
-      () =>
-        new PGPEncryptor({
-          signingKey: options.signingKey,
-          password: options.password,
-          encryptionKeys: options.encryptionKeys,
-        })
+      new PGPEncryptor({
+        signingKey: options.signingKey,
+        password: options.password,
+        encryptionKeys: options.encryptionKeys,
+      })
     );
     setImmediate(callback);
   };

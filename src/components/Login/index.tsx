@@ -50,23 +50,36 @@ const Login = ({ initialBackdrops }: { initialBackdrops?: string[] }) => {
   // We take the token and attempt to sign in. If we get a success message, we will
   // ask swr to revalidate the user which _should_ come back with a valid user.
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const login = async () => {
       setProcessing(true);
       try {
-        const response = await axios.post('/api/v1/auth/plex', { authToken });
+        const response = await axios.post(
+          '/api/v1/auth/plex',
+          { authToken },
+          { signal: controller.signal }
+        );
 
-        if (response.data?.id) {
-          revalidate();
+        if (active && response.data?.id) {
+          void revalidate();
         }
       } catch (e) {
-        setError(e.response?.data?.message);
-        setAuthToken(undefined);
-        setProcessing(false);
+        if (active && !axios.isCancel(e)) {
+          setError(axios.isAxiosError(e) ? e.response?.data?.message : '');
+          setAuthToken(undefined);
+          setProcessing(false);
+        }
       }
     };
     if (authToken) {
-      login();
+      void login();
     }
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [authToken, revalidate]);
 
   // Effect that is triggered whenever `useUser`'s user changes. If we get a new

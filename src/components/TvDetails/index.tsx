@@ -33,6 +33,7 @@ import { sortCrewPriority } from '@app/utils/creditHelpers';
 import defineMessages from '@app/utils/defineMessages';
 import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
+import { getSafeHref } from '@app/utils/safeUrl';
 import { Disclosure, Transition } from '@headlessui/react';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import {
@@ -540,7 +541,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
           onCancel={() => setShowRequestModal(false)}
         />
       )}
-      {showManager && (
+      {showManager && hasPermission(Permission.MANAGE_REQUESTS) && (
         <ManageSlideOver
           data={data}
           mediaType="tv"
@@ -1008,7 +1009,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                             )}
                           {((!mSeason4k &&
                             request4k?.status === MediaRequestStatus.PENDING) ||
-                            mSeason?.status4k === MediaStatus.PENDING) &&
+                            mSeason4k?.status4k === MediaStatus.PENDING) &&
                             show4k && (
                               <>
                                 <div className="hidden md:flex">
@@ -1132,7 +1133,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                     content={intl.formatMessage(messages.rtcriticsscore)}
                   >
                     <a
-                      href={ratingData.url}
+                      href={getSafeHref(ratingData.url)}
                       className="media-rating"
                       target="_blank"
                       rel="noreferrer"
@@ -1151,7 +1152,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                     content={intl.formatMessage(messages.rtaudiencescore)}
                   >
                     <a
-                      href={ratingData.url}
+                      href={getSafeHref(ratingData.url)}
                       className="media-rating"
                       target="_blank"
                       rel="noreferrer"

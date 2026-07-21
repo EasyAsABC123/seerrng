@@ -6,7 +6,6 @@ on:
   push:
     tags:
       - 'preview-*'
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,8 +18,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate-main-tag:
+    name: Validate main preview tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout without credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Ensure bounded preview tag is on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" != 'tag' ]] ||
+             [[ ! "$GITHUB_REF_NAME" =~ ^preview-v?[0-9A-Za-z][0-9A-Za-z._-]{0,118}$ ]]; then
+            echo 'Invalid preview tag.' >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo 'Preview tags must point at commits contained in main.' >&2
+            exit 1
+          fi
+
   build:
     name: Build (per-arch, native runners)
+    needs: validate-main-tag
     strategy:
       matrix:
         include:
@@ -33,7 +61,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, "${{ matrix.runner }}", seerrng]
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -79,7 +107,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 

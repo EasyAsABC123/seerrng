@@ -5,6 +5,7 @@ import SettingsBadge from '@app/components/Settings/SettingsBadge';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { REDACTED_SECRET } from '@app/utils/secret';
 import { ArrowDownOnSquareIcon, BeakerIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import { Field, Form, Formik } from 'formik';
@@ -110,7 +111,10 @@ const NotificationsEmail = () => {
           otherwise: (schema) => schema.nullable(),
         })
         .matches(
-          /-----BEGIN PGP PRIVATE KEY BLOCK-----.+-----END PGP PRIVATE KEY BLOCK-----/s,
+          new RegExp(
+            `^(?:\\${REDACTED_SECRET}|-----BEGIN PGP PRIVATE KEY BLOCK-----.+-----END PGP PRIVATE KEY BLOCK-----)$`,
+            's'
+          ),
           intl.formatMessage(messages.validationPgpPrivateKey)
         ),
       pgpPassword: Yup.string().when('pgpPrivateKey', {
@@ -209,6 +213,7 @@ const NotificationsEmail = () => {
               enabled: true,
               embedPoster: values.embedPoster,
               options: {
+                userEmailRequired: values.userEmailRequired,
                 emailFrom: values.emailFrom,
                 smtpHost: values.smtpHost,
                 smtpPort: Number(values.smtpPort),

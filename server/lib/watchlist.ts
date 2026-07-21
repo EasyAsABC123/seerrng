@@ -10,6 +10,7 @@ import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import type { SelectQueryBuilder } from 'typeorm';
 
 const mapLocalWatchlistItem = (item: Watchlist): WatchlistItem => ({
   id: item.id,
@@ -26,9 +27,24 @@ const mapLocalWatchlistItem = (item: Watchlist): WatchlistItem => ({
 
 const isRenderableWatchlistItem = (item: Watchlist): boolean =>
   ((item.mediaType === MediaType.MOVIE || item.mediaType === MediaType.TV) &&
-    item.tmdbId !== undefined) ||
+    Number.isSafeInteger(item.tmdbId) &&
+    Number(item.tmdbId) > 0) ||
   (item.mediaType === MediaType.MUSIC && !!item.mbId) ||
   (item.mediaType === MediaType.BOOK && !!item.externalId);
+
+const applyRenderableWatchlistFilter = (query: SelectQueryBuilder<Watchlist>) =>
+  query.andWhere(
+    `(
+      (watchlist.mediaType IN (:...screenMediaTypes) AND watchlist.tmdbId > 0)
+      OR (watchlist.mediaType = :musicMediaType AND watchlist.mbId IS NOT NULL AND watchlist.mbId != '')
+      OR (watchlist.mediaType = :bookMediaType AND watchlist.externalId IS NOT NULL AND watchlist.externalId != '')
+    )`,
+    {
+      screenMediaTypes: [MediaType.MOVIE, MediaType.TV],
+      musicMediaType: MediaType.MUSIC,
+      bookMediaType: MediaType.BOOK,
+    }
+  );
 
 const getWatchlistDedupeKey = (item: WatchlistItem) => {
   if (
@@ -88,22 +104,26 @@ export const getCombinedWatchlist = async ({
 
   const offset = (page - 1) * itemsPerPage;
   const watchlistRepository = getRepository(Watchlist);
-  const localWhere = { requestedBy: { id: userId } };
-  const renderableLocalWatchlists = (
-    await watchlistRepository.find({ where: localWhere })
-  ).filter(isRenderableWatchlistItem);
-  const localTotal = renderableLocalWatchlists.length;
+  const localQuery = applyRenderableWatchlistFilter(
+    watchlistRepository
+      .createQueryBuilder('watchlist')
+      .where('watchlist.requestedBy = :userId', { userId })
+  );
+  const localTotal = await localQuery.getCount();
   const localTake = Math.max(
     itemsPerPage - Math.max(offset - localTotal, 0),
     0
   );
   const localSkip = Math.min(offset, localTotal);
-  const localResult = renderableLocalWatchlists.slice(
-    localSkip,
-    localSkip + localTake
-  );
+  const localResult = localTake
+    ? await localQuery
+        .orderBy('watchlist.id', 'ASC')
+        .skip(localSkip)
+        .take(localTake)
+        .getMany()
+    : [];
   const localItems = dedupeWatchlistItems(
-    localResult.map(mapLocalWatchlistItem)
+    localResult.filter(isRenderableWatchlistItem).map(mapLocalWatchlistItem)
   );
 
   if (!plexToken) {

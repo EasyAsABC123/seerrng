@@ -194,4 +194,127 @@ describe('discover snapshots', () => {
     );
     assert.equal(await payloadStore.get('wrong-user'), undefined);
   });
+
+  it('contains storage denial during reads and cleanup', async () => {
+    const payloadStore = new MemoryPayloadStore();
+    await payloadStore.set('denied', ['stale']);
+    const deniedStorage = {
+      getItem: () => {
+        throw new Error('read denied');
+      },
+      setItem: () => {
+        throw new Error('write denied');
+      },
+      removeItem: () => {
+        throw new Error('cleanup denied');
+      },
+    };
+
+    assert.strictEqual(
+      await readDiscoverSnapshot(
+        deniedStorage,
+        payloadStore,
+        'denied',
+        'context'
+      ),
+      undefined
+    );
+    assert.strictEqual(await payloadStore.get('denied'), undefined);
+
+    await writeDiscoverSnapshot(
+      deniedStorage,
+      payloadStore,
+      'denied-write',
+      createDiscoverSnapshot('context', ['payload'])
+    );
+    assert.strictEqual(await payloadStore.get('denied-write'), undefined);
+  });
+
+  it('rejects internally inconsistent snapshot timestamps', async () => {
+    const storage = new MemoryStorage();
+    const payloadStore = new MemoryPayloadStore();
+    await payloadStore.set('corrupt', ['stale']);
+    storage.setItem(
+      'corrupt:metadata',
+      JSON.stringify({
+        schemaVersion: 2,
+        contextKey: 'context',
+        createdAt: 100,
+        freshUntil: 50,
+        expiresAt: 200,
+      })
+    );
+
+    assert.strictEqual(
+      await readDiscoverSnapshot(
+        storage,
+        payloadStore,
+        'corrupt',
+        'context',
+        125
+      ),
+      undefined
+    );
+    assert.strictEqual(await payloadStore.get('corrupt'), undefined);
+  });
+
+  it('serializes payload and metadata writes for the same snapshot key', async () => {
+    const storage = new MemoryStorage();
+    let releaseFirstWrite!: () => void;
+    let firstWriteStarted!: () => void;
+    const firstWriteReady = new Promise<void>((resolve) => {
+      firstWriteStarted = resolve;
+    });
+    const firstWriteGate = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve;
+    });
+    let writes = 0;
+    const payloadStore = new MemoryPayloadStore();
+    const originalSet = payloadStore.set.bind(payloadStore);
+    payloadStore.set = async <T>(key: string, value: T) => {
+      writes += 1;
+      await originalSet(key, value);
+      if (writes === 1) {
+        firstWriteStarted();
+        await firstWriteGate;
+      }
+    };
+
+    const firstSnapshot = createDiscoverSnapshot('context', ['first'], {
+      now: 1_000,
+    });
+    const secondSnapshot = createDiscoverSnapshot('context', ['second'], {
+      now: 2_000,
+    });
+    const firstWrite = writeDiscoverSnapshot(
+      storage,
+      payloadStore,
+      'shared',
+      firstSnapshot
+    );
+    await firstWriteReady;
+    const secondWrite = writeDiscoverSnapshot(
+      storage,
+      payloadStore,
+      'shared',
+      secondSnapshot
+    );
+
+    await Promise.resolve();
+    assert.equal(writes, 1);
+    releaseFirstWrite();
+    await Promise.all([firstWrite, secondWrite]);
+    const persisted = await readDiscoverSnapshot(
+      storage,
+      payloadStore,
+      'shared',
+      'context',
+      2_000
+    );
+    assert.deepEqual(persisted?.data, secondSnapshot.data);
+    assert.equal(
+      persisted?.metadata.createdAt,
+      secondSnapshot.metadata.createdAt
+    );
+  });
 });

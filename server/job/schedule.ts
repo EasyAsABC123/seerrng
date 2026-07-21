@@ -20,21 +20,144 @@ import watchlistSync from '@server/lib/watchlistsync';
 import logger from '@server/logger';
 import { MediaRequestSubscriber } from '@server/subscriber/MediaRequestSubscriber';
 import schedule from 'node-schedule';
+import scheduledJobLeaseManager from './jobLease';
 
-interface ScheduledJob {
+export interface ScheduledJob {
   id: JobId;
   job: schedule.Job;
   name: string;
   type: 'process' | 'command';
   interval: 'seconds' | 'minutes' | 'hours' | 'days' | 'fixed';
   cronSchedule: string;
+  scope?: 'cluster' | 'instance';
   running?: () => boolean;
   cancelFn?: () => void;
 }
 
 export const scheduledJobs: ScheduledJob[] = [];
+const activeJobRuns = new Set<Promise<void>>();
+const activeJobRunsByName = new Map<string, Promise<void>>();
+
+export const getScheduledJobLeaseName = (name: string): string =>
+  `scheduled-job:${name}`;
+
+export const runTrackedJob = (
+  name: string,
+  task: () => void | Promise<void>,
+  options: {
+    scope?: 'cluster' | 'instance';
+    logCompletion?: boolean;
+  } = {}
+): Promise<void> => {
+  const activeRun = activeJobRunsByName.get(name);
+  if (activeRun) {
+    logger.warn(`Scheduled job is already running: ${name}`, {
+      label: 'Jobs',
+    });
+    return activeRun;
+  }
+
+  const startedAt = Date.now();
+  let taskCompleted = false;
+  const executeTask = async (): Promise<void> => {
+    await task();
+    taskCompleted = true;
+  };
+  const run = Promise.resolve()
+    .then(async () => {
+      if (options.scope === 'instance') {
+        await executeTask();
+      } else {
+        const result = await scheduledJobLeaseManager.run(
+          getScheduledJobLeaseName(name),
+          executeTask
+        );
+        if (!result.acquired) {
+          logger.debug(
+            `Scheduled job is running on another instance: ${name}`,
+            {
+              label: 'Jobs',
+            }
+          );
+        }
+      }
+
+      if (options.logCompletion && taskCompleted) {
+        logger.info(`Scheduled job completed: ${name}`, {
+          label: 'Jobs',
+          durationMs: Date.now() - startedAt,
+        });
+      }
+    })
+    .catch((error) => {
+      logger.error(`Scheduled job failed: ${name}`, {
+        label: 'Jobs',
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : 'Unknown scheduled job error',
+        durationMs: Date.now() - startedAt,
+      });
+    })
+    .finally(() => {
+      activeJobRuns.delete(run);
+      if (activeJobRunsByName.get(name) === run) {
+        activeJobRunsByName.delete(name);
+      }
+    });
+  activeJobRuns.add(run);
+  activeJobRunsByName.set(name, run);
+  return run;
+};
+
+export const waitForActiveJobs = async (): Promise<void> => {
+  while (activeJobRuns.size > 0) {
+    await Promise.all([...activeJobRuns]);
+  }
+};
+
+export const isTrackedJobRunning = (name: string): boolean =>
+  activeJobRunsByName.has(name);
+
+let stopJobsPromise: Promise<void> | undefined;
+
+export const stopJobs = (): Promise<void> => {
+  if (stopJobsPromise) {
+    return stopJobsPromise;
+  }
+
+  stopJobsPromise = (async () => {
+    for (const scheduledJob of scheduledJobs) {
+      scheduledJob.cancelFn?.();
+      scheduledJob.job.cancel();
+    }
+    scheduledJobs.length = 0;
+    await waitForActiveJobs();
+  })().finally(() => {
+    stopJobsPromise = undefined;
+  });
+
+  return stopJobsPromise;
+};
 
 export const startJobs = (): void => {
+  if (stopJobsPromise) {
+    logger.warn('Scheduled jobs are stopping; skipping job start.', {
+      label: 'Jobs',
+    });
+    return;
+  }
+
+  if (scheduledJobs.length > 0) {
+    logger.warn(
+      'Scheduled jobs are already loaded; skipping duplicate start.',
+      {
+        label: 'Jobs',
+      }
+    );
+    return;
+  }
+
   const jobs = getSettings().jobs;
   const mediaServerType = getSettings().main.mediaServerType;
 
@@ -52,7 +175,9 @@ export const startJobs = (): void => {
           logger.info('Starting scheduled job: Plex Recently Added Scan', {
             label: 'Jobs',
           });
-          plexRecentScanner.run();
+          return runTrackedJob('Plex Recently Added Scan', () =>
+            plexRecentScanner.run()
+          );
         }
       ),
       running: () => plexRecentScanner.status().running,
@@ -70,7 +195,9 @@ export const startJobs = (): void => {
         logger.info('Starting scheduled job: Plex Full Library Scan', {
           label: 'Jobs',
         });
-        plexFullScanner.run();
+        return runTrackedJob('Plex Full Library Scan', () =>
+          plexFullScanner.run()
+        );
       }),
       running: () => plexFullScanner.status().running,
       cancelFn: () => plexFullScanner.cancel(),
@@ -86,7 +213,7 @@ export const startJobs = (): void => {
         logger.info('Starting scheduled job: Plex Refresh Token', {
           label: 'Jobs',
         });
-        refreshToken.run();
+        return runTrackedJob('Plex Refresh Token', () => refreshToken.run());
       }),
     });
 
@@ -101,12 +228,11 @@ export const startJobs = (): void => {
         logger.info('Starting scheduled job: Plex Watchlist Sync', {
           label: 'Jobs',
         });
-        watchlistSync.syncWatchlist().catch((e) => {
-          logger.error('Failed to sync watchlists', {
-            label: 'Plex Watchlist Sync',
-            errorMessage: e.message,
-          });
-        });
+        return runTrackedJob(
+          'Plex Watchlist Sync',
+          () => watchlistSync.syncWatchlist(),
+          { logCompletion: true }
+        );
       }),
     });
   } else if (
@@ -126,7 +252,9 @@ export const startJobs = (): void => {
           logger.info('Starting scheduled job: Jellyfin Recently Added Scan', {
             label: 'Jobs',
           });
-          jellyfinRecentScanner.run();
+          return runTrackedJob('Jellyfin Recently Added Scan', () =>
+            jellyfinRecentScanner.run()
+          );
         }
       ),
       running: () => jellyfinRecentScanner.status().running,
@@ -144,7 +272,9 @@ export const startJobs = (): void => {
         logger.info('Starting scheduled job: Jellyfin Full Scan', {
           label: 'Jobs',
         });
-        jellyfinFullScanner.run();
+        return runTrackedJob('Jellyfin Full Library Scan', () =>
+          jellyfinFullScanner.run()
+        );
       }),
       running: () => jellyfinFullScanner.status().running,
       cancelFn: () => jellyfinFullScanner.cancel(),
@@ -160,7 +290,7 @@ export const startJobs = (): void => {
     cronSchedule: jobs['radarr-scan'].schedule,
     job: schedule.scheduleJob(jobs['radarr-scan'].schedule, () => {
       logger.info('Starting scheduled job: Radarr Scan', { label: 'Jobs' });
-      radarrScanner.run();
+      return runTrackedJob('Radarr Scan', () => radarrScanner.run());
     }),
     running: () => radarrScanner.status().running,
     cancelFn: () => radarrScanner.cancel(),
@@ -175,7 +305,7 @@ export const startJobs = (): void => {
     cronSchedule: jobs['sonarr-scan'].schedule,
     job: schedule.scheduleJob(jobs['sonarr-scan'].schedule, () => {
       logger.info('Starting scheduled job: Sonarr Scan', { label: 'Jobs' });
-      sonarrScanner.run();
+      return runTrackedJob('Sonarr Scan', () => sonarrScanner.run());
     }),
     running: () => sonarrScanner.status().running,
     cancelFn: () => sonarrScanner.cancel(),
@@ -189,7 +319,7 @@ export const startJobs = (): void => {
     cronSchedule: jobs['lidarr-scan'].schedule,
     job: schedule.scheduleJob(jobs['lidarr-scan'].schedule, () => {
       logger.info('Starting scheduled job: Lidarr Scan', { label: 'Jobs' });
-      lidarrScanner.run();
+      return runTrackedJob('Lidarr Scan', () => lidarrScanner.run());
     }),
     running: () => lidarrScanner.status().running,
     cancelFn: () => lidarrScanner.cancel(),
@@ -203,7 +333,7 @@ export const startJobs = (): void => {
     cronSchedule: jobs['readarr-scan'].schedule,
     job: schedule.scheduleJob(jobs['readarr-scan'].schedule, () => {
       logger.info('Starting scheduled job: Bookshelf Scan', { label: 'Jobs' });
-      readarrScanner.run();
+      return runTrackedJob('Bookshelf Scan', () => readarrScanner.run());
     }),
     running: () => readarrScanner.status().running,
     cancelFn: () => readarrScanner.cancel(),
@@ -219,12 +349,11 @@ export const startJobs = (): void => {
       logger.info('Starting scheduled job: Bookshelf Request Retry', {
         label: 'Jobs',
       });
-      new MediaRequestSubscriber().retryApprovedReadarrRequests().catch((e) => {
-        logger.error('Failed to retry approved Bookshelf requests', {
-          label: 'Jobs',
-          errorMessage: e instanceof Error ? e.message : String(e),
-        });
-      });
+      return runTrackedJob(
+        'Bookshelf Request Retry',
+        () => new MediaRequestSubscriber().retryApprovedReadarrRequests(),
+        { logCompletion: true }
+      );
     }),
   });
 
@@ -239,7 +368,9 @@ export const startJobs = (): void => {
       logger.info('Starting scheduled job: Media Availability Sync', {
         label: 'Jobs',
       });
-      availabilitySync.run();
+      return runTrackedJob('Media Availability Sync', () =>
+        availabilitySync.run()
+      );
     }),
     running: () => availabilitySync.running,
     cancelFn: () => availabilitySync.cancel(),
@@ -252,11 +383,16 @@ export const startJobs = (): void => {
     type: 'command',
     interval: 'seconds',
     cronSchedule: jobs['download-sync'].schedule,
+    scope: 'instance',
     job: schedule.scheduleJob(jobs['download-sync'].schedule, () => {
       logger.debug('Starting scheduled job: Download Sync', {
         label: 'Jobs',
       });
-      void downloadTracker.updateDownloads();
+      return runTrackedJob(
+        'Download Sync',
+        () => downloadTracker.updateDownloads(),
+        { scope: 'instance' }
+      );
     }),
   });
 
@@ -282,11 +418,16 @@ export const startJobs = (): void => {
     type: 'command',
     interval: 'hours',
     cronSchedule: jobs['download-sync-reset'].schedule,
+    scope: 'instance',
     job: schedule.scheduleJob(jobs['download-sync-reset'].schedule, () => {
       logger.info('Starting scheduled job: Download Sync Reset', {
         label: 'Jobs',
       });
-      downloadTracker.resetDownloadTracker();
+      return runTrackedJob(
+        'Download Sync Reset',
+        () => downloadTracker.resetDownloadTracker(),
+        { scope: 'instance' }
+      );
     }),
   });
 
@@ -297,15 +438,36 @@ export const startJobs = (): void => {
     type: 'process',
     interval: 'hours',
     cronSchedule: jobs['image-cache-cleanup'].schedule,
+    scope: 'instance',
     job: schedule.scheduleJob(jobs['image-cache-cleanup'].schedule, () => {
       logger.info('Starting scheduled job: Image Cache Cleanup', {
         label: 'Jobs',
       });
       // Clean TMDB image cache
-      ImageProxy.clearCache('tmdb');
+      return runTrackedJob(
+        'Image Cache Cleanup',
+        async () => {
+          // RAM is process-local and must be cleared on every replica. The
+          // disk tree is normally shared, so only one replica may prune it.
+          ImageProxy.clearMemoryCache();
+          const result = await scheduledJobLeaseManager.run(
+            'scheduled-job:Image Cache Disk Cleanup',
+            async () => {
+              await ImageProxy.clearCache('tmdb');
 
-      // Clean users avatar image cache
-      ImageProxy.clearCache('avatar');
+              // Clean users avatar image cache
+              await ImageProxy.clearCache('avatar');
+            }
+          );
+          if (!result.acquired) {
+            logger.debug(
+              'Image cache disk cleanup is running on another instance.',
+              { label: 'Jobs' }
+            );
+          }
+        },
+        { scope: 'instance' }
+      );
     }),
   });
 
@@ -319,7 +481,9 @@ export const startJobs = (): void => {
       logger.info('Starting scheduled job: Process Blocklisted Tags', {
         label: 'Jobs',
       });
-      blocklistedTagsProcessor.run();
+      return runTrackedJob('Process Blocklisted Tags', () =>
+        blocklistedTagsProcessor.run()
+      );
     }),
     running: () => blocklistedTagsProcessor.status().running,
     cancelFn: () => blocklistedTagsProcessor.cancel(),

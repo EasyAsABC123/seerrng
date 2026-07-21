@@ -1,12 +1,14 @@
 import ImageProxy from '@server/lib/imageproxy';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
+import { trackBackgroundTask } from '@server/utils/backgroundTasks';
 
 const warmBatchSize = 8;
 const maxWarmUrls = 80;
 const maxWarmPathLength = 2048;
 const warmCooldownMs = 5 * 60 * 1000;
 const maxRememberedWarmUrls = 5000;
+export const maxQueuedWarmUrls = 1000;
 const queuedWarmUrls = new Set<string>();
 const recentlyWarmedUrls = new Map<string, number>();
 
@@ -136,9 +138,11 @@ const warmUrl = async (rawUrl: string) => {
   await proxy.getImage(getImageCacheWarmPath(url));
 };
 
-export const enqueueImageCacheWarm = (urls: string[]) => {
+export const getQueuedImageCacheWarmCount = (): number => queuedWarmUrls.size;
+
+export const enqueueImageCacheWarm = (urls: string[]): number => {
   if (!getSettings().main.cacheImages) {
-    return;
+    return 0;
   }
 
   const now = Date.now();
@@ -163,22 +167,28 @@ export const enqueueImageCacheWarm = (urls: string[]) => {
         return false;
       }
 
+      if (queuedWarmUrls.size >= maxQueuedWarmUrls) {
+        return false;
+      }
+
       queuedWarmUrls.add(url);
       recentlyWarmedUrls.set(url, now + warmCooldownMs);
       return true;
     });
 
   if (!uniqueUrls.length) {
-    return;
+    return 0;
   }
 
-  setImmediate(async () => {
-    for (let i = 0; i < uniqueUrls.length; i += warmBatchSize) {
-      const batch = uniqueUrls.slice(i, i + warmBatchSize);
+  trackBackgroundTask('image cache warming', async () => {
+    try {
+      for (let i = 0; i < uniqueUrls.length; i += warmBatchSize) {
+        const batch = uniqueUrls.slice(i, i + warmBatchSize);
 
-      await Promise.allSettled(batch.map((url) => warmUrl(url)));
-
-      for (const url of batch) {
+        await Promise.allSettled(batch.map((url) => warmUrl(url)));
+      }
+    } finally {
+      for (const url of uniqueUrls) {
         queuedWarmUrls.delete(url);
       }
     }
@@ -187,4 +197,6 @@ export const enqueueImageCacheWarm = (urls: string[]) => {
       label: 'Image Cache',
     });
   });
+
+  return uniqueUrls.length;
 };

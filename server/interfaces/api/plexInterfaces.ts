@@ -28,7 +28,6 @@ export interface PlexDevice {
   lastSeenAt: Date;
   provides: string[];
   owned: boolean;
-  accessToken?: string;
   publicAddress?: string;
   httpsRequired?: boolean;
   synced?: boolean;

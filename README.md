@@ -8,6 +8,12 @@
   <a href="https://discord.gg/2N42G4RJCU"><img src="https://img.shields.io/badge/support-Discord-5865F2?logo=discord&logoColor=white" alt="Support on Discord" /></a>
 </p>
 
+<p align="center">
+  Support SeerrNG development through
+  <a href="https://www.paypal.com/donate/?business=donations%40snape.tech">PayPal</a> or
+  <a href="https://ko-fi.com/snapetech">Ko-fi</a>.
+</p>
+
 # SeerrNG
 
 SeerrNG is a self-hosted request and discovery app for personal media libraries. It extends the Seerr/Jellyseerr/Overseerr lineage beyond movies and TV into music, ebooks, and audiobooks while keeping the familiar request approval workflow for Plex, Jellyfin, Emby, Radarr, and Sonarr users.
@@ -257,6 +263,8 @@ Common runtime variables:
 | `CONFIG_DIRECTORY` | Alternate config directory for non-container installs. |
 | `TMDB_API_KEY` | TMDB v3 API key. |
 | `TMDB_READ_ACCESS_TOKEN` | TMDB v4 bearer token. |
+| `OIDC_ALLOW_PRIVATE_ADDRESSES` | Allows server-side OIDC requests to private network addresses. Required only for an intentionally internal identity provider. |
+| `OIDC_ALLOW_INSECURE` | Allows non-HTTPS OIDC provider requests. |
 | `SEERR_EXTERNAL_READ_ONLY` | Blocks mutating requests to external automation APIs when enabled. Useful for test/lab environments. Production refuses to start with this enabled unless explicitly allowed. |
 | `SEERR_ALLOW_PRODUCTION_EXTERNAL_READ_ONLY` | Allows `SEERR_EXTERNAL_READ_ONLY` in production for an intentional read-only clone. Do not set this on the writable request.snape.tech deployment. |
 

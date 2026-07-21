@@ -6,7 +6,25 @@ CONTAINER="${SEERRNG_CONTAINER_NAME:-seerr-host}"
 PORT="${SEERRNG_PORT:-5055}"
 EXPECTED_COMMIT="${1:-$(git rev-parse HEAD)}"
 
-ssh "$HOST" bash -s -- "$CONTAINER" "$PORT" "$EXPECTED_COMMIT" <<'EOF'
+if [[ ! "$HOST" =~ ^[A-Za-z0-9][A-Za-z0-9_.:@%+-]{0,254}$ ]]; then
+  echo "SEERRNG_DEPLOY_HOST contains invalid characters" >&2
+  exit 2
+fi
+if [[ ! "$CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+  echo "SEERRNG_CONTAINER_NAME contains invalid characters" >&2
+  exit 2
+fi
+if [[ ! "$PORT" =~ ^[0-9]{1,5}$ ]] ||
+  ((10#$PORT < 1 || 10#$PORT > 65535)); then
+  echo "SEERRNG_PORT must be an integer from 1 through 65535" >&2
+  exit 2
+fi
+if [[ ! "$EXPECTED_COMMIT" =~ ^[a-fA-F0-9]{7,64}$ ]]; then
+  echo "expected commit must be a hexadecimal Git object ID" >&2
+  exit 2
+fi
+
+ssh -- "$HOST" bash -s -- "$CONTAINER" "$PORT" "$EXPECTED_COMMIT" <<'EOF'
 set -euo pipefail
 CONTAINER="$1"
 PORT="$2"

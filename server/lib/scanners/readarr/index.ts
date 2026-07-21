@@ -7,12 +7,19 @@ import { MediaIdentifierProvider } from '@server/entity/MediaIdentifier';
 import { resolveOpenLibraryIdentifiersForReadarrBook } from '@server/lib/bookIdentifierResolver';
 import { normalizeExternalBookId } from '@server/lib/externalIds';
 import { normalizeIsbn, normalizeValidIsbn } from '@server/lib/isbn';
+import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import type {
   ProcessOptions,
   RunnableScanner,
   StatusBase,
 } from '@server/lib/scanners/baseScanner';
 import BaseScanner from '@server/lib/scanners/baseScanner';
+import { forEachMediaCleanupBatch } from '@server/lib/scanners/mediaCleanupBatches';
+import {
+  ServarrServiceAuthorityChangedError,
+  runWithServarrServiceSnapshot,
+  runWithServarrServiceSnapshots,
+} from '@server/lib/serviceAdmission';
 import type { ReadarrSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import { uniqWith } from 'lodash';
@@ -68,19 +75,22 @@ class ReadarrScanner
   public async run(): Promise<void> {
     const settings = getSettings();
     const sessionId = this.startRun();
+    if (!sessionId) {
+      return;
+    }
     this.scannedIdentifierKeys.clear();
     this.didScan = false;
 
     try {
-      this.servers = uniqWith(settings.readarr, (readarrA, readarrB) => {
-        return (
+      this.servers = uniqWith(
+        structuredClone(settings.readarr),
+        (readarrA, readarrB) =>
           readarrA.hostname === readarrB.hostname &&
           readarrA.port === readarrB.port &&
           readarrA.baseUrl === readarrB.baseUrl &&
           (readarrA.serviceType ?? 'ebook') ===
             (readarrB.serviceType ?? 'ebook')
-        );
-      });
+      );
 
       for (const server of this.servers) {
         this.currentServer = server;
@@ -90,12 +100,17 @@ class ReadarrScanner
             'info'
           );
 
-          this.readarrApi = new ReadarrAPI({
-            apiKey: server.apiKey,
-            url: ReadarrAPI.buildUrl(server, '/api/v1'),
-          });
-
-          this.items = await this.readarrApi.getBooks();
+          this.items = await runWithServarrServiceSnapshot(
+            'readarr',
+            server,
+            async (current) => {
+              this.readarrApi = new ReadarrAPI({
+                apiKey: current.apiKey,
+                url: ReadarrAPI.buildUrl(current, '/api/v1'),
+              });
+              return this.readarrApi.getBooks();
+            }
+          );
           this.didScan = true;
           await this.loop(this.processReadarrBook.bind(this), { sessionId });
         } else {
@@ -121,8 +136,10 @@ class ReadarrScanner
   private async processReadarrBook(readarrBook: ReadarrBook): Promise<void> {
     try {
       if (!readarrBook.editions?.length) {
-        readarrBook.editions = await this.readarrApi.getEditions(
-          readarrBook.id
+        readarrBook.editions = await runWithServarrServiceSnapshot(
+          'readarr',
+          this.currentServer,
+          async () => this.readarrApi.getEditions(readarrBook.id)
         );
       }
 
@@ -207,6 +224,12 @@ class ReadarrScanner
           secondaryIdentifiers,
           processing: false,
           bookServiceType: this.currentServer.serviceType ?? 'ebook',
+          mutationGuard: (callback) =>
+            runWithServarrServiceSnapshot(
+              'readarr',
+              this.currentServer,
+              callback
+            ),
         });
         return;
       }
@@ -227,8 +250,15 @@ class ReadarrScanner
           (readarrBook.statistics
             ? (readarrBook.statistics.bookFileCount ?? 0) < totalBooks
             : !hasFile),
+        mutationGuard: (callback) =>
+          runWithServarrServiceSnapshot(
+            'readarr',
+            this.currentServer,
+            callback
+          ),
       });
     } catch (e) {
+      if (e instanceof ServarrServiceAuthorityChangedError) throw e;
       this.log('Failed to process Bookshelf media', 'error', {
         errorMessage: e.message,
         title: readarrBook.title,
@@ -266,28 +296,49 @@ class ReadarrScanner
       return;
     }
 
-    const processingBooks = await mediaRepository.find({
-      where: { mediaType: MediaType.BOOK, status: MediaStatus.PROCESSING },
-      relations: { identifiers: true },
-    });
-
-    for (const media of processingBooks) {
-      const identifierKeys = (media.identifiers ?? []).map((identifier) =>
-        getBookIdentifierKey(identifier.provider, identifier.value)
-      );
-
-      if (
-        identifierKeys.length > 0 &&
-        !identifierKeys.some((key) => this.scannedIdentifierKeys.has(key))
-      ) {
-        media.status = MediaStatus.UNKNOWN;
-        await mediaRepository.save(media);
-        this.log(
-          `Book ${identifierKeys[0]} not found in any Bookshelf server. Status reset to UNKNOWN.`,
-          'info'
+    await forEachMediaCleanupBatch(
+      { mediaType: MediaType.BOOK, status: MediaStatus.PROCESSING },
+      async (media) => {
+        const identifierKeys = (media.identifiers ?? []).map((identifier) =>
+          getBookIdentifierKey(identifier.provider, identifier.value)
         );
-      }
-    }
+
+        if (
+          identifierKeys.length > 0 &&
+          !identifierKeys.some((key) => this.scannedIdentifierKeys.has(key))
+        ) {
+          const changed = await runMediaEntityMutation(media, () =>
+            runWithServarrServiceSnapshots(
+              'readarr',
+              this.servers.filter((server) => server.syncEnabled),
+              async () => {
+                const current = await mediaRepository.findOne({
+                  where: { id: media.id },
+                  relations: { identifiers: true },
+                });
+                if (!current || current.status !== MediaStatus.PROCESSING) {
+                  return false;
+                }
+                current.status = MediaStatus.UNKNOWN;
+                await mediaRepository.save(current);
+                return true;
+              },
+              {
+                requireExactAuthoritySet: true,
+                includeCurrent: (server) => server.syncEnabled,
+              }
+            )
+          );
+          if (changed) {
+            this.log(
+              `Book ${identifierKeys[0]} not found in any Bookshelf server. Status reset to UNKNOWN.`,
+              'info'
+            );
+          }
+        }
+      },
+      { relations: { identifiers: true } }
+    );
   }
 }
 

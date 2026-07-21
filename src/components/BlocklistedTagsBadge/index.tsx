@@ -1,5 +1,6 @@
 import Badge from '@app/components/Common/Badge';
 import Tooltip from '@app/components/Common/Tooltip';
+import { mapWithConcurrency } from '@app/utils/concurrency';
 import defineMessages from '@app/utils/defineMessages';
 import { TagIcon } from '@heroicons/react/20/solid';
 import type { BlocklistItem } from '@server/interfaces/api/blocklistInterfaces';
@@ -11,6 +12,7 @@ import { useIntl } from 'react-intl';
 const messages = defineMessages('components.Settings', {
   blocklistedTagsText: 'Blocklisted Tags',
 });
+const KEYWORD_LOOKUP_CONCURRENCY = 8;
 
 interface BlocklistedTagsBadgeProps {
   data: BlocklistItem;
@@ -26,17 +28,39 @@ const BlocklistedTagsBadge = ({ data }: BlocklistedTagsBadgeProps) => {
       return;
     }
 
+    const controller = new AbortController();
+    let active = true;
     const keywordIds = data.blocklistedTags.slice(1, -1).split(',');
-    Promise.all(
-      keywordIds.map(async (keywordId) => {
-        const { data } = await axios.get<Keyword | null>(
-          `/api/v1/keyword/${keywordId}`
+    const loadTagNames = async () => {
+      try {
+        const keywords = await mapWithConcurrency(
+          keywordIds,
+          KEYWORD_LOOKUP_CONCURRENCY,
+          async (keywordId) => {
+            const { data } = await axios.get<Keyword | null>(
+              `/api/v1/keyword/${keywordId}`,
+              { signal: controller.signal }
+            );
+            return data?.name || `[Invalid: ${keywordId}]`;
+          }
         );
-        return data?.name || `[Invalid: ${keywordId}]`;
-      })
-    ).then((keywords) => {
-      setTagNamesBlocklistedFor(keywords.join(', '));
-    });
+        if (active) {
+          setTagNamesBlocklistedFor(keywords.join(', '));
+        }
+      } catch {
+        if (active) {
+          setTagNamesBlocklistedFor(
+            keywordIds.map((keywordId) => `[Invalid: ${keywordId}]`).join(', ')
+          );
+        }
+      }
+    };
+
+    void loadTagNames();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [data.blocklistedTags]);
 
   return (

@@ -1,6 +1,10 @@
 import { normalizeMusicBrainzId } from '@server/lib/externalIds';
 import logger from '@server/logger';
-import ServarrBase from './base';
+import ServarrBase, {
+  MAX_SERVARR_LOOKUP_RESULTS,
+  sanitizeServarrProfiles,
+  sanitizeServarrRecordArray,
+} from './base';
 
 interface LidarrMediaResult {
   id: number;
@@ -294,7 +298,7 @@ class LidarrAPI extends ServarrBase<{ albumId: number }> {
   public async getAlbums(): Promise<LidarrAlbum[]> {
     try {
       const data = await this.get<LidarrAlbum[]>('/album');
-      return data;
+      return sanitizeServarrRecordArray<LidarrAlbum>(data);
     } catch (e) {
       throw new Error(`[Lidarr] Failed to retrieve albums: ${e.message}`);
     }
@@ -332,7 +336,10 @@ class LidarrAPI extends ServarrBase<{ albumId: number }> {
           term: `lidarr:${normalizedMbid}`,
         },
       });
-      return data;
+      return sanitizeServarrRecordArray<LidarrAlbumResult>(
+        data,
+        MAX_SERVARR_LOOKUP_RESULTS
+      );
     } catch (e) {
       throw new Error(`[Lidarr] Failed to search album: ${e.message}`);
     }
@@ -370,31 +377,38 @@ class LidarrAPI extends ServarrBase<{ albumId: number }> {
           includeAllArtistAlbums: 'false',
         },
       });
+      const normalizedExistingAlbums = sanitizeServarrRecordArray<LidarrAlbum>(
+        existingAlbums,
+        MAX_SERVARR_LOOKUP_RESULTS
+      );
 
-      if (existingAlbums.length > 0 && existingAlbums[0].monitored) {
+      if (
+        normalizedExistingAlbums.length > 0 &&
+        normalizedExistingAlbums[0].monitored
+      ) {
         logger.info(
           'Album is already monitored in Lidarr. Skipping add and returning success',
           {
             label: 'Lidarr',
           }
         );
-        return existingAlbums[0];
+        return normalizedExistingAlbums[0];
       }
 
-      if (existingAlbums.length > 0) {
+      if (normalizedExistingAlbums.length > 0) {
         logger.info(
           'Album exists in Lidarr but is not monitored. Updating monitored status.',
           {
             label: 'Lidarr',
-            albumId: existingAlbums[0].id,
-            albumTitle: existingAlbums[0].title,
+            albumId: normalizedExistingAlbums[0].id,
+            albumTitle: normalizedExistingAlbums[0].title,
           }
         );
 
         const updatedAlbum = await this.axios.put<LidarrAlbum>(
-          `/album/${existingAlbums[0].id}`,
+          `/album/${normalizedExistingAlbums[0].id}`,
           {
-            ...existingAlbums[0],
+            ...normalizedExistingAlbums[0],
             monitored: true,
           }
         );
@@ -428,7 +442,10 @@ class LidarrAPI extends ServarrBase<{ albumId: number }> {
           term: `lidarr:${normalizedMbid}`,
         },
       });
-      return data;
+      return sanitizeServarrRecordArray<LidarrAlbumResult>(
+        data,
+        MAX_SERVARR_LOOKUP_RESULTS
+      );
     } catch (e) {
       throw new Error(
         `[Lidarr] Failed to search album by MusicBrainz ID: ${e.message}`
@@ -439,7 +456,7 @@ class LidarrAPI extends ServarrBase<{ albumId: number }> {
   public async getMetadataProfiles(): Promise<MetadataProfile[]> {
     try {
       const data = await this.get<MetadataProfile[]>('/metadataProfile');
-      return data;
+      return sanitizeServarrProfiles(data);
     } catch (e) {
       throw new Error(
         `[Lidarr] Failed to retrieve metadata profiles: ${e.message}`

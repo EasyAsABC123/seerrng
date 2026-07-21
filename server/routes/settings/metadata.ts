@@ -1,11 +1,13 @@
 import TheMovieDb from '@server/api/themoviedb';
 import Tvdb from '@server/api/tvdb';
+import { Permission } from '@server/lib/permissions';
 import {
   getSettings,
   MetadataProviderType,
   type MetadataSettings,
 } from '@server/lib/settings';
 import logger from '@server/logger';
+import { authorizedMutation } from '@server/middleware/authorizedMutation';
 import { Router } from 'express';
 
 function getTestResultString(testValue: number): string {
@@ -68,87 +70,11 @@ metadataRoutes.get('/', (_req, res) => {
   });
 });
 
-metadataRoutes.put('/', async (req, res) => {
-  const settings = getSettings();
-  const parsedBody = parseMetadataSettings(req.body);
-
-  if ('error' in parsedBody) {
-    return res.status(400).json({ success: false, error: parsedBody.error });
-  }
-
-  const body = parsedBody.value;
-
-  let tvdbTest = -1;
-  let tmdbTest = -1;
-
-  try {
-    if (
-      body.tv === MetadataProviderType.TVDB ||
-      body.anime === MetadataProviderType.TVDB
-    ) {
-      tvdbTest = 0;
-      const tvdb = await Tvdb.getInstance();
-      await tvdb.test();
-      tvdbTest = 1;
-    }
-  } catch (e) {
-    logger.error('Failed to test metadata provider', {
-      label: 'Metadata',
-      message: e.message,
-    });
-  }
-
-  try {
-    if (
-      body.tv === MetadataProviderType.TMDB ||
-      body.anime === MetadataProviderType.TMDB
-    ) {
-      tmdbTest = 0;
-      const tmdb = new TheMovieDb();
-      await tmdb.getTvShow({ tvId: 1054 });
-      tmdbTest = 1;
-    }
-  } catch (e) {
-    logger.error('Failed to test metadata provider', {
-      label: 'MetadataProvider',
-      message: e.message,
-    });
-  }
-
-  // If a test failed, return the test results
-  if (tvdbTest === 0 || tmdbTest === 0) {
-    return res.status(500).json({
-      success: false,
-      tests: {
-        tvdb: getTestResultString(tvdbTest),
-        tmdb: getTestResultString(tmdbTest),
-      },
-    });
-  }
-
-  settings.metadataSettings = {
-    tv: body.tv,
-    anime: body.anime,
-  };
-  await settings.save();
-
-  res.status(200).json({
-    success: true,
-    tv: body.tv,
-    anime: body.anime,
-    tests: {
-      tvdb: getTestResultString(tvdbTest),
-      tmdb: getTestResultString(tmdbTest),
-    },
-  });
-});
-
-metadataRoutes.post('/test', async (req, res) => {
-  let tvdbTest = -1;
-  let tmdbTest = -1;
-
-  try {
-    const parsedBody = parseMetadataTestBody(req.body);
+metadataRoutes.put(
+  '/',
+  authorizedMutation(Permission.ADMIN, async (req, res) => {
+    const settings = getSettings();
+    const parsedBody = parseMetadataSettings(req.body);
 
     if ('error' in parsedBody) {
       return res.status(400).json({ success: false, error: parsedBody.error });
@@ -156,8 +82,31 @@ metadataRoutes.post('/test', async (req, res) => {
 
     const body = parsedBody.value;
 
+    let tvdbTest = -1;
+    let tmdbTest = -1;
+
     try {
-      if (body.tmdb === true) {
+      if (
+        body.tv === MetadataProviderType.TVDB ||
+        body.anime === MetadataProviderType.TVDB
+      ) {
+        tvdbTest = 0;
+        const tvdb = await Tvdb.getInstance();
+        await tvdb.test();
+        tvdbTest = 1;
+      }
+    } catch (e) {
+      logger.error('Failed to test metadata provider', {
+        label: 'Metadata',
+        message: e.message,
+      });
+    }
+
+    try {
+      if (
+        body.tv === MetadataProviderType.TMDB ||
+        body.anime === MetadataProviderType.TMDB
+      ) {
         tmdbTest = 0;
         const tmdb = new TheMovieDb();
         await tmdb.getTvShow({ tvId: 1054 });
@@ -170,40 +119,105 @@ metadataRoutes.post('/test', async (req, res) => {
       });
     }
 
-    try {
-      if (body.tvdb === true) {
-        tvdbTest = 0;
-        const tvdb = await Tvdb.getInstance();
-        await tvdb.test();
-        tvdbTest = 1;
-      }
-    } catch (e) {
-      logger.error('Failed to test metadata provider', {
-        label: 'MetadataProvider',
-        message: e.message,
+    // If a test failed, return the test results
+    if (tvdbTest === 0 || tmdbTest === 0) {
+      return res.status(500).json({
+        success: false,
+        tests: {
+          tvdb: getTestResultString(tvdbTest),
+          tmdb: getTestResultString(tmdbTest),
+        },
       });
     }
 
-    const success = !(tvdbTest === 0 || tmdbTest === 0);
-    const statusCode = success ? 200 : 500;
+    await settings.persistSection('metadataSettings', (current) => ({
+      ...current,
+      tv: body.tv,
+      anime: body.anime,
+    }));
 
-    return res.status(statusCode).json({
-      success: success,
+    res.status(200).json({
+      success: true,
+      tv: body.tv,
+      anime: body.anime,
       tests: {
-        tmdb: getTestResultString(tmdbTest),
         tvdb: getTestResultString(tvdbTest),
+        tmdb: getTestResultString(tmdbTest),
       },
     });
-  } catch (e) {
-    return res.status(500).json({
-      success: false,
-      tests: {
-        tmdb: getTestResultString(tmdbTest),
-        tvdb: getTestResultString(tvdbTest),
-      },
-      error: e.message,
-    });
-  }
-});
+  })
+);
+
+metadataRoutes.post(
+  '/test',
+  authorizedMutation(Permission.ADMIN, async (req, res) => {
+    let tvdbTest = -1;
+    let tmdbTest = -1;
+
+    try {
+      const parsedBody = parseMetadataTestBody(req.body);
+
+      if ('error' in parsedBody) {
+        return res
+          .status(400)
+          .json({ success: false, error: parsedBody.error });
+      }
+
+      const body = parsedBody.value;
+
+      try {
+        if (body.tmdb === true) {
+          tmdbTest = 0;
+          const tmdb = new TheMovieDb();
+          await tmdb.getTvShow({ tvId: 1054 });
+          tmdbTest = 1;
+        }
+      } catch (e) {
+        logger.error('Failed to test metadata provider', {
+          label: 'MetadataProvider',
+          message: e.message,
+        });
+      }
+
+      try {
+        if (body.tvdb === true) {
+          tvdbTest = 0;
+          const tvdb = await Tvdb.getInstance();
+          await tvdb.test();
+          tvdbTest = 1;
+        }
+      } catch (e) {
+        logger.error('Failed to test metadata provider', {
+          label: 'MetadataProvider',
+          message: e.message,
+        });
+      }
+
+      const success = !(tvdbTest === 0 || tmdbTest === 0);
+      const statusCode = success ? 200 : 500;
+
+      return res.status(statusCode).json({
+        success: success,
+        tests: {
+          tmdb: getTestResultString(tmdbTest),
+          tvdb: getTestResultString(tvdbTest),
+        },
+      });
+    } catch (e) {
+      logger.error('Failed to test metadata providers', {
+        label: 'MetadataProvider',
+        message: e instanceof Error ? e.message : 'Unknown error',
+      });
+      return res.status(500).json({
+        success: false,
+        tests: {
+          tmdb: getTestResultString(tmdbTest),
+          tvdb: getTestResultString(tvdbTest),
+        },
+        error: 'Unable to test metadata providers.',
+      });
+    }
+  })
+);
 
 export default metadataRoutes;

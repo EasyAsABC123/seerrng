@@ -30,7 +30,7 @@ export interface LbTopAlbumsResponse {
   };
 }
 
-export interface LbArtist {
+export interface LbArtistCredit {
   artist_credit_name: string;
   artist_mbid: string;
   join_phrase: string;
@@ -38,7 +38,7 @@ export interface LbArtist {
 
 export interface LbTrack {
   artist_mbids: string[];
-  artists: LbArtist[];
+  artists: LbArtistCredit[];
   length: number;
   name: string;
   position: number;
@@ -101,7 +101,7 @@ export interface LbAlbumDetails {
       caa_release_mbid: string;
       date: string;
       name: string;
-      rels: any[];
+      rels: unknown[];
       type: string;
     };
     release_group: {
@@ -109,7 +109,7 @@ export interface LbAlbumDetails {
       caa_release_mbid: string;
       date: string;
       name: string;
-      rels: any[];
+      rels: unknown[];
       type: string;
     };
     tag: {
@@ -154,7 +154,7 @@ export interface LbArtistMetadata {
 export interface LbPopularRecording {
   artist_mbids: string[];
   artist_name: string;
-  artists: LbArtist[];
+  artists: LbArtistCredit[];
   caa_id: number;
   caa_release_mbid: string;
   length: number;
@@ -173,7 +173,7 @@ export interface LbPopularRecording {
 
 export interface LbReleaseGroupExtended extends LbReleaseGroup {
   artist_credit_name: string;
-  artists: LbArtist[];
+  artists: LbArtistCredit[];
   date: string;
   mbid: string;
   type: string;
@@ -203,7 +203,7 @@ export interface LbArtistDetails {
   };
 }
 
-export interface LbArtist {
+export interface LbTopArtist {
   artist_mbid: string;
   artist_name: string;
   listen_count: number;
@@ -216,7 +216,7 @@ export interface LbTopArtistsResponse {
     last_updated: number;
     offset: number;
     range: string;
-    artists: LbArtist[];
+    artists: LbTopArtist[];
     to_ts: number;
   };
 }

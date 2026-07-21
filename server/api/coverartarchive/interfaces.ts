@@ -5,7 +5,7 @@ interface CoverArtThumbnails {
 interface CoverArtImage {
   approved: boolean;
   front: boolean;
-  id: number;
+  id: number | string;
   thumbnails: CoverArtThumbnails;
 }
 

@@ -283,12 +283,16 @@ describe('ReadarrAPI.getDevelopmentConfig', () => {
       async () => ({
         id: 1,
         metadataSource: 'http://127.0.0.1:8790',
+        apiKey: 'provider-secret',
+        providerOnly: true,
       })
     );
 
     const result = await api.getDevelopmentConfig();
 
     assert.strictEqual(result.metadataSource, 'http://127.0.0.1:8790');
+    assert.ok(!('apiKey' in result));
+    assert.ok(!('providerOnly' in result));
     assert.strictEqual(
       getMock.mock.calls[0].arguments[0],
       '/config/development'

@@ -149,6 +149,7 @@ const NotificationsTelegram = () => {
             );
             await axios.post('/api/v1/settings/notifications/telegram/test', {
               enabled: true,
+              embedPoster: values.embedPoster,
               types: values.types,
               options: {
                 botAPI: values.botAPI,

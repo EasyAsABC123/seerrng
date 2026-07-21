@@ -16,24 +16,24 @@ import type {
   TmdbPersonResult,
   TmdbTvResult,
 } from '@server/api/themoviedb/interfaces';
+import { MAX_DISCOVER_KEYWORD_IDS } from '@server/constants/discover';
 import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import type MediaEntity from '@server/entity/Media';
 import Media from '@server/entity/Media';
-import MediaIdentifier, {
-  MediaIdentifierProvider,
-} from '@server/entity/MediaIdentifier';
 import { User } from '@server/entity/User';
 import type {
   GenreSliderItem,
   WatchlistResponse,
 } from '@server/interfaces/api/discoverInterfaces';
+import { findBookMediaByOpenLibraryIds } from '@server/lib/bookMediaMatcher';
 import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
 import { extractImageCacheUrls } from '@server/lib/imageCacheUrls';
 import { enqueueImageCacheWarm } from '@server/lib/imageCacheWarmer';
+import { hydrateMediaSummaryRelations } from '@server/lib/mediaSummaryHydration';
 import { getSettings } from '@server/lib/settings';
 import {
   clampNumber,
@@ -43,6 +43,11 @@ import {
   rankTmdbMovieResults,
   rankTmdbTvResults,
 } from '@server/lib/tmdbRank';
+import {
+  UserMutationActorUnauthorizedError,
+  isUserSessionCredentialVersionCurrent,
+  runUserSecurityMutation,
+} from '@server/lib/userSecurityMutation';
 import { getCombinedWatchlist } from '@server/lib/watchlist';
 import logger from '@server/logger';
 import { mapOpenLibrarySearchDoc } from '@server/models/Book';
@@ -55,6 +60,7 @@ import {
   mapTvResult,
 } from '@server/models/Search';
 import { mapNetwork } from '@server/models/Tv';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import { parsePositiveInt } from '@server/utils/pagination';
 import { parsePositiveRouteId } from '@server/utils/routeId';
 import { isCollection, isMovie, isPerson } from '@server/utils/typeHelpers';
@@ -65,6 +71,7 @@ import {
 } from '@server/utils/validation';
 import type { Response } from 'express';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { sortBy } from 'lodash';
 import { In } from 'typeorm';
 import { z } from 'zod';
@@ -105,10 +112,28 @@ export const createTmdbWithBlocklistSettings = (): TheMovieDb => {
 const discoverRoutes = Router();
 const MAX_DISCOVER_QUERY_LENGTH = 256;
 const MAX_DISCOVER_FILTER_LENGTH = 512;
+export const MAX_GENRE_SLIDER_ITEMS = 50;
+export const GENRE_SLIDER_CONCURRENCY = 10;
+export const EXTERNAL_DISCOVER_RATE_LIMIT = {
+  windowMs: 60 * 1000,
+  limit: 30,
+} as const;
+const MAX_TMDB_KEYWORD_ID = 1_000_000_000;
 const trendingMediaTypes = ['all', 'movie', 'tv'] as const;
 const trendingTimeWindows = ['day', 'week'] as const;
 
 discoverRoutes.use('/home', discoverHomeRoutes);
+discoverRoutes.use(
+  ['/music', '/books'],
+  rateLimit({
+    ...EXTERNAL_DISCOVER_RATE_LIMIT,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () =>
+      process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+    keyGenerator: (req) => `user:${req.user?.id ?? 'anonymous'}`,
+  })
+);
 
 const parseOptionalDiscoverString = (
   value: unknown,
@@ -120,15 +145,63 @@ const parseOptionalDiscoverString = (
     maxLength,
   });
 
+const isValidIsoCalendarDate = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
+};
+
 const parseOptionalDateFilter = (value: unknown, fieldName: string) => {
   const parsed = parseOptionalDiscoverString(value, fieldName, 10);
   if ('error' in parsed || parsed.value === undefined) {
     return parsed;
   }
 
-  return /^\d{4}-\d{2}-\d{2}$/.test(parsed.value)
+  return isValidIsoCalendarDate(parsed.value)
     ? parsed
-    : { error: `${fieldName} must use YYYY-MM-DD format.` };
+    : { error: `${fieldName} must be a valid YYYY-MM-DD date.` };
+};
+
+const parseTmdbKeywordFilter = (
+  value: string | undefined,
+  fieldName: string
+): { value?: string; ids: number[] } | { error: string } => {
+  if (value === undefined || value.trim() === '') {
+    return { value: undefined, ids: [] };
+  }
+
+  const parts = value.split(',');
+  if (parts.length > MAX_DISCOVER_KEYWORD_IDS) {
+    return {
+      error: `${fieldName} is limited to ${MAX_DISCOVER_KEYWORD_IDS} ids.`,
+    };
+  }
+
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  for (const part of parts) {
+    const normalized = part.trim();
+    if (!/^[1-9]\d*$/.test(normalized)) {
+      return { error: `${fieldName} must contain positive integer ids.` };
+    }
+
+    const id = Number(normalized);
+    if (!Number.isSafeInteger(id) || id > MAX_TMDB_KEYWORD_ID) {
+      return { error: `${fieldName} contains an invalid id.` };
+    }
+
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+
+  return { value: ids.join(','), ids };
 };
 
 const getErrorLogFields = (error: unknown) => ({
@@ -313,7 +386,7 @@ const getProviderWindow = (
 
 const getRelatedMusicMediaMap = async (
   ids: (string | null | undefined)[],
-  userId?: number
+  user?: User
 ): Promise<Map<string, MediaEntity>> => {
   const normalizedIds = [...new Set(ids.map(getMusicBrainzIdKey))].filter(
     (id): id is string => Boolean(id)
@@ -325,15 +398,8 @@ const getRelatedMusicMediaMap = async (
 
   const relatedMedia = await getRepository(Media).find({
     where: { mbId: In(normalizedIds), mediaType: MediaType.MUSIC },
-    relations: { requests: true, watchlists: true },
   });
-
-  relatedMedia.forEach((media) => {
-    media.watchlists =
-      media.watchlists?.filter(
-        (watchlist) => watchlist.requestedBy.id === userId
-      ) ?? [];
-  });
+  await hydrateMediaSummaryRelations(relatedMedia, user);
 
   return new Map(
     relatedMedia
@@ -608,7 +674,7 @@ const optionalTmdbQueryString = (maxLength = MAX_DISCOVER_FILTER_LENGTH) =>
 const optionalTmdbDateString = z
   .string()
   .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(isValidIsoCalendarDate)
   .optional();
 
 const QueryFilterOptions = z.object({
@@ -680,19 +746,33 @@ discoverRoutes.get('/movies', async (req, res, next) => {
       });
     }
     const query = parsedQuery.data;
-    const keywords = query.keywords;
-    const excludeKeywords = query.excludeKeywords;
+    const parsedKeywords = parseTmdbKeywordFilter(query.keywords, 'Keywords');
+    const parsedExcludeKeywords = parseTmdbKeywordFilter(
+      query.excludeKeywords,
+      'Excluded keywords'
+    );
     const parsedShuffleSeed = parseOptionalDiscoverString(
       query.shuffleSeed,
       'Shuffle seed',
       128
     );
-
     if ('error' in parsedShuffleSeed) {
       return res
         .status(400)
         .json({ status: 400, message: parsedShuffleSeed.error });
     }
+    if ('error' in parsedKeywords) {
+      return res
+        .status(400)
+        .json({ status: 400, message: parsedKeywords.error });
+    }
+    if ('error' in parsedExcludeKeywords) {
+      return res
+        .status(400)
+        .json({ status: 400, message: parsedExcludeKeywords.error });
+    }
+    const keywords = parsedKeywords.value;
+    const excludeKeywords = parsedExcludeKeywords.value;
 
     const data = await tmdb.getDiscoverMovies({
       page: parsePositiveInt(query.page, 1, 500),
@@ -725,7 +805,7 @@ discoverRoutes.get('/movies', async (req, res, next) => {
     const rankedResults = query.sortBy
       ? data.results
       : shuffleRankedWindow(
-          rankTmdbMovieResults(data.results),
+          rankTmdbMovieResults(data.results, parsedShuffleSeed.value),
           parsedShuffleSeed.value
         );
 
@@ -739,11 +819,9 @@ discoverRoutes.get('/movies', async (req, res, next) => {
 
     let keywordData: TmdbKeyword[] = [];
     if (keywords) {
-      const splitKeywords = keywords.split(',');
-
       const keywordResults = await Promise.all(
-        splitKeywords.map(async (keywordId) => {
-          return await tmdb.getKeywordDetails({ keywordId: Number(keywordId) });
+        parsedKeywords.ids.map(async (keywordId) => {
+          return await tmdb.getKeywordDetails({ keywordId });
         })
       );
 
@@ -1051,25 +1129,52 @@ discoverRoutes.get('/tv', async (req, res, next) => {
       });
     }
     const query = parsedQuery.data;
-    const keywords = query.keywords;
-    const excludeKeywords = query.excludeKeywords;
+    const parsedKeywords = parseTmdbKeywordFilter(query.keywords, 'Keywords');
+    const parsedExcludeKeywords = parseTmdbKeywordFilter(
+      query.excludeKeywords,
+      'Excluded keywords'
+    );
     const parsedShuffleSeed = parseOptionalDiscoverString(
       query.shuffleSeed,
       'Shuffle seed',
       128
     );
+    const network =
+      query.network === undefined
+        ? undefined
+        : parsePositiveRouteId(query.network);
 
     if ('error' in parsedShuffleSeed) {
       return res
         .status(400)
         .json({ status: 400, message: parsedShuffleSeed.error });
     }
+    if ('error' in parsedKeywords) {
+      return res
+        .status(400)
+        .json({ status: 400, message: parsedKeywords.error });
+    }
+    if ('error' in parsedExcludeKeywords) {
+      return res
+        .status(400)
+        .json({ status: 400, message: parsedExcludeKeywords.error });
+    }
+    if (query.network !== undefined && network === undefined) {
+      return res.status(400).json({
+        status: 400,
+        message: 'Network must be a positive decimal identifier.',
+      });
+    }
+
+    const keywords = parsedKeywords.value;
+    const excludeKeywords = parsedExcludeKeywords.value;
+
     const data = await tmdb.getDiscoverTv({
       page: parsePositiveInt(query.page, 1, 500),
       sortBy: getValidatedTmdbSort(query.sortBy),
       language: req.locale ?? query.language,
       genre: query.genre,
-      network: query.network ? Number(query.network) : undefined,
+      network,
       firstAirDateLte: query.firstAirDateLte
         ? new Date(query.firstAirDateLte).toISOString().split('T')[0]
         : undefined,
@@ -1096,7 +1201,7 @@ discoverRoutes.get('/tv', async (req, res, next) => {
     const rankedResults = query.sortBy
       ? data.results
       : shuffleRankedWindow(
-          rankTmdbTvResults(data.results),
+          rankTmdbTvResults(data.results, parsedShuffleSeed.value),
           parsedShuffleSeed.value
         );
 
@@ -1110,11 +1215,9 @@ discoverRoutes.get('/tv', async (req, res, next) => {
 
     let keywordData: TmdbKeyword[] = [];
     if (keywords) {
-      const splitKeywords = keywords.split(',');
-
       const keywordResults = await Promise.all(
-        splitKeywords.map(async (keywordId) => {
-          return await tmdb.getKeywordDetails({ keywordId: Number(keywordId) });
+        parsedKeywords.ids.map(async (keywordId) => {
+          return await tmdb.getKeywordDetails({ keywordId });
         })
       );
 
@@ -1594,7 +1697,6 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
     const tmdb = new TheMovieDb();
 
     try {
-      const mappedGenres: GenreSliderItem[] = [];
       const parsedLanguage = parseDiscoverLanguage(
         req.query.language,
         req.locale
@@ -1607,21 +1709,23 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
         language: parsedLanguage.value,
       });
 
-      await Promise.all(
-        genres.map(async (genre) => {
+      const mappedGenres = await mapWithConcurrency(
+        genres.slice(0, MAX_GENRE_SLIDER_ITEMS),
+        GENRE_SLIDER_CONCURRENCY,
+        async (genre): Promise<GenreSliderItem> => {
           const genreData = await tmdb.getDiscoverMovies({
             genre: genre.id.toString(),
           });
           const rankedResults = rankTmdbMovieResults(genreData.results);
 
-          mappedGenres.push({
+          return {
             id: genre.id,
             name: genre.name,
             backdrops: rankedResults
               .filter((title) => !!title.backdrop_path)
               .map((title) => title.backdrop_path) as string[],
-          });
-        })
+          };
+        }
       );
 
       const sortedData = sortBy(mappedGenres, 'name');
@@ -1646,7 +1750,6 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
     const tmdb = new TheMovieDb();
 
     try {
-      const mappedGenres: GenreSliderItem[] = [];
       const parsedLanguage = parseDiscoverLanguage(
         req.query.language,
         req.locale
@@ -1659,21 +1762,23 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
         language: parsedLanguage.value,
       });
 
-      await Promise.all(
-        genres.map(async (genre) => {
+      const mappedGenres = await mapWithConcurrency(
+        genres.slice(0, MAX_GENRE_SLIDER_ITEMS),
+        GENRE_SLIDER_CONCURRENCY,
+        async (genre): Promise<GenreSliderItem> => {
           const genreData = await tmdb.getDiscoverTv({
             genre: genre.id.toString(),
           });
           const rankedResults = rankTmdbTvResults(genreData.results);
 
-          mappedGenres.push({
+          return {
             id: genre.id,
             name: genre.name,
             backdrops: rankedResults
               .filter((title) => !!title.backdrop_path)
               .map((title) => title.backdrop_path) as string[],
-          });
-        })
+          };
+        }
       );
 
       const sortedData = sortBy(mappedGenres, 'name');
@@ -1783,7 +1888,7 @@ discoverRoutes.get('/music', async (req, res) => {
       );
       const relatedMediaMap = await getRelatedMusicMediaMap(
         albums.map((album) => album.id),
-        req.user?.id
+        req.user
       );
 
       return res.status(200).json({
@@ -1828,7 +1933,13 @@ discoverRoutes.get('/music', async (req, res) => {
         sortByValue === 'ranked'
           ? diversifyMusicAlbumsByArtist(
               shuffleRankedWindow(
-                rankByQualityScore(sortedAlbums, scoreMusicAlbum),
+                rankByQualityScore(
+                  sortedAlbums,
+                  scoreMusicAlbum,
+                  0.08,
+                  4,
+                  shuffleSeed
+                ),
                 shuffleSeed
               ),
               providerWindow.sliceEnd
@@ -1839,7 +1950,7 @@ discoverRoutes.get('/music', async (req, res) => {
             );
       const relatedMediaMap = await getRelatedMusicMediaMap(
         albums.map((album) => album.id),
-        req.user?.id
+        req.user
       );
 
       return res.status(200).json({
@@ -1875,7 +1986,7 @@ discoverRoutes.get('/music', async (req, res) => {
       ).slice(providerWindow.sliceStart, providerWindow.sliceEnd);
       const relatedMediaMap = await getRelatedMusicMediaMap(
         albums.map((album) => album.id),
-        req.user?.id
+        req.user
       );
 
       return res.status(200).json({
@@ -1970,7 +2081,10 @@ discoverRoutes.get('/music', async (req, res) => {
               [...fallbackAlbumsById.values()].sort(
                 (a, b) => scoreMusicAlbum(b) - scoreMusicAlbum(a)
               ),
-              scoreMusicAlbum
+              scoreMusicAlbum,
+              0.08,
+              4,
+              shuffleSeed
             ),
             shuffleSeed
           ),
@@ -1983,7 +2097,7 @@ discoverRoutes.get('/music', async (req, res) => {
 
         const fallbackRelatedMediaMap = await getRelatedMusicMediaMap(
           fallbackAlbums.map((album) => album.id),
-          req.user?.id
+          req.user
         );
 
         return res.status(200).json({
@@ -2049,7 +2163,10 @@ discoverRoutes.get('/music', async (req, res) => {
             [...albumsById.values()].sort(
               (a, b) => scoreMusicAlbum(b) - scoreMusicAlbum(a)
             ),
-            scoreMusicAlbum
+            scoreMusicAlbum,
+            0.08,
+            4,
+            shuffleSeed
           ),
           shuffleSeed
         ),
@@ -2057,7 +2174,7 @@ discoverRoutes.get('/music', async (req, res) => {
       ).slice(providerWindow.sliceStart, providerWindow.sliceEnd);
       const relatedMediaMap = await getRelatedMusicMediaMap(
         albums.map((album) => album.id),
-        req.user?.id
+        req.user
       );
 
       return res.status(200).json({
@@ -2127,7 +2244,10 @@ discoverRoutes.get('/music', async (req, res) => {
             shuffleRankedWindow(
               rankByQualityScore(
                 sortedReleases.map(mapFreshReleaseAlbum),
-                scoreMusicAlbum
+                scoreMusicAlbum,
+                0.08,
+                4,
+                shuffleSeed
               ),
               shuffleSeed
             ),
@@ -2150,7 +2270,7 @@ discoverRoutes.get('/music', async (req, res) => {
           );
     const relatedMediaMap = await getRelatedMusicMediaMap(
       releases.map((release) => release.release_group_mbid),
-      req.user?.id
+      req.user
     );
 
     const results = releases.map((release) =>
@@ -2299,7 +2419,10 @@ discoverRoutes.get('/books', async (req, res) => {
                   [...docsByKey.values()].sort(
                     (a, b) => scoreBookDoc(b) - scoreBookDoc(a)
                   ),
-                  scoreBookDoc
+                  scoreBookDoc,
+                  0.08,
+                  4,
+                  shuffleSeed
                 ),
                 shuffleSeed
               ),
@@ -2321,32 +2444,18 @@ discoverRoutes.get('/books', async (req, res) => {
               [...dedupedDocs].sort(
                 (a, b) => scoreBookDoc(b) - scoreBookDoc(a)
               ),
-              scoreBookDoc
+              scoreBookDoc,
+              0.08,
+              4,
+              shuffleSeed
             ),
             shuffleSeed
           )
         : dedupedDocs;
     const ids = sortedDocs.map((doc) => normalizeOpenLibraryWorkId(doc.key));
-    const identifiers = ids.length
-      ? await getRepository(MediaIdentifier).find({
-          where: {
-            provider: MediaIdentifierProvider.OPENLIBRARY,
-            value: In(ids),
-          },
-          relations: { media: { requests: true, watchlists: true } },
-        })
-      : [];
-    const mediaByOpenLibraryId = new Map<string, MediaEntity>(
-      identifiers
-        .filter((identifier) => identifier.media.mediaType === MediaType.BOOK)
-        .map((identifier) => {
-          identifier.media.watchlists =
-            identifier.media.watchlists?.filter(
-              (watchlist) => watchlist.requestedBy.id === req.user?.id
-            ) ?? [];
-
-          return [identifier.value, identifier.media];
-        })
+    const mediaByOpenLibraryId = await findBookMediaByOpenLibraryIds(
+      ids,
+      req.user
     );
 
     return res.status(200).json({
@@ -2378,19 +2487,43 @@ discoverRoutes.get<Record<string, unknown>, WatchlistResponse>(
     const itemsPerPage = 20;
     const page = parsePositiveInt(req.query.page, 1, 500);
 
-    const activeUser = await userRepository.findOne({
-      where: { id: req.user?.id },
-      select: ['id', 'plexToken'],
-    });
+    try {
+      return await runUserSecurityMutation(req.user!.id, async () => {
+        const activeUser = await userRepository.findOne({
+          where: { id: req.user!.id },
+          select: ['id', 'plexToken', 'passwordChangedAt'],
+        });
+        if (
+          !activeUser ||
+          (req.session?.userId === activeUser.id &&
+            !isUserSessionCredentialVersionCurrent(
+              activeUser,
+              req.session.credentialVersion
+            ))
+        ) {
+          throw new UserMutationActorUnauthorizedError();
+        }
 
-    return res.json(
-      await getCombinedWatchlist({
-        userId: activeUser?.id,
-        plexToken: activeUser?.plexToken,
-        page,
-        itemsPerPage,
-      })
-    );
+        return res.json(
+          await getCombinedWatchlist({
+            userId: activeUser.id,
+            plexToken: activeUser.plexToken,
+            page,
+            itemsPerPage,
+          })
+        );
+      });
+    } catch (error) {
+      if (error instanceof UserMutationActorUnauthorizedError) {
+        return res.status(403).json({
+          page: 1,
+          totalPages: 1,
+          totalResults: 0,
+          results: [],
+        });
+      }
+      throw error;
+    }
   }
 );
 

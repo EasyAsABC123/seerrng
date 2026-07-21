@@ -25,7 +25,9 @@ const messages = defineMessages('components.Settings.SettingsAbout', {
   timezone: 'Time Zone',
   appDataPath: 'Data Directory',
   supportseerr: 'Support SeerrNG',
-  contribute: 'Make a Contribution',
+  supportdevelopment: 'Support Development',
+  paypal: 'PayPal',
+  kofi: 'Ko-fi',
   documentation: 'Documentation',
   outofdate: 'Out of Date',
   uptodate: 'Up to Date',
@@ -175,15 +177,25 @@ const SettingsAbout = () => {
       </div>
       <div className="section">
         <List title={intl.formatMessage(messages.supportseerr)}>
-          <List.Item title={intl.formatMessage(messages.contribute)}>
-            <a
-              href="https://github.com/snapetech/seerrng"
-              target="_blank"
-              rel="noreferrer"
-              className="text-indigo-500 transition duration-300 hover:underline"
-            >
-              https://github.com/snapetech/seerrng
-            </a>
+          <List.Item title={intl.formatMessage(messages.supportdevelopment)}>
+            <div className="flex flex-wrap gap-2 py-1">
+              <a
+                href="https://www.paypal.com/donate/?business=donations%40snape.tech"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded-full border border-blue-400/40 bg-blue-500/10 px-3 py-1.5 text-sm font-semibold text-blue-700 transition hover:border-blue-500 hover:bg-blue-500/20 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:text-blue-300"
+              >
+                {intl.formatMessage(messages.paypal)}
+              </a>
+              <a
+                href="https://ko-fi.com/snapetech"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded-full border border-rose-400/40 bg-rose-500/10 px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:border-rose-500 hover:bg-rose-500/20 focus:outline-none focus:ring-2 focus:ring-rose-400 dark:text-rose-300"
+              >
+                {intl.formatMessage(messages.kofi)}
+              </a>
+            </div>
           </List.Item>
         </List>
       </div>

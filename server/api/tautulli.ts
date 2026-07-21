@@ -2,15 +2,32 @@ import type { User } from '@server/entity/User';
 import { getSettings, type TautulliSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
+import { createSafeHttpRequestOptions } from '@server/utils/security';
 import { buildServiceUrl } from '@server/utils/serviceUrl';
 import type { AxiosInstance } from 'axios';
 import axios from 'axios';
 import { uniqWith } from 'lodash';
 
+export const isTautulliNoDataError = (error: unknown): boolean => {
+  let current = error;
+
+  while (current instanceof Error) {
+    if (axios.isAxiosError(current) && current.response?.status === 400) {
+      return true;
+    }
+    current = current.cause;
+  }
+
+  return false;
+};
+
 export const TAUTULLI_HTTP_LIMITS = {
   maxContentLength: 2 * 1024 * 1024,
   maxBodyLength: 1024,
 } as const;
+export const TAUTULLI_HISTORY_PAGE_SIZE = 100;
+export const MAX_TAUTULLI_HISTORY_PAGES = 10;
+export const MAX_TAUTULLI_HISTORY_RESULTS = 20;
 
 export interface TautulliHistoryRecord {
   date: number;
@@ -132,6 +149,7 @@ class TautulliAPI {
         urlBase: settings.urlBase,
       }),
       params: { apikey: settings.apiKey },
+      ...createSafeHttpRequestOptions(true, false),
       timeout: getSettings().network.apiRequestTimeout,
       ...TAUTULLI_HTTP_LIMITS,
     });
@@ -257,11 +275,16 @@ class TautulliAPI {
         throw new Error('User does not have an associated Plex ID');
       }
 
-      const take = 100;
+      const take = TAUTULLI_HISTORY_PAGE_SIZE;
       let start = 0;
 
-      while (results.length < 20) {
-        const tautulliData = (
+      for (
+        let page = 0;
+        page < MAX_TAUTULLI_HISTORY_PAGES &&
+        results.length < MAX_TAUTULLI_HISTORY_RESULTS;
+        page += 1
+      ) {
+        const rawTautulliData = (
           await this.axios.get<TautulliHistoryResponse>('/api/v2', {
             params: {
               cmd: 'get_history',
@@ -275,6 +298,9 @@ class TautulliAPI {
             },
           })
         ).data.response.data.data;
+        const tautulliData = Array.isArray(rawTautulliData)
+          ? rawTautulliData.slice(0, take)
+          : [];
 
         if (!tautulliData.length) {
           return results;
@@ -291,7 +317,7 @@ class TautulliAPI {
         start += take;
       }
 
-      return results.slice(0, 20);
+      return results.slice(0, MAX_TAUTULLI_HISTORY_RESULTS);
     } catch (e) {
       logger.error(
         'Something went wrong fetching user watch history from Tautulli',

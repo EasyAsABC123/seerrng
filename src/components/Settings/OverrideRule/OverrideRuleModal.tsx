@@ -12,7 +12,11 @@ import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
 import { Transition } from '@headlessui/react';
 import type OverrideRule from '@server/entity/OverrideRule';
-import type { RadarrSettings, SonarrSettings } from '@server/lib/settings';
+import type {
+  LidarrSettings,
+  RadarrSettings,
+  SonarrSettings,
+} from '@server/lib/settings';
 import axios from 'axios';
 import { Field, Formik } from 'formik';
 import { useCallback, useEffect, useState } from 'react';
@@ -57,6 +61,7 @@ interface OverrideRuleModalProps {
   onClose: () => void;
   radarrServices: RadarrSettings[];
   sonarrServices: SonarrSettings[];
+  lidarrServices: LidarrSettings[];
 }
 
 const OverrideRuleModal = ({
@@ -64,6 +69,7 @@ const OverrideRuleModal = ({
   rule,
   radarrServices,
   sonarrServices,
+  lidarrServices,
 }: OverrideRuleModalProps) => {
   const intl = useIntl();
   const { addToast } = useToasts();
@@ -79,25 +85,28 @@ const OverrideRuleModal = ({
   const getServiceInfos = useCallback(
     async (
       {
+        id,
         hostname,
         port,
         apiKey,
         baseUrl,
         useSsl = false,
       }: {
+        id: number;
         hostname: string;
         port: number;
         apiKey: string;
         baseUrl?: string;
         useSsl?: boolean;
       },
-      type: 'radarr' | 'sonarr'
+      type: 'radarr' | 'sonarr' | 'lidarr'
     ) => {
       setIsTesting(true);
       try {
         const response = await axios.post<DVRTestResponse>(
           `/api/v1/settings/${type}/test`,
           {
+            id,
             hostname,
             apiKey,
             port: Number(port),
@@ -127,13 +136,15 @@ const OverrideRuleModal = ({
       (s) => s.id === rule?.sonarrServiceId
     );
     if (sonarrMatch) getServiceInfos(sonarrMatch, 'sonarr');
-  }, [
-    getServiceInfos,
-    radarrServices,
-    rule?.radarrServiceId,
-    rule?.sonarrServiceId,
-    sonarrServices,
-  ]);
+
+    const lidarrMatch = lidarrServices.find(
+      (s) => s.id === rule?.lidarrServiceId
+    );
+    if (lidarrMatch) getServiceInfos(lidarrMatch, 'lidarr');
+    if (rule && !radarrMatch && !sonarrMatch && !lidarrMatch) {
+      setIsValidated(false);
+    }
+  }, [getServiceInfos, lidarrServices, rule, radarrServices, sonarrServices]);
 
   return (
     <Transition
@@ -151,6 +162,7 @@ const OverrideRuleModal = ({
         initialValues={{
           radarrServiceId: rule?.radarrServiceId,
           sonarrServiceId: rule?.sonarrServiceId,
+          lidarrServiceId: rule?.lidarrServiceId,
           users: rule?.users,
           genre: rule?.genre,
           language: rule?.language,
@@ -163,14 +175,21 @@ const OverrideRuleModal = ({
           try {
             const submission = {
               users: values.users || null,
-              genre: values.genre || null,
-              language: values.language || null,
-              keywords: values.keywords || null,
-              profileId: Number(values.profileId) || null,
+              genre:
+                values.lidarrServiceId != null ? null : values.genre || null,
+              language:
+                values.lidarrServiceId != null ? null : values.language || null,
+              keywords:
+                values.lidarrServiceId != null ? null : values.keywords || null,
+              profileId:
+                values.profileId == null || String(values.profileId) === ''
+                  ? null
+                  : Number(values.profileId),
               rootFolder: values.rootFolder || null,
               tags: values.tags || null,
               radarrServiceId: values.radarrServiceId,
               sonarrServiceId: values.sonarrServiceId,
+              lidarrServiceId: values.lidarrServiceId,
             };
             if (!rule) {
               await axios.post('/api/v1/overrideRule', submission);
@@ -214,11 +233,15 @@ const OverrideRuleModal = ({
               okDisabled={
                 isSubmitting ||
                 !isValid ||
-                (!values.users &&
-                  !values.genre &&
-                  !values.language &&
-                  !values.keywords) ||
-                (!values.rootFolder && !values.profileId && !values.tags)
+                (values.lidarrServiceId != null
+                  ? !values.users
+                  : !values.users &&
+                    !values.genre &&
+                    !values.language &&
+                    !values.keywords) ||
+                (!values.rootFolder &&
+                  String(values.profileId ?? '') === '' &&
+                  !values.tags)
               }
               onOk={() => handleSubmit()}
               title={
@@ -244,15 +267,20 @@ const OverrideRuleModal = ({
                         id="service"
                         name="service"
                         defaultValue={
-                          values.radarrServiceId !== null
+                          values.radarrServiceId != null
                             ? `radarr-${values.radarrServiceId}`
-                            : `sonarr-${values.sonarrServiceId}`
+                            : values.sonarrServiceId != null
+                              ? `sonarr-${values.sonarrServiceId}`
+                              : values.lidarrServiceId != null
+                                ? `lidarr-${values.lidarrServiceId}`
+                                : ''
                         }
                         onChange={(e) => {
                           const id = Number(e.target.value.split('-')[1]);
                           if (e.target.value.startsWith('radarr-')) {
                             setFieldValue('radarrServiceId', id);
                             setFieldValue('sonarrServiceId', null);
+                            setFieldValue('lidarrServiceId', null);
                             const match = radarrServices.find(
                               (s) => s.id === id
                             );
@@ -262,15 +290,30 @@ const OverrideRuleModal = ({
                           } else if (e.target.value.startsWith('sonarr-')) {
                             setFieldValue('radarrServiceId', null);
                             setFieldValue('sonarrServiceId', id);
+                            setFieldValue('lidarrServiceId', null);
                             const match = sonarrServices.find(
                               (s) => s.id === id
                             );
                             if (match) {
                               getServiceInfos(match, 'sonarr');
                             }
+                          } else if (e.target.value.startsWith('lidarr-')) {
+                            setFieldValue('radarrServiceId', null);
+                            setFieldValue('sonarrServiceId', null);
+                            setFieldValue('lidarrServiceId', id);
+                            setFieldValue('genre', null);
+                            setFieldValue('language', null);
+                            setFieldValue('keywords', null);
+                            const match = lidarrServices.find(
+                              (s) => s.id === id
+                            );
+                            if (match) {
+                              getServiceInfos(match, 'lidarr');
+                            }
                           } else {
                             setFieldValue('radarrServiceId', null);
                             setFieldValue('sonarrServiceId', null);
+                            setFieldValue('lidarrServiceId', null);
                             setIsValidated(false);
                           }
                         }}
@@ -292,6 +335,14 @@ const OverrideRuleModal = ({
                             value={`sonarr-${sonarr.id}`}
                           >
                             {sonarr.name}
+                          </option>
+                        ))}
+                        {lidarrServices.map((lidarr) => (
+                          <option
+                            key={`lidarr-${lidarr.id}`}
+                            value={`lidarr-${lidarr.id}`}
+                          >
+                            {lidarr.name}
                           </option>
                         ))}
                       </select>
@@ -317,7 +368,11 @@ const OverrideRuleModal = ({
                     <div className="form-input-field">
                       <UserSelector
                         defaultValue={values.users}
-                        isDisabled={!isValidated || isTesting}
+                        isDisabled={
+                          !isValidated ||
+                          isTesting ||
+                          values.lidarrServiceId != null
+                        }
                         isMulti
                         onChange={(users) => {
                           setFieldValue(
@@ -350,7 +405,11 @@ const OverrideRuleModal = ({
                         }
                         defaultValue={values.genre}
                         isMulti
-                        isDisabled={!isValidated || isTesting}
+                        isDisabled={
+                          !isValidated ||
+                          isTesting ||
+                          values.lidarrServiceId != null
+                        }
                         onChange={(genres) => {
                           setFieldValue(
                             'genre',
@@ -378,7 +437,11 @@ const OverrideRuleModal = ({
                         setFieldValue={(_key, value) => {
                           setFieldValue('language', value);
                         }}
-                        isDisabled={!isValidated || isTesting}
+                        isDisabled={
+                          !isValidated ||
+                          isTesting ||
+                          values.lidarrServiceId != null
+                        }
                       />
                     </div>
                     {errors.language &&

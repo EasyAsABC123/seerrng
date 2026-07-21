@@ -1,21 +1,22 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getInternalApiBaseUrl } from './utils/internalApi';
+import {
+  isLoginPath,
+  isPathPrefix,
+  isResetPasswordPath,
+  isSetupPath,
+} from './utils/routeAccess';
 
-const isPathPrefix = (pathname: string, prefix: string): boolean =>
-  pathname === prefix || pathname.startsWith(`${prefix}/`);
+export const INTERNAL_API_FETCH_TIMEOUT_MS = 5_000;
 
-const isSetupPath = (pathname: string): boolean =>
-  isPathPrefix(pathname, '/setup');
-
-const isLoginPath = (pathname: string): boolean =>
-  isPathPrefix(pathname, '/login');
+const internalApiFetchOptions = () => ({
+  cache: 'no-store' as const,
+  signal: AbortSignal.timeout(INTERNAL_API_FETCH_TIMEOUT_MS),
+});
 
 const isPlexLoginPath = (pathname: string): boolean =>
   isPathPrefix(pathname, '/login/plex');
-
-const isResetPasswordPath = (pathname: string): boolean =>
-  isPathPrefix(pathname, '/resetpassword');
 
 /**
  * Replaces the server-side auth/redirect logic that previously lived in
@@ -31,6 +32,7 @@ export async function proxy(req: NextRequest) {
   let settings: { initialized?: boolean };
   try {
     const res = await fetch(`${apiBaseUrl}/api/v1/settings/public`, {
+      ...internalApiFetchOptions(),
       headers: { accept: 'application/json' },
     });
     if (!res.ok) {
@@ -54,6 +56,7 @@ export async function proxy(req: NextRequest) {
   try {
     const cookie = req.headers.get('cookie');
     const res = await fetch(`${apiBaseUrl}/api/v1/auth/me`, {
+      ...internalApiFetchOptions(),
       headers: cookie ? { cookie } : undefined,
     });
     authed = res.ok;

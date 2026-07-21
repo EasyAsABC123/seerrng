@@ -1,17 +1,22 @@
+import { assertNoSymlinkDirectoryComponents } from '@server/lib/pathSecurity';
 import logger from '@server/logger';
+import AsyncLock from '@server/utils/asyncLock';
+import { trackBackgroundTask } from '@server/utils/backgroundTasks';
 import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
 import {
   getHttpErrorDetails,
   withTransientHttpRetry,
 } from '@server/utils/httpError';
+import { createSafeHttpRequestOptions } from '@server/utils/security';
 import axios, { type AxiosInstance } from 'axios';
 import rateLimit, { type rateLimitOptions } from 'axios-rate-limit';
 import { createHash } from 'crypto';
 import type { Response } from 'express';
-import { createReadStream, promises } from 'fs';
+import { constants, promises } from 'fs';
 import mime from 'mime/lite';
 import path from 'path';
 import sharp from 'sharp';
+import { pipeline } from 'stream/promises';
 
 type ImageMeta = {
   revalidateAfter: number;
@@ -42,7 +47,25 @@ const LRU_MAX_BYTES = 64 * 1024 * 1024;
 const LRU_MAX_ENTRIES = 512;
 // Images larger than this are streamed from disk instead of held in memory.
 const LRU_ITEM_MAX_BYTES = 1.5 * 1024 * 1024;
+export const MAX_IMAGE_PIXELS = 16 * 1024 * 1024;
+export const MAX_IMAGE_DISK_CACHE_BYTES = 2 * 1024 * 1024 * 1024;
+export const MAX_IMAGE_DISK_CACHE_ENTRIES = 20_000;
+export const MAX_IMAGE_CACHE_STATS_FILESYSTEM_ENTRIES = 100_000;
+export const PRIVATE_IMAGE_CACHE_DIRECTORY_MODE = 0o700;
+export const PRIVATE_IMAGE_CACHE_FILE_MODE = 0o600;
 const TRANSCODABLE_CONTENT_TYPE = /^image\/(jpe?g|png|webp|avif|bmp|tiff)$/i;
+const SAFE_RASTER_CONTENT_TYPES = new Set([
+  'image/avif',
+  'image/bmp',
+  'image/gif',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/tiff',
+  'image/vnd.microsoft.icon',
+  'image/webp',
+  'image/x-icon',
+]);
 const DEFAULT_IMAGE_CACHE_MAX_AGE = 86400;
 export const MAX_IMAGE_CACHE_MAX_AGE = 365 * 24 * 60 * 60;
 const resolvedBaseCacheDirectory = path.resolve(baseCacheDirectory);
@@ -138,7 +161,19 @@ export const getImageResponseContentType = (
     return 'application/octet-stream';
   }
 
-  return mime.getType(extension) ?? `image/${extension}`;
+  const contentType = mime.getType(extension);
+  return contentType && SAFE_RASTER_CONTENT_TYPES.has(contentType)
+    ? contentType
+    : 'application/octet-stream';
+};
+
+export const getSafeRasterContentType = (
+  contentType: string | undefined
+): string | undefined => {
+  const normalized = contentType?.split(';', 1)[0].trim().toLowerCase();
+  return normalized && SAFE_RASTER_CONTENT_TYPES.has(normalized)
+    ? normalized
+    : undefined;
 };
 
 const getHeaderString = (value: unknown): string | undefined => {
@@ -244,6 +279,406 @@ class ImageMemoryCache {
 }
 
 const memoryCache = new ImageMemoryCache();
+export const MAX_PENDING_IMAGE_CACHE_WRITES = 512;
+const pendingImageCacheWrites = new Map<
+  string,
+  Promise<ImageResponse | null>
+>();
+
+type ImageDiskCacheEntry = {
+  directory: string;
+  mtimeMs: number;
+  size: number;
+};
+
+/**
+ * Process-wide disk budget for all image providers. The index is built once
+ * from disk and every cache write is serialized through the same lock, so
+ * concurrent cache misses cannot independently pass the capacity check.
+ */
+export class ImageDiskCacheBudget {
+  private entries: Map<string, ImageDiskCacheEntry> | undefined;
+  private readonly lock = new AsyncLock();
+
+  public constructor(
+    private readonly rootDirectory: string,
+    private readonly maxBytes = MAX_IMAGE_DISK_CACHE_BYTES,
+    private readonly maxEntries = MAX_IMAGE_DISK_CACHE_ENTRIES
+  ) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+      throw new Error('Image disk cache byte limit must be positive.');
+    }
+    if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
+      throw new Error('Image disk cache entry limit must be positive.');
+    }
+  }
+
+  public write(
+    directory: string,
+    filename: string,
+    buffer: Buffer
+  ): Promise<string> {
+    return this.lock.dispatch('image-disk-cache', async () => {
+      const safeDirectory = this.assertChildPath(directory);
+      if (buffer.length > this.maxBytes) {
+        throw new Error('Image exceeds disk cache capacity.');
+      }
+
+      const entries = await this.getEntries();
+      entries.delete(safeDirectory);
+
+      let totalBytes = 0;
+      for (const entry of entries.values()) {
+        totalBytes += entry.size;
+      }
+
+      const oldest = [...entries.values()].sort(
+        (left, right) => left.mtimeMs - right.mtimeMs
+      );
+      while (
+        totalBytes + buffer.length > this.maxBytes ||
+        entries.size + 1 > this.maxEntries
+      ) {
+        const entry = oldest.shift();
+        if (!entry) {
+          break;
+        }
+        assertNoSymlinkDirectoryComponents(path.dirname(entry.directory), {
+          label: 'Image cache directory',
+        });
+        await promises.rm(entry.directory, { force: true, recursive: true });
+        entries.delete(entry.directory);
+        totalBytes -= entry.size;
+        memoryCache.delete(path.basename(entry.directory));
+      }
+
+      const filePath = await writePrivateImageCacheFile(
+        safeDirectory,
+        filename,
+        buffer
+      );
+      entries.set(safeDirectory, {
+        directory: safeDirectory,
+        mtimeMs: Date.now(),
+        size: buffer.length,
+      });
+      return filePath;
+    });
+  }
+
+  public pruneStale(cacheDirectory: string): Promise<number> {
+    return this.lock.dispatch('image-disk-cache', async () => {
+      const deletedEntries = await pruneStaleImageCacheEntries(cacheDirectory);
+      // Pruning changes the filesystem behind the budget index. Force the
+      // next write to rebuild it rather than accounting deleted directories.
+      this.entries = undefined;
+      return deletedEntries;
+    });
+  }
+
+  private assertChildPath(candidate: string): string {
+    const root = path.resolve(this.rootDirectory);
+    const resolved = path.resolve(candidate);
+    const relative = path.relative(root, resolved);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error('Image disk cache entry escapes cache directory.');
+    }
+    return resolved;
+  }
+
+  private async getEntries(): Promise<Map<string, ImageDiskCacheEntry>> {
+    if (this.entries) {
+      return this.entries;
+    }
+
+    const entries = new Map<string, ImageDiskCacheEntry>();
+    assertNoSymlinkDirectoryComponents(this.rootDirectory, {
+      allowMissing: true,
+      label: 'Image cache directory',
+    });
+    const providers = await promises
+      .readdir(this.rootDirectory, { withFileTypes: true })
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') {
+          return [];
+        }
+        throw error;
+      });
+
+    for (const provider of providers) {
+      if (!provider.isDirectory() || provider.isSymbolicLink()) {
+        continue;
+      }
+      const providerDirectory = this.assertChildPath(
+        path.join(this.rootDirectory, provider.name)
+      );
+      const cacheEntries = await promises.readdir(providerDirectory, {
+        withFileTypes: true,
+      });
+      for (const cacheEntry of cacheEntries) {
+        if (!cacheEntry.isDirectory() || cacheEntry.isSymbolicLink()) {
+          continue;
+        }
+        const directory = this.assertChildPath(
+          path.join(providerDirectory, cacheEntry.name)
+        );
+        const files = await promises.readdir(directory, {
+          withFileTypes: true,
+        });
+        let size = 0;
+        let mtimeMs = 0;
+        for (const file of files) {
+          if (!file.isFile() || file.isSymbolicLink()) {
+            continue;
+          }
+          const stat = await promises.lstat(path.join(directory, file.name));
+          if (stat.nlink !== 1) {
+            throw new Error('Image cache files must not be hard-linked.');
+          }
+          size += stat.size;
+          mtimeMs = Math.max(mtimeMs, stat.mtimeMs);
+        }
+        entries.set(directory, { directory, mtimeMs, size });
+      }
+    }
+
+    this.entries = entries;
+    return entries;
+  }
+}
+
+const imageDiskCacheBudget = new ImageDiskCacheBudget(
+  resolvedBaseCacheDirectory
+);
+
+const getImageLogPath = (imagePath: string): string =>
+  imagePath.split('?', 1)[0];
+
+export const coalesceImageCacheWrite = (
+  cacheKey: string,
+  write: () => Promise<ImageResponse | null>
+): Promise<ImageResponse | null> => {
+  const pending = pendingImageCacheWrites.get(cacheKey);
+  if (pending) {
+    return pending;
+  }
+
+  if (pendingImageCacheWrites.size >= MAX_PENDING_IMAGE_CACHE_WRITES) {
+    return Promise.reject(new Error('Image cache write capacity exceeded.'));
+  }
+
+  const current = Promise.resolve()
+    .then(write)
+    .finally(() => {
+      if (pendingImageCacheWrites.get(cacheKey) === current) {
+        pendingImageCacheWrites.delete(cacheKey);
+      }
+    });
+  pendingImageCacheWrites.set(cacheKey, current);
+  return current;
+};
+
+export const writePrivateImageCacheFile = async (
+  directory: string,
+  filename: string,
+  buffer: Buffer
+): Promise<string> => {
+  if (!filename || path.basename(filename) !== filename) {
+    throw new Error('Image cache filename must not contain path segments');
+  }
+
+  const parentDirectory = path.dirname(directory);
+  assertNoSymlinkDirectoryComponents(parentDirectory, {
+    allowMissing: true,
+    label: 'Image cache directory',
+  });
+  await promises.mkdir(parentDirectory, {
+    recursive: true,
+    mode: PRIVATE_IMAGE_CACHE_DIRECTORY_MODE,
+  });
+  assertNoSymlinkDirectoryComponents(parentDirectory, {
+    label: 'Image cache directory',
+  });
+  const parentStat = await promises.lstat(parentDirectory);
+  if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) {
+    throw new Error('Image cache parent path is not a directory');
+  }
+  await promises.chmod(parentDirectory, PRIVATE_IMAGE_CACHE_DIRECTORY_MODE);
+
+  const existing = await promises.lstat(directory).catch((error) => {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  });
+  if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) {
+    throw new Error('Image cache path is not a directory');
+  }
+
+  await promises.rm(directory, { force: true, recursive: true }).catch(() => {
+    // A cache miss can race cleanup; mkdir below establishes the final state.
+  });
+  await promises.mkdir(directory, {
+    recursive: true,
+    mode: PRIVATE_IMAGE_CACHE_DIRECTORY_MODE,
+  });
+  assertNoSymlinkDirectoryComponents(directory, {
+    label: 'Image cache directory',
+  });
+  await promises.chmod(directory, PRIVATE_IMAGE_CACHE_DIRECTORY_MODE);
+
+  const filePath = path.join(directory, filename);
+  await promises.writeFile(filePath, buffer, {
+    flag: 'wx',
+    mode: PRIVATE_IMAGE_CACHE_FILE_MODE,
+  });
+  return filePath;
+};
+
+export const readPrivateImageCacheFile = async (
+  filePath: string,
+  maxBytes = LRU_ITEM_MAX_BYTES
+): Promise<Buffer> => {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    throw new Error('Image cache read limit must be positive.');
+  }
+
+  const handle = await promises.open(
+    filePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW
+  );
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1) {
+      throw new Error('Image cache path must be a private regular file.');
+    }
+    if (stat.size > maxBytes) {
+      throw new Error('Image cache file exceeds the in-memory read limit.');
+    }
+
+    const buffer = await handle.readFile();
+    if (buffer.length > maxBytes) {
+      throw new Error('Image cache file exceeds the in-memory read limit.');
+    }
+    return buffer;
+  } finally {
+    await handle.close();
+  }
+};
+
+export const assertRasterPixelBudget = ({
+  width,
+  frameHeight,
+  pages = 1,
+}: {
+  width: number;
+  frameHeight: number;
+  pages?: number;
+}): void => {
+  const pixels = width * frameHeight * pages;
+
+  if (
+    !Number.isSafeInteger(pixels) ||
+    pixels <= 0 ||
+    pixels > MAX_IMAGE_PIXELS
+  ) {
+    throw new Error('Image exceeds maximum decoded pixel count.');
+  }
+};
+
+export const prepareRasterImageForCache = async (
+  input: Buffer,
+  contentType: string
+): Promise<{ buffer: Buffer; extension: string }> => {
+  const image = sharp(input, {
+    animated: true,
+    limitInputPixels: MAX_IMAGE_PIXELS,
+  });
+  const metadata = await image.metadata();
+  assertRasterPixelBudget({
+    width: metadata.width ?? 0,
+    frameHeight: metadata.pageHeight ?? metadata.height ?? 0,
+    pages: metadata.pages ?? 1,
+  });
+
+  if (!TRANSCODABLE_CONTENT_TYPE.test(contentType)) {
+    return {
+      buffer: input,
+      extension: mime.getExtension(contentType) || '',
+    };
+  }
+
+  const buffer = await image.webp({ quality: WEBP_QUALITY }).toBuffer();
+  if (buffer.length > MAX_IMAGE_BYTES) {
+    throw new Error('Transcoded image exceeds maximum allowed size.');
+  }
+
+  return { buffer, extension: 'webp' };
+};
+
+export const getBoundedDirectorySize = async (
+  rootDirectory: string,
+  maxEntries = MAX_IMAGE_CACHE_STATS_FILESYSTEM_ENTRIES
+): Promise<number> => {
+  if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
+    throw new Error('Directory inspection limit must be positive.');
+  }
+
+  const pendingDirectories = [rootDirectory];
+  let inspectedEntries = 0;
+  let totalSize = 0;
+
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.pop()!;
+    const entries = await promises.readdir(directory, { withFileTypes: true });
+
+    for (const entry of entries) {
+      inspectedEntries += 1;
+      if (inspectedEntries > maxEntries) {
+        throw new Error('Directory exceeds the inspection entry limit.');
+      }
+
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        pendingDirectories.push(entryPath);
+      } else if (entry.isFile() && !entry.isSymbolicLink()) {
+        totalSize += (await promises.lstat(entryPath)).size;
+      }
+    }
+  }
+
+  return totalSize;
+};
+
+export const pruneStaleImageCacheEntries = async (
+  cacheDirectory: string
+): Promise<number> => {
+  assertNoSymlinkDirectoryComponents(cacheDirectory, {
+    label: 'Image cache directory',
+  });
+  let deletedEntries = 0;
+  const files = await promises.readdir(cacheDirectory);
+
+  for (const file of files) {
+    const filePath = path.join(cacheDirectory, file);
+    const stat = await promises.lstat(filePath);
+    if (!stat.isDirectory()) {
+      continue;
+    }
+
+    const imageFiles = await promises.readdir(filePath);
+    if (
+      imageFiles.some(
+        (imageFile) => parseImageCacheFileMetadata(imageFile)?.isStale === true
+      )
+    ) {
+      await promises.rm(filePath, { force: true, recursive: true });
+      deletedEntries += 1;
+    }
+  }
+
+  return deletedEntries;
+};
 
 /**
  * Writes the response headers and body for a cached image, streaming from
@@ -258,6 +693,7 @@ export async function sendImage(
     res.writeHead(200, {
       ...headers,
       'Content-Length': imageData.imageBuffer.length,
+      'X-Content-Type-Options': 'nosniff',
     });
     res.end(imageData.imageBuffer);
     return;
@@ -268,55 +704,52 @@ export async function sendImage(
     return;
   }
 
+  let handle: Awaited<ReturnType<typeof promises.open>> | undefined;
+  let streamOwnsHandle = false;
   try {
-    const stat = await promises.lstat(imageData.filePath);
-    if (!stat.isFile()) {
+    handle = await promises.open(
+      imageData.filePath,
+      constants.O_RDONLY | constants.O_NOFOLLOW
+    );
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1) {
       res.status(500).end();
       return;
     }
 
     const { size } = stat;
-    res.writeHead(200, { ...headers, 'Content-Length': size });
-    const stream = createReadStream(imageData.filePath);
-    stream.on('error', () => {
-      if (!res.headersSent) {
-        res.status(500);
-      }
-      res.destroy();
+    res.writeHead(200, {
+      ...headers,
+      'Content-Length': size,
+      'X-Content-Type-Options': 'nosniff',
     });
-    stream.pipe(res);
+    const stream = handle.createReadStream({ autoClose: true });
+    streamOwnsHandle = true;
+    await pipeline(stream, res);
   } catch {
-    res.status(500).end();
+    if (res.headersSent) {
+      res.destroy();
+    } else {
+      res.status(500).end();
+    }
+  } finally {
+    if (handle && !streamOwnsHandle) {
+      await handle.close().catch(() => undefined);
+    }
   }
 }
 
 class ImageProxy {
+  public static clearMemoryCache(): void {
+    memoryCache.clear();
+  }
+
   public static async clearCache(key: string) {
     let deletedImages = 0;
     const cacheDirectory = resolveCachePath(key);
 
     try {
-      const files = await promises.readdir(cacheDirectory);
-
-      for (const file of files) {
-        const filePath = resolveCachePath(key, file);
-        const stat = await promises.lstat(filePath);
-
-        if (stat.isDirectory()) {
-          const imageFiles = await promises.readdir(filePath);
-
-          for (const imageFile of imageFiles) {
-            const metadata = parseImageCacheFileMetadata(imageFile);
-
-            if (metadata?.isStale) {
-              await promises.rm(filePath, {
-                recursive: true,
-              });
-              deletedImages += 1;
-            }
-          }
-        }
-      }
+      deletedImages = await imageDiskCacheBudget.pruneStale(cacheDirectory);
     } catch (e) {
       if (e.code === 'ENOENT') {
         return;
@@ -329,7 +762,7 @@ class ImageProxy {
 
     // On-disk entries were pruned; drop the in-memory mirror so stale
     // bytes are not served from RAM.
-    memoryCache.clear();
+    ImageProxy.clearMemoryCache();
 
     logger.info(`Cleared ${deletedImages} stale image(s) from cache '${key}'`, {
       label: 'Image Cache',
@@ -352,36 +785,14 @@ class ImageProxy {
 
   private static async getDirectorySize(dir: string): Promise<number> {
     try {
-      const files = await promises.readdir(dir, {
-        withFileTypes: true,
-      });
-
-      const paths = files.map(async (file) => {
-        const filePath = assertCachePath(path.join(dir, file.name));
-
-        if (file.isDirectory()) {
-          return await ImageProxy.getDirectorySize(filePath);
-        }
-
-        if (file.isFile()) {
-          const { size } = await promises.lstat(filePath);
-
-          return size;
-        }
-
-        return 0;
-      });
-
-      return (await Promise.all(paths))
-        .flat(Infinity)
-        .reduce((i, size) => i + size, 0);
+      assertCachePath(dir);
+      return await getBoundedDirectorySize(dir);
     } catch (e) {
       if (e.code === 'ENOENT') {
         return 0;
       }
+      throw e;
     }
-
-    return 0;
   }
 
   private static async getImageCount(dir: string) {
@@ -400,27 +811,36 @@ class ImageProxy {
 
   private axios: AxiosInstance;
   private cacheVersion;
+  private cacheKeyScope?: string;
   private key;
 
   constructor(
     key: string,
     baseUrl: string,
     options: {
+      allowPrivateAddresses?: boolean;
+      cacheKeyScope?: string;
       cacheVersion?: number;
       rateLimitOptions?: rateLimitOptions;
       headers?: Record<string, string>;
+      requestValidator?: () => void;
     } = {}
   ) {
     // Bumped to 2 when WebP transcoding was introduced so previously
     // cached originals are re-fetched and re-encoded.
     this.cacheVersion = options.cacheVersion ?? 2;
+    this.cacheKeyScope = options.cacheKeyScope;
     this.key = key;
     this.axios = axios.create({
       baseURL: baseUrl,
       headers: options.headers,
+      ...createSafeHttpRequestOptions(options.allowPrivateAddresses ?? false),
       ...IMAGE_PROXY_HTTP_OPTIONS,
     });
-    this.axios.interceptors.request.use(requestInterceptorFunction);
+    this.axios.interceptors.request.use((config) => {
+      options.requestValidator?.();
+      return requestInterceptorFunction(config);
+    });
 
     if (options.rateLimitOptions) {
       this.axios = rateLimit(this.axios, options.rateLimitOptions);
@@ -461,18 +881,24 @@ class ImageProxy {
     const imageResponse = await this.get(cacheKey);
 
     if (imageResponse?.meta.isStale) {
-      void this.set(path, cacheKey);
+      trackBackgroundTask('stale image cache revalidation', () =>
+        this.set(path, cacheKey)
+      );
     }
 
     return imageResponse;
   }
 
-  public async clearCachedImage(path: string) {
+  public async clearCachedImage(imagePath: string) {
     // find cacheKey
-    const cacheKey = this.getCacheKey(path);
+    const cacheKey = this.getCacheKey(imagePath);
     const directory = resolveCachePath(this.key, cacheKey);
 
     memoryCache.delete(cacheKey);
+
+    assertNoSymlinkDirectoryComponents(path.dirname(directory), {
+      label: 'Image cache directory',
+    });
 
     try {
       await promises.access(directory);
@@ -562,14 +988,17 @@ class ImageProxy {
         };
 
         const stat = await promises.lstat(filePath);
-        if (!stat.isFile()) {
+        if (!stat.isFile() || stat.nlink !== 1) {
           continue;
         }
 
         const { size } = stat;
 
         if (size <= LRU_ITEM_MAX_BYTES) {
-          const buffer = await promises.readFile(filePath);
+          // Reopen without following symlinks and validate the descriptor.
+          // The earlier lstat is only a cache-size hint; it cannot safely
+          // authorize a later pathname read because the entry may be swapped.
+          const buffer = await readPrivateImageCacheFile(filePath);
           memoryCache.set(cacheKey, {
             buffer,
             maxAge: metadata.maxAge,
@@ -594,6 +1023,15 @@ class ImageProxy {
     path: string,
     cacheKey: string
   ): Promise<ImageResponse | null> {
+    return coalesceImageCacheWrite(cacheKey, () =>
+      this.fetchAndCache(path, cacheKey)
+    );
+  }
+
+  private async fetchAndCache(
+    path: string,
+    cacheKey: string
+  ): Promise<ImageResponse | null> {
     try {
       const directory = resolveCachePath(this.key, cacheKey);
       const response = await withTransientHttpRetry(
@@ -608,7 +1046,7 @@ class ImageProxy {
             logger.debug('Retrying transient upstream image request', {
               label: 'Image Cache',
               imageProvider: this.key,
-              imagePath: path,
+              imagePath: getImageLogPath(path),
               nextAttempt,
               ...getHttpErrorDetails(error),
             });
@@ -621,27 +1059,18 @@ class ImageProxy {
         throw new Error('Image exceeds maximum allowed size');
       }
 
-      const contentType =
-        getHeaderString(response.headers['content-type']) ?? '';
-      let extension = mime.getExtension(contentType) || '';
-
-      if (!contentType.toLowerCase().startsWith('image/')) {
-        throw new Error('Upstream response is not an image');
+      const contentType = getSafeRasterContentType(
+        getHeaderString(response.headers['content-type'])
+      );
+      if (!contentType) {
+        throw new Error('Upstream response is not a supported raster image');
       }
-
-      if (TRANSCODABLE_CONTENT_TYPE.test(contentType)) {
-        try {
-          buffer = await sharp(buffer, { animated: true })
-            .webp({ quality: WEBP_QUALITY })
-            .toBuffer();
-          extension = 'webp';
-        } catch (e) {
-          logger.debug('Failed to transcode image to WebP; storing original', {
-            label: 'Image Cache',
-            errorMessage: e.message,
-          });
-        }
-      }
+      const preparedImage = await prepareRasterImageForCache(
+        buffer,
+        contentType
+      );
+      buffer = preparedImage.buffer;
+      const extension = preparedImage.extension;
 
       const maxAge = parseCacheControlMaxAge(
         getHeaderString(response.headers['cache-control'])
@@ -691,7 +1120,7 @@ class ImageProxy {
       logger.warn('Failed to cache upstream image', {
         label: 'Image Cache',
         imageProvider: this.key,
-        imagePath: path,
+        imagePath: getImageLogPath(path),
         ...getHttpErrorDetails(error),
       });
       return null;
@@ -710,30 +1139,16 @@ class ImageProxy {
     const filename = assertCachePath(
       path.join(safeDir, `${maxAge}.${expireAt}.${etag}.${extension}`)
     );
-
-    const existing = await promises.lstat(safeDir).catch((e) => {
-      if (e.code === 'ENOENT') {
-        return null;
-      }
-      throw e;
-    });
-
-    if (existing && !existing.isDirectory()) {
-      throw new Error('Image cache path is not a directory');
-    }
-
-    await promises.rm(safeDir, { force: true, recursive: true }).catch(() => {
-      // do nothing
-    });
-
-    await promises.mkdir(safeDir, { recursive: true });
-    await promises.writeFile(filename, buffer);
-
-    return filename;
+    return imageDiskCacheBudget.write(safeDir, path.basename(filename), buffer);
   }
 
   private getCacheKey(path: string) {
-    return this.getHash([this.key, this.cacheVersion, path]);
+    return this.getHash([
+      this.key,
+      this.cacheVersion,
+      ...(this.cacheKeyScope ? [this.cacheKeyScope] : []),
+      path,
+    ]);
   }
 
   private getHash(items: (string | number | Buffer)[]) {

@@ -6,9 +6,10 @@ import {
   initiateOidcLogin,
   processOidcCallback,
 } from '@app/utils/oidc';
+import { hasOidcCallbackParameters } from '@app/utils/oidcQuery';
 import type { PublicOidcProvider } from '@server/lib/settings';
 import { useRouter } from 'next/router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 
 type OidcLoginButtonProps = {
@@ -25,6 +26,7 @@ export default function OidcLoginButton({
   const { query } = router;
 
   const [loading, setLoading] = useState(false);
+  const callbackProviderRef = useRef<string | null>(null);
 
   const redirectToLogin = useCallback(async () => {
     setLoading(true);
@@ -41,32 +43,50 @@ export default function OidcLoginButton({
     }
   }, [provider, intl, onError]);
 
-  const handleCallback = useCallback(async () => {
-    setLoading(true);
-    const result = await processOidcCallback(provider.slug);
-    if (result.type === 'success') {
-      router.push('/');
-    } else {
-      router.replace('/login');
-      setLoading(false);
-      onError?.(getOidcErrorMessage(result.errorCode, provider.name, intl));
-    }
-  }, [provider, intl, onError, router]);
-
   useEffect(
     () => {
-      if (!router.isReady || loading) return;
+      if (!router.isReady) return;
 
       // OIDC provider has redirected back with an authorization code or error
-      const isCallback = query.code != null || query.error != null;
+      const isCallback = hasOidcCallbackParameters(query);
+      const callbackProvider =
+        callbackProviderRef.current ?? getOidcProviderSlug();
 
-      if (isCallback && getOidcProviderSlug() === provider.slug) {
+      if (isCallback && callbackProvider === provider.slug) {
+        let active = true;
+        callbackProviderRef.current = callbackProvider;
         clearOidcProviderSlug();
-        handleCallback();
-      }
-      // Support direct redirect via ?provider=slug query param
-      else if (!isCallback && query.provider === provider.slug) {
-        redirectToLogin();
+        setLoading(true);
+
+        void processOidcCallback(callbackProvider)
+          .then(async (result) => {
+            if (!active) {
+              return;
+            }
+            callbackProviderRef.current = null;
+            if (result.type === 'success') {
+              await router.push('/');
+            } else {
+              await router.replace('/login').catch(() => undefined);
+              if (active) {
+                setLoading(false);
+                onError?.(
+                  getOidcErrorMessage(result.errorCode, provider.name, intl)
+                );
+              }
+            }
+          })
+          .catch(() => {
+            if (active) {
+              callbackProviderRef.current = null;
+              setLoading(false);
+              onError?.(getOidcErrorMessage(undefined, provider.name, intl));
+            }
+          });
+
+        return () => {
+          active = false;
+        };
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -76,7 +96,7 @@ export default function OidcLoginButton({
   return (
     <ButtonWithLoader
       loading={loading}
-      onClick={() => redirectToLogin()}
+      onClick={() => void redirectToLogin()}
       className="min-w-0 flex-grow"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}

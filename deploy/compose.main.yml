@@ -4,6 +4,16 @@ services:
     container_name: ${SEERRNG_CONTAINER_NAME:-seerr-host}
     network_mode: host
     restart: unless-stopped
+    init: true
+    user: '1000:1000'
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=1000,gid=1000,mode=1777
+      - /app/.next/cache:rw,noexec,nosuid,nodev,size=256m,uid=1000,gid=1000,mode=0700
     environment:
       TZ: ${TZ:-America/Regina}
       PORT: 5055
@@ -15,7 +25,7 @@ services:
       test:
         [
           'CMD-SHELL',
-          'node -e "fetch(''http://127.0.0.1:5055/api/v1/status'').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+          'node -e "fetch(''http://127.0.0.1:5055/api/v1/status/ready'').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
         ]
       interval: 10s
       timeout: 5s

@@ -24,20 +24,35 @@ const LoginWithPlex = ({ onComplete }: LoginWithPlexProps) => {
   // ask swr to revalidate the user which _shouid_ come back with a valid user.
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const login = async () => {
       try {
-        const response = await axios.post('/api/v1/auth/plex', { authToken });
-        if (response.data?.id) {
-          const { data: user } = await axios.get('/api/v1/auth/me');
-          revalidate(user, false);
+        const response = await axios.post(
+          '/api/v1/auth/plex',
+          { authToken },
+          { signal: controller.signal }
+        );
+        if (active && response.data?.id) {
+          const { data: user } = await axios.get('/api/v1/auth/me', {
+            signal: controller.signal,
+          });
+          if (active) {
+            void revalidate(user, false);
+          }
         }
       } catch {
         // auth failed silently, user can retry again
       }
     };
     if (authToken) {
-      login();
+      void login();
     }
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [authToken, revalidate]);
 
   // Effect that is triggered whenever `useUser`'s user changes. If we get a new

@@ -19,6 +19,8 @@ const defaultSettings: PublicSettingsResponse = {
   mediaServerLogin: true,
   movie4kEnabled: false,
   series4kEnabled: false,
+  musicEnabled: false,
+  booksEnabled: false,
   discoverRegion: '',
   streamingRegion: '',
   originalLanguage: '',

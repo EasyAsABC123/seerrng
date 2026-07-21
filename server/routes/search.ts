@@ -19,6 +19,7 @@ import {
   findSearchProvider,
   type CombinedSearchResponse,
 } from '@server/lib/search';
+import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { mapOpenLibrarySearchDoc } from '@server/models/Book';
 import { mapSearchResults } from '@server/models/Search';
@@ -29,10 +30,38 @@ import {
   parseOptionalLanguage,
 } from '@server/utils/validation';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { In } from 'typeorm';
 
 const searchRoutes = Router();
 const MAX_SEARCH_QUERY_LENGTH = 256;
+export const SEARCH_RATE_LIMIT = {
+  windowMs: 60 * 1000,
+  limit: 30,
+} as const;
+export const MAX_SEARCH_RESULTS_PER_PROVIDER = 20;
+export const MAX_COMBINED_SEARCH_RESULTS = 100;
+const searchRateLimit = rateLimit({
+  ...SEARCH_RATE_LIMIT,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+  keyGenerator: (req) => `user:${req.user?.id ?? 'anonymous'}`,
+});
+
+searchRoutes.use(searchRateLimit);
+
+export const capSearchProviderResults = <T>(
+  value: unknown,
+  limit = MAX_SEARCH_RESULTS_PER_PROVIDER
+): T[] => {
+  const maxResults =
+    Number.isSafeInteger(limit) && limit > 0
+      ? Math.min(limit, MAX_COMBINED_SEARCH_RESULTS)
+      : MAX_SEARCH_RESULTS_PER_PROVIDER;
+  return Array.isArray(value) ? value.slice(0, maxResults) : [];
+};
 
 const searchTypes = [
   'movie',
@@ -125,6 +154,27 @@ searchRoutes.get('/', async (req, res, next) => {
     return res.status(400).json({ status: 400, message: parsedType.error });
   }
   const typeFilter = parsedType.value;
+  const settings = getSettings();
+  const musicEnabled = settings.lidarr.length > 0;
+  const booksEnabled = settings.readarr.length > 0;
+
+  if ((typeFilter === 'album' || typeFilter === 'artist') && !musicEnabled) {
+    return res.status(200).json({
+      page,
+      totalPages: 1,
+      totalResults: 0,
+      results: [],
+    });
+  }
+
+  if (typeFilter === 'book' && !booksEnabled) {
+    return res.status(200).json({
+      page,
+      totalPages: 1,
+      totalResults: 0,
+      results: [],
+    });
+  }
 
   try {
     const searchProvider = findSearchProvider(queryString.toLowerCase());
@@ -153,35 +203,56 @@ searchRoutes.get('/', async (req, res, next) => {
           page,
           language,
         }),
-        musicbrainz.searchAlbum({
-          query: queryString,
-          limit: 20,
-          offset: musicOffset,
-        }),
-        musicbrainz.searchArtist({
-          query: queryString,
-          limit: 20,
-          offset: musicOffset,
-        }),
-        openLibrary.searchBooks({
-          query: queryString,
-          page,
-          limit: 20,
-        }),
+        musicEnabled
+          ? musicbrainz.searchAlbum({
+              query: queryString,
+              limit: 20,
+              offset: musicOffset,
+            })
+          : Promise.resolve([]),
+        musicEnabled
+          ? musicbrainz.searchArtist({
+              query: queryString,
+              limit: 20,
+              offset: musicOffset,
+            })
+          : Promise.resolve([]),
+        booksEnabled
+          ? openLibrary.searchBooks({
+              query: queryString,
+              page,
+              limit: 20,
+            })
+          : Promise.resolve({ numFound: 0, start: 0, docs: [] }),
       ]);
 
-      const tmdbResults =
+      const rawTmdbResults =
         responses[0].status === 'fulfilled'
           ? responses[0].value
           : { page: 1, results: [], total_pages: 1, total_results: 0 };
+      const tmdbResults = {
+        ...rawTmdbResults,
+        results: rawTmdbResults.results.slice(
+          0,
+          MAX_SEARCH_RESULTS_PER_PROVIDER
+        ),
+      };
       const albumResults =
-        responses[1].status === 'fulfilled' ? responses[1].value : [];
+        responses[1].status === 'fulfilled'
+          ? responses[1].value.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER)
+          : [];
       const artistResults =
-        responses[2].status === 'fulfilled' ? responses[2].value : [];
-      const bookResults =
+        responses[2].status === 'fulfilled'
+          ? responses[2].value.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER)
+          : [];
+      const rawBookResults =
         responses[3].status === 'fulfilled'
           ? responses[3].value
           : { numFound: 0, start: 0, docs: [] };
+      const bookResults = {
+        ...rawBookResults,
+        docs: rawBookResults.docs.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER),
+      };
 
       const personIds = tmdbResults.results
         .filter(
@@ -404,7 +475,7 @@ searchRoutes.get('/', async (req, res, next) => {
 
       const bookMediaMap = await findBookMediaForSearchDocs(
         dedupedBookDocs,
-        req.user?.id
+        req.user
       );
       const mappedBookResults = dedupedBookDocs.map((doc) =>
         mapOpenLibrarySearchDoc(
@@ -426,6 +497,10 @@ searchRoutes.get('/', async (req, res, next) => {
         results: combinedResults,
       };
     }
+
+    results.results = capSearchProviderResults<
+      (typeof results.results)[number]
+    >(results.results, MAX_COMBINED_SEARCH_RESULTS);
 
     const movieTvIds = results.results
       .filter(
@@ -455,7 +530,7 @@ searchRoutes.get('/', async (req, res, next) => {
       movieTvIds.length > 0 ? Media.getRelatedMedia(req.user, movieTvIds) : [],
       musicIds.length > 0 ? Media.getRelatedMedia(req.user, musicIds) : [],
       bookIds.length > 0
-        ? findBookMediaForBookResults(bookResults, req.user?.id)
+        ? findBookMediaForBookResults(bookResults, req.user)
         : new Map<string, Media>(),
     ]);
 
@@ -473,16 +548,30 @@ searchRoutes.get('/', async (req, res, next) => {
 
     const mappedResults = await mapSearchResults(results.results, media);
 
+    const capabilityResults = mappedResults.filter(
+      (result) =>
+        !('mediaType' in result) ||
+        (((result.mediaType !== 'album' && result.mediaType !== 'artist') ||
+          musicEnabled) &&
+          (result.mediaType !== 'book' || booksEnabled))
+    );
+
     const filteredResults = typeFilter
-      ? mappedResults.filter(
+      ? capabilityResults.filter(
           (result) => 'mediaType' in result && result.mediaType === typeFilter
         )
-      : mappedResults;
+      : capabilityResults;
+
+    const capabilityFiltered =
+      capabilityResults.length !== mappedResults.length;
 
     return res.status(200).json({
       page: results.page,
       totalPages: results.total_pages,
-      totalResults: typeFilter ? filteredResults.length : results.total_results,
+      totalResults:
+        typeFilter || capabilityFiltered
+          ? filteredResults.length
+          : results.total_results,
       results: filteredResults,
     });
   } catch (e) {

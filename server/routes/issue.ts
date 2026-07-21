@@ -1,6 +1,7 @@
 import {
   IssueStatus,
   IssueType,
+  MAX_ISSUE_COMMENTS,
   MAX_ISSUE_MESSAGE_LENGTH,
 } from '@server/constants/issue';
 import { getRepository } from '@server/datasource';
@@ -8,9 +9,16 @@ import Issue from '@server/entity/Issue';
 import IssueComment from '@server/entity/IssueComment';
 import Media from '@server/entity/Media';
 import type { IssueResultsResponse } from '@server/interfaces/api/issueInterfaces';
+import { hydrateIssueRelations } from '@server/lib/issueHydration';
+import issueMutationCoordinator from '@server/lib/issueMutation';
 import { Permission } from '@server/lib/permissions';
+import {
+  UserMutationActorUnauthorizedError,
+  runAuthorizedUserSecurityMutation,
+} from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
+import { authorizedRouteScope } from '@server/middleware/authorizedMutation';
 import { filterEntityResponse } from '@server/utils/entityResponse';
 import {
   parseOptionalPositiveInt,
@@ -88,6 +96,11 @@ issueRoutes.get<
     ],
     { type: 'or' }
   ),
+  authorizedRouteScope([
+    Permission.MANAGE_ISSUES,
+    Permission.VIEW_ISSUES,
+    Permission.CREATE_ISSUES,
+  ]),
   async (req, res, next) => {
     const { pageSize, skip } = parsePageParams(req.query, {
       take: 10,
@@ -139,9 +152,7 @@ issueRoutes.get<
       .createQueryBuilder('issue')
       .leftJoinAndSelect('issue.createdBy', 'createdBy')
       .leftJoinAndSelect('issue.media', 'media')
-      .leftJoinAndSelect('media.identifiers', 'identifiers')
       .leftJoinAndSelect('issue.modifiedBy', 'modifiedBy')
-      .leftJoinAndSelect('issue.comments', 'comments')
       .where('issue.status IN (:...issueStatus)', {
         issueStatus: statusFilter,
       });
@@ -164,11 +175,12 @@ issueRoutes.get<
       query = query.andWhere('createdBy.id = :id', { id: createdBy });
     }
 
-    const [issues, issueCount] = await query
+    const [issueRows, issueCount] = await query
       .orderBy(sortFilter, 'DESC')
       .take(pageSize)
       .skip(skip)
       .getManyAndCount();
+    const issues = await hydrateIssueRelations(issueRows);
 
     return res.status(200).json({
       pageInfo: {
@@ -177,7 +189,7 @@ issueRoutes.get<
         results: issueCount,
         page: Math.ceil(skip / pageSize) + 1,
       },
-      results: filterEntityResponse(issues),
+      results: filterEntityResponse(issues, req.user),
     });
   }
 );
@@ -249,23 +261,39 @@ issueRoutes.post<
       return next({ status: 404, message: 'Media does not exist.' });
     }
 
-    const issue = new Issue({
-      createdBy: req.user,
-      issueType: issueType.value,
-      problemSeason: problemSeason.value,
-      problemEpisode: problemEpisode.value,
-      media,
-      comments: [
-        new IssueComment({
-          user: req.user,
-          message: parsedMessage.value,
-        }),
-      ],
-    });
+    try {
+      const newIssue = await runAuthorizedUserSecurityMutation(
+        req.user.id,
+        req.user.id,
+        [Permission.MANAGE_ISSUES, Permission.CREATE_ISSUES],
+        async (actor) =>
+          issueRepository.save(
+            new Issue({
+              createdBy: actor,
+              issueType: issueType.value,
+              problemSeason: problemSeason.value,
+              problemEpisode: problemEpisode.value,
+              media,
+              comments: [
+                new IssueComment({
+                  user: actor,
+                  message: parsedMessage.value,
+                }),
+              ],
+            })
+          )
+      );
 
-    const newIssue = await issueRepository.save(issue);
-
-    return res.status(200).json(filterEntityResponse(newIssue));
+      return res.status(200).json(filterEntityResponse(newIssue, req.user));
+    } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError) {
+        return next({
+          status: 403,
+          message: 'You no longer have permission to create issues.',
+        });
+      }
+      throw e;
+    }
   }
 );
 
@@ -279,49 +307,50 @@ issueRoutes.get(
     ],
     { type: 'or' }
   ),
+  authorizedRouteScope([
+    Permission.MANAGE_ISSUES,
+    Permission.VIEW_ISSUES,
+    Permission.CREATE_ISSUES,
+  ]),
   async (req, res, next) => {
     const issueRepository = getRepository(Issue);
 
     try {
-      const query = issueRepository.createQueryBuilder('issue');
+      const restrictToOwnIssues = !req.user?.hasPermission(
+        [Permission.MANAGE_ISSUES, Permission.VIEW_ISSUES],
+        { type: 'or' }
+      );
+      const createVisibleIssueQuery = () => {
+        const query = issueRepository.createQueryBuilder('issue');
 
-      const totalCount = await query.getCount();
+        return restrictToOwnIssues
+          ? query
+              .innerJoin('issue.createdBy', 'createdBy')
+              .where('createdBy.id = :userId', { userId: req.user?.id })
+          : query;
+      };
+      const countBy = (field: 'issueType' | 'status', value: number) =>
+        createVisibleIssueQuery()
+          .andWhere(`issue.${field} = :value`, { value })
+          .getCount();
 
-      const videoCount = await query
-        .where('issue.issueType = :issueType', {
-          issueType: IssueType.VIDEO,
-        })
-        .getCount();
-
-      const audioCount = await query
-        .where('issue.issueType = :issueType', {
-          issueType: IssueType.AUDIO,
-        })
-        .getCount();
-
-      const subtitlesCount = await query
-        .where('issue.issueType = :issueType', {
-          issueType: IssueType.SUBTITLES,
-        })
-        .getCount();
-
-      const othersCount = await query
-        .where('issue.issueType = :issueType', {
-          issueType: IssueType.OTHER,
-        })
-        .getCount();
-
-      const openCount = await query
-        .where('issue.status = :issueStatus', {
-          issueStatus: IssueStatus.OPEN,
-        })
-        .getCount();
-
-      const closedCount = await query
-        .where('issue.status = :issueStatus', {
-          issueStatus: IssueStatus.RESOLVED,
-        })
-        .getCount();
+      const [
+        totalCount,
+        videoCount,
+        audioCount,
+        subtitlesCount,
+        othersCount,
+        openCount,
+        closedCount,
+      ] = await Promise.all([
+        createVisibleIssueQuery().getCount(),
+        countBy('issueType', IssueType.VIDEO),
+        countBy('issueType', IssueType.AUDIO),
+        countBy('issueType', IssueType.SUBTITLES),
+        countBy('issueType', IssueType.OTHER),
+        countBy('status', IssueStatus.OPEN),
+        countBy('status', IssueStatus.RESOLVED),
+      ]);
 
       return res.status(200).json({
         total: totalCount,
@@ -352,6 +381,11 @@ issueRoutes.get<{ issueId: string }>(
     ],
     { type: 'or' }
   ),
+  authorizedRouteScope([
+    Permission.MANAGE_ISSUES,
+    Permission.VIEW_ISSUES,
+    Permission.CREATE_ISSUES,
+  ]),
   async (req, res, next) => {
     const issueRepository = getRepository(Issue);
     const issueId = parsePositiveRouteId(req.params.issueId);
@@ -362,17 +396,17 @@ issueRoutes.get<{ issueId: string }>(
     if (!req.user) {
       return next({ status: 500, message: 'User missing from request.' });
     }
-
     try {
-      const issue = await issueRepository
-        .createQueryBuilder('issue')
-        .leftJoinAndSelect('issue.comments', 'comments')
-        .leftJoinAndSelect('issue.createdBy', 'createdBy')
-        .leftJoinAndSelect('comments.user', 'user')
-        .leftJoinAndSelect('issue.media', 'media')
-        .leftJoinAndSelect('media.identifiers', 'identifiers')
-        .where('issue.id = :issueId', { issueId })
-        .getOneOrFail();
+      const issue = await issueRepository.findOneOrFail({
+        where: { id: issueId },
+        relations: {
+          comments: { user: true },
+          createdBy: true,
+          modifiedBy: true,
+          media: { identifiers: true },
+        },
+        relationLoadStrategy: 'query',
+      });
 
       if (
         issue.createdBy.id !== req.user.id &&
@@ -387,13 +421,13 @@ issueRoutes.get<{ issueId: string }>(
         });
       }
 
-      return res.status(200).json(filterEntityResponse(issue));
+      return res.status(200).json(filterEntityResponse(issue, req.user));
     } catch (e) {
       logger.debug('Failed to retrieve issue.', {
         label: 'API',
         errorMessage: e.message,
       });
-      next({ status: 500, message: 'Issue not found.' });
+      next({ status: 404, message: 'Issue not found.' });
     }
   }
 );
@@ -404,7 +438,6 @@ issueRoutes.post<{ issueId: string }, Issue, { message: string }>(
     type: 'or',
   }),
   async (req, res, next) => {
-    const issueRepository = getRepository(Issue);
     const issueId = parsePositiveRouteId(req.params.issueId);
     if (!issueId) {
       return next({ status: 404, message: 'Issue not found.' });
@@ -427,33 +460,76 @@ issueRoutes.post<{ issueId: string }, Issue, { message: string }>(
     if (!req.user) {
       return next({ status: 500, message: 'User missing from request.' });
     }
+    const actorId = req.user.id;
 
     try {
-      const issue = await issueRepository.findOneOrFail({
-        where: { id: issueId },
-      });
+      const issue = await runAuthorizedUserSecurityMutation(
+        actorId,
+        actorId,
+        [Permission.MANAGE_ISSUES, Permission.CREATE_ISSUES],
+        (actor) =>
+          issueMutationCoordinator.run(issueId, async (manager) => {
+            const transactionRepository = manager.getRepository(Issue);
+            const activeIssue = await transactionRepository.findOneOrFail({
+              where: { id: issueId },
+              relations: { createdBy: true },
+              loadEagerRelations: false,
+            });
 
-      if (
-        issue.createdBy.id !== req.user.id &&
-        !req.user.hasPermission(Permission.MANAGE_ISSUES)
-      ) {
+            if (
+              activeIssue.createdBy.id !== actor.id &&
+              !actor.hasPermission(Permission.MANAGE_ISSUES)
+            ) {
+              throw Object.assign(new Error('Issue comment forbidden'), {
+                status: 403,
+              });
+            }
+
+            const commentRepository = manager.getRepository(IssueComment);
+            const commentCount = await commentRepository.countBy({
+              issue: { id: issueId },
+            });
+            if (commentCount >= MAX_ISSUE_COMMENTS) {
+              throw Object.assign(new Error('Issue comment limit reached.'), {
+                status: 409,
+              });
+            }
+
+            const comment = new IssueComment({
+              issue: activeIssue,
+              message: parsedMessage.value,
+              user: actor,
+            });
+            await commentRepository.save(comment);
+            await transactionRepository.update(
+              { id: issueId },
+              { updatedAt: new Date() }
+            );
+
+            return transactionRepository.findOneOrFail({
+              where: { id: issueId },
+              relations: {
+                comments: { user: true },
+                createdBy: true,
+                modifiedBy: true,
+                media: true,
+              },
+              relationLoadStrategy: 'query',
+            });
+          })
+      );
+
+      return res.status(200).json(filterEntityResponse(issue, req.user));
+    } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError || e.status === 403) {
         return next({
           status: 403,
           message: 'You do not have permission to comment on this issue.',
         });
       }
-
-      const comment = new IssueComment({
-        message: parsedMessage.value,
-        user: req.user,
-      });
-
-      issue.comments = [...issue.comments, comment];
-      issue.updatedAt = new Date();
-      await issueRepository.save(issue);
-
-      return res.status(200).json(filterEntityResponse(issue));
-    } catch (e) {
+      if (e.status === 409) {
+        return next({ status: 409, message: e.message });
+      }
       logger.debug('Something went wrong creating an issue comment.', {
         label: 'API',
         errorMessage: e.message,
@@ -469,7 +545,6 @@ issueRoutes.post<{ issueId: string; status: string }, Issue>(
     type: 'or',
   }),
   async (req, res, next) => {
-    const issueRepository = getRepository(Issue);
     const issueId = parsePositiveRouteId(req.params.issueId);
     if (!issueId) {
       return next({ status: 404, message: 'Issue not found.' });
@@ -488,27 +563,53 @@ issueRoutes.post<{ issueId: string; status: string }, Issue>(
     }
 
     try {
-      const issue = await issueRepository.findOneOrFail({
-        where: { id: issueId },
-      });
+      const actorId = req.user.id;
+      const issue = await runAuthorizedUserSecurityMutation(
+        actorId,
+        actorId,
+        [Permission.MANAGE_ISSUES, Permission.CREATE_ISSUES],
+        (actor) =>
+          issueMutationCoordinator.run(issueId, async (manager) => {
+            const transactionRepository = manager.getRepository(Issue);
+            const activeIssue = await transactionRepository.findOneOrFail({
+              where: { id: issueId },
+              relations: { createdBy: true },
+              loadEagerRelations: false,
+            });
 
-      if (
-        !req.user?.hasPermission(Permission.MANAGE_ISSUES) &&
-        issue.createdBy.id !== req.user?.id
-      ) {
+            if (
+              !actor.hasPermission(Permission.MANAGE_ISSUES) &&
+              activeIssue.createdBy.id !== actor.id
+            ) {
+              throw Object.assign(new Error('Issue mutation forbidden'), {
+                status: 403,
+              });
+            }
+
+            activeIssue.status = newStatus;
+            activeIssue.modifiedBy = actor;
+            await transactionRepository.save(activeIssue);
+            return transactionRepository.findOneOrFail({
+              where: { id: issueId },
+              relations: {
+                comments: { user: true },
+                createdBy: true,
+                modifiedBy: true,
+                media: true,
+              },
+              relationLoadStrategy: 'query',
+            });
+          })
+      );
+
+      return res.status(200).json(filterEntityResponse(issue, req.user));
+    } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError || e.status === 403) {
         return next({
-          status: 401,
+          status: 403,
           message: 'You do not have permission to modify this issue.',
         });
       }
-
-      issue.status = newStatus;
-      issue.modifiedBy = req.user;
-
-      await issueRepository.save(issue);
-
-      return res.status(200).json(filterEntityResponse(issue));
-    } catch (e) {
       logger.debug('Something went wrong creating an issue comment.', {
         label: 'API',
         errorMessage: e.message,
@@ -524,32 +625,49 @@ issueRoutes.delete(
     type: 'or',
   }),
   async (req, res, next) => {
-    const issueRepository = getRepository(Issue);
     const issueId = parsePositiveRouteId(req.params.issueId);
     if (!issueId) {
       return next({ status: 404, message: 'Issue not found.' });
     }
 
     try {
-      const issue = await issueRepository.findOneOrFail({
-        where: { id: issueId },
-        relations: { createdBy: true },
-      });
+      const actorId = req.user!.id;
+      await runAuthorizedUserSecurityMutation(
+        actorId,
+        actorId,
+        [Permission.MANAGE_ISSUES, Permission.CREATE_ISSUES],
+        (actor) =>
+          issueMutationCoordinator.run(issueId, async (manager) => {
+            const transactionRepository = manager.getRepository(Issue);
+            const issue = await transactionRepository.findOneOrFail({
+              where: { id: issueId },
+              relations: { createdBy: true },
+              loadEagerRelations: false,
+            });
 
-      if (
-        !req.user?.hasPermission(Permission.MANAGE_ISSUES) &&
-        (issue.createdBy.id !== req.user?.id || issue.comments.length > 1)
-      ) {
-        return next({
-          status: 401,
-          message: 'You do not have permission to delete this issue.',
-        });
-      }
+            if (!actor.hasPermission(Permission.MANAGE_ISSUES)) {
+              const commentCount = await manager
+                .getRepository(IssueComment)
+                .countBy({ issue: { id: issueId } });
+              if (issue.createdBy.id !== actor.id || commentCount > 1) {
+                throw Object.assign(new Error('Issue deletion forbidden'), {
+                  status: 403,
+                });
+              }
+            }
 
-      await issueRepository.remove(issue);
+            await transactionRepository.remove(issue);
+          })
+      );
 
       return res.status(204).send();
     } catch (e) {
+      if (e instanceof UserMutationActorUnauthorizedError || e.status === 403) {
+        return next({
+          status: 403,
+          message: 'You do not have permission to delete this issue.',
+        });
+      }
       logger.error('Something went wrong deleting an issue.', {
         label: 'API',
         errorMessage: e.message,

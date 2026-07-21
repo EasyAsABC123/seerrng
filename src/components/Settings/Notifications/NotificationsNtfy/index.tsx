@@ -167,6 +167,7 @@ const NotificationsNtfy = () => {
             );
             await axios.post('/api/v1/settings/notifications/ntfy/test', {
               enabled: true,
+              embedPoster: values.embedPoster,
               types: values.types,
               options: {
                 url: values.url,

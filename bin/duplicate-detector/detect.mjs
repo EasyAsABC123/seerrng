@@ -8,7 +8,13 @@
  */
 
 import { pipeline } from '@huggingface/transformers';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { loadIndex } from './index.mjs';
+import {
+  formatComment,
+  normalizeLlmVerdicts,
+  normalizeSingleLineText,
+} from './triage.mjs';
 import {
   addLabel,
   dotProduct,
@@ -20,27 +26,13 @@ import {
 
 const SIMILARITY_THRESHOLD = 0.55;
 const TOP_K = 5;
-const MAX_COMMENT_CANDIDATES = 3;
 const MODEL_NAME = process.env.EMBEDDING_MODEL || 'Xenova/all-MiniLM-L6-v2';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-const INDEX_PATH = 'issue_index.json';
+const INDEX_PATH = process.env.INDEX_PATH || 'issue_index.json';
 const LABEL_NAME = 'possible-duplicate';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const ISSUE_NUMBER = parseInt(process.env.ISSUE_NUMBER, 10);
-
-function loadIndex(path) {
-  if (!existsSync(path)) {
-    console.error(
-      `Index file not found at ${path}. Run build-index.mjs first.`
-    );
-    process.exit(1);
-  }
-
-  const data = JSON.parse(readFileSync(path, 'utf-8'));
-  console.log(`Loaded index with ${data.issues.length} issues`);
-  return data;
-}
 
 function findSimilar(
   queryEmbedding,
@@ -124,8 +116,7 @@ async function confirmWithLlm(newIssue, candidates) {
     );
 
     if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(`Groq API error ${resp.status}: ${text}`);
+      throw new Error(`Groq API error ${resp.status}`);
     }
 
     let content = (await resp.json()).choices[0].message.content.trim();
@@ -140,58 +131,28 @@ async function confirmWithLlm(newIssue, candidates) {
     }
 
     const verdicts = JSON.parse(content);
-    if (!Array.isArray(verdicts)) {
-      throw new Error('Invalid LLM response format - expected array');
-    }
-
-    const verdictMap = new Map(verdicts.map((v) => [v.number, v]));
+    const verdictMap = normalizeLlmVerdicts(verdicts, candidates);
 
     const confirmed = [];
     for (const c of candidates) {
       const verdict = verdictMap.get(c.number);
-      if (verdict?.duplicate) {
-        c.llm_reason = verdict.reason || '';
-        confirmed.push(c);
+      if (verdict?.duplicate === true) {
+        confirmed.push({ ...c, llm_reason: verdict.reason });
       } else {
         const reason = verdict?.reason || 'not evaluated';
-        console.log(`  #${c.number} ruled out by LLM: ${reason}`);
+        console.log(
+          `  #${c.number} ruled out by LLM: ${normalizeSingleLineText(reason, 300)}`
+        );
       }
     }
 
     return confirmed;
   } catch (err) {
     console.warn(
-      `LLM confirmation failed: ${err.message} - falling back to all candidates`
+      `LLM confirmation failed: ${normalizeSingleLineText(err.message, 300)} - skipping automated duplicate action`
     );
-    return candidates;
+    return [];
   }
-}
-
-function formatComment(candidates) {
-  const lines = [
-    '**Possible duplicate detected**',
-    '',
-    'This issue may be a duplicate of the following (detected via semantic similarity + LLM review):',
-    '',
-  ];
-
-  for (const c of candidates.slice(0, MAX_COMMENT_CANDIDATES)) {
-    const confidence = `${(c.score * 100).toFixed(0)}%`;
-    let line = `- #${c.number} (${confidence} match) — ${c.title}`;
-    if (c.llm_reason) {
-      line += `\n  > *${c.llm_reason}*`;
-    }
-    lines.push(line);
-  }
-
-  lines.push(
-    '',
-    'A maintainer will review this. If this is **not** a duplicate, no action is needed.',
-    '',
-    `<!-- duplicate-bot: candidates=${candidates.map((c) => c.number).join(',')} -->`
-  );
-
-  return lines.join('\n');
 }
 
 async function main() {
@@ -206,13 +167,20 @@ async function main() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const recentIssues = await fetchIssues({
     creator: issue.user.login,
-    since: oneHourAgo,
     state: 'all',
+    maxIssues: 11,
+    maxPages: 10,
+    sort: 'created',
   });
+  const recentIssueCount = recentIssues.filter(
+    (recentIssue) =>
+      typeof recentIssue.created_at === 'string' &&
+      recentIssue.created_at >= oneHourAgo
+  ).length;
 
-  if (recentIssues.length > 10) {
+  if (recentIssueCount > 10) {
     console.log(
-      `User ${issue.user.login} created ${recentIssues.length} issues in the last hour - skipping to prevent spam`
+      `User ${issue.user.login} created more than 10 issues in the last hour - skipping to prevent spam`
     );
     return;
   }
@@ -227,11 +195,15 @@ async function main() {
     return;
   }
 
+  if (!existsSync(INDEX_PATH)) {
+    throw new Error(`Index file not found at ${INDEX_PATH}`);
+  }
+  const index = loadIndex(INDEX_PATH);
+  console.log(`Loaded index with ${index.issues.length} issues`);
   console.log(`Loading model: ${MODEL_NAME}`);
   const extractor = await pipeline('feature-extraction', MODEL_NAME, {
     dtype: 'fp32',
   });
-  const index = loadIndex(INDEX_PATH);
 
   const text = issueText(issue.title, issue.body);
   const output = await extractor(text, { pooling: 'mean', normalize: true });
@@ -250,7 +222,9 @@ async function main() {
 
   console.log(`Found ${candidates.length} candidates above threshold:`);
   for (const c of candidates) {
-    console.log(`  #${c.number} (${c.score.toFixed(3)}) - ${c.title}`);
+    console.log(
+      `  #${c.number} (${c.score.toFixed(3)}) - ${normalizeSingleLineText(c.title, 256)}`
+    );
   }
 
   console.log('Running LLM confirmation via Groq...');

@@ -9,6 +9,7 @@ describe('establishAuthenticatedSession', () => {
     const req: {
       session: {
         userId?: number;
+        credentialVersion?: number;
         regenerate(callback: (error?: Error) => void): void;
       };
     } = {
@@ -17,21 +18,24 @@ describe('establishAuthenticatedSession', () => {
         regenerate(callback: (error?: Error) => void) {
           regenerated = true;
           delete this.userId;
+          delete this.credentialVersion;
           callback();
         },
       },
     };
 
-    await establishAuthenticatedSession(req as never, 7);
+    await establishAuthenticatedSession(req as never, 7, 1234);
 
     assert.equal(regenerated, true);
     assert.equal(req.session.userId, 7);
+    assert.equal(req.session.credentialVersion, 1234);
   });
 
   it('rejects when session regeneration fails', async () => {
     const req: {
       session: {
         userId?: number;
+        credentialVersion?: number;
         regenerate(callback: (error?: Error) => void): void;
       };
     } = {
@@ -48,5 +52,12 @@ describe('establishAuthenticatedSession', () => {
       /store unavailable/
     );
     assert.equal(req.session.userId, 99);
+  });
+
+  it('rejects instead of reporting a sessionless login as successful', async () => {
+    await assert.rejects(
+      establishAuthenticatedSession({ session: undefined } as never, 7),
+      /Session is unavailable/
+    );
   });
 });

@@ -1,7 +1,9 @@
 import Badge from '@app/components/Common/Badge';
 import { menuMessages } from '@app/components/Layout/Sidebar';
 import useClickOutside from '@app/hooks/useClickOutside';
+import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
+import { isOptionalCatalogPathEnabled } from '@app/utils/serviceAvailability';
 import { Transition } from '@headlessui/react';
 import {
   BookOpenIcon,
@@ -67,19 +69,34 @@ const MobileMenu = ({
   revalidateRequestsCount,
 }: MobileMenuProps) => {
   const ref = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  );
   const intl = useIntl();
   const [isOpen, setIsOpen] = useState(false);
   const { hasPermission } = useUser();
+  const { currentSettings } = useSettings();
   const router = useRouter();
   useClickOutside(ref, () => {
-    setTimeout(() => {
-      if (isOpen) {
-        setIsOpen(false);
-      }
+    if (closeTimer.current !== undefined) {
+      clearTimeout(closeTimer.current);
+    }
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = undefined;
+      setIsOpen(false);
     }, 150);
   });
 
-  const toggle = () => setIsOpen(!isOpen);
+  useEffect(
+    () => () => {
+      if (closeTimer.current !== undefined) {
+        clearTimeout(closeTimer.current);
+      }
+    },
+    []
+  );
+
+  const toggle = () => setIsOpen((open) => !open);
 
   const menuLinks: MenuLink[] = useMemo(
     () => [
@@ -176,12 +193,13 @@ const MobileMenu = ({
     () =>
       menuLinks.filter(
         (link) =>
-          !link.requiredPermission ||
-          hasPermission(link.requiredPermission, {
-            type: link.permissionType ?? 'and',
-          })
+          isOptionalCatalogPathEnabled(link.href, currentSettings) &&
+          (!link.requiredPermission ||
+            hasPermission(link.requiredPermission, {
+              type: link.permissionType ?? 'and',
+            }))
       ),
-    [hasPermission, menuLinks]
+    [currentSettings, hasPermission, menuLinks]
   );
 
   useEffect(() => {

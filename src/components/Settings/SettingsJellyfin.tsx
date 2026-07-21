@@ -170,9 +170,7 @@ const SettingsJellyfin: React.FC<SettingsJellyfinProps> = ({
     }
 
     try {
-      await axios.get('/api/v1/settings/jellyfin/library', {
-        params,
-      });
+      await axios.post('/api/v1/settings/jellyfin/library', params);
       setIsSyncing(false);
       revalidate();
     } catch (e) {
@@ -230,14 +228,10 @@ const SettingsJellyfin: React.FC<SettingsJellyfinProps> = ({
           .join(',');
       }
 
-      await axios.get('/api/v1/settings/jellyfin/library', {
-        params,
-      });
+      await axios.post('/api/v1/settings/jellyfin/library', params);
     } else {
-      await axios.get('/api/v1/settings/jellyfin/library', {
-        params: {
-          enable: [...activeLibraries, libraryId].join(','),
-        },
+      await axios.post('/api/v1/settings/jellyfin/library', {
+        enable: [...activeLibraries, libraryId].join(','),
       });
     }
     if (onComplete) {

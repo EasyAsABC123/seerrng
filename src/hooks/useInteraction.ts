@@ -17,13 +17,15 @@ const useInteraction = (): boolean => {
 
     let localTouch = hasTapEvent;
     let lastTouchUpdate = Date.now();
+    let mouseTransitionTimer: ReturnType<typeof setTimeout> | undefined;
 
     const shouldUpdate = (): boolean =>
       lastTouchUpdate + UPDATE_INTERVAL < Date.now();
 
     const onMouseMove = (): void => {
-      if (localTouch && shouldUpdate()) {
-        setTimeout(() => {
+      if (localTouch && shouldUpdate() && mouseTransitionTimer === undefined) {
+        mouseTransitionTimer = setTimeout(() => {
+          mouseTransitionTimer = undefined;
           if (shouldUpdate()) {
             setIsTouch(false);
             localTouch = false;
@@ -33,6 +35,10 @@ const useInteraction = (): boolean => {
     };
 
     const onTouchStart = (): void => {
+      if (mouseTransitionTimer !== undefined) {
+        clearTimeout(mouseTransitionTimer);
+        mouseTransitionTimer = undefined;
+      }
       lastTouchUpdate = Date.now();
 
       if (!localTouch) {
@@ -62,6 +68,9 @@ const useInteraction = (): boolean => {
     }
 
     return () => {
+      if (mouseTransitionTimer !== undefined) {
+        clearTimeout(mouseTransitionTimer);
+      }
       if (hasTapEvent) {
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('touchstart', onTouchStart);

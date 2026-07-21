@@ -1,7 +1,7 @@
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
 
-FROM public.ecr.aws/docker/library/node:22.22.2-alpine3.23 AS target-base
+FROM public.ecr.aws/docker/library/node:22.22.2-alpine3.23@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f AS target-base
 ARG SOURCE_DATE_EPOCH
 ARG TARGETPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
@@ -13,7 +13,7 @@ RUN apk add --no-cache python3 py3-setuptools make g++ gcc libc6-compat bash && 
   npm config set fetch-retries 5 && \
   npm config set fetch-retry-mintimeout 20000 && \
   npm config set fetch-retry-maxtimeout 120000 && \
-  npm install --global node-gyp pnpm@10.24.0
+  npm install --global node-gyp@13.0.1 pnpm@10.24.0
 
 COPY . ./app
 WORKDIR /app
@@ -38,7 +38,7 @@ RUN if [ -d node_modules/.pnpm ]; then \
   \) -exec rm -rf {} + || true; \
   fi
 
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:22.22.2-alpine3.23 AS build-base
+FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/node:22.22.2-alpine3.23@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f AS build-base
 ARG SOURCE_DATE_EPOCH
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
@@ -52,7 +52,7 @@ RUN apk add --no-cache python3 py3-setuptools make g++ gcc libc6-compat bash && 
   npm config set fetch-retries 5 && \
   npm config set fetch-retry-mintimeout 20000 && \
   npm config set fetch-retry-maxtimeout 120000 && \
-  npm install --global node-gyp pnpm@10.24.0
+  npm install --global node-gyp@13.0.1 pnpm@10.24.0
 
 COPY . ./app
 WORKDIR /app
@@ -70,7 +70,7 @@ RUN pnpm build
 
 RUN rm -rf .next/cache
 
-FROM public.ecr.aws/docker/library/node:22.22.2-alpine3.23
+FROM public.ecr.aws/docker/library/node:22.22.2-alpine3.23@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f
 ARG SOURCE_DATE_EPOCH
 ARG COMMIT_TAG
 ARG BUILD_VERSION=main
@@ -85,12 +85,14 @@ USER node:node
 
 WORKDIR /app
 
-COPY --chown=node:node . .
+COPY --chown=node:node package.json next.config.ts seerr-api.yml ./
+COPY --chown=node:node public ./public
 COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/.next ./.next
 COPY --chown=node:node --from=build /app/dist ./dist
 
-RUN touch config/DOCKER && \
+RUN mkdir -p config && \
+  touch config/DOCKER && \
   echo "{\"commitTag\": \"${COMMIT_TAG}\", \"buildVersion\": \"${BUILD_VERSION}\"}" > committag.json
 
 EXPOSE 5055

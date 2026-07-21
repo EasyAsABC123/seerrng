@@ -26,7 +26,7 @@ import type {
 } from '@server/interfaces/api/userSettingsInterfaces';
 import axios from 'axios';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
 import LinkJellyfinModal from './LinkJellyfinModal';
@@ -88,35 +88,57 @@ const UserLinkedAccountsSettings = () => {
       user ? `/api/v1/user/${user?.id}/settings/linked-accounts` : null
     );
   const [showJellyfinModal, setShowJellyfinModal] = useState(false);
+  const plexAttemptRef = useRef<number | undefined>(undefined);
+  const oidcCallbackProviderRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Handle OIDC callback when the provider redirects back to this page
   useEffect(() => {
     if (!router.isReady) return;
+    let active = true;
     const code = router.query.code;
     const error = router.query.error;
-    const providerSlug = getOidcProviderSlug();
+    const providerSlug =
+      oidcCallbackProviderRef.current ?? getOidcProviderSlug();
     if (
       (typeof code !== 'string' && typeof error !== 'string') ||
       providerSlug == null
     )
       return;
+    oidcCallbackProviderRef.current = providerSlug;
     clearOidcProviderSlug();
 
     // Strip the OIDC params from the URL immediately
-    router.replace(router.pathname, undefined, { shallow: true });
+    void router
+      .replace(router.pathname, undefined, { shallow: true })
+      .catch(() => undefined);
 
-    processOidcCallback(providerSlug).then(async (result) => {
-      if (result.type === 'success') {
-        await revalidateLinkedAccounts();
-      } else {
-        const providerName =
-          settings.currentSettings.openIdProviders.find(
-            (p) => p.slug === providerSlug
-          )?.name ?? providerSlug;
-        setError(getOidcErrorMessage(result.errorCode, providerName, intl));
-      }
-    });
+    void processOidcCallback(providerSlug)
+      .then(async (result) => {
+        if (!active) {
+          return;
+        }
+        oidcCallbackProviderRef.current = null;
+        if (result.type === 'success') {
+          await revalidateLinkedAccounts();
+        } else {
+          const providerName =
+            settings.currentSettings.openIdProviders.find(
+              (p) => p.slug === providerSlug
+            )?.name ?? providerSlug;
+          setError(getOidcErrorMessage(result.errorCode, providerName, intl));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          oidcCallbackProviderRef.current = null;
+          setError(intl.formatMessage(messages.errorUnknown));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
@@ -147,12 +169,24 @@ const UserLinkedAccountsSettings = () => {
     return accounts;
   }, [user, linkedOidcAccounts]);
 
-  const linkPlexAccount = async () => {
+  useEffect(() => {
+    return () => {
+      if (plexAttemptRef.current !== undefined) {
+        plexOAuth.cancelLogin(plexAttemptRef.current);
+      }
+    };
+  }, []);
+
+  const linkPlexAccount = async (attemptId: number) => {
     setError(null);
     try {
       const authToken = await plexOAuth.login(
-        settings.currentSettings.plexClientIdentifier
+        settings.currentSettings.plexClientIdentifier,
+        attemptId
       );
+      if (plexAttemptRef.current !== attemptId) {
+        return;
+      }
       await axios.post(
         `/api/v1/user/${user?.id}/settings/linked-accounts/plex`,
         {
@@ -161,6 +195,9 @@ const UserLinkedAccountsSettings = () => {
       );
       await revalidateUser();
     } catch (e) {
+      if (plexAttemptRef.current !== attemptId) {
+        return;
+      }
       switch (e?.response?.status) {
         case 401:
           setError(intl.formatMessage(messages.plexErrorUnauthorized));
@@ -171,6 +208,10 @@ const UserLinkedAccountsSettings = () => {
         default:
           setError(intl.formatMessage(messages.errorUnknown));
       }
+    } finally {
+      if (plexAttemptRef.current === attemptId) {
+        plexAttemptRef.current = undefined;
+      }
     }
   };
 
@@ -178,8 +219,12 @@ const UserLinkedAccountsSettings = () => {
     {
       name: 'Plex',
       action: () => {
-        plexOAuth.preparePopup();
-        setTimeout(() => linkPlexAccount(), 1500);
+        if (plexAttemptRef.current !== undefined) {
+          return;
+        }
+        const attemptId = plexOAuth.preparePopup();
+        plexAttemptRef.current = attemptId;
+        void linkPlexAccount(attemptId);
       },
       hide:
         settings.currentSettings.mediaServerType !== MediaServerType.PLEX ||

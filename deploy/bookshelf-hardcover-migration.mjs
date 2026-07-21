@@ -1,16 +1,27 @@
 #!/usr/bin/env node
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const MAX_DELAY_MS = 5 * 60 * 1000;
+const MAX_RATE_LIMIT_RETRIES = 20;
+export const MAX_MIGRATION_JSON_BYTES = 64 * 1024 * 1024;
 
 const getApiTimeoutMs = () => {
   const timeoutMs = Number(process.env.HARDCOVER_API_TIMEOUT_MS ?? 30000);
 
-  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-    throw new Error('HARDCOVER_API_TIMEOUT_MS must be a positive integer.');
+  if (
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs <= 0 ||
+    timeoutMs > MAX_DELAY_MS
+  ) {
+    throw new Error(
+      `HARDCOVER_API_TIMEOUT_MS must be an integer from 1 through ${MAX_DELAY_MS}.`
+    );
   }
 
   return timeoutMs;
@@ -30,9 +41,9 @@ const getValidationLookupRetries = () => {
 
   const retries = Number(rawValue);
 
-  if (!Number.isInteger(retries) || retries < 0) {
+  if (!Number.isInteger(retries) || retries < 0 || retries > 20) {
     throw new Error(
-      'HARDCOVER_VALIDATION_LOOKUP_RETRIES must be a non-negative integer.'
+      'HARDCOVER_VALIDATION_LOOKUP_RETRIES must be an integer from 0 through 20.'
     );
   }
 
@@ -48,9 +59,9 @@ const getValidationLookupRetryDelayMs = () => {
 
   const delayMs = Number(rawValue);
 
-  if (!Number.isInteger(delayMs) || delayMs < 0) {
+  if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > MAX_DELAY_MS) {
     throw new Error(
-      'HARDCOVER_VALIDATION_LOOKUP_RETRY_DELAY_MS must be a non-negative integer.'
+      `HARDCOVER_VALIDATION_LOOKUP_RETRY_DELAY_MS must be an integer from 0 through ${MAX_DELAY_MS}.`
     );
   }
 
@@ -84,9 +95,9 @@ const getRateLimitDelayMs = () => {
 
   const delayMs = Number(rawValue);
 
-  if (!Number.isInteger(delayMs) || delayMs < 0) {
+  if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > MAX_DELAY_MS) {
     throw new Error(
-      'HARDCOVER_RATE_LIMIT_DELAY_MS must be a non-negative integer.'
+      `HARDCOVER_RATE_LIMIT_DELAY_MS must be an integer from 0 through ${MAX_DELAY_MS}.`
     );
   }
 
@@ -102,9 +113,9 @@ const getRateLimitBatchSize = () => {
 
   const batchSize = Number(rawValue);
 
-  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+  if (!Number.isInteger(batchSize) || batchSize <= 0 || batchSize > 100000) {
     throw new Error(
-      'HARDCOVER_RATE_LIMIT_BATCH_SIZE must be a positive integer.'
+      'HARDCOVER_RATE_LIMIT_BATCH_SIZE must be an integer from 1 through 100000.'
     );
   }
 
@@ -120,9 +131,13 @@ const getRateLimitMaxRetries = () => {
 
   const maxRetries = Number(rawValue);
 
-  if (!Number.isInteger(maxRetries) || maxRetries < 0) {
+  if (
+    !Number.isInteger(maxRetries) ||
+    maxRetries < 0 ||
+    maxRetries > MAX_RATE_LIMIT_RETRIES
+  ) {
     throw new Error(
-      'HARDCOVER_RATE_LIMIT_MAX_RETRIES must be a non-negative integer.'
+      `HARDCOVER_RATE_LIMIT_MAX_RETRIES must be an integer from 0 through ${MAX_RATE_LIMIT_RETRIES}.`
     );
   }
 
@@ -138,9 +153,9 @@ const getRateLimitBackoffBaseMs = () => {
 
   const baseMs = Number(rawValue);
 
-  if (!Number.isInteger(baseMs) || baseMs <= 0) {
+  if (!Number.isInteger(baseMs) || baseMs <= 0 || baseMs > MAX_DELAY_MS) {
     throw new Error(
-      'HARDCOVER_RATE_LIMIT_BACKOFF_BASE_MS must be a positive integer.'
+      `HARDCOVER_RATE_LIMIT_BACKOFF_BASE_MS must be an integer from 1 through ${MAX_DELAY_MS}.`
     );
   }
 
@@ -156,9 +171,9 @@ const getRecoveryLookupLimit = () => {
 
   const limit = Number(rawValue);
 
-  if (!Number.isInteger(limit) || limit <= 0) {
+  if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
     throw new Error(
-      'HARDCOVER_RECOVERY_LOOKUP_LIMIT must be a positive integer.'
+      'HARDCOVER_RECOVERY_LOOKUP_LIMIT must be an integer from 1 through 100.'
     );
   }
 
@@ -218,8 +233,10 @@ const getMatchConcurrency = () => {
 
   const concurrency = Number(rawValue);
 
-  if (!Number.isInteger(concurrency) || concurrency <= 0) {
-    throw new Error('HARDCOVER_MATCH_CONCURRENCY must be a positive integer.');
+  if (!Number.isInteger(concurrency) || concurrency <= 0 || concurrency > 64) {
+    throw new Error(
+      'HARDCOVER_MATCH_CONCURRENCY must be an integer from 1 through 64.'
+    );
   }
 
   return concurrency;
@@ -234,9 +251,9 @@ const getCheckpointInterval = () => {
 
   const interval = Number(rawValue);
 
-  if (!Number.isInteger(interval) || interval <= 0) {
+  if (!Number.isInteger(interval) || interval <= 0 || interval > 10000) {
     throw new Error(
-      'HARDCOVER_CHECKPOINT_INTERVAL must be a positive integer.'
+      'HARDCOVER_CHECKPOINT_INTERVAL must be an integer from 1 through 10000.'
     );
   }
 
@@ -647,16 +664,73 @@ const lookupTermVariants = (identifier) => {
   return [...terms].filter(Boolean);
 };
 
+const MAX_HTTP_REDIRECTS = 5;
+const MAX_HTTP_RESPONSE_BYTES = 16 * 1024 * 1024;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const responseTimeoutCleanups = new WeakMap();
+
+const clearResponseTimeout = (response) => {
+  responseTimeoutCleanups.get(response)?.();
+  responseTimeoutCleanups.delete(response);
+};
+
 const fetchWithTimeout = async (url, options = {}) => {
   const apiTimeoutMs = getApiTimeoutMs();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), apiTimeoutMs);
+  let currentUrl = new URL(url);
+  let currentOptions = { ...options };
+  let responseOwnsTimeout = false;
 
   try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
+    for (let redirectCount = 0; ; redirectCount++) {
+      const response = await fetch(currentUrl, {
+        ...currentOptions,
+        redirect: 'manual',
+        signal: controller.signal,
+      });
+
+      if (!REDIRECT_STATUSES.has(response.status)) {
+        responseTimeoutCleanups.set(response, () => clearTimeout(timeout));
+        responseOwnsTimeout = true;
+        return response;
+      }
+
+      await response.body?.cancel();
+      const location = response.headers.get('location');
+
+      if (!location) {
+        throw new Error(`Redirect response is missing Location: ${currentUrl}`);
+      }
+      if (redirectCount >= MAX_HTTP_REDIRECTS) {
+        throw new Error(`Too many redirects: ${url}`);
+      }
+
+      const redirectUrl = new URL(location, currentUrl);
+      if (redirectUrl.origin !== currentUrl.origin) {
+        throw new Error(
+          `Refusing cross-origin redirect from ${currentUrl.origin} to ${redirectUrl.origin}`
+        );
+      }
+
+      const method = String(currentOptions.method ?? 'GET').toUpperCase();
+      if (
+        response.status === 303 ||
+        ((response.status === 301 || response.status === 302) &&
+          method === 'POST')
+      ) {
+        const headers = new Headers(currentOptions.headers);
+        headers.delete('content-length');
+        headers.delete('content-type');
+        currentOptions = {
+          ...currentOptions,
+          body: undefined,
+          headers,
+          method: 'GET',
+        };
+      }
+      currentUrl = redirectUrl;
+    }
   } catch (error) {
     if (error?.name === 'AbortError') {
       throw new Error(`Request timed out after ${apiTimeoutMs}ms: ${url}`);
@@ -664,8 +738,64 @@ const fetchWithTimeout = async (url, options = {}) => {
 
     throw error;
   } finally {
-    clearTimeout(timeout);
+    if (!responseOwnsTimeout) {
+      clearTimeout(timeout);
+    }
   }
+};
+
+const readResponseText = async (response) => {
+  try {
+    const declaredLength = Number(response.headers.get('content-length'));
+
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > MAX_HTTP_RESPONSE_BYTES
+    ) {
+      await response.body?.cancel();
+      throw new Error(
+        `Response exceeds ${MAX_HTTP_RESPONSE_BYTES} bytes: ${declaredLength}`
+      );
+    }
+
+    if (!response.body) {
+      return '';
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let receivedBytes = 0;
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        receivedBytes += value.byteLength;
+        if (receivedBytes > MAX_HTTP_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw new Error(
+            `Response exceeds ${MAX_HTTP_RESPONSE_BYTES} bytes while reading`
+          );
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return Buffer.concat(chunks, receivedBytes).toString('utf8');
+  } finally {
+    clearResponseTimeout(response);
+  }
+};
+
+const readJsonResponse = async (response) =>
+  JSON.parse(await readResponseText(response));
+
+const readErrorResponse = async (response) => {
+  const body = await readResponseText(response).catch(() => '');
+  const sanitized = body.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').trim();
+  return sanitized.slice(0, 2000);
 };
 
 const sleep = (milliseconds) =>
@@ -702,6 +832,9 @@ export const addJitter = (delayMs) => {
   return Math.max(0, Math.round(delayMs + jitter));
 };
 
+export const clampRetryDelay = (delayMs) =>
+  Math.min(MAX_DELAY_MS, Math.max(0, delayMs));
+
 const fetchWithRetry = async (url, options = {}) => {
   const maxRetries = getRateLimitMaxRetries();
   const backoffBaseMs = getRateLimitBackoffBaseMs();
@@ -713,13 +846,25 @@ const fetchWithRetry = async (url, options = {}) => {
       return response;
     }
 
+    try {
+      await response.body?.cancel();
+    } finally {
+      clearResponseTimeout(response);
+    }
+
+    if (attempt === maxRetries) {
+      break;
+    }
+
     const retryAfterMs = parseRetryAfter(response.headers.get('Retry-After'));
     let delayMs;
 
     if (retryAfterMs > 0) {
-      delayMs = addJitter(retryAfterMs);
+      delayMs = clampRetryDelay(addJitter(retryAfterMs));
     } else {
-      delayMs = addJitter(backoffBaseMs * Math.pow(2, attempt));
+      delayMs = clampRetryDelay(
+        addJitter(backoffBaseMs * Math.pow(2, attempt))
+      );
     }
 
     console.error(
@@ -745,10 +890,13 @@ const lookupBook = async ({ baseUrl, apiKey, term }) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Lookup failed for ${term}: ${response.status}`);
+    const responseBody = await readErrorResponse(response);
+    throw new Error(
+      `Lookup failed for ${term}: ${response.status}${responseBody ? ` ${responseBody}` : ''}`
+    );
   }
 
-  const body = await response.json();
+  const body = await readJsonResponse(response);
 
   return Array.isArray(body) ? body : [];
 };
@@ -757,14 +905,14 @@ const fetchJson = async (url, options = {}) => {
   const response = await fetchWithRetry(url, options);
 
   if (!response.ok) {
-    const responseBody = await response.text().catch(() => '');
+    const responseBody = await readErrorResponse(response);
 
     throw new Error(
       `GET ${url} failed: ${response.status}${responseBody ? ` ${responseBody}` : ''}`
     );
   }
 
-  return response.json();
+  return readJsonResponse(response);
 };
 
 const lookupCacheKey = ({ serviceType, term }) =>
@@ -904,14 +1052,14 @@ const postJson = async ({ baseUrl, apiKey, endpoint, body }) => {
   });
 
   if (!response.ok) {
-    const responseBody = await response.text().catch(() => '');
+    const responseBody = await readErrorResponse(response);
 
     throw new Error(
       `POST ${endpoint} failed: ${response.status}${responseBody ? ` ${responseBody}` : ''}`
     );
   }
 
-  return response.json();
+  return readJsonResponse(response);
 };
 
 const sqliteAvailable = async () => {
@@ -1368,14 +1516,14 @@ const putJson = async ({ baseUrl, apiKey, endpoint, body }) => {
   });
 
   if (!response.ok) {
-    const responseBody = await response.text().catch(() => '');
+    const responseBody = await readErrorResponse(response);
 
     throw new Error(
       `PUT ${endpoint} failed: ${response.status}${responseBody ? ` ${responseBody}` : ''}`
     );
   }
 
-  return response.json();
+  return readJsonResponse(response);
 };
 
 const getJson = async ({ baseUrl, apiKey, endpoint, searchParams }) => {
@@ -1392,14 +1540,14 @@ const getJson = async ({ baseUrl, apiKey, endpoint, searchParams }) => {
   });
 
   if (!response.ok) {
-    const responseBody = await response.text().catch(() => '');
+    const responseBody = await readErrorResponse(response);
 
     throw new Error(
       `GET ${endpoint} failed: ${response.status}${responseBody ? ` ${responseBody}` : ''}`
     );
   }
 
-  return response.json();
+  return readJsonResponse(response);
 };
 
 const resultTitle = (result) => normalizeComparableText(result?.title);
@@ -3520,8 +3668,56 @@ const checkCutoverReadiness = async ({ migrationDir }) => {
   }
 };
 
-const readJson = async (filePath) =>
-  JSON.parse(await fs.readFile(filePath, 'utf8'));
+export const readMigrationJson = async (filePath) => {
+  let handle;
+  try {
+    handle = await fs.open(
+      filePath,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+    );
+  } catch (error) {
+    if (error?.code === 'ELOOP') {
+      throw new Error(`Migration JSON path must not be a symlink: ${filePath}`);
+    }
+    throw error;
+  }
+
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1) {
+      throw new Error(
+        `Migration JSON path must be a single-link regular file: ${filePath}`
+      );
+    }
+    if (stat.size > MAX_MIGRATION_JSON_BYTES) {
+      throw new Error(
+        `Migration JSON exceeds ${MAX_MIGRATION_JSON_BYTES} bytes: ${filePath}`
+      );
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    while (totalBytes <= MAX_MIGRATION_JSON_BYTES) {
+      const buffer = Buffer.allocUnsafe(
+        Math.min(64 * 1024, MAX_MIGRATION_JSON_BYTES + 1 - totalBytes)
+      );
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) {
+        return JSON.parse(Buffer.concat(chunks, totalBytes).toString('utf8'));
+      }
+      chunks.push(buffer.subarray(0, bytesRead));
+      totalBytes += bytesRead;
+    }
+
+    throw new Error(
+      `Migration JSON exceeds ${MAX_MIGRATION_JSON_BYTES} bytes while reading: ${filePath}`
+    );
+  } finally {
+    await handle.close();
+  }
+};
+
+const readJson = readMigrationJson;
 
 const resolveJsonOutputPath = (filePath) => {
   const resolvedPath = path.resolve(filePath);
@@ -3537,12 +3733,28 @@ const resolveJsonOutputPath = (filePath) => {
 
 const writeJson = async (filePath, value) => {
   const outputPath = resolveJsonOutputPath(filePath);
-  const tmpPath = `${outputPath}.tmp`;
+  const outputDirectory = path.dirname(outputPath);
+  const tmpPath = path.join(
+    outputDirectory,
+    `.${path.basename(outputPath)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  let temporaryFile;
 
-  await fs.mkdir(path.dirname(outputPath), { recursive: true });
-  // codeql[js/http-to-file-access]
-  await fs.writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`);
-  await fs.rename(tmpPath, outputPath);
+  await fs.mkdir(outputDirectory, { recursive: true });
+  try {
+    // Exclusive creation prevents a planted temporary path from redirecting
+    // writes, and rename replaces a planted output symlink instead of following it.
+    temporaryFile = await fs.open(tmpPath, 'wx', 0o600);
+    await temporaryFile.writeFile(`${JSON.stringify(value, null, 2)}\n`);
+    await temporaryFile.sync();
+    await temporaryFile.close();
+    temporaryFile = undefined;
+    await fs.rename(tmpPath, outputPath);
+  } catch (error) {
+    await temporaryFile?.close().catch(() => undefined);
+    await fs.rm(tmpPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
 };
 
 const printSummary = async ({ migrationDir }) => {

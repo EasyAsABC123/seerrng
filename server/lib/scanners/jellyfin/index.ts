@@ -12,15 +12,26 @@ import type {
   TmdbTvDetails,
 } from '@server/api/themoviedb/interfaces';
 import { MediaServerType } from '@server/constants/server';
-import { getRepository } from '@server/datasource';
-import { User } from '@server/entity/User';
+import {
+  ConfigurationAuthorityChangedError,
+  captureConfigurationAuthority,
+  runWithConfigurationAdmission,
+  runWithConfigurationSnapshot,
+  type ConfigurationAuthoritySnapshot,
+} from '@server/lib/configurationAdmission';
+import {
+  MediaServerUserAuthorityChangedError,
+  captureMediaServerUserAuthority,
+  runWithMediaServerUserAuthority,
+  type MediaServerUserAuthoritySnapshot,
+} from '@server/lib/mediaServerUserAuthority';
 import type {
   ProcessableSeason,
   RunnableScanner,
   StatusBase,
 } from '@server/lib/scanners/baseScanner';
 import BaseScanner from '@server/lib/scanners/baseScanner';
-import type { Library } from '@server/lib/settings';
+import type { JellyfinSettings, Library } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import { getHostname } from '@server/utils/getHostname';
 import { uniqWith } from 'lodash';
@@ -30,7 +41,7 @@ interface JellyfinSyncStatus extends StatusBase {
   libraries: Library[];
 }
 
-class JellyfinScanner
+export class JellyfinScanner
   extends BaseScanner<JellyfinLibraryItem>
   implements RunnableScanner<JellyfinSyncStatus>
 {
@@ -39,6 +50,9 @@ class JellyfinScanner
   private currentLibrary: Library;
   private isRecentOnly = false;
   private processedAnidbSeason: Map<number, Map<number, number>>;
+  private configurationSnapshot: ConfigurationAuthoritySnapshot;
+  private jellyfinSettingsSnapshot: JellyfinSettings;
+  private ownerAuthoritySnapshot: MediaServerUserAuthoritySnapshot;
 
   constructor({ isRecentOnly }: { isRecentOnly?: boolean } = {}) {
     super('Jellyfin Sync');
@@ -154,6 +168,8 @@ class JellyfinScanner
           jellyfinMediaId: metadata.Id,
           imdbId,
           title: metadata.Name,
+          mutationGuard: (callback) => this.withConfigurationSnapshot(callback),
+          outerMutationGuard: (callback) => this.withOwnerAuthority(callback),
         });
       }
 
@@ -164,9 +180,17 @@ class JellyfinScanner
           jellyfinMediaId: metadata.Id,
           imdbId,
           title: metadata.Name,
+          mutationGuard: (callback) => this.withConfigurationSnapshot(callback),
+          outerMutationGuard: (callback) => this.withOwnerAuthority(callback),
         });
       }
     } catch (e) {
+      if (
+        e instanceof ConfigurationAuthorityChangedError ||
+        e instanceof MediaServerUserAuthorityChangedError
+      ) {
+        throw e;
+      }
       this.log(
         `Failed to process Jellyfin item, id: ${jellyfinitem.Id}`,
         'error',
@@ -423,6 +447,9 @@ class JellyfinScanner
               : undefined,
             jellyfinMediaId: Id,
             title: tvShow.name,
+            mutationGuard: (callback) =>
+              this.withConfigurationSnapshot(callback),
+            outerMutationGuard: (callback) => this.withOwnerAuthority(callback),
           }
         );
       } else {
@@ -435,6 +462,12 @@ class JellyfinScanner
         );
       }
     } catch (e) {
+      if (
+        e instanceof ConfigurationAuthorityChangedError ||
+        e instanceof MediaServerUserAuthorityChangedError
+      ) {
+        throw e;
+      }
       this.log(
         `Failed to process Jellyfin item. Id: ${
           jellyfinitem.SeriesId ?? jellyfinitem.SeasonId ?? jellyfinitem.Id
@@ -464,28 +497,41 @@ class JellyfinScanner
     }
 
     const sessionId = this.startRun();
+    if (!sessionId) {
+      return;
+    }
 
     try {
-      const userRepository = getRepository(User);
-      const admin = await userRepository.findOne({
-        where: { id: 1 },
-        select: ['id', 'jellyfinUserId', 'jellyfinDeviceId'],
-        order: { id: 'ASC' },
+      await runWithConfigurationAdmission('jellyfin', async () => {
+        const currentSettings = getSettings();
+        this.jellyfinSettingsSnapshot = structuredClone(
+          currentSettings.jellyfin
+        );
+        this.configurationSnapshot = captureConfigurationAuthority(
+          'jellyfin',
+          currentSettings
+        );
       });
-
-      if (!admin) {
+      this.ownerAuthoritySnapshot = await captureMediaServerUserAuthority(
+        1,
+        'jellyfin'
+      );
+      if (
+        !this.ownerAuthoritySnapshot.jellyfinUserId ||
+        !this.ownerAuthoritySnapshot.jellyfinDeviceId
+      ) {
         return this.log('No admin configured. Jellyfin sync skipped.', 'warn');
       }
 
       this.jfClient = new JellyfinAPI(
-        getHostname(),
-        settings.jellyfin.apiKey,
-        admin.jellyfinDeviceId
+        getHostname(this.jellyfinSettingsSnapshot),
+        this.jellyfinSettingsSnapshot.apiKey,
+        this.ownerAuthoritySnapshot.jellyfinDeviceId
       );
 
-      this.jfClient.setUserId(admin.jellyfinUserId ?? '');
+      this.jfClient.setUserId(this.ownerAuthoritySnapshot.jellyfinUserId);
 
-      this.libraries = settings.jellyfin.libraries.filter(
+      this.libraries = this.jellyfinSettingsSnapshot.libraries.filter(
         (library) => library.enabled
       );
 
@@ -500,7 +546,9 @@ class JellyfinScanner
             `Beginning to process recently added for library: ${library.name}`,
             'info'
           );
-          const libraryItems = await this.jfClient.getRecentlyAdded(library.id);
+          const libraryItems = await this.withConfigurationSnapshot(() =>
+            this.jfClient.getRecentlyAdded(library.id)
+          );
 
           // Bundle items up by rating keys
           this.items = uniqWith(libraryItems, (mediaA, mediaB) => {
@@ -523,7 +571,9 @@ class JellyfinScanner
           // Reset AniDB season tracking per library
           this.processedAnidbSeason = new Map();
           this.log(`Beginning to process library: ${library.name}`, 'info');
-          this.items = await this.jfClient.getLibraryContents(library.id);
+          this.items = await this.withConfigurationSnapshot(() =>
+            this.jfClient.getLibraryContents(library.id)
+          );
           await this.loop(this.processItem.bind(this), { sessionId });
         }
       }
@@ -549,6 +599,21 @@ class JellyfinScanner
       currentLibrary: this.currentLibrary,
       libraries: this.libraries,
     };
+  }
+
+  private withConfigurationSnapshot<Result>(
+    callback: () => Promise<Result>
+  ): Promise<Result> {
+    return runWithConfigurationSnapshot(this.configurationSnapshot, callback);
+  }
+
+  private withOwnerAuthority<Result>(
+    callback: () => Promise<Result>
+  ): Promise<Result> {
+    return runWithMediaServerUserAuthority(
+      this.ownerAuthoritySnapshot,
+      callback
+    );
   }
 }
 

@@ -8,6 +8,8 @@ import QuotaDisplay from '@app/components/RequestModal/QuotaDisplay';
 import useToasts from '@app/hooks/useToasts';
 import { useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
+import { getCoveredCollectionPartIds } from '@app/utils/collectionRequestState';
+import { mapWithConcurrency } from '@app/utils/concurrency';
 import defineMessages from '@app/utils/defineMessages';
 import { MediaRequestStatus, MediaStatus } from '@server/constants/media';
 import type { MediaRequest } from '@server/entity/MediaRequest';
@@ -15,7 +17,7 @@ import type { QuotaResponse } from '@server/interfaces/api/userInterfaces';
 import { Permission } from '@server/lib/permissions';
 import type { Collection } from '@server/models/Collection';
 import axios from 'axios';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR, { mutate } from 'swr';
 
@@ -25,11 +27,14 @@ const messages = defineMessages('components.RequestModal', {
   requestcollectiontitle: 'Request Collection',
   requestcollection4ktitle: 'Request Collection in 4K',
   requesterror: 'Something went wrong while submitting the request.',
+  requestpartial: '{created} requested; {failed} failed.',
   selectmovies: 'Select Movie(s)',
   requestmovies: 'Request {count} {count, plural, one {Movie} other {Movies}}',
   requestmovies4k:
     'Request {count} {count, plural, one {Movie} other {Movies}} in 4K',
 });
+
+const COLLECTION_REQUEST_CONCURRENCY = 5;
 
 interface RequestModalProps extends React.HTMLAttributes<HTMLDivElement> {
   tmdbId: number;
@@ -50,8 +55,14 @@ const CollectionRequestModal = ({
   const [requestOverrides, setRequestOverrides] =
     useState<RequestOverrides | null>(null);
   const [selectedParts, setSelectedParts] = useState<number[]>([]);
+  const mountedRef = useRef(true);
+  const submissionActiveRef = useRef(false);
   const { addToast } = useToasts();
-  const { data, error } = useSWR<Collection>(`/api/v1/collection/${tmdbId}`, {
+  const {
+    data,
+    error,
+    mutate: revalidateCollection,
+  } = useSWR<Collection>(`/api/v1/collection/${tmdbId}`, {
     revalidateOnMount: true,
   });
   const intl = useIntl();
@@ -72,39 +83,8 @@ const CollectionRequestModal = ({
       .map((part) => part.id);
   };
 
-  const getAllRequestedParts = (): number[] => {
-    const requestedParts = (data?.parts ?? []).reduce(
-      (requestedParts, part) => {
-        return [
-          ...requestedParts,
-          ...(part.mediaInfo?.requests ?? [])
-            .filter(
-              (request) =>
-                request.is4k === is4k &&
-                request.status !== MediaRequestStatus.DECLINED &&
-                request.status !== MediaRequestStatus.FAILED &&
-                request.status !== MediaRequestStatus.COMPLETED
-            )
-            .map((part) => part.id),
-        ];
-      },
-      [] as number[]
-    );
-
-    const availableParts = (data?.parts ?? [])
-      .filter(
-        (part) =>
-          part.mediaInfo &&
-          (part.mediaInfo[is4k ? 'status4k' : 'status'] ===
-            MediaStatus.AVAILABLE ||
-            part.mediaInfo[is4k ? 'status4k' : 'status'] ===
-              MediaStatus.PROCESSING) &&
-          !requestedParts.includes(part.id)
-      )
-      .map((part) => part.id);
-
-    return [...requestedParts, ...availableParts];
-  };
+  const getAllRequestedParts = (): number[] =>
+    getCoveredCollectionPartIds(data?.parts ?? [], is4k);
 
   const isSelectedPart = (tmdbId: number): boolean =>
     selectedParts.includes(tmdbId);
@@ -185,7 +165,18 @@ const CollectionRequestModal = ({
     }
   }, [isUpdating, onUpdating]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const sendRequest = useCallback(async () => {
+    if (submissionActiveRef.current) {
+      return;
+    }
+    submissionActiveRef.current = true;
     setIsUpdating(true);
 
     try {
@@ -200,44 +191,104 @@ const CollectionRequestModal = ({
         };
       }
 
-      await Promise.all(
-        (
-          data?.parts.filter((part) => selectedParts.includes(part.id)) ?? []
-        ).map(async (part) => {
-          await axios.post<MediaRequest>('/api/v1/request', {
-            mediaId: part.id,
-            mediaType: 'movie',
-            is4k,
-            ...overrideParams,
-          });
-        })
+      const parts =
+        data?.parts.filter((part) => selectedParts.includes(part.id)) ?? [];
+      const outcomes = await mapWithConcurrency(
+        parts,
+        COLLECTION_REQUEST_CONCURRENCY,
+        async (part) => {
+          try {
+            await axios.post<MediaRequest>('/api/v1/request', {
+              mediaId: part.id,
+              mediaType: 'movie',
+              is4k,
+              ...overrideParams,
+            });
+            return { id: part.id, succeeded: true } as const;
+          } catch {
+            return { id: part.id, succeeded: false } as const;
+          }
+        }
       );
+      const succeededIds = new Set(
+        outcomes
+          .filter((outcome) => outcome.succeeded)
+          .map((outcome) => outcome.id)
+      );
+      const failedIds = outcomes
+        .filter((outcome) => !outcome.succeeded)
+        .map((outcome) => outcome.id);
+      const failedCount = outcomes.length - succeededIds.size;
 
-      if (onComplete) {
+      if (succeededIds.size > 0) {
+        void mutate('/api/v1/request/count').catch(() => undefined);
+      }
+
+      if (succeededIds.size > 0 && failedCount > 0) {
+        await revalidateCollection().catch(() => undefined);
+        if (mountedRef.current) {
+          setSelectedParts(failedIds);
+        }
+      }
+
+      if (
+        mountedRef.current &&
+        onComplete &&
+        succeededIds.size > 0 &&
+        failedCount === 0
+      ) {
+        const coveredIds = new Set(
+          getCoveredCollectionPartIds(data?.parts ?? [], is4k)
+        );
+        succeededIds.forEach((id) => coveredIds.add(id));
+        const requestableCollectionIds = (data?.parts ?? [])
+          .filter((part) => part.mediaInfo?.status !== MediaStatus.BLOCKLISTED)
+          .map((part) => part.id);
         onComplete(
-          selectedParts.length === (data?.parts ?? []).length
+          requestableCollectionIds.every((id) => coveredIds.has(id))
             ? MediaStatus.UNKNOWN
             : MediaStatus.PARTIALLY_AVAILABLE
         );
-        mutate('/api/v1/request/count');
       }
 
-      addToast(
-        <span>
-          {intl.formatMessage(messages.requestSuccess, {
-            title: data?.name,
-            strong: (msg: React.ReactNode) => <strong>{msg}</strong>,
-          })}
-        </span>,
-        { appearance: 'success', autoDismiss: true }
-      );
+      if (mountedRef.current) {
+        if (failedCount === 0) {
+          addToast(
+            <span>
+              {intl.formatMessage(messages.requestSuccess, {
+                title: data?.name,
+                strong: (msg: React.ReactNode) => <strong>{msg}</strong>,
+              })}
+            </span>,
+            { appearance: 'success', autoDismiss: true }
+          );
+        } else if (succeededIds.size > 0) {
+          addToast(
+            intl.formatMessage(messages.requestpartial, {
+              created: succeededIds.size,
+              failed: failedCount,
+            }),
+            { appearance: 'warning' }
+          );
+        } else {
+          addToast(intl.formatMessage(messages.requesterror), {
+            appearance: 'error',
+            autoDismiss: true,
+          });
+        }
+      }
     } catch {
-      addToast(intl.formatMessage(messages.requesterror), {
-        appearance: 'error',
-        autoDismiss: true,
-      });
+      if (mountedRef.current) {
+        addToast(intl.formatMessage(messages.requesterror), {
+          appearance: 'error',
+          autoDismiss: true,
+        });
+      }
     } finally {
-      setIsUpdating(false);
+      submissionActiveRef.current = false;
+      if (mountedRef.current) {
+        setIsUpdating(false);
+      }
     }
   }, [
     requestOverrides,
@@ -248,6 +299,7 @@ const CollectionRequestModal = ({
     intl,
     selectedParts,
     is4k,
+    revalidateCollection,
   ]);
 
   const hasAutoApprove = hasPermission(
@@ -288,7 +340,7 @@ const CollectionRequestModal = ({
                 }
               )
       }
-      okDisabled={selectedParts.length === 0}
+      okDisabled={selectedParts.length === 0 || isUpdating}
       okButtonType={'primary'}
       backdrop={`https://image.tmdb.org/t/p/w1920_and_h800_multi_faces/${data?.backdropPath}`}
     >

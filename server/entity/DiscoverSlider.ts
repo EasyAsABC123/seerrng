@@ -1,35 +1,36 @@
 import type { DiscoverSliderType } from '@server/constants/discover';
 import { defaultSliders } from '@server/constants/discover';
 import { getRepository } from '@server/datasource';
-import logger from '@server/logger';
 import { DbAwareColumn, resolveDbType } from '@server/utils/DbColumnHelper';
+import type { Repository } from 'typeorm';
 import {
   Column,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 @Entity()
+@Index('UQ_discover_slider_builtin_type', ['type'], {
+  unique: true,
+  where: '"isBuiltIn" = true',
+})
 class DiscoverSlider {
-  public static async bootstrapSliders(): Promise<void> {
-    const sliderRepository = getRepository(DiscoverSlider);
-
-    for (const slider of defaultSliders) {
-      const existingSlider = await sliderRepository.findOne({
-        where: {
-          type: slider.type,
-        },
-      });
-
-      if (!existingSlider) {
-        logger.info('Creating built-in discovery slider', {
-          label: 'Discover Slider',
-          slider,
-        });
-        await sliderRepository.save(new DiscoverSlider(slider));
-      }
-    }
+  public static async bootstrapSliders(
+    repository: Repository<DiscoverSlider> = getRepository(DiscoverSlider)
+  ): Promise<void> {
+    await repository
+      .createQueryBuilder()
+      .insert()
+      .into(DiscoverSlider)
+      .values(defaultSliders)
+      .orIgnore()
+      // PostgreSQL returns no row for values skipped by ON CONFLICT DO
+      // NOTHING. TypeORM otherwise tries to copy generated IDs from those
+      // missing rows back into every input entity and aborts startup.
+      .updateEntity(false)
+      .execute();
   }
 
   @PrimaryGeneratedColumn()

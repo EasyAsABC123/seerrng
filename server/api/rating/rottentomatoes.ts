@@ -53,6 +53,88 @@ const INEXACT_TITLE_FACTOR = 0.25;
 const ALTERNATE_TITLE_FACTOR = 0.8;
 const PER_YEAR_PENALTY = 0.4;
 const MINIMUM_SCORE = 0.175;
+const MAX_RT_RESULTS = 20;
+const MAX_RT_ALTERNATE_TITLES = 20;
+const MAX_RT_TITLE_LENGTH = 500;
+const RT_CACHE_TTL = 300;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const boundedTitles = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .slice(0, MAX_RT_ALTERNATE_TITLES)
+    .filter((title): title is string => typeof title === 'string')
+    .map((title) => title.slice(0, MAX_RT_TITLE_LENGTH));
+};
+
+export const sanitizeRtHits = (value: unknown): RTAlgoliaHit[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_RT_RESULTS)
+    .flatMap((rawHit) => {
+      if (!isRecord(rawHit) || typeof rawHit.title !== 'string') {
+        return [];
+      }
+      const rottenTomatoes = isRecord(rawHit.rottenTomatoes)
+        ? rawHit.rottenTomatoes
+        : undefined;
+      const numericScore = (score: unknown): number =>
+        typeof score === 'number' && Number.isFinite(score)
+          ? Math.min(100, Math.max(0, score))
+          : 0;
+
+      return [
+        {
+          emsId: '',
+          emsVersionId: '',
+          tmsId: '',
+          type: typeof rawHit.type === 'string' ? rawHit.type.slice(0, 64) : '',
+          title: rawHit.title.slice(0, MAX_RT_TITLE_LENGTH),
+          titles: boundedTitles(rawHit.titles),
+          description: '',
+          releaseYear:
+            typeof rawHit.releaseYear === 'number' &&
+            Number.isFinite(rawHit.releaseYear)
+              ? Math.trunc(rawHit.releaseYear)
+              : 0,
+          rating: '',
+          genres: [],
+          updateDate: '',
+          isEmsSearchable: rawHit.isEmsSearchable === true,
+          rtId: 0,
+          vanity:
+            typeof rawHit.vanity === 'string'
+              ? rawHit.vanity.slice(0, 200)
+              : '',
+          aka: boundedTitles(rawHit.aka),
+          posterImageUrl: '',
+          rottenTomatoes: rottenTomatoes
+            ? {
+                audienceScore: numericScore(rottenTomatoes.audienceScore),
+                criticsIconUrl: '',
+                wantToSeeCount: 0,
+                audienceIconUrl: '',
+                scoreSentiment: '',
+                certifiedFresh: rottenTomatoes.certifiedFresh === true,
+                criticsScore: numericScore(rottenTomatoes.criticsScore),
+              }
+            : undefined,
+        },
+      ];
+    });
+
+const getContentHits = (value: unknown): RTAlgoliaHit[] => {
+  if (!isRecord(value) || !Array.isArray(value.results)) {
+    return [];
+  }
+  const content = value.results
+    .slice(0, 10)
+    .find((result) => isRecord(result) && result.index === 'content_rt');
+  return isRecord(content) ? sanitizeRtHits(content.hits) : [];
+};
 
 // Normalization for title comparisons.
 // Lowercase and strip non-alphanumeric (unicode-aware).
@@ -136,24 +218,36 @@ class RottenTomatoes extends ExternalAPI {
   ): Promise<RTRating | null> {
     try {
       const filters = encodeURIComponent('isEmsSearchable=1 AND type:"movie"');
-      const data = await this.post<RTAlgoliaSearchResponse>('/queries', {
-        requests: [
-          {
-            indexName: 'content_rt',
-            query: name.replace(/\bthe\b ?/gi, ''),
-            params: `filters=${filters}&hitsPerPage=20`,
-          },
-        ],
-      });
+      const data = await this.post<RTAlgoliaSearchResponse>(
+        '/queries',
+        {
+          requests: [
+            {
+              indexName: 'content_rt',
+              query: name
+                .slice(0, MAX_RT_TITLE_LENGTH)
+                .replace(/\bthe\b ?/gi, ''),
+              params: `filters=${filters}&hitsPerPage=20`,
+            },
+          ],
+        },
+        undefined,
+        RT_CACHE_TTL
+      );
 
-      const contentResults = data.results.find((r) => r.index === 'content_rt');
-      const movie = best(contentResults?.hits || [], name, year);
+      const movie = best(
+        getContentHits(data),
+        name.slice(0, MAX_RT_TITLE_LENGTH),
+        year
+      );
 
       if (!movie?.rottenTomatoes) return null;
 
       return {
         title: movie.title,
-        url: `https://www.rottentomatoes.com/m/${movie.vanity}`,
+        url: `https://www.rottentomatoes.com/m/${encodeURIComponent(
+          movie.vanity
+        )}`,
         criticsRating: movie.rottenTomatoes.certifiedFresh
           ? 'Certified Fresh'
           : movie.rottenTomatoes.criticsScore >= 60
@@ -179,24 +273,34 @@ class RottenTomatoes extends ExternalAPI {
   ): Promise<RTRating | null> {
     try {
       const filters = encodeURIComponent('isEmsSearchable=1 AND type:"tv"');
-      const data = await this.post<RTAlgoliaSearchResponse>('/queries', {
-        requests: [
-          {
-            indexName: 'content_rt',
-            query: name,
-            params: `filters=${filters}&hitsPerPage=20`,
-          },
-        ],
-      });
+      const data = await this.post<RTAlgoliaSearchResponse>(
+        '/queries',
+        {
+          requests: [
+            {
+              indexName: 'content_rt',
+              query: name.slice(0, MAX_RT_TITLE_LENGTH),
+              params: `filters=${filters}&hitsPerPage=20`,
+            },
+          ],
+        },
+        undefined,
+        RT_CACHE_TTL
+      );
 
-      const contentResults = data.results.find((r) => r.index === 'content_rt');
-      const tvshow = best(contentResults?.hits || [], name, year);
+      const tvshow = best(
+        getContentHits(data),
+        name.slice(0, MAX_RT_TITLE_LENGTH),
+        year
+      );
 
       if (!tvshow?.rottenTomatoes) return null;
 
       return {
         title: tvshow.title,
-        url: `https://www.rottentomatoes.com/tv/${tvshow.vanity}`,
+        url: `https://www.rottentomatoes.com/tv/${encodeURIComponent(
+          tvshow.vanity
+        )}`,
         criticsRating:
           tvshow.rottenTomatoes.criticsScore >= 60 ? 'Fresh' : 'Rotten',
         criticsScore: tvshow.rottenTomatoes.criticsScore,

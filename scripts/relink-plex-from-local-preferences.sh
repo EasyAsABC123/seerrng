@@ -14,20 +14,15 @@ if [[ ! -f "$PLEX_PREFS" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$SETTINGS_FILE" ]]; then
+if [[ -L "$SETTINGS_FILE" || ! -f "$SETTINGS_FILE" ]]; then
   echo "Seerr settings file not found: $SETTINGS_FILE" >&2
   exit 1
 fi
 
-if [[ ! -f "$DB_FILE" ]]; then
+if [[ -L "$DB_FILE" || ! -f "$DB_FILE" ]]; then
   echo "Seerr sqlite database not found: $DB_FILE" >&2
   exit 1
 fi
-
-command -v sqlite3 >/dev/null || {
-  echo "sqlite3 is required" >&2
-  exit 1
-}
 
 readarray -t plex_values < <(
   PLEX_PREFS="$PLEX_PREFS" python - <<'PY'
@@ -52,8 +47,18 @@ PLEX_TOKEN="${plex_values[0]}"
 PLEX_MACHINE_ID="${plex_values[1]}"
 PLEX_NAME="${plex_values[2]}"
 
-curl -fsS --compressed --max-time 10 \
-  -H "X-Plex-Token: ${PLEX_TOKEN}" \
+if [[ ! "$PLEX_PROXY_PORT" =~ ^[0-9]{1,5}$ ]] ||
+  ((10#$PLEX_PROXY_PORT < 1 || 10#$PLEX_PROXY_PORT > 65535)); then
+  echo "PLEX_PROXY_PORT must be an integer from 1 through 65535" >&2
+  exit 2
+fi
+if [[ ! "$PLEX_TOKEN" =~ ^[A-Za-z0-9_-]{1,512}$ ]]; then
+  echo "Plex Preferences.xml contains an invalid token" >&2
+  exit 1
+fi
+
+printf 'X-Plex-Token: %s\n' "$PLEX_TOKEN" | curl -fsS --compressed --max-time 10 \
+  -H @- \
   "http://${PLEX_PROXY_HOST}:${PLEX_PROXY_PORT}/library/sections" \
   >/dev/null
 
@@ -65,9 +70,14 @@ PLEX_NAME="$PLEX_NAME" \
 python - <<'PY'
 import json
 import os
+import stat
+import tempfile
 from pathlib import Path
 
 path = Path(os.environ["SETTINGS_FILE"])
+path_stat = path.lstat()
+if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
+    raise RuntimeError(f"refusing non-regular settings file: {path}")
 settings = json.loads(path.read_text())
 settings.setdefault("plex", {})
 settings["plex"]["name"] = os.environ["PLEX_NAME"]
@@ -75,14 +85,47 @@ settings["plex"]["ip"] = os.environ["PLEX_PROXY_HOST"]
 settings["plex"]["port"] = int(os.environ["PLEX_PROXY_PORT"])
 settings["plex"]["useSsl"] = False
 settings["plex"]["machineId"] = os.environ["PLEX_MACHINE_ID"]
-path.write_text(json.dumps(settings, indent=2) + "\n")
+output = (json.dumps(settings, indent=2) + "\n").encode()
+fd, temporary_name = tempfile.mkstemp(
+    dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+)
+try:
+    os.fchmod(fd, stat.S_IMODE(path_stat.st_mode))
+    if hasattr(os, "fchown"):
+        os.fchown(fd, path_stat.st_uid, path_stat.st_gid)
+    with os.fdopen(fd, "wb") as temporary:
+        temporary.write(output)
+        temporary.flush()
+        os.fsync(temporary.fileno())
+    os.replace(temporary_name, path)
+    directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+except BaseException:
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+    try:
+        os.unlink(temporary_name)
+    except FileNotFoundError:
+        pass
+    raise
 PY
 
 DB_FILE="$DB_FILE" PLEX_TOKEN="$PLEX_TOKEN" python - <<'PY'
 import os
 import sqlite3
+import stat
 
-with sqlite3.connect(os.environ["DB_FILE"]) as conn:
+db_path = os.environ["DB_FILE"]
+db_stat = os.lstat(db_path)
+if stat.S_ISLNK(db_stat.st_mode) or not stat.S_ISREG(db_stat.st_mode):
+    raise RuntimeError(f"refusing non-regular sqlite database: {db_path}")
+
+with sqlite3.connect(db_path) as conn:
     conn.execute(
         """
         update user

@@ -2,14 +2,39 @@ import ExternalAPI from '@server/api/externalapi';
 import { getRepository } from '@server/datasource';
 import MetadataAlbum from '@server/entity/MetadataAlbum';
 import cacheManager from '@server/lib/cache';
-import { normalizeMusicBrainzId } from '@server/lib/externalIds';
+import {
+  isValidMusicBrainzResourceId,
+  normalizeMusicBrainzId,
+  prepareMusicBrainzBatchIds,
+} from '@server/lib/externalIds';
 import logger from '@server/logger';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import { In } from 'typeorm';
 import type { CoverArtResponse } from './interfaces';
+
+const MAX_COVER_ART_IMAGES = 100;
+const MAX_COVER_ART_IDENTIFIER_LENGTH = 256;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const boundedIdentifier = (value: unknown): number | string | undefined => {
+  if (typeof value === 'number' && Number.isSafeInteger(value)) {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const identifier = value.slice(0, MAX_COVER_ART_IDENTIFIER_LENGTH);
+  return identifier ? identifier : undefined;
+};
 
 class CoverArtArchive extends ExternalAPI {
   private readonly CACHE_TTL = 43200;
   private readonly STALE_THRESHOLD = 30 * 24 * 60 * 60 * 1000;
+  static readonly BATCH_FETCH_CONCURRENCY = 5;
 
   constructor() {
     super(
@@ -100,39 +125,72 @@ class CoverArtArchive extends ExternalAPI {
   private async fetchCoverArt(id: string): Promise<CoverArtResponse> {
     const albumId = normalizeMusicBrainzId(id);
 
+    if (!isValidMusicBrainzResourceId(albumId)) {
+      return this.createEmptyResponse(albumId);
+    }
+
     try {
-      const data = await this.get<CoverArtResponse>(
-        `/release-group/${albumId}`,
+      const rawData = await this.get<unknown>(
+        `/release-group/${encodeURIComponent(albumId)}`,
         undefined,
         this.CACHE_TTL
       );
 
-      const releaseMBID = data.release.split('/').pop();
+      if (!isRecord(rawData)) {
+        throw new Error('Invalid Cover Art Archive response');
+      }
 
-      data.images = data.images.map((image) => {
-        const fullUrl = `https://archive.org/download/mbid-${releaseMBID}/mbid-${releaseMBID}-${image.id}_thumb250.jpg`;
+      const release =
+        typeof rawData.release === 'string'
+          ? rawData.release.slice(0, MAX_COVER_ART_IDENTIFIER_LENGTH)
+          : `/release/${albumId}`;
 
-        if (image.front) {
-          getRepository(MetadataAlbum)
-            .upsert(
-              { mbAlbumId: albumId, caaUrl: fullUrl },
-              { conflictPaths: ['mbAlbumId'] }
-            )
-            .catch((e) => {
-              logger.error('Failed to save album metadata', {
-                label: 'CoverArtArchive',
-                error: e instanceof Error ? e.message : 'Unknown error',
-              });
+      const releaseMBID = encodeURIComponent(
+        release.split('/').filter(Boolean).pop() ?? albumId
+      );
+      const images = (Array.isArray(rawData.images) ? rawData.images : [])
+        .slice(0, MAX_COVER_ART_IMAGES)
+        .flatMap((value) => {
+          if (!isRecord(value)) {
+            return [];
+          }
+
+          const id = boundedIdentifier(value.id);
+          if (id === undefined) {
+            return [];
+          }
+
+          const imageId = encodeURIComponent(String(id));
+          const fullUrl = `https://archive.org/download/mbid-${releaseMBID}/mbid-${releaseMBID}-${imageId}_thumb250.jpg`;
+
+          return [
+            {
+              approved: value.approved === true,
+              front: value.front === true,
+              id,
+              thumbnails: { 250: fullUrl },
+            },
+          ];
+        });
+      const data: CoverArtResponse = { images, release };
+
+      const frontImage = data.images.find((image) => image.front);
+      if (frontImage) {
+        await getRepository(MetadataAlbum)
+          .upsert(
+            {
+              mbAlbumId: albumId,
+              caaUrl: frontImage.thumbnails[250],
+            },
+            { conflictPaths: ['mbAlbumId'] }
+          )
+          .catch((e) => {
+            logger.error('Failed to save album metadata', {
+              label: 'CoverArtArchive',
+              error: e instanceof Error ? e.message : 'Unknown error',
             });
-        }
-
-        return {
-          approved: image.approved,
-          front: image.front,
-          id: image.id,
-          thumbnails: { 250: fullUrl },
-        };
-      });
+          });
+      }
 
       return data;
     } catch {
@@ -149,7 +207,7 @@ class CoverArtArchive extends ExternalAPI {
   ): Promise<Record<string, string | null>> {
     if (!ids.length) return {};
 
-    const validIds = [...new Set(ids.map(normalizeMusicBrainzId))].filter(
+    const validIds = prepareMusicBrainzBatchIds(ids).filter(
       (id) =>
         typeof id === 'string' &&
         /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
@@ -188,14 +246,16 @@ class CoverArtArchive extends ExternalAPI {
     }
 
     if (idsToFetch.length > 0) {
-      const batchPromises = idsToFetch.map((id) =>
-        this.fetchCoverArt(id)
-          .then((response) => {
+      await mapWithConcurrency(
+        idsToFetch,
+        CoverArtArchive.BATCH_FETCH_CONCURRENCY,
+        async (id) => {
+          try {
+            const response = await this.fetchCoverArt(id);
             const frontImage = response.images.find((img) => img.front);
             resultsMap.set(id, frontImage?.thumbnails?.[250] || null);
             return true;
-          })
-          .catch((error) => {
+          } catch (error) {
             logger.error('Failed to fetch cover art', {
               label: 'CoverArtArchive',
               id,
@@ -203,10 +263,9 @@ class CoverArtArchive extends ExternalAPI {
             });
             resultsMap.set(id, null);
             return false;
-          })
+          }
+        }
       );
-
-      await Promise.allSettled(batchPromises);
     }
 
     const results: Record<string, string | null> = {};

@@ -31,6 +31,7 @@ import { sortCrewPriority } from '@app/utils/creditHelpers';
 import defineMessages from '@app/utils/defineMessages';
 import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
+import { getSafeHref } from '@app/utils/safeUrl';
 import {
   ArrowRightCircleIcon,
   CloudIcon,
@@ -485,7 +486,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
           tmdbId={data.id}
         />
       )}
-      {showManager && (
+      {showManager && hasPermission(Permission.MANAGE_REQUESTS) && (
         <ManageSlideOver
           data={data}
           mediaType="movie"
@@ -813,7 +814,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
                       content={intl.formatMessage(messages.rtcriticsscore)}
                     >
                       <a
-                        href={ratingData.rt.url}
+                        href={getSafeHref(ratingData.rt.url)}
                         className="media-rating"
                         target="_blank"
                         rel="noreferrer"
@@ -833,7 +834,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
                       content={intl.formatMessage(messages.rtaudiencescore)}
                     >
                       <a
-                        href={ratingData.rt.url}
+                        href={getSafeHref(ratingData.rt.url)}
                         className="media-rating"
                         target="_blank"
                         rel="noreferrer"
@@ -861,7 +862,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
                     })}
                   >
                     <a
-                      href={ratingData.imdb.url}
+                      href={getSafeHref(ratingData.imdb.url)}
                       className="media-rating"
                       target="_blank"
                       rel="noreferrer"

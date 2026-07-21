@@ -1,4 +1,5 @@
 import { MediaType } from '@server/constants/media';
+import Media from '@server/entity/Media';
 import { MediaIdentifierProvider } from '@server/entity/MediaIdentifier';
 import { User } from '@server/entity/User';
 import {
@@ -6,11 +7,14 @@ import {
   normalizeExternalMediaId,
   normalizeMusicBrainzId,
 } from '@server/lib/externalIds';
+import { restrictMediaRelationsForUser } from '@server/lib/mediaResponse';
 
 const mediaTypes = new Set<string>(Object.values(MediaType));
 const identifierProviders = new Set<string>(
   Object.values(MediaIdentifierProvider)
 );
+export const ENTITY_RESPONSE_MAX_DEPTH = 64;
+export const ENTITY_RESPONSE_MAX_VALUES = 100_000;
 
 const normalizeResponseRecord = (
   record: Record<string, unknown>
@@ -56,12 +60,25 @@ const normalizeResponseRecord = (
   return normalized;
 };
 
-export const filterEntityResponse = <T>(value: T): T => {
-  const seen = new WeakSet<object>();
+export const filterEntityResponse = <T>(value: T, user?: User): T => {
+  const ancestors = new WeakSet<object>();
+  let visitedValues = 0;
 
-  const filter = (current: unknown): unknown => {
+  const filter = (current: unknown, depth: number): unknown => {
+    if (
+      depth > ENTITY_RESPONSE_MAX_DEPTH ||
+      visitedValues >= ENTITY_RESPONSE_MAX_VALUES
+    ) {
+      return undefined;
+    }
+    visitedValues += 1;
+
     if (current instanceof User) {
-      return current.filter();
+      return current.publicFilter();
+    }
+
+    if (current instanceof Media) {
+      restrictMediaRelationsForUser(current, user);
     }
 
     if (
@@ -73,23 +90,36 @@ export const filterEntityResponse = <T>(value: T): T => {
       return current;
     }
 
-    if (seen.has(current)) {
+    if (ancestors.has(current)) {
       return undefined;
     }
-    seen.add(current);
+    ancestors.add(current);
 
-    if (Array.isArray(current)) {
-      return current.map(filter);
-    }
+    try {
+      if (Array.isArray(current)) {
+        const filtered: unknown[] = [];
+        for (const entry of current) {
+          if (visitedValues >= ENTITY_RESPONSE_MAX_VALUES) break;
+          filtered.push(filter(entry, depth + 1));
+        }
+        return filtered;
+      }
 
-    return Object.fromEntries(
-      Object.entries(
+      const filtered: Record<string, unknown> = {};
+      for (const [key, nestedValue] of Object.entries(
         normalizeResponseRecord(current as Record<string, unknown>)
-      )
-        .map(([key, nestedValue]) => [key, filter(nestedValue)])
-        .filter(([, nestedValue]) => nestedValue !== undefined)
-    );
+      )) {
+        if (visitedValues >= ENTITY_RESPONSE_MAX_VALUES) break;
+        const filteredValue = filter(nestedValue, depth + 1);
+        if (filteredValue !== undefined) {
+          filtered[key] = filteredValue;
+        }
+      }
+      return filtered;
+    } finally {
+      ancestors.delete(current);
+    }
   };
 
-  return filter(value) as T;
+  return filter(value, 0) as T;
 };

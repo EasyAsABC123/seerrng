@@ -1,4 +1,10 @@
 import defineMessages from '@app/utils/defineMessages';
+import {
+  readSessionStorageValue,
+  removeSessionStorageValue,
+  writeSessionStorageValue,
+} from '@app/utils/localStorage';
+import { parseOidcAuthorizationRedirect } from '@app/utils/oidcRedirect';
 import { ApiErrorCode } from '@server/constants/error';
 import axios, { isAxiosError } from 'axios';
 import type { IntlShape } from 'react-intl';
@@ -17,6 +23,31 @@ const messages = defineMessages('utils.oidc', {
 });
 
 const OIDC_PROVIDER_KEY = 'oidc-provider';
+
+export class OidcCallbackRequestState<T> {
+  private pending = new Map<string, Promise<T>>();
+
+  public run(key: string, operation: () => Promise<T>): Promise<T> {
+    const pending = this.pending.get(key);
+    if (pending) {
+      return pending;
+    }
+
+    const promise = operation();
+    this.pending.set(key, promise);
+    const clear = () => {
+      if (this.pending.get(key) === promise) {
+        this.pending.delete(key);
+      }
+    };
+    void promise.then(clear, clear);
+    return promise;
+  }
+}
+
+const oidcCallbackRequests = new OidcCallbackRequestState<
+  { type: 'success' } | { type: 'error'; errorCode: string | undefined }
+>();
 
 export function getOidcErrorMessage(
   errorCode: string | undefined,
@@ -54,22 +85,25 @@ export async function initiateOidcLogin(
     `/api/v1/auth/oidc/login/${encodeURIComponent(providerSlug)}`,
     { params: { returnUrl } }
   );
-  sessionStorage.setItem(OIDC_PROVIDER_KEY, providerSlug);
-  window.location.href = res.data.redirectUrl;
+  const redirectUrl = parseOidcAuthorizationRedirect(res.data.redirectUrl);
+  if (!writeSessionStorageValue(OIDC_PROVIDER_KEY, providerSlug)) {
+    throw new Error('OIDC login requires browser session storage.');
+  }
+  window.location.href = redirectUrl;
 }
 
 /**
  * Returns the provider slug stored by initiateOidcLogin.
  */
 export function getOidcProviderSlug(): string | null {
-  return sessionStorage.getItem(OIDC_PROVIDER_KEY);
+  return readSessionStorageValue(OIDC_PROVIDER_KEY) ?? null;
 }
 
 /**
  * Clears the provider slug stored by initiateOidcLogin.
  */
 export function clearOidcProviderSlug(): void {
-  sessionStorage.removeItem(OIDC_PROVIDER_KEY);
+  removeSessionStorageValue(OIDC_PROVIDER_KEY);
 }
 
 /**
@@ -87,16 +121,22 @@ export async function processOidcCallback(
     return { type: 'error', errorCode: ApiErrorCode.OidcAuthorizationFailed };
   }
 
-  try {
-    await axios.post(
-      `/api/v1/auth/oidc/callback/${encodeURIComponent(providerSlug)}`,
-      { callbackUrl: window.location.href }
-    );
-    return { type: 'success' };
-  } catch (e) {
-    return {
-      type: 'error',
-      errorCode: isAxiosError(e) ? e.response?.data?.error : undefined,
-    };
-  }
+  const callbackUrl = window.location.href;
+  return oidcCallbackRequests.run(
+    `${providerSlug}\0${callbackUrl}`,
+    async () => {
+      try {
+        await axios.post(
+          `/api/v1/auth/oidc/callback/${encodeURIComponent(providerSlug)}`,
+          { callbackUrl }
+        );
+        return { type: 'success' } as const;
+      } catch (e) {
+        return {
+          type: 'error',
+          errorCode: isAxiosError(e) ? e.response?.data?.error : undefined,
+        } as const;
+      }
+    }
+  );
 }

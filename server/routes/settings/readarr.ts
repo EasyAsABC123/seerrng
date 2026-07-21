@@ -1,39 +1,67 @@
 import type { ReadarrBookLookupResult } from '@server/api/servarr/readarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
+import { Permission } from '@server/lib/permissions';
+import { runWithServarrServiceCollectionMutationAdmission } from '@server/lib/serviceAdmission';
+import {
+  allocateServarrServiceId,
+  assertServarrServiceCanBeRemoved,
+  assertServarrServiceCanChangeKind,
+  getHistoricalServarrServiceIdMaximum,
+} from '@server/lib/serviceId';
 import type { ReadarrSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
+import { authorizedMutation } from '@server/middleware/authorizedMutation';
 import {
   classifyBookshelfProvider,
   getBookshelfProviderWarning,
 } from '@server/utils/bookshelfProvider';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import { parseNonNegativeRouteId } from '@server/utils/routeId';
-import { preserveRedactedSecrets, redactSecrets } from '@server/utils/security';
+import { REDACTED_SECRET, redactSecrets } from '@server/utils/security';
 import {
+  assertServarrInstanceCapacity,
   parseReadarrSettings,
   parseServarrConnectionSettings,
+  preserveServarrApiKey,
+  preserveServarrConnectionSecret,
   type ServarrConnectionSettings,
 } from '@server/utils/servarrSettings';
+import {
+  parseOptionalBodyBoolean,
+  parseOptionalBoundedString,
+  parseOptionalNonNegativeInteger,
+} from '@server/utils/validation';
 import { Router } from 'express';
 
 const readarrRoutes = Router();
+const MAX_DIAGNOSTIC_TERM_LENGTH = 512;
+const MAX_DIAGNOSTIC_PATH_LENGTH = 4096;
+const MAX_DIAGNOSTIC_PROFILE_ID = 1_000_000;
+export const MAX_DIAGNOSTIC_LOOKUP_RESULTS = 50;
+export const DIAGNOSTIC_LOOKUP_HYDRATION_CONCURRENCY = 5;
+type DiagnosticAuthor = NonNullable<ReadarrBookLookupResult['author']>;
 
-const preserveReadarrConnectionSecret = (body: unknown): unknown => {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return body;
+const parseOptionalDiagnosticId = (
+  value: unknown,
+  fieldName: string
+): { value: number | undefined } | { error: string } => {
+  if (value === undefined || value === null || value === '') {
+    return { value: undefined };
   }
 
-  const incoming = body as Record<string, unknown>;
-  const id =
-    typeof incoming.id === 'number' && Number.isSafeInteger(incoming.id)
-      ? incoming.id
-      : undefined;
-  const current =
-    id === undefined
-      ? undefined
-      : getSettings().readarr.find((readarr) => readarr.id === id);
+  const numericValue =
+    typeof value === 'string' && /^\d+$/.test(value.trim())
+      ? Number(value)
+      : value;
+  const parsed = parseOptionalNonNegativeInteger(
+    numericValue,
+    MAX_DIAGNOSTIC_PROFILE_ID
+  );
 
-  return current ? preserveRedactedSecrets(body, current) : body;
+  return parsed === undefined
+    ? { error: `${fieldName} is invalid.` }
+    : { value: parsed };
 };
 
 const isAddableBookLookupResult = (result: ReadarrBookLookupResult): boolean =>
@@ -75,7 +103,19 @@ const parseAuthorName = (
 
 const hydrateSoftcoverResult = async (
   readarr: ReadarrAPI,
-  result: ReadarrBookLookupResult
+  result: ReadarrBookLookupResult,
+  loadAuthor: (
+    authorName: string
+  ) => Promise<DiagnosticAuthor | undefined> = async (authorName) => {
+    const [author] = await readarr.lookupAuthor(authorName);
+    return author?.foreignAuthorId && author.authorName
+      ? {
+          foreignAuthorId: author.foreignAuthorId,
+          authorName: author.authorName,
+          id: author.id,
+        }
+      : undefined;
+  }
 ): Promise<ReadarrBookLookupResult> => {
   if (isAddableBookLookupResult(result)) {
     return result;
@@ -91,9 +131,8 @@ const hydrateSoftcoverResult = async (
     return result;
   }
 
-  const [author] = await readarr.lookupAuthor(authorName);
-
-  if (!author?.foreignAuthorId || !author.authorName) {
+  const author = await loadAuthor(authorName);
+  if (!author) {
     return result;
   }
 
@@ -119,90 +158,110 @@ readarrRoutes.get('/', (_req, res) => {
   res.status(200).json(redactSecrets(settings.readarr));
 });
 
-readarrRoutes.post('/', async (req, res) => {
-  const settings = getSettings();
+readarrRoutes.post(
+  '/',
+  authorizedMutation(Permission.ADMIN, async (req, res) => {
+    const settings = getSettings();
 
-  const parsedReadarr = parseReadarrSettings(
-    preserveRedactedSecrets(req.body, undefined) as Partial<ReadarrSettings>
-  );
-
-  if ('error' in parsedReadarr) {
-    return res.status(400).json({ message: parsedReadarr.error });
-  }
-
-  const newReadarr = parsedReadarr.value;
-  const lastItem = settings.readarr[settings.readarr.length - 1];
-  newReadarr.id = lastItem ? lastItem.id + 1 : 0;
-
-  if (newReadarr.isDefault) {
-    const serviceType = newReadarr.serviceType ?? 'ebook';
-    settings.readarr = settings.readarr.map((readarr) => ({
-      ...readarr,
-      isDefault:
-        (readarr.serviceType ?? 'ebook') === serviceType
-          ? false
-          : readarr.isDefault,
-    }));
-  }
-
-  settings.readarr = [...settings.readarr, newReadarr];
-  await settings.save();
-
-  return res.status(201).json(redactSecrets(newReadarr));
-});
-
-readarrRoutes.post<
-  undefined,
-  Record<string, unknown>,
-  ServarrConnectionSettings
->('/test', async (req, res, next) => {
-  try {
-    const parsedReadarr = parseServarrConnectionSettings(
-      preserveReadarrConnectionSecret(req.body)
-    );
+    const parsedReadarr = parseReadarrSettings(req.body);
 
     if ('error' in parsedReadarr) {
       return res.status(400).json({ message: parsedReadarr.error });
     }
 
-    const readarr = new ReadarrAPI({
-      apiKey: parsedReadarr.value.apiKey,
-      url: ReadarrAPI.buildUrl(parsedReadarr.value, '/api/v1'),
-    });
+    return runWithServarrServiceCollectionMutationAdmission(
+      'readarr',
+      async () => {
+        const historicalServiceIdMaximum =
+          await getHistoricalServarrServiceIdMaximum('readarr');
+        const readarr = await settings.persistSection('readarr', (current) => {
+          assertServarrInstanceCapacity(current);
+          const newReadarr = {
+            ...parsedReadarr.value,
+            id: allocateServarrServiceId(
+              current.map(({ id }) => id),
+              historicalServiceIdMaximum
+            ),
+          };
+          const serviceType = newReadarr.serviceType ?? 'ebook';
+          const existing = newReadarr.isDefault
+            ? current.map((instance) => ({
+                ...instance,
+                isDefault:
+                  (instance.serviceType ?? 'ebook') === serviceType
+                    ? false
+                    : instance.isDefault,
+              }))
+            : current;
+          return [...existing, newReadarr];
+        });
+        const newReadarr = readarr[readarr.length - 1];
 
-    const [urlBase, development] = await Promise.all([
-      readarr
-        .getSystemStatus()
-        .then((value) => value.urlBase)
-        .catch(() => parsedReadarr.value.baseUrl),
-      readarr.getDevelopmentConfig().catch(() => undefined),
-    ]);
-    const profiles = await readarr.getProfiles();
-    const metadataProfiles = await readarr.getMetadataProfiles();
-    const folders = await readarr.getRootFolders();
-    const provider = classifyBookshelfProvider(development?.metadataSource);
+        return res.status(201).json(redactSecrets(newReadarr));
+      }
+    );
+  })
+);
 
-    return res.status(200).json({
-      profiles,
-      metadataProfiles,
-      rootFolders: folders.map((folder) => ({
-        id: folder.id,
-        path: folder.path,
-      })),
-      tags: [],
-      urlBase,
-      provider,
-      legacyWarning: getBookshelfProviderWarning(provider),
-      metadataSource: development?.metadataSource,
-    });
-  } catch (e) {
-    logger.error('Failed to test Readarr', {
-      label: 'Readarr',
-      message: e.message,
-    });
-    next({ status: 500, message: 'Failed to connect to Bookshelf' });
-  }
-});
+readarrRoutes.post<
+  undefined,
+  Record<string, unknown>,
+  ServarrConnectionSettings
+>(
+  '/test',
+  authorizedMutation<
+    undefined,
+    Record<string, unknown>,
+    ServarrConnectionSettings
+  >(Permission.ADMIN, async (req, res, next) => {
+    try {
+      const parsedReadarr = parseServarrConnectionSettings(
+        preserveServarrConnectionSecret(req.body, getSettings().readarr)
+      );
+
+      if ('error' in parsedReadarr) {
+        return res.status(400).json({ message: parsedReadarr.error });
+      }
+
+      const readarr = new ReadarrAPI({
+        apiKey: parsedReadarr.value.apiKey,
+        url: ReadarrAPI.buildUrl(parsedReadarr.value, '/api/v1'),
+      });
+
+      const [urlBase, development] = await Promise.all([
+        readarr
+          .getSystemStatus()
+          .then((value) => value.urlBase)
+          .catch(() => parsedReadarr.value.baseUrl),
+        readarr.getDevelopmentConfig().catch(() => undefined),
+      ]);
+      const profiles = await readarr.getProfiles();
+      const metadataProfiles = await readarr.getMetadataProfiles();
+      const folders = await readarr.getRootFolders();
+      const provider = classifyBookshelfProvider(development?.metadataSource);
+
+      return res.status(200).json({
+        profiles,
+        metadataProfiles,
+        rootFolders: folders.map((folder) => ({
+          id: folder.id,
+          path: folder.path,
+        })),
+        tags: [],
+        urlBase,
+        provider,
+        legacyWarning: getBookshelfProviderWarning(provider),
+        metadataSource: development?.metadataSource,
+      });
+    } catch (e) {
+      logger.error('Failed to test Readarr', {
+        label: 'Readarr',
+        message: e.message,
+      });
+      next({ status: 500, message: 'Failed to connect to Bookshelf' });
+    }
+  })
+);
 
 readarrRoutes.post<
   undefined,
@@ -211,271 +270,419 @@ readarrRoutes.post<
     term?: unknown;
     testAdd?: unknown;
   }
->('/diagnose', async (req, res) => {
-  const parsedReadarr = parseServarrConnectionSettings(
-    preserveReadarrConnectionSecret(req.body)
-  );
+>(
+  '/diagnose',
+  authorizedMutation<
+    undefined,
+    Record<string, unknown>,
+    Partial<ReadarrSettings> & { term?: unknown; testAdd?: unknown }
+  >(Permission.ADMIN, async (req, res) => {
+    const parsedReadarr = parseServarrConnectionSettings(
+      preserveServarrConnectionSecret(req.body, getSettings().readarr)
+    );
 
-  if ('error' in parsedReadarr) {
-    return res.status(400).json({
-      ok: false,
-      category: 'backend_unreachable',
-      message: parsedReadarr.error,
-    });
-  }
-
-  const term =
-    typeof req.body.term === 'string' && req.body.term.trim()
-      ? req.body.term.trim()
-      : 'isbn:9780547928227';
-  const testAdd = req.body.testAdd === true;
-  const readarr = new ReadarrAPI({
-    apiKey: parsedReadarr.value.apiKey,
-    url: ReadarrAPI.buildUrl(parsedReadarr.value, '/api/v1'),
-  });
-
-  try {
-    const [status, development, profiles, metadataProfiles, folders] =
-      await Promise.all([
-        readarr.getSystemStatus(),
-        readarr.getDevelopmentConfig().catch(() => undefined),
-        readarr.getProfiles(),
-        readarr.getMetadataProfiles(),
-        readarr.getRootFolders(),
-      ]);
-    const provider = classifyBookshelfProvider(development?.metadataSource);
-    const legacyWarning = getBookshelfProviderWarning(provider);
-    const lookup = await readarr.lookupBook(term);
-
-    if (!lookup.length) {
-      return res.status(200).json({
+    if ('error' in parsedReadarr) {
+      return res.status(400).json({
         ok: false,
-        category: 'lookup_empty',
-        message: 'Bookshelf lookup returned no results.',
-        term,
-        system: {
-          appName: status.appName,
-          version: status.version,
-          urlBase: status.urlBase,
-        },
-        provider,
-        legacyWarning,
-        metadataSource: development?.metadataSource,
-        profiles: profiles.map((profile) => ({
-          id: profile.id,
-          name: profile.name,
-        })),
-        metadataProfiles: metadataProfiles.map((profile) => ({
-          id: profile.id,
-          name: profile.name,
-        })),
-        rootFolders: folders.map((folder) => ({
-          id: folder.id,
-          path: folder.path,
-          accessible: folder.accessible,
-        })),
-        lookupCount: 0,
+        category: 'backend_unreachable',
+        message: parsedReadarr.error,
       });
     }
 
-    const hydratedLookup = await Promise.all(
-      lookup.map((result) => hydrateSoftcoverResult(readarr, result))
+    const term = parseOptionalBoundedString(req.body.term, {
+      fieldName: 'term',
+      maxLength: MAX_DIAGNOSTIC_TERM_LENGTH,
+    });
+    const testAdd = parseOptionalBodyBoolean(req.body.testAdd, 'testAdd');
+    const activeDirectory = parseOptionalBoundedString(
+      req.body.activeDirectory,
+      {
+        fieldName: 'activeDirectory',
+        maxLength: MAX_DIAGNOSTIC_PATH_LENGTH,
+      }
     );
-    const addableResult = hydratedLookup.find(isAddableBookLookupResult);
-
-    if (!addableResult) {
-      return res.status(200).json({
+    const activeProfileId = parseOptionalDiagnosticId(
+      req.body.activeProfileId,
+      'activeProfileId'
+    );
+    const activeMetadataProfileId = parseOptionalDiagnosticId(
+      req.body.activeMetadataProfileId,
+      'activeMetadataProfileId'
+    );
+    if (
+      'error' in term ||
+      'error' in testAdd ||
+      'error' in activeDirectory ||
+      'error' in activeProfileId ||
+      'error' in activeMetadataProfileId
+    ) {
+      const message =
+        ('error' in term && term.error) ||
+        ('error' in testAdd && testAdd.error) ||
+        ('error' in activeDirectory && activeDirectory.error) ||
+        ('error' in activeProfileId && activeProfileId.error) ||
+        ('error' in activeMetadataProfileId && activeMetadataProfileId.error) ||
+        'Invalid diagnostic request.';
+      return res.status(400).json({
         ok: false,
-        category: 'lookup_incomplete',
-        message:
-          'Bookshelf lookup returned results, but none had usable author and edition metadata.',
-        term,
+        category: 'invalid_request',
+        message,
+      });
+    }
+
+    const lookupTerm = term.value || 'isbn:9780547928227';
+    const readarr = new ReadarrAPI({
+      apiKey: parsedReadarr.value.apiKey,
+      url: ReadarrAPI.buildUrl(parsedReadarr.value, '/api/v1'),
+    });
+
+    try {
+      const [status, development, profiles, metadataProfiles, folders] =
+        await Promise.all([
+          readarr.getSystemStatus(),
+          readarr.getDevelopmentConfig().catch(() => undefined),
+          readarr.getProfiles(),
+          readarr.getMetadataProfiles(),
+          readarr.getRootFolders(),
+        ]);
+      const provider = classifyBookshelfProvider(development?.metadataSource);
+      const legacyWarning = getBookshelfProviderWarning(provider);
+      const lookup = await readarr.lookupBook(lookupTerm);
+
+      if (!lookup.length) {
+        return res.status(200).json({
+          ok: false,
+          category: 'lookup_empty',
+          message: 'Bookshelf lookup returned no results.',
+          term: lookupTerm,
+          system: {
+            appName: status.appName,
+            version: status.version,
+            urlBase: status.urlBase,
+          },
+          provider,
+          legacyWarning,
+          metadataSource: development?.metadataSource,
+          profiles: profiles.map((profile) => ({
+            id: profile.id,
+            name: profile.name,
+          })),
+          metadataProfiles: metadataProfiles.map((profile) => ({
+            id: profile.id,
+            name: profile.name,
+          })),
+          rootFolders: folders.map((folder) => ({
+            id: folder.id,
+            path: folder.path,
+            accessible: folder.accessible,
+          })),
+          lookupCount: 0,
+        });
+      }
+
+      const authorCache = new Map<
+        string,
+        Promise<DiagnosticAuthor | undefined>
+      >();
+      const loadAuthor = (authorName: string) => {
+        let pending = authorCache.get(authorName);
+        if (!pending) {
+          pending = readarr.lookupAuthor(authorName).then(([author]) =>
+            author?.foreignAuthorId && author.authorName
+              ? {
+                  foreignAuthorId: author.foreignAuthorId,
+                  authorName: author.authorName,
+                  id: author.id,
+                }
+              : undefined
+          );
+          authorCache.set(authorName, pending);
+        }
+        return pending;
+      };
+      const hydratedLookup = await mapWithConcurrency(
+        lookup.slice(0, MAX_DIAGNOSTIC_LOOKUP_RESULTS),
+        DIAGNOSTIC_LOOKUP_HYDRATION_CONCURRENCY,
+        (result) => hydrateSoftcoverResult(readarr, result, loadAuthor)
+      );
+      const addableResult = hydratedLookup.find(isAddableBookLookupResult);
+
+      if (!addableResult) {
+        return res.status(200).json({
+          ok: false,
+          category: 'lookup_incomplete',
+          message:
+            'Bookshelf lookup returned results, but none had usable author and edition metadata.',
+          term: lookupTerm,
+          provider,
+          legacyWarning,
+          metadataSource: development?.metadataSource,
+          lookupCount: lookup.length,
+          sample: lookup.slice(0, 3).map((result) => ({
+            title: result.title,
+            foreignBookId: result.foreignBookId,
+            foreignEditionId: result.foreignEditionId,
+            authorPresent: !!result.author,
+            editionCount: result.editions?.length ?? 0,
+          })),
+        });
+      }
+
+      if (testAdd.value === true) {
+        try {
+          const requestedRootFolder = activeDirectory.value;
+          const rootFolder = requestedRootFolder || folders[0]?.path;
+          const qualityProfileId = activeProfileId.value ?? profiles[0]?.id;
+          const metadataProfileId =
+            activeMetadataProfileId.value ?? metadataProfiles[0]?.id;
+
+          if (
+            !rootFolder ||
+            !folders.some(
+              (folder) =>
+                folder.path === rootFolder && folder.accessible !== false
+            ) ||
+            qualityProfileId === undefined ||
+            !profiles.some((profile) => profile.id === qualityProfileId) ||
+            metadataProfileId === undefined ||
+            !metadataProfiles.some(
+              (profile) => profile.id === metadataProfileId
+            )
+          ) {
+            return res.status(400).json({
+              ok: false,
+              category: 'invalid_request',
+              message:
+                'Test add selections must match accessible Bookshelf profiles and root folders.',
+            });
+          }
+
+          const added = await readarr.addBook({
+            ...addableResult,
+            monitored: true,
+            qualityProfileId,
+            metadataProfileId,
+            rootFolderPath: rootFolder,
+            tags: [],
+            author: {
+              ...addableResult.author,
+              rootFolderPath: rootFolder,
+              qualityProfileId,
+              metadataProfileId,
+              monitored: true,
+              addOptions: {
+                monitor: 'none',
+                searchForMissingBooks: false,
+              },
+              manualAdd: true,
+            },
+            editions: addableResult.editions ?? [],
+            addOptions: {
+              searchForNewBook: false,
+            },
+          });
+
+          if (added.id !== undefined && added.id !== null) {
+            try {
+              await readarr.removeBook(added.id, {
+                deleteFiles: false,
+                addImportListExclusion: false,
+              });
+            } catch (cleanupError) {
+              return res.status(200).json({
+                ok: false,
+                category: 'backend_cleanup_failed',
+                message:
+                  cleanupError instanceof Error
+                    ? cleanupError.message
+                    : String(cleanupError),
+                term: lookupTerm,
+                provider,
+                legacyWarning,
+                lookupCount: lookup.length,
+                addedBookId: added.id,
+              });
+            }
+          }
+        } catch (e) {
+          return res.status(200).json({
+            ok: false,
+            category: 'backend_add_rejected',
+            message: e instanceof Error ? e.message : String(e),
+            term: lookupTerm,
+            provider,
+            legacyWarning,
+            lookupCount: lookup.length,
+          });
+        }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        category: 'ok',
+        message: 'Bookshelf lookup returned usable metadata.',
+        term: lookupTerm,
         provider,
         legacyWarning,
         metadataSource: development?.metadataSource,
         lookupCount: lookup.length,
-        sample: lookup.slice(0, 3).map((result) => ({
-          title: result.title,
-          foreignBookId: result.foreignBookId,
-          foreignEditionId: result.foreignEditionId,
-          authorPresent: !!result.author,
-          editionCount: result.editions?.length ?? 0,
-        })),
+        sample: {
+          title: addableResult.title,
+          foreignBookId: addableResult.foreignBookId,
+          authorName: addableResult.author?.authorName,
+          editionCount: addableResult.editions?.length ?? 0,
+        },
+      });
+    } catch (e) {
+      logger.error('Failed to diagnose Bookshelf', {
+        label: 'Readarr',
+        message: e instanceof Error ? e.message : String(e),
+      });
+
+      return res.status(200).json({
+        ok: false,
+        category: 'backend_unreachable',
+        message: e instanceof Error ? e.message : String(e),
+        term: lookupTerm,
       });
     }
-
-    if (testAdd) {
-      try {
-        const requestedRootFolder =
-          typeof req.body.activeDirectory === 'string'
-            ? req.body.activeDirectory.trim()
-            : '';
-        const requestedQualityProfileId = Number(req.body.activeProfileId);
-        const requestedMetadataProfileId = Number(
-          req.body.activeMetadataProfileId
-        );
-        const rootFolder = requestedRootFolder || folders[0]?.path;
-        const qualityProfileId = Number.isInteger(requestedQualityProfileId)
-          ? requestedQualityProfileId
-          : profiles[0]?.id;
-        const metadataProfileId = Number.isInteger(requestedMetadataProfileId)
-          ? requestedMetadataProfileId
-          : metadataProfiles[0]?.id || 1;
-
-        const added = await readarr.addBook({
-          ...addableResult,
-          monitored: true,
-          qualityProfileId,
-          metadataProfileId,
-          rootFolderPath: rootFolder,
-          tags: [],
-          author: {
-            ...addableResult.author,
-            rootFolderPath: rootFolder,
-            qualityProfileId,
-            metadataProfileId,
-            monitored: true,
-            addOptions: {
-              monitor: 'none',
-              searchForMissingBooks: false,
-            },
-            manualAdd: true,
-          },
-          editions: addableResult.editions ?? [],
-          addOptions: {
-            searchForNewBook: false,
-          },
-        });
-
-        if (added.id) {
-          await readarr
-            .removeBook(added.id, {
-              deleteFiles: false,
-              addImportListExclusion: false,
-            })
-            .catch(() => undefined);
-        }
-      } catch (e) {
-        return res.status(200).json({
-          ok: false,
-          category: 'backend_add_rejected',
-          message: e instanceof Error ? e.message : String(e),
-          term,
-          provider,
-          legacyWarning,
-          lookupCount: lookup.length,
-        });
-      }
-    }
-
-    return res.status(200).json({
-      ok: true,
-      category: 'ok',
-      message: 'Bookshelf lookup returned usable metadata.',
-      term,
-      provider,
-      legacyWarning,
-      metadataSource: development?.metadataSource,
-      lookupCount: lookup.length,
-      sample: {
-        title: addableResult.title,
-        foreignBookId: addableResult.foreignBookId,
-        authorName: addableResult.author?.authorName,
-        editionCount: addableResult.editions?.length ?? 0,
-      },
-    });
-  } catch (e) {
-    logger.error('Failed to diagnose Bookshelf', {
-      label: 'Readarr',
-      message: e instanceof Error ? e.message : String(e),
-    });
-
-    return res.status(200).json({
-      ok: false,
-      category: 'backend_unreachable',
-      message: e instanceof Error ? e.message : String(e),
-      term,
-    });
-  }
-});
+  })
+);
 
 readarrRoutes.put<{ id: string }, ReadarrSettings, ReadarrSettings>(
   '/:id',
-  async (req, res, next) => {
-    const settings = getSettings();
-    const readarrId = parseNonNegativeRouteId(req.params.id);
-    if (readarrId === undefined) {
-      return next({ status: '404', message: 'Settings instance not found' });
+  authorizedMutation<{ id: string }, ReadarrSettings, ReadarrSettings>(
+    Permission.ADMIN,
+    async (req, res, next) => {
+      const settings = getSettings();
+      const readarrId = parseNonNegativeRouteId(req.params.id);
+      if (readarrId === undefined) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
+
+      const readarrIndex = settings.readarr.findIndex(
+        (r) => r.id === readarrId
+      );
+
+      if (readarrIndex === -1) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
+
+      return runWithServarrServiceCollectionMutationAdmission(
+        'readarr',
+        async () => {
+          const currentReadarr = settings.readarr.find(
+            (instance) => instance.id === readarrId
+          );
+          if (!currentReadarr) {
+            return next({
+              status: 404,
+              message: 'Settings instance not found',
+            });
+          }
+          const admittedReadarr = parseReadarrSettings(
+            preserveServarrApiKey(req.body, currentReadarr),
+            currentReadarr
+          );
+          if ('error' in admittedReadarr) {
+            return next({ status: 400, message: admittedReadarr.error });
+          }
+          if (
+            (currentReadarr.serviceType ?? 'ebook') !==
+            (admittedReadarr.value.serviceType ?? 'ebook')
+          ) {
+            await assertServarrServiceCanChangeKind('readarr', readarrId);
+          }
+          const readarr = await settings.persistSection(
+            'readarr',
+            (current) => {
+              const serviceType = admittedReadarr.value.serviceType ?? 'ebook';
+              return current.map((instance) => {
+                if (instance.id === readarrId) {
+                  return {
+                    ...admittedReadarr.value,
+                    apiKey:
+                      (req.body as { apiKey?: unknown }).apiKey ===
+                      REDACTED_SECRET
+                        ? instance.apiKey
+                        : admittedReadarr.value.apiKey,
+                    id: readarrId,
+                  } as ReadarrSettings;
+                }
+                return admittedReadarr.value.isDefault &&
+                  (instance.serviceType ?? 'ebook') === serviceType
+                  ? { ...instance, isDefault: false }
+                  : instance;
+              });
+            }
+          );
+
+          return res
+            .status(200)
+            .json(redactSecrets(readarr.find(({ id }) => id === readarrId)));
+        }
+      );
     }
-
-    const readarrIndex = settings.readarr.findIndex((r) => r.id === readarrId);
-
-    if (readarrIndex === -1) {
-      return next({ status: '404', message: 'Settings instance not found' });
-    }
-
-    const parsedReadarr = parseReadarrSettings(
-      preserveRedactedSecrets(
-        req.body,
-        settings.readarr[readarrIndex]
-      ) as Partial<ReadarrSettings>,
-      settings.readarr[readarrIndex]
-    );
-
-    if ('error' in parsedReadarr) {
-      return next({ status: 400, message: parsedReadarr.error });
-    }
-
-    if (parsedReadarr.value.isDefault) {
-      const serviceType = parsedReadarr.value.serviceType ?? 'ebook';
-      settings.readarr = settings.readarr.map((readarr) => ({
-        ...readarr,
-        isDefault:
-          (readarr.serviceType ?? 'ebook') === serviceType
-            ? readarr.id === readarrId
-            : readarr.isDefault,
-      }));
-    }
-
-    settings.readarr[readarrIndex] = {
-      ...parsedReadarr.value,
-      id: readarrId,
-    } as ReadarrSettings;
-    await settings.save();
-
-    return res.status(200).json(redactSecrets(settings.readarr[readarrIndex]));
-  }
+  )
 );
 
-readarrRoutes.delete<{ id: string }>('/:id', async (req, res, next) => {
-  const settings = getSettings();
-  const readarrId = parseNonNegativeRouteId(req.params.id);
-  if (readarrId === undefined) {
-    return next({ status: '404', message: 'Settings instance not found' });
-  }
+readarrRoutes.delete<{ id: string }>(
+  '/:id',
+  authorizedMutation<{ id: string }>(
+    Permission.ADMIN,
+    async (req, res, next) => {
+      const settings = getSettings();
+      const readarrId = parseNonNegativeRouteId(req.params.id);
+      if (readarrId === undefined) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
 
-  const readarrIndex = settings.readarr.findIndex((r) => r.id === readarrId);
+      const readarrIndex = settings.readarr.findIndex(
+        (r) => r.id === readarrId
+      );
 
-  if (readarrIndex === -1) {
-    return next({ status: '404', message: 'Settings instance not found' });
-  }
+      if (readarrIndex === -1) {
+        return next({ status: 404, message: 'Settings instance not found' });
+      }
 
-  const [removed] = settings.readarr.splice(readarrIndex, 1);
+      return runWithServarrServiceCollectionMutationAdmission(
+        'readarr',
+        async () => {
+          const removed = settings.readarr.find(
+            (instance) => instance.id === readarrId
+          );
+          if (!removed) {
+            return next({
+              status: 404,
+              message: 'Settings instance not found',
+            });
+          }
+          await assertServarrServiceCanBeRemoved('readarr', readarrId);
+          await settings.persistSection('readarr', (current) => {
+            const remaining = current.filter(({ id }) => id !== readarrId);
+            if (!removed.isDefault) {
+              return remaining;
+            }
 
-  if (removed.isDefault) {
-    const removedServiceType = removed.serviceType ?? 'ebook';
-    const nextDefault = settings.readarr.find(
-      (readarr) => (readarr.serviceType ?? 'ebook') === removedServiceType
-    );
+            const removedServiceType = removed.serviceType ?? 'ebook';
+            let promoted = false;
+            return remaining.map((instance) => {
+              if (
+                !promoted &&
+                (instance.serviceType ?? 'ebook') === removedServiceType
+              ) {
+                promoted = true;
+                return { ...instance, isDefault: true };
+              }
+              return instance;
+            });
+          });
 
-    if (nextDefault) {
-      nextDefault.isDefault = true;
+          return res.status(200).json(redactSecrets(removed));
+        }
+      );
     }
-  }
-
-  await settings.save();
-
-  return res.status(200).json(redactSecrets(removed));
-});
+  )
+);
 
 export default readarrRoutes;

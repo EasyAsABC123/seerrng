@@ -55,16 +55,36 @@ const BlocklistModal = ({
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    (async () => {
-      if (!show) return;
-      try {
+    const controller = new AbortController();
+    let active = true;
+    const loadMedia = async () => {
+      if (!show) {
+        setData(null);
         setError(null);
-        const response = await axios.get(`/api/v1/${type}/${tmdbId}`);
-        setData(response.data);
-      } catch (err) {
-        setError(err);
+        return;
       }
-    })();
+
+      setData(null);
+      setError(null);
+      try {
+        const response = await axios.get(`/api/v1/${type}/${tmdbId}`, {
+          signal: controller.signal,
+        });
+        if (active) {
+          setData(response.data);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err);
+        }
+      }
+    };
+
+    void loadMedia();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [show, tmdbId, type]);
 
   return (

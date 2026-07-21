@@ -1,13 +1,13 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { MediaStatus } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
-import { User } from '@server/entity/User';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentTelegram } from '@server/lib/settings';
 import { NotificationAgentKey, getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
+import { mapWithConcurrency } from '@server/utils/concurrency';
 import { redactSecrets } from '@server/utils/security';
 import axios from 'axios';
 import {
@@ -18,6 +18,7 @@ import {
 import type { NotificationAgent, NotificationPayload } from './agent';
 import {
   BaseAgent,
+  NOTIFICATION_DELIVERY_CONCURRENCY,
   NOTIFICATION_HTTP_OPTIONS,
   getNotificationActionUrl,
 } from './agent';
@@ -38,6 +39,34 @@ interface TelegramPhotoPayload {
   message_thread_id: string;
   disable_notification: boolean;
 }
+
+export const TELEGRAM_MESSAGE_TEXT_LIMIT = 4_096;
+export const TELEGRAM_PHOTO_CAPTION_LIMIT = 1_024;
+
+export const escapeTelegramMarkdownText = (
+  value: string | undefined,
+  maxLength = Number.MAX_SAFE_INTEGER
+): string => {
+  const tokens: string[] = [];
+  let length = 0;
+  for (const character of value ?? '') {
+    const escaped = /[_*[\]()~>#+=|{}.!-]/.test(character)
+      ? `\\${character}`
+      : character;
+    if (length + escaped.length > maxLength) {
+      while (tokens.length && length + 1 > maxLength) {
+        length -= tokens.pop()!.length;
+      }
+      return maxLength > 0 ? `${tokens.join('')}…` : '';
+    }
+    tokens.push(escaped);
+    length += escaped.length;
+  }
+  return tokens.join('');
+};
+
+const escapeTelegramMarkdownUrl = (value: string): string =>
+  value.replace(/[\\)]/g, '\\$&');
 
 class TelegramAgent
   extends BaseAgent<NotificationAgentTelegram>
@@ -65,11 +94,7 @@ class TelegramAgent
     return false;
   }
 
-  private escapeText(text: string | undefined): string {
-    return text ? text.replace(/[_*[\]()~>#+=|{}.!-]/gi, (x) => '\\' + x) : '';
-  }
-
-  private getNotificationPayload(
+  public buildPayload(
     type: Notification,
     payload: NotificationPayload,
     locale?: AvailableLocale
@@ -77,20 +102,50 @@ class TelegramAgent
     const intl = getIntl(locale);
     const settings = getSettings();
     const { applicationUrl, applicationTitle } = settings.main;
-    const { embedPoster } = settings.notifications.agents.telegram;
+    const { embedPoster } = this.getSettings();
+    const maxLength =
+      embedPoster && payload.image
+        ? TELEGRAM_PHOTO_CAPTION_LIMIT
+        : TELEGRAM_MESSAGE_TEXT_LIMIT;
+
+    let message = '';
+    const appendEscaped = (
+      prefix: string,
+      value: string | undefined,
+      suffix = '',
+      valueLimit = Number.MAX_SAFE_INTEGER
+    ) => {
+      const available = Math.min(
+        valueLimit,
+        maxLength - message.length - prefix.length - suffix.length
+      );
+      if (available <= 0 || !value) {
+        return;
+      }
+      message += `${prefix}${escapeTelegramMarkdownText(
+        value,
+        available
+      )}${suffix}`;
+    };
 
     /* eslint-disable no-useless-escape */
-    let message = `\*${this.escapeText(
-      payload.event ? `${payload.event} - ${payload.subject}` : payload.subject
-    )}\*`;
-    if (payload.message) {
-      message += `\n${this.escapeText(payload.message)}`;
+    appendEscaped(
+      '\*',
+      payload.event ? `${payload.event} - ${payload.subject}` : payload.subject,
+      '\*',
+      256
+    );
+    if (payload.message && !payload.comment) {
+      appendEscaped('\n', payload.message, '', Math.max(1, maxLength - 512));
     }
 
     if (payload.request) {
-      message += `\n\n\*${this.escapeText(
-        intl.formatMessage(globalMessages.requestedBy)
-      )}:\* ${this.escapeText(payload.request?.requestedBy.displayName)}`;
+      appendEscaped(
+        `\n\n\*${escapeTelegramMarkdownText(
+          intl.formatMessage(globalMessages.requestedBy)
+        )}:\* `,
+        payload.request.requestedBy.displayName
+      );
 
       let status = '';
       switch (type) {
@@ -119,45 +174,68 @@ class TelegramAgent
       }
 
       if (status) {
-        message += `\n\*${this.escapeText(
-          intl.formatMessage(globalMessages.requestStatus)
-        )}:\* ${this.escapeText(status)}`;
+        appendEscaped(
+          `\n\*${escapeTelegramMarkdownText(
+            intl.formatMessage(globalMessages.requestStatus)
+          )}:\* `,
+          status
+        );
       }
     } else if (payload.comment) {
-      message += `\n\n\*${this.escapeText(
-        intl.formatMessage(globalMessages.commentFrom, {
-          userName: payload.comment.user.displayName,
-        })
-      )}:\* ${this.escapeText(payload.comment.message)}`;
+      appendEscaped(
+        `\n\n\*${escapeTelegramMarkdownText(
+          intl.formatMessage(globalMessages.commentFrom, {
+            userName: payload.comment.user.displayName,
+          })
+        )}:\* `,
+        payload.comment.message,
+        '',
+        Math.max(1, maxLength - 512)
+      );
     } else if (payload.issue) {
-      message += `\n\n\*${this.escapeText(
-        intl.formatMessage(globalMessages.reportedBy)
-      )}:\* ${this.escapeText(payload.issue.createdBy.displayName)}`;
-      message += `\n\*${this.escapeText(
-        intl.formatMessage(globalMessages.issueType)
-      )}:\* ${this.escapeText(IssueTypeName[payload.issue.issueType])}`;
-      message += `\n\*${this.escapeText(
-        intl.formatMessage(globalMessages.issueStatus)
-      )}:\* ${this.escapeText(
+      appendEscaped(
+        `\n\n\*${escapeTelegramMarkdownText(
+          intl.formatMessage(globalMessages.reportedBy)
+        )}:\* `,
+        payload.issue.createdBy.displayName
+      );
+      appendEscaped(
+        `\n\*${escapeTelegramMarkdownText(
+          intl.formatMessage(globalMessages.issueType)
+        )}:\* `,
+        IssueTypeName[payload.issue.issueType]
+      );
+      appendEscaped(
+        `\n\*${escapeTelegramMarkdownText(
+          intl.formatMessage(globalMessages.issueStatus)
+        )}:\* `,
         payload.issue.status === IssueStatus.OPEN
           ? intl.formatMessage(globalMessages.open)
           : intl.formatMessage(globalMessages.resolved)
-      )}`;
+      );
     }
 
     for (const extra of payload.extra ?? []) {
-      message += `\n\*${extra.name}:\* ${extra.value}`;
+      appendEscaped(
+        `\n\*${escapeTelegramMarkdownText(extra.name, 128)}:\* `,
+        extra.value,
+        '',
+        512
+      );
     }
 
     const url = getNotificationActionUrl(payload, applicationUrl);
 
     if (url) {
-      message += `\n\n\[${this.escapeText(
+      const link = `\n\n\[${escapeTelegramMarkdownText(
         intl.formatMessage(
           payload.issue ? globalMessages.viewIssue : globalMessages.viewMedia,
           { applicationTitle }
         )
-      )}\]\(${url}\)`;
+      )}\]\(${escapeTelegramMarkdownUrl(url)}\)`;
+      if (message.length + link.length <= maxLength) {
+        message += link;
+      }
     }
     /* eslint-enable */
 
@@ -195,7 +273,7 @@ class TelegramAgent
       });
 
       try {
-        const notificationPayload = this.getNotificationPayload(type, payload);
+        const notificationPayload = this.buildPayload(type, payload);
 
         await axios.post(
           endpoint,
@@ -237,7 +315,7 @@ class TelegramAgent
         });
 
         try {
-          const notificationPayload = this.getNotificationPayload(
+          const notificationPayload = this.buildPayload(
             type,
             payload,
             payload.notifyUser.settings?.locale as AvailableLocale
@@ -271,19 +349,18 @@ class TelegramAgent
     }
 
     if (payload.notifyAdmin) {
-      const userRepository = getRepository(User);
-      const users = await userRepository.find();
-
-      await Promise.all(
-        users
-          .filter(
+      let adminDeliveryFailed = false;
+      await forEachNotificationUserBatch(async (users) => {
+        const adminDeliveries = await mapWithConcurrency(
+          users.filter(
             (user) =>
               user.settings?.hasNotificationType(
                 NotificationAgentKey.TELEGRAM,
                 type
               ) && shouldSendAdminNotification(type, user, payload)
-          )
-          .map(async (user) => {
+          ),
+          NOTIFICATION_DELIVERY_CONCURRENCY,
+          async (user) => {
             if (
               user.settings?.telegramChatId &&
               user.settings.telegramChatId !== settings.options.chatId
@@ -296,7 +373,7 @@ class TelegramAgent
               });
 
               try {
-                const notificationPayload = this.getNotificationPayload(
+                const notificationPayload = this.buildPayload(
                   type,
                   payload,
                   user.settings?.locale as AvailableLocale
@@ -325,8 +402,15 @@ class TelegramAgent
                 return false;
               }
             }
-          })
-      );
+          }
+        );
+        adminDeliveryFailed ||= adminDeliveries.some(
+          (delivered) => delivered === false
+        );
+      });
+      if (adminDeliveryFailed) {
+        return false;
+      }
     }
 
     return true;

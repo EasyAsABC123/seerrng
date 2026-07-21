@@ -3,8 +3,20 @@ import RadarrAPI from '@server/api/servarr/radarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
 import { MediaType } from '@server/constants/media';
-import { getSettings } from '@server/lib/settings';
+import {
+  hasSameServarrServiceAuthority,
+  runWithServarrServiceAdmission,
+  type ServarrServiceType,
+} from '@server/lib/serviceAdmission';
+import {
+  getSettings,
+  type DVRSettings,
+  type ReadarrSettings,
+} from '@server/lib/settings';
 import logger from '@server/logger';
+import { trackBackgroundTask } from '@server/utils/backgroundTasks';
+import { mapWithConcurrency } from '@server/utils/concurrency';
+import { MAX_SERVARR_INSTANCES_PER_TYPE } from '@server/utils/servarrSettings';
 import { uniqWith } from 'lodash';
 
 interface EpisodeNumberResult {
@@ -46,7 +58,14 @@ export interface DownloadingItem {
   episode?: EpisodeNumberResult;
 }
 
-class DownloadTracker {
+export const DOWNLOAD_TRACKER_SERVER_CONCURRENCY = 5;
+
+type DownloadTrackerServerSettings = DVRSettings &
+  Partial<Pick<ReadarrSettings, 'serviceType'>>;
+
+export const hasSameServarrDownloadAuthority = hasSameServarrServiceAuthority;
+
+export class DownloadTracker {
   private static readonly monitoredRefreshCooldownMs = 5 * 60 * 1000;
 
   private radarrServers: Record<number, DownloadingItem[]> = {};
@@ -55,9 +74,36 @@ class DownloadTracker {
   private readarrServers: Record<number, DownloadingItem[]> = {};
   private monitoredRefreshes = new Set<string>();
   private lastMonitoredRefresh = new Map<string, number>();
+  private activeUpdate?: Promise<void>;
+
+  private runWithCurrentServarrDownloadServer<Result>(
+    serviceType: ServarrServiceType,
+    server: DownloadTrackerServerSettings,
+    operation: () => Promise<Result>
+  ): Promise<Result | undefined> {
+    return runWithServarrServiceAdmission(
+      [{ serviceType, serviceId: server.id }],
+      async () => {
+        const current = getSettings()[serviceType].find(
+          (candidate) => candidate.id === server.id
+        );
+        if (
+          !current ||
+          !current.syncEnabled ||
+          !hasSameServarrDownloadAuthority(current, server)
+        ) {
+          return undefined;
+        }
+
+        return operation();
+      }
+    );
+  }
 
   private refreshMonitoredDownloads(
     key: string,
+    serviceType: ServarrServiceType,
+    server: DownloadTrackerServerSettings,
     refresh: () => Promise<void>,
     serverName: string
   ): void {
@@ -73,19 +119,28 @@ class DownloadTracker {
 
     this.monitoredRefreshes.add(key);
     this.lastMonitoredRefresh.set(key, Date.now());
-    refresh()
-      .catch((e) => {
-        logger.debug(
-          `Unable to refresh monitored downloads for server: ${serverName}`,
-          {
-            errorMessage: e instanceof Error ? e.message : String(e),
-            label: 'Download Tracker',
-          }
-        );
-      })
-      .finally(() => {
-        this.monitoredRefreshes.delete(key);
-      });
+    trackBackgroundTask(
+      `refresh monitored downloads for ${serverName}`,
+      async () => {
+        try {
+          await this.runWithCurrentServarrDownloadServer(
+            serviceType,
+            server,
+            refresh
+          );
+        } catch (e) {
+          logger.debug(
+            `Unable to refresh monitored downloads for server: ${serverName}`,
+            {
+              errorMessage: e instanceof Error ? e.message : String(e),
+              label: 'Download Tracker',
+            }
+          );
+        } finally {
+          this.monitoredRefreshes.delete(key);
+        }
+      }
+    );
   }
 
   public getMovieProgress(
@@ -141,36 +196,58 @@ class DownloadTracker {
   }
 
   public async resetDownloadTracker() {
+    // A reset that races an update can otherwise be undone when the older
+    // queue fetch writes its results after the reset. Drain that local update
+    // first, then clear the snapshot and its refresh cooldowns.
+    await this.activeUpdate?.catch(() => undefined);
     this.radarrServers = {};
     this.sonarrServers = {};
     this.lidarrServers = {};
     this.readarrServers = {};
+    this.lastMonitoredRefresh.clear();
   }
 
-  public async updateDownloads() {
-    await Promise.all([
+  public updateDownloads(): Promise<void> {
+    if (this.activeUpdate) {
+      return this.activeUpdate;
+    }
+
+    const update = Promise.all([
       this.updateRadarrDownloads(),
       this.updateSonarrDownloads(),
       this.updateLidarrDownloads(),
       this.updateReadarrDownloads(),
-    ]);
+    ])
+      .then(() => undefined)
+      .finally(() => {
+        if (this.activeUpdate === update) {
+          this.activeUpdate = undefined;
+        }
+      });
+    this.activeUpdate = update;
+    return update;
   }
 
   private async updateRadarrDownloads() {
     const settings = getSettings();
 
     // Remove duplicate servers
-    const filteredServers = uniqWith(settings.radarr, (radarrA, radarrB) => {
-      return (
-        radarrA.hostname === radarrB.hostname &&
-        radarrA.port === radarrB.port &&
-        radarrA.baseUrl === radarrB.baseUrl
-      );
-    });
+    const filteredServers = uniqWith(
+      settings.radarr.slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      (radarrA, radarrB) => {
+        return (
+          radarrA.hostname === radarrB.hostname &&
+          radarrA.port === radarrB.port &&
+          radarrA.baseUrl === radarrB.baseUrl
+        );
+      }
+    );
 
     // Load downloads from Radarr servers
-    await Promise.all(
-      filteredServers.map(async (server) => {
+    await mapWithConcurrency(
+      filteredServers,
+      DOWNLOAD_TRACKER_SERVER_CONCURRENCY,
+      async (server) => {
         if (server.syncEnabled) {
           const radarr = new RadarrAPI({
             apiKey: server.apiKey,
@@ -180,10 +257,20 @@ class DownloadTracker {
           try {
             this.refreshMonitoredDownloads(
               `radarr:${server.id}`,
+              'radarr',
+              server,
               () => radarr.refreshMonitoredDownloads(),
               server.name
             );
-            const queueItems = await radarr.getQueue();
+            const queueItems = await this.runWithCurrentServarrDownloadServer(
+              'radarr',
+              server,
+              () => radarr.getQueue()
+            );
+            if (!queueItems) {
+              delete this.radarrServers[server.id];
+              return;
+            }
 
             this.radarrServers[server.id] = queueItems.map((item) => ({
               externalId: item.movieId,
@@ -234,7 +321,7 @@ class DownloadTracker {
             }
           });
         }
-      })
+      }
     );
   }
 
@@ -242,17 +329,22 @@ class DownloadTracker {
     const settings = getSettings();
 
     // Remove duplicate servers
-    const filteredServers = uniqWith(settings.sonarr, (sonarrA, sonarrB) => {
-      return (
-        sonarrA.hostname === sonarrB.hostname &&
-        sonarrA.port === sonarrB.port &&
-        sonarrA.baseUrl === sonarrB.baseUrl
-      );
-    });
+    const filteredServers = uniqWith(
+      settings.sonarr.slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      (sonarrA, sonarrB) => {
+        return (
+          sonarrA.hostname === sonarrB.hostname &&
+          sonarrA.port === sonarrB.port &&
+          sonarrA.baseUrl === sonarrB.baseUrl
+        );
+      }
+    );
 
     // Load downloads from Sonarr servers
-    await Promise.all(
-      filteredServers.map(async (server) => {
+    await mapWithConcurrency(
+      filteredServers,
+      DOWNLOAD_TRACKER_SERVER_CONCURRENCY,
+      async (server) => {
         if (server.syncEnabled) {
           const sonarr = new SonarrAPI({
             apiKey: server.apiKey,
@@ -262,10 +354,20 @@ class DownloadTracker {
           try {
             this.refreshMonitoredDownloads(
               `sonarr:${server.id}`,
+              'sonarr',
+              server,
               () => sonarr.refreshMonitoredDownloads(),
               server.name
             );
-            const queueItems = await sonarr.getQueue();
+            const queueItems = await this.runWithCurrentServarrDownloadServer(
+              'sonarr',
+              server,
+              () => sonarr.getQueue()
+            );
+            if (!queueItems) {
+              delete this.sonarrServers[server.id];
+              return;
+            }
 
             this.sonarrServers[server.id] = queueItems.map((item) => ({
               externalId: item.seriesId,
@@ -317,23 +419,28 @@ class DownloadTracker {
             }
           });
         }
-      })
+      }
     );
   }
 
   private async updateLidarrDownloads() {
     const settings = getSettings();
 
-    const filteredServers = uniqWith(settings.lidarr, (lidarrA, lidarrB) => {
-      return (
-        lidarrA.hostname === lidarrB.hostname &&
-        lidarrA.port === lidarrB.port &&
-        lidarrA.baseUrl === lidarrB.baseUrl
-      );
-    });
+    const filteredServers = uniqWith(
+      settings.lidarr.slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      (lidarrA, lidarrB) => {
+        return (
+          lidarrA.hostname === lidarrB.hostname &&
+          lidarrA.port === lidarrB.port &&
+          lidarrA.baseUrl === lidarrB.baseUrl
+        );
+      }
+    );
 
-    await Promise.all(
-      filteredServers.map(async (server) => {
+    await mapWithConcurrency(
+      filteredServers,
+      DOWNLOAD_TRACKER_SERVER_CONCURRENCY,
+      async (server) => {
         if (server.syncEnabled) {
           const lidarr = new LidarrAPI({
             apiKey: server.apiKey,
@@ -343,10 +450,20 @@ class DownloadTracker {
           try {
             this.refreshMonitoredDownloads(
               `lidarr:${server.id}`,
+              'lidarr',
+              server,
               () => lidarr.refreshMonitoredDownloads(),
               server.name
             );
-            const queueItems = await lidarr.getQueue();
+            const queueItems = await this.runWithCurrentServarrDownloadServer(
+              'lidarr',
+              server,
+              () => lidarr.getQueue()
+            );
+            if (!queueItems) {
+              delete this.lidarrServers[server.id];
+              return;
+            }
 
             this.lidarrServers[server.id] = queueItems
               .filter((item) => item.albumId !== undefined)
@@ -399,19 +516,23 @@ class DownloadTracker {
             }
           });
         }
-      })
+      }
     );
   }
 
   private async updateReadarrDownloads() {
     const settings = getSettings();
 
-    const filteredServers = uniqWith(settings.readarr, (readarrA, readarrB) => {
-      return isMatchingReadarrDownloadServer(readarrA, readarrB);
-    });
+    const filteredServers = uniqWith(
+      settings.readarr.slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      (readarrA, readarrB) =>
+        isMatchingReadarrDownloadServer(readarrA, readarrB)
+    );
 
-    await Promise.all(
-      filteredServers.map(async (server) => {
+    await mapWithConcurrency(
+      filteredServers,
+      DOWNLOAD_TRACKER_SERVER_CONCURRENCY,
+      async (server) => {
         if (server.syncEnabled) {
           const readarr = new ReadarrAPI({
             apiKey: server.apiKey,
@@ -421,10 +542,20 @@ class DownloadTracker {
           try {
             this.refreshMonitoredDownloads(
               `readarr:${server.id}`,
+              'readarr',
+              server,
               () => readarr.refreshMonitoredDownloads(),
               server.name
             );
-            const queueItems = await readarr.getQueue();
+            const queueItems = await this.runWithCurrentServarrDownloadServer(
+              'readarr',
+              server,
+              () => readarr.getQueue()
+            );
+            if (!queueItems) {
+              delete this.readarrServers[server.id];
+              return;
+            }
 
             this.readarrServers[server.id] = queueItems
               .map((item) => ({
@@ -483,7 +614,7 @@ class DownloadTracker {
             }
           });
         }
-      })
+      }
     );
   }
 }

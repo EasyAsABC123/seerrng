@@ -160,7 +160,9 @@ const BookDetails = () => {
       request.bookFormat === 'audiobook' || request.bookFormat === 'both'
   );
   const activeBookRequest =
-    activeBookRequests.find((request) => request.requestedBy.id === user?.id) ??
+    activeBookRequests.find(
+      (request) => request.requestedBy?.id === user?.id
+    ) ??
     (hasPermission(Permission.MANAGE_REQUESTS) &&
     activeBookRequests.length === 1
       ? activeBookRequests[0]
@@ -310,7 +312,7 @@ const BookDetails = () => {
   return (
     <>
       <PageTitle title={data.title} />
-      {showManager && (
+      {showManager && canManage && (
         <ExternalMediaManageSlideOver
           data={data}
           mediaType={MediaType.BOOK}

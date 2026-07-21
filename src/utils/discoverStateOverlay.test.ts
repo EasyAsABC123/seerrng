@@ -7,10 +7,28 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   applyDiscoverStateOverlay,
+  getDiscoverOverlayRequestKey,
   getDiscoverStateInputs,
 } from './discoverStateOverlay';
 
 describe('Discover state overlays', () => {
+  it('partitions applied revisions by user context and catalog inputs', () => {
+    const inputs = [{ mediaType: MediaType.MOVIE, id: 1 }];
+    const first = getDiscoverOverlayRequestKey('user:1', 'revision', inputs);
+
+    assert.notEqual(
+      first,
+      getDiscoverOverlayRequestKey('user:2', 'revision', inputs)
+    );
+    assert.notEqual(
+      first,
+      getDiscoverOverlayRequestKey('user:1', 'revision', [
+        ...inputs,
+        { mediaType: MediaType.TV, id: 2 },
+      ])
+    );
+  });
+
   it('collects and deduplicates supported catalog identifiers', () => {
     const inputs = getDiscoverStateInputs([
       {
