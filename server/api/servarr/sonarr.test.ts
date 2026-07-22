@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 
-import { MAX_SERVARR_CONFIGURATION_RESULTS } from './base';
 import type { SonarrSeries } from '@server/api/servarr/sonarr';
 import axios from 'axios';
+import { MAX_SERVARR_CONFIGURATION_RESULTS } from './base';
 import SonarrAPI, {
   sanitizeSonarrLanguageProfiles,
   sanitizeSonarrSeries,
