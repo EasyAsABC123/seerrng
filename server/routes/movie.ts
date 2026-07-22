@@ -3,7 +3,7 @@ import RottenTomatoes from '@server/api/rating/rottentomatoes';
 import { type RatingResponse } from '@server/api/ratings';
 import RadarrAPI from '@server/api/servarr/radarr';
 import TheMovieDb from '@server/api/themoviedb';
-import { MediaType } from '@server/constants/media';
+import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
@@ -111,6 +111,12 @@ const getMovieCoverFallbackPath = (
   }`;
 };
 
+const shouldPreferLocalMovieDetails = (media?: Media): boolean =>
+  media?.status === MediaStatus.AVAILABLE ||
+  media?.status === MediaStatus.PARTIALLY_AVAILABLE ||
+  media?.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
+  media?.status4k === MediaStatus.AVAILABLE;
+
 movieRoutes.get('/:id', async (req, res, next) => {
   const tmdb = new TheMovieDb();
   const movieId = parseTmdbRouteId(req.params.id);
@@ -143,8 +149,13 @@ movieRoutes.get('/:id', async (req, res, next) => {
 
     const data = mapMovieDetails(tmdbMovie, media, onUserWatchlist);
 
-    if (!data.posterPath) {
-      data.posterPath = getMovieCoverFallbackPath(movieId, media);
+    const localCoverPath = getMovieCoverFallbackPath(movieId, media);
+
+    if (
+      localCoverPath &&
+      (!data.posterPath || shouldPreferLocalMovieDetails(media))
+    ) {
+      data.posterPath = localCoverPath;
     }
 
     // TMDB issue where it doesnt fallback to English when no overview is available in requested locale.

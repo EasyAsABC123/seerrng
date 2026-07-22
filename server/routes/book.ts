@@ -1,6 +1,6 @@
 import OpenLibraryAPI from '@server/api/openlibrary';
 import ReadarrAPI from '@server/api/servarr/readarr';
-import { MediaType } from '@server/constants/media';
+import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
@@ -148,6 +148,10 @@ const getBookCoverFallbackPath = (
   }&format=${coverService.format}`;
 };
 
+const shouldPreferLocalBookDetails = (media?: Media): boolean =>
+  media?.status === MediaStatus.AVAILABLE ||
+  media?.status === MediaStatus.PARTIALLY_AVAILABLE;
+
 bookRoutes.get('/search', async (req, res, next) => {
   const parsedQuery = parseBookSearchQuery(req.query.query);
   const page = parsePositiveInt(req.query.page, 1, 500);
@@ -233,8 +237,13 @@ bookRoutes.get('/:id', async (req, res, next) => {
       author?.name
     );
 
-    if (!bookDetails.posterPath) {
-      bookDetails.posterPath = getBookCoverFallbackPath(bookId, media);
+    const localCoverPath = getBookCoverFallbackPath(bookId, media);
+
+    if (
+      localCoverPath &&
+      (!bookDetails.posterPath || shouldPreferLocalBookDetails(media))
+    ) {
+      bookDetails.posterPath = localCoverPath;
     }
 
     return res
