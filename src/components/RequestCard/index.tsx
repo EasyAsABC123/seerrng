@@ -15,6 +15,7 @@ import {
 } from '@app/utils/apiPath';
 import defineMessages from '@app/utils/defineMessages';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
+import { getRequestMetadataApiPath } from '@app/utils/requestMetadata';
 import { withProperties } from '@app/utils/typeHelpers';
 import {
   ArrowPathIcon,
@@ -379,24 +380,6 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
     'approve' | 'decline' | null
   >(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const bookId =
-    request.type === 'book' ? getNormalizedBookId(request) : undefined;
-  const musicId =
-    request.type === 'music' ? getNormalizedMusicId(request) : undefined;
-  const url =
-    request.type === 'movie'
-      ? `/api/v1/movie/${request.media.tmdbId}`
-      : request.type === 'tv'
-        ? `/api/v1/tv/${request.media.tmdbId}`
-        : request.type === 'music' && musicId
-          ? `/api/v1/music/${encodeApiPathSegment(musicId)}`
-          : request.type === 'book' && bookId
-            ? `/api/v1/book/${encodeApiPathSegment(bookId)}`
-            : null;
-
-  const { data: title, error } = useSWR<
-    MovieDetails | TvDetails | MusicDetails | BookDetails
-  >(inView ? url : null);
   const {
     data: requestData,
     error: requestError,
@@ -415,6 +398,19 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
       ),
     }
   );
+  const resolvedRequest = requestData ?? request;
+  const bookId =
+    resolvedRequest.type === 'book'
+      ? getNormalizedBookId(resolvedRequest)
+      : undefined;
+  const musicId =
+    resolvedRequest.type === 'music'
+      ? getNormalizedMusicId(resolvedRequest)
+      : undefined;
+  const metadataUrl = getRequestMetadataApiPath(resolvedRequest);
+  const { data: title, error } = useSWR<
+    MovieDetails | TvDetails | MusicDetails | BookDetails
+  >(inView ? metadataUrl : null);
   const hasPartialBookService =
     requestData?.type === 'book' &&
     requestData.bookFormat === 'both' &&
