@@ -387,7 +387,7 @@ describe('GET /book/:id', () => {
     assert.strictEqual(res.body.mediaInfo.status, MediaStatus.AVAILABLE);
   });
 
-  it('uses a linked Bookshelf cover path when Open Library has no cover', async () => {
+  it('does not substitute a linked Bookshelf cover when Open Library has no cover', async () => {
     mockBookDetailsWithoutCover();
 
     const settings = getSettings();
@@ -439,16 +439,13 @@ describe('GET /book/:id', () => {
       const res = await agent.get('/book/OL45804W');
 
       assert.strictEqual(res.status, 200);
-      assert.strictEqual(
-        res.body.posterPath,
-        `/api/v1/book/OL45804W/cover?mediaId=${media.id}&format=audiobook`
-      );
+      assert.strictEqual(res.body.posterPath, undefined);
     } finally {
       settings.readarr = priorReadarr;
     }
   });
 
-  it('prefers a linked Bookshelf cover path for available books even when Open Library has a cover', async () => {
+  it('retains the Open Library cover for an available linked book', async () => {
     mockBookDetails();
 
     const settings = getSettings();
@@ -502,7 +499,7 @@ describe('GET /book/:id', () => {
       assert.strictEqual(res.status, 200);
       assert.strictEqual(
         res.body.posterPath,
-        `/api/v1/book/OL45804W/cover?mediaId=${media.id}&format=audiobook`
+        'https://covers.openlibrary.org/b/id/123-L.jpg'
       );
     } finally {
       settings.readarr = priorReadarr;

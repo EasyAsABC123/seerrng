@@ -1,6 +1,6 @@
 import OpenLibraryAPI from '@server/api/openlibrary';
 import ReadarrAPI from '@server/api/servarr/readarr';
-import { MediaStatus, MediaType } from '@server/constants/media';
+import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
@@ -133,25 +133,6 @@ const getBookCoverService = (
   return undefined;
 };
 
-const getBookCoverFallbackPath = (
-  bookId: string,
-  media?: Media
-): string | undefined => {
-  const coverService = getBookCoverService(media);
-
-  if (!coverService || !media?.id) {
-    return undefined;
-  }
-
-  return `/api/v1/book/${encodeURIComponent(bookId)}/cover?mediaId=${
-    media.id
-  }&format=${coverService.format}`;
-};
-
-const shouldPreferLocalBookDetails = (media?: Media): boolean =>
-  media?.status === MediaStatus.AVAILABLE ||
-  media?.status === MediaStatus.PARTIALLY_AVAILABLE;
-
 bookRoutes.get('/search', async (req, res, next) => {
   const parsedQuery = parseBookSearchQuery(req.query.query);
   const page = parsePositiveInt(req.query.page, 1, 500);
@@ -236,15 +217,6 @@ bookRoutes.get('/:id', async (req, res, next) => {
       onUserWatchlist,
       author?.name
     );
-
-    const localCoverPath = getBookCoverFallbackPath(bookId, media);
-
-    if (
-      localCoverPath &&
-      (!bookDetails.posterPath || shouldPreferLocalBookDetails(media))
-    ) {
-      bookDetails.posterPath = localCoverPath;
-    }
 
     return res.status(200).json(filterEntityResponse(bookDetails, req.user));
   } catch (e) {

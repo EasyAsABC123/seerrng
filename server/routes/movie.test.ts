@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { afterEach, before, describe, it, mock } from 'node:test';
 
+import ExternalAPI from '@server/api/externalapi';
 import RadarrAPI from '@server/api/servarr/radarr';
-import { MediaType } from '@server/constants/media';
+import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { getSettings, type RadarrSettings } from '@server/lib/settings';
@@ -30,6 +31,71 @@ afterEach(() => {
 });
 
 setupTestDb();
+
+const mockPrivateMethod = mock.method as (
+  object: object,
+  methodName: string,
+  implementation: (...args: unknown[]) => unknown
+) => unknown;
+const mockPrivate = (
+  object: object,
+  methodName: string,
+  implementation: (...args: unknown[]) => unknown
+) => mockPrivateMethod.call(mock, object, methodName, implementation);
+
+describe('GET /movie/:id', () => {
+  it('retains the TMDB poster for an available movie linked to Radarr', async () => {
+    mockPrivate(ExternalAPI.prototype, 'get', async () => ({
+      id: 100,
+      adult: false,
+      budget: 0,
+      genres: [],
+      videos: { results: [] },
+      original_language: 'en',
+      original_title: 'Test Movie',
+      popularity: 0,
+      production_companies: [],
+      production_countries: [],
+      release_date: '2026-01-01',
+      release_dates: { results: [] },
+      revenue: 0,
+      spoken_languages: [],
+      status: 'Released',
+      title: 'Test Movie',
+      video: false,
+      vote_average: 0,
+      vote_count: 0,
+      backdrop_path: '/provider-backdrop.jpg',
+      homepage: '',
+      imdb_id: 'tt0000100',
+      overview: 'A test movie.',
+      poster_path: '/provider-poster.jpg',
+      runtime: 90,
+      tagline: '',
+      credits: { cast: [], crew: [] },
+      belongs_to_collection: null,
+      external_ids: {},
+      keywords: { keywords: [] },
+      'watch/providers': { results: {} },
+    }));
+    const media = await getRepository(Media).save(
+      new Media({
+        tmdbId: 100,
+        mediaType: MediaType.MOVIE,
+        status: MediaStatus.AVAILABLE,
+        serviceId: 9,
+        externalServiceId: 44,
+        externalServiceSlug: 'test-movie',
+      })
+    );
+
+    const res = await request(app).get('/movie/100');
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.mediaInfo.id, media.id);
+    assert.strictEqual(res.body.posterPath, '/provider-poster.jpg');
+  });
+});
 
 describe('GET /movie/:id/cover', () => {
   it('serves linked Radarr covers through the configured service', async () => {
