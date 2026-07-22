@@ -4,7 +4,7 @@ import SonarrAPI from '@server/api/servarr/sonarr';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import type { TmdbKeyword } from '@server/api/themoviedb/interfaces';
-import { MediaStatus, MediaType } from '@server/constants/media';
+import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
@@ -104,27 +104,6 @@ const getSeriesCoverService = (
   return undefined;
 };
 
-const getSeriesCoverFallbackPath = (
-  tvId: number,
-  media?: Media
-): string | undefined => {
-  const coverService = getSeriesCoverService(media);
-
-  if (!coverService || !media?.id) {
-    return undefined;
-  }
-
-  return `/api/v1/tv/${tvId}/cover?mediaId=${media.id}&is4k=${
-    coverService.is4k ? 'true' : 'false'
-  }`;
-};
-
-const shouldPreferLocalSeriesDetails = (media?: Media): boolean =>
-  media?.status === MediaStatus.AVAILABLE ||
-  media?.status === MediaStatus.PARTIALLY_AVAILABLE ||
-  media?.status4k === MediaStatus.PARTIALLY_AVAILABLE ||
-  media?.status4k === MediaStatus.AVAILABLE;
-
 tvRoutes.get('/:id', async (req, res, next) => {
   const tmdb = new TheMovieDb();
   const tvId = parseTvRouteId(req.params.id);
@@ -163,15 +142,6 @@ tvRoutes.get('/:id', async (req, res, next) => {
     });
 
     const data = mapTvDetails(tv, media, onUserWatchlist);
-
-    const localCoverPath = getSeriesCoverFallbackPath(tvId, media);
-
-    if (
-      localCoverPath &&
-      (!data.posterPath || shouldPreferLocalSeriesDetails(media))
-    ) {
-      data.posterPath = localCoverPath;
-    }
 
     // TMDB issue where it doesnt fallback to English when no overview is available in requested locale.
     if (!data.overview) {
