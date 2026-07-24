@@ -18,8 +18,6 @@ const requiredSections = [
   'tautulli',
   'radarr',
   'sonarr',
-  'lidarr',
-  'readarr',
   'notifications',
 ];
 for (const section of requiredSections) {
@@ -38,8 +36,8 @@ const externalConfig = {
   tautulli: settings.tautulli,
   radarr: settings.radarr,
   sonarr: settings.sonarr,
-  lidarr: settings.lidarr,
-  readarr: settings.readarr,
+  lidarr: settings.lidarr ?? [],
+  readarr: settings.readarr ?? [],
   notifications: settings.notifications,
 };
 
