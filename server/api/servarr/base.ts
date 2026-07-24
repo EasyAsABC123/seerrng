@@ -210,7 +210,10 @@ const EXTERNAL_READ_ONLY =
   process.env.SEERR_EXTERNAL_READ_ONLY?.toLowerCase() === 'true' ||
   process.env.SEERR_EXTERNAL_READ_ONLY === '1';
 
-const normalizeConfiguredServiceUrl = (value: string, apiName: string) => {
+export const normalizeConfiguredServiceUrl = (
+  value: string,
+  apiName: string
+) => {
   try {
     const url = new URL(value);
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) {
