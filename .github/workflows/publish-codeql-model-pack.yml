@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   packages: write
+  security-events: read
 
 jobs:
   publish:
@@ -21,8 +22,6 @@ jobs:
       - name: Set up CodeQL CLI
         id: setup-codeql
         uses: github/codeql-action/setup-codeql@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
-        with:
-          tools: javascript
 
       - name: Publish model pack
         env:
