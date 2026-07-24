@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
-import axios from 'axios';
 import LidarrAPI from '@server/api/servarr/lidarr';
 import RadarrAPI from '@server/api/servarr/radarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
@@ -32,6 +31,7 @@ import { getSettings } from '@server/lib/settings';
 import { runUserSecurityMutation } from '@server/lib/userSecurityMutation';
 import { setupTestDb } from '@server/test/db';
 import { MAX_SERVARR_INSTANCES_PER_TYPE } from '@server/utils/servarrSettings';
+import axios from 'axios';
 import type { Express } from 'express';
 import express from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
@@ -210,15 +210,19 @@ function makeReadarr(
 // creates, leaving everything else (e.g. `defaults.params.apikey`) untouched.
 function mockServarrTagsEndpoint(tags: { id: number; label: string }[]) {
   const realCreate = axios.create.bind(axios);
-  mock.method(axios, 'create', (config?: Parameters<typeof axios.create>[0]) => {
-    const instance = realCreate(config);
-    const realGet = instance.get.bind(instance);
-    instance.get = ((url: string, requestConfig?: unknown) =>
-      url === '/tag'
-        ? Promise.resolve({ data: tags })
-        : realGet(url, requestConfig as never)) as typeof instance.get;
-    return instance;
-  });
+  mock.method(
+    axios,
+    'create',
+    (config?: Parameters<typeof axios.create>[0]) => {
+      const instance = realCreate(config);
+      const realGet = instance.get.bind(instance);
+      instance.get = ((url: string, requestConfig?: unknown) =>
+        url === '/tag'
+          ? Promise.resolve({ data: tags })
+          : realGet(url, requestConfig as never)) as typeof instance.get;
+      return instance;
+    }
+  );
 }
 
 before(() => {
