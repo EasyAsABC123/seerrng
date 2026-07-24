@@ -15,6 +15,7 @@ import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { getAppVersion } from '@server/utils/appVersion';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
+import { createDeterministicKey } from '@server/utils/deterministicKey';
 import { getHostname } from '@server/utils/getHostname';
 import { getRateLimitKey } from '@server/utils/security';
 import { parseOptionalBoundedString } from '@server/utils/validation';
@@ -22,7 +23,7 @@ import axios from 'axios';
 import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import gravatarUrl from 'gravatar-url';
-import { createHash, createHmac } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 const router = Router();
 const MAX_AVATAR_VERSION_LENGTH = 128;
@@ -100,16 +101,14 @@ const refreshPlexAvatarInBackground = (
 
 export const getAvatarImageProxySettingsKey = (): string => {
   const settings = getSettings();
-  return createHmac('sha256', 'seerr-avatar-proxy-settings')
-    .update(
-      JSON.stringify([
-        getHostname(),
-        settings.main.mediaServerType,
-        settings.jellyfin.apiKey,
-        getAppVersion(),
-      ])
-    )
-    .digest('hex');
+  return createDeterministicKey(
+    JSON.stringify([
+      getHostname(),
+      settings.main.mediaServerType,
+      settings.jellyfin.apiKey,
+      getAppVersion(),
+    ])
+  );
 };
 
 async function initAvatarImageProxy(): Promise<ImageProxy> {
