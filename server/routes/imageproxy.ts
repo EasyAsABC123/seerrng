@@ -344,8 +344,8 @@ export const warmImageCache = (req: Request, res: Response) => {
 
 router.post(
   '/warm',
-  isAuthenticated(),
   imageCacheWarmRateLimit,
+  isAuthenticated(),
   warmImageCache
 );
 
