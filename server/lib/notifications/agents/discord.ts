@@ -7,7 +7,7 @@ import { NotificationAgentKey, getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { normalizeDiscordSnowflake } from '@server/utils/discord';
-import { isSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
 import axios from 'axios';
 import {
   Notification,
@@ -312,12 +312,11 @@ class DiscordAgent
       subject: payload.subject,
     });
 
-    if (
-      !(await isSafeHttpUrl(settings.options.webhookUrl, {
-        allowPrivateAddresses:
-          process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
-      }))
-    ) {
+    const webhookUrl = await createSafeHttpUrl(settings.options.webhookUrl, {
+      allowPrivateAddresses:
+        process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
+    });
+    if (!webhookUrl) {
       logger.error('Invalid Discord webhook URL', {
         label: 'Notifications',
         type: Notification[type],
@@ -395,7 +394,7 @@ class DiscordAgent
         : (settings.options.locale as AvailableLocale);
 
       await axios.post(
-        settings.options.webhookUrl,
+        webhookUrl.toString(),
         {
           username: settings.options.botUsername
             ? settings.options.botUsername

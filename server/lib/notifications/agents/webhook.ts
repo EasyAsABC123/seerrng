@@ -8,7 +8,7 @@ import {
 import type { NotificationAgentWebhook } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
-import { isSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
 import axios from 'axios';
 import { get } from 'lodash';
 import { Notification, hasNotificationType } from '..';
@@ -345,12 +345,11 @@ class WebhookAgent
       return false;
     }
 
-    if (
-      !(await isSafeHttpUrl(webhookUrl, {
-        allowPrivateAddresses:
-          process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
-      }))
-    ) {
+    const safeWebhookUrl = await createSafeHttpUrl(webhookUrl, {
+      allowPrivateAddresses:
+        process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
+    });
+    if (!safeWebhookUrl) {
       logger.error('Invalid webhook notification URL', {
         label: 'Notifications',
         type: Notification[type],
@@ -395,7 +394,7 @@ class WebhookAgent
       }
 
       await axios.post(
-        webhookUrl,
+        safeWebhookUrl.toString(),
         this.buildPayload(type, payload),
         Object.keys(headers).length > 0
           ? { ...CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS, headers }

@@ -5,7 +5,7 @@ import type { NotificationAgentNtfy } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
-import { isSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
 import axios from 'axios';
 import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
@@ -166,12 +166,11 @@ class NtfyAgent
       subject: payload.subject,
     });
 
-    if (
-      !(await isSafeHttpUrl(settings.options.url, {
-        allowPrivateAddresses:
-          process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
-      }))
-    ) {
+    const baseUrl = await createSafeHttpUrl(settings.options.url, {
+      allowPrivateAddresses:
+        process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
+    });
+    if (!baseUrl) {
       logger.error('Invalid ntfy URL', {
         label: 'Notifications',
         type: Notification[type],
@@ -197,7 +196,7 @@ class NtfyAgent
       }
 
       await axios.post(
-        settings.options.url,
+        baseUrl.toString(),
         this.buildPayload(type, payload),
         authHeader
           ? {
