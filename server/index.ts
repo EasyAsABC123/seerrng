@@ -54,7 +54,6 @@ import {
 import { configureHttpServer, parseListenPort } from '@server/utils/httpServer';
 import restartFlag from '@server/utils/restartFlag';
 import { getRateLimitKey } from '@server/utils/security';
-import { getSessionTransportOptions } from '@server/utils/sessionCookie';
 import axios from 'axios';
 import compression from 'compression';
 import { TypeormStore } from 'connect-typeorm/out';
@@ -296,7 +295,13 @@ app
         secret: settings.sessionSecret,
         resave: false,
         saveUninitialized: false,
-        ...getSessionTransportOptions(dev, settings.network.csrfProtection),
+        cookie: {
+          maxAge: 30 * 24 * 60 * 60 * 1_000,
+          httpOnly: true,
+          sameSite: settings.network.csrfProtection ? 'strict' : 'lax',
+          secure: true,
+        },
+        proxy: !dev,
         store: new TypeormStore({
           cleanupLimit: 2,
           ttl: 60 * 60 * 24 * 30,

@@ -12,7 +12,13 @@ const createApp = (development: boolean) => {
       secret: '01234567890123456789012345678901',
       resave: false,
       saveUninitialized: false,
-      ...getSessionTransportOptions(development, true),
+      cookie: {
+        maxAge: 30 * 24 * 60 * 60 * 1_000,
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: true,
+      },
+      proxy: !development,
     })
   );
   app.get('/', (req, res) => {
