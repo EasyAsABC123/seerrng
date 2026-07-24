@@ -348,9 +348,7 @@ export class NotificationManager {
     try {
       await scan;
     } finally {
-      if (this.outboxScan === scan) {
-        this.outboxScan = undefined;
-      }
+      this.outboxScan = undefined;
     }
   };
 

@@ -435,9 +435,7 @@ export class RequestDispatchManager {
     try {
       await scan;
     } finally {
-      if (this.scan === scan) {
-        this.scan = undefined;
-      }
+      this.scan = undefined;
     }
   }
 

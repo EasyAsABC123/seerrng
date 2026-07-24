@@ -1020,7 +1020,6 @@ export const readLogTail = async (
 
   const directory = path.dirname(logFile);
   assertNoSymlinkDirectoryComponents(directory, { label: 'Log directory' });
-  let filePath = logFile;
   let handle: fs.promises.FileHandle;
   try {
     handle = await fs.promises.open(
@@ -1040,7 +1039,7 @@ export const readLogTail = async (
     ) {
       throw new Error('Log symlink must target a file in the log directory.');
     }
-    filePath = path.join(directory, target);
+    const filePath = path.join(directory, target);
     handle = await fs.promises.open(
       filePath,
       fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)

@@ -162,9 +162,7 @@ async function initAvatarImageProxy(): Promise<ImageProxy> {
     }
     return proxy;
   } finally {
-    if (_avatarImageProxyInitialization?.promise === initialization) {
-      _avatarImageProxyInitialization = undefined;
-    }
+    _avatarImageProxyInitialization = undefined;
   }
 }
 
