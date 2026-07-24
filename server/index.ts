@@ -53,6 +53,7 @@ import {
 } from '@server/utils/gracefulShutdown';
 import { configureHttpServer, parseListenPort } from '@server/utils/httpServer';
 import restartFlag from '@server/utils/restartFlag';
+import { getRateLimitKey } from '@server/utils/security';
 import { getSessionTransportOptions } from '@server/utils/sessionCookie';
 import axios from 'axios';
 import compression from 'compression';
@@ -61,6 +62,7 @@ import cookieParser from 'cookie-parser';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
+import rateLimit from 'express-rate-limit';
 import type { Store } from 'express-session';
 import session from 'express-session';
 import fs from 'fs/promises';
@@ -74,6 +76,14 @@ import swaggerUi from 'swagger-ui-express';
 const API_SPEC_PATH = path.join(__dirname, '../seerr-api.yml');
 const API_BODY_LIMIT = '100kb';
 const API_URLENCODED_PARAMETER_LIMIT = 100;
+const API_RATE_LIMIT = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitKey,
+  skip: () => process.env.NODE_ENV === 'test',
+});
 const SHUTDOWN_CONNECTION_TIMEOUT_MS = 10_000;
 const SHUTDOWN_TASK_TIMEOUT_MS = 15_000;
 
@@ -302,7 +312,7 @@ app
         validateRequests: true,
       })
     );
-    server.use('/api/v1', routes);
+    server.use('/api/v1', API_RATE_LIMIT, routes);
 
     // Do not set cookies so CDNs can cache them
     server.use('/imageproxy', clearCookies, imageproxy);
