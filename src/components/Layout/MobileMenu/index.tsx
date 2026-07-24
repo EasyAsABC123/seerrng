@@ -1,7 +1,9 @@
 import Badge from '@app/components/Common/Badge';
 import { menuMessages } from '@app/components/Layout/Sidebar';
 import useClickOutside from '@app/hooks/useClickOutside';
+import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
+import { isOptionalCatalogPathEnabled } from '@app/utils/serviceAvailability';
 import { Transition } from '@headlessui/react';
 import {
   BookOpenIcon,
@@ -73,6 +75,7 @@ const MobileMenu = ({
   const intl = useIntl();
   const [isOpen, setIsOpen] = useState(false);
   const { hasPermission } = useUser();
+  const { currentSettings } = useSettings();
   const router = useRouter();
   useClickOutside(ref, () => {
     if (closeTimer.current !== undefined) {
@@ -190,12 +193,13 @@ const MobileMenu = ({
     () =>
       menuLinks.filter(
         (link) =>
-          !link.requiredPermission ||
-          hasPermission(link.requiredPermission, {
-            type: link.permissionType ?? 'and',
-          })
+          isOptionalCatalogPathEnabled(link.href, currentSettings) &&
+          (!link.requiredPermission ||
+            hasPermission(link.requiredPermission, {
+              type: link.permissionType ?? 'and',
+            }))
       ),
-    [hasPermission, menuLinks]
+    [currentSettings, hasPermission, menuLinks]
   );
 
   useEffect(() => {

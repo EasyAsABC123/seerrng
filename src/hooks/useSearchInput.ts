@@ -14,21 +14,39 @@ type Url = string | UrlObject;
 interface SearchObject {
   searchValue: string;
   searchOpen: boolean;
-  setIsOpen: Dispatch<SetStateAction<boolean>>;
+  setIsOpen: (isOpen: boolean) => void;
   setSearchValue: Dispatch<SetStateAction<string>>;
   clear: () => void;
 }
 
 const useSearchInput = (): SearchObject => {
   const router = useRouter();
-  const [searchOpen, setIsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [lastRoute, setLastRoute] = useState<Url | null>(null);
   const pendingSearchQuery = useRef<string | null>(null);
+  const searchOpenedOnCurrentRoute = useRef(false);
   const closingSearch = useRef(false);
   const [searchValue, debouncedValue, setSearchValue] = useDebouncedState(
     getSearchQuery(router.query.query)
   );
   const routeQuery = getSearchQuery(router.query.query);
+
+  const setIsOpen = useCallback((isOpen: boolean) => {
+    searchOpenedOnCurrentRoute.current = isOpen;
+    setSearchOpen(isOpen);
+  }, []);
+
+  useEffect(() => {
+    const handleRouteChangeStart = () => {
+      searchOpenedOnCurrentRoute.current = false;
+    };
+
+    router.events.on('routeChangeStart', handleRouteChangeStart);
+
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChangeStart);
+    };
+  }, [router.events]);
 
   /**
    * This effect handles routing when the debounced search input
@@ -43,7 +61,8 @@ const useSearchInput = (): SearchObject => {
         router.pathname,
         routeQuery,
         debouncedValue,
-        searchOpen
+        searchOpen,
+        searchOpenedOnCurrentRoute.current
       ) &&
       pendingSearchQuery.current !== debouncedValue
     ) {
@@ -132,12 +151,13 @@ const useSearchInput = (): SearchObject => {
       setSearchValue(routeQuery);
 
       if (!router.pathname.startsWith('/search') && !routeQuery) {
-        setIsOpen(false);
+        searchOpenedOnCurrentRoute.current = false;
+        setSearchOpen(false);
       }
     }
 
     if (router.pathname.startsWith('/search') && !closingSearch.current) {
-      setIsOpen(true);
+      setSearchOpen(true);
     }
   }, [
     debouncedValue,
@@ -151,7 +171,8 @@ const useSearchInput = (): SearchObject => {
   const clear = useCallback(() => {
     closingSearch.current = true;
     pendingSearchQuery.current = null;
-    setIsOpen(false);
+    searchOpenedOnCurrentRoute.current = false;
+    setSearchOpen(false);
     setSearchValue('');
   }, [setSearchValue]);
 
@@ -163,7 +184,7 @@ const useSearchInput = (): SearchObject => {
       setSearchValue,
       clear,
     }),
-    [clear, searchOpen, searchValue, setSearchValue]
+    [clear, searchOpen, searchValue, setIsOpen, setSearchValue]
   );
 };
 
