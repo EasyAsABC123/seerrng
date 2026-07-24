@@ -33,3 +33,11 @@ extensions:
     data:
       - ['@server/api/servarr/base', 'Member[normalizeConfiguredServiceUrl].ReturnValue', 'request-forgery']
       - ['@server/api/servarr/base', 'Member[normalizeConfiguredServiceUrl].ReturnValue', 'file-access-to-http']
+
+  # A true result means the supplied API key matched the configured secret
+  # using a length check and constant-time comparison.
+  - addsTo:
+      pack: codeql/javascript-all
+      extensible: barrierGuardModel
+    data:
+      - ['@server/middleware/auth', 'Member[matchesApiKey].Argument[0]', 'true', 'user-controlled-bypass']

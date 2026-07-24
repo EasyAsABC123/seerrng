@@ -24,7 +24,10 @@ const authenticatedRouteRateLimit = rateLimit({
   skip: () => process.env.NODE_ENV === 'test',
 });
 
-const matchesApiKey = (provided: string, configured: string): boolean => {
+export const matchesApiKey = (
+  provided: string,
+  configured: string
+): boolean => {
   const providedBytes = Buffer.from(provided);
   const configuredBytes = Buffer.from(configured);
   return (
