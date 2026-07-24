@@ -1,6 +1,6 @@
 import requestAdmissionCoordinator from '@server/lib/requestAdmission';
 import AsyncLock from '@server/utils/asyncLock';
-import { createHash } from 'crypto';
+import { createHmac } from 'crypto';
 
 const authAccountAdmissionLock = new AsyncLock();
 
@@ -13,7 +13,10 @@ export const getAuthAccountAdmissionResource = (
   if (!identity) {
     throw new Error('A non-empty auth account identity is required.');
   }
-  return `auth-account:${type}:${createHash('sha256')
+  return `auth-account:${type}:${createHmac(
+    'sha256',
+    'seerr-auth-account-admission'
+  )
     .update(identity)
     .digest('hex')}`;
 };

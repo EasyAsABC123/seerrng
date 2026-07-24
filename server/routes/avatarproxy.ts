@@ -22,7 +22,7 @@ import axios from 'axios';
 import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import gravatarUrl from 'gravatar-url';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 const router = Router();
 const MAX_AVATAR_VERSION_LENGTH = 128;
@@ -100,7 +100,7 @@ const refreshPlexAvatarInBackground = (
 
 export const getAvatarImageProxySettingsKey = (): string => {
   const settings = getSettings();
-  return createHash('sha256')
+  return createHmac('sha256', 'seerr-avatar-proxy-settings')
     .update(
       JSON.stringify([
         getHostname(),

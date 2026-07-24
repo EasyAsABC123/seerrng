@@ -472,18 +472,24 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
       );
 
       if (!resp?.data?.episodes) {
-        logger.warn(
-          `No episodes found for TVDB ID: ${tvdbId} on page ${page} for season ${seasonNumber}`
-        );
+        logger.warn('No episodes found in TVDB response', {
+          label: 'TVDB API',
+          tvdbId,
+          page,
+          seasonNumber,
+        });
         break;
       }
 
       const { episodes } = resp.data;
 
       if (!episodes) {
-        logger.debug(
-          `No more episodes found for TVDB ID: ${tvdbId} on page ${page} for season ${seasonNumber}`
-        );
+        logger.debug('No more episodes found in TVDB response', {
+          label: 'TVDB API',
+          tvdbId,
+          page,
+          seasonNumber,
+        });
         break;
       }
 
@@ -515,9 +521,12 @@ class Tvdb extends ExternalAPI implements TvShowProvider {
       page >= MAX_TVDB_EPISODE_PAGES ||
       allEpisodes.length >= MAX_TVDB_EPISODES_PER_SEASON
     ) {
-      logger.warn(
-        `Reached the TVDB episode retrieval limit for TVDB ID: ${tvdbId} on season ${seasonNumber} with language ${language}. There might be more episodes available.`
-      );
+      logger.warn('Reached the TVDB episode retrieval limit', {
+        label: 'TVDB API',
+        tvdbId,
+        seasonNumber,
+        language,
+      });
     }
 
     const episodes = this.processEpisodes(

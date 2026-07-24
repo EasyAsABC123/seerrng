@@ -58,14 +58,55 @@ export const escapePushoverHtmlText = (value: string): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const pushoverHtmlToPlainText = (value: string): string =>
-  value
-    .replace(/<[^>]*>/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&');
+const pushoverHtmlToPlainText = (value: string): string => {
+  let text = '';
+  let index = 0;
+  let skipUntilClosingTag: 'script' | 'style' | undefined;
+
+  while (index < value.length) {
+    if (skipUntilClosingTag) {
+      const closingTag = `</${skipUntilClosingTag}`;
+      const closingIndex = value.toLowerCase().indexOf(closingTag, index);
+      if (closingIndex === -1) {
+        break;
+      }
+      index = closingIndex;
+      skipUntilClosingTag = undefined;
+    }
+
+    if (value[index] !== '<') {
+      text += value[index];
+      index += 1;
+      continue;
+    }
+
+    const tagEnd = value.indexOf('>', index + 1);
+    if (tagEnd === -1) {
+      break;
+    }
+
+    const tagName = value
+      .slice(index + 1, tagEnd)
+      .trim()
+      .toLowerCase();
+    if (tagName.startsWith('script') && /^(?:script)(?:\s|$)/.test(tagName)) {
+      skipUntilClosingTag = 'script';
+    } else if (
+      tagName.startsWith('style') &&
+      /^(?:style)(?:\s|$)/.test(tagName)
+    ) {
+      skipUntilClosingTag = 'style';
+    }
+    index = tagEnd + 1;
+  }
+
+  return text
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&amp;', '&');
+};
 
 class PushoverAgent
   extends BaseAgent<NotificationAgentPushover>

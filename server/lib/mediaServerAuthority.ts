@@ -1,12 +1,12 @@
 import { getSettings, type AllSettings } from '@server/lib/settings';
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 
 type MediaServerAuthoritySettings = Pick<AllSettings, 'main' | 'jellyfin'>;
 
 export const getJellyfinAuthAuthorityKey = (
   settings: MediaServerAuthoritySettings = getSettings()
 ): string =>
-  createHash('sha256')
+  createHmac('sha256', 'seerr-media-server-authority')
     .update(
       JSON.stringify([
         settings.main.mediaServerType,
