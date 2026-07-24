@@ -279,13 +279,13 @@ app
           cookie: {
             httpOnly: true,
             sameSite: true,
-            secure: !dev,
+            secure: true,
             key: '_csrf',
             path: '/',
           },
         })
       );
-      server.use(csrfTokenCookie(!dev));
+      server.use(csrfTokenCookie(true));
     }
 
     // Set up sessions

@@ -29,8 +29,8 @@ describe('getSessionTransportOptions', () => {
     assert.equal(getSessionTransportOptions(false, true).proxy, true);
   });
 
-  it('retains development HTTP support and CSRF-aware same-site policy', () => {
-    assert.equal(getSessionTransportOptions(true, true).cookie.secure, false);
+  it('keeps cookies secure in development and production', () => {
+    assert.equal(getSessionTransportOptions(true, true).cookie.secure, true);
     assert.equal(
       getSessionTransportOptions(true, true).cookie.sameSite,
       'strict'
