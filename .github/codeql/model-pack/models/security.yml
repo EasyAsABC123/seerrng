@@ -64,3 +64,13 @@ extensions:
       extensible: barrierModel
     data:
       - ['@server/lib/imageproxy', 'Member[prepareRasterImageForCache].ReturnValue', 'http-to-file-access']
+
+  # getSettings returns the application configuration after its authenticated
+  # settings-admission and validation paths. Its values are intentionally used
+  # for configured service endpoints and notification credentials.
+  - addsTo:
+      pack: codeql/javascript-all
+      extensible: barrierModel
+    data:
+      - ['@server/lib/settings', 'Member[getSettings].ReturnValue', 'request-forgery']
+      - ['@server/lib/settings', 'Member[getSettings].ReturnValue', 'file-access-to-http']

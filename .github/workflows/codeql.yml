@@ -47,7 +47,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
-          packs: ${{ matrix.language == 'javascript' && 'snapetech/seerrng-codeql-models@0.0.7' || '' }}
+          packs: ${{ matrix.language == 'javascript' && 'snapetech/seerrng-codeql-models@0.0.9' || '' }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Autobuild
