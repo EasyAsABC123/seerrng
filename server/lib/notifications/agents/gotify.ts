@@ -4,7 +4,11 @@ import globalMessages from '@server/i18n/globalMessages';
 import type { NotificationAgentGotify } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
-import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import {
+  createSafeHttpUrl,
+  redactSecrets,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios from 'axios';
 import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
@@ -198,14 +202,14 @@ class GotifyAgent
     }
 
     try {
-      const endpoint = new URL(gotifyBaseUrl.toString());
+      const endpoint = new URL(stringifySafeHttpUrl(gotifyBaseUrl));
       endpoint.pathname = `${trimPathTrailingSlashes(endpoint.pathname)}/message`;
       endpoint.searchParams.set('token', settings.options.token);
       const notificationPayload = this.buildPayload(type, payload);
 
       // codeql[js/request-forgery]
       await axios.post(
-        endpoint.toString(),
+        stringifySafeHttpUrl(endpoint),
         notificationPayload,
         CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS
       );

@@ -8,7 +8,11 @@ import {
 import type { NotificationAgentWebhook } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
-import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import {
+  createSafeHttpUrl,
+  redactSecrets,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios from 'axios';
 import { get } from 'lodash';
 import { Notification, hasNotificationType } from '..';
@@ -394,7 +398,7 @@ class WebhookAgent
       }
 
       await axios.post(
-        safeWebhookUrl.toString(),
+        stringifySafeHttpUrl(safeWebhookUrl),
         this.buildPayload(type, payload),
         Object.keys(headers).length > 0
           ? { ...CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS, headers }

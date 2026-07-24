@@ -7,7 +7,11 @@ import { NotificationAgentKey, getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { normalizeDiscordSnowflake } from '@server/utils/discord';
-import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import {
+  createSafeHttpUrl,
+  redactSecrets,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios from 'axios';
 import {
   Notification,
@@ -394,7 +398,7 @@ class DiscordAgent
         : (settings.options.locale as AvailableLocale);
 
       await axios.post(
-        webhookUrl.toString(),
+        stringifySafeHttpUrl(webhookUrl),
         {
           username: settings.options.botUsername
             ? settings.options.botUsername

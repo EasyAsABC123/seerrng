@@ -4,7 +4,11 @@ import globalMessages from '@server/i18n/globalMessages';
 import type { NotificationAgentSlack } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
-import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import {
+  createSafeHttpUrl,
+  redactSecrets,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios from 'axios';
 import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
@@ -340,7 +344,7 @@ class SlackAgent
 
     try {
       await axios.post(
-        webhookUrl.toString(),
+        stringifySafeHttpUrl(webhookUrl),
         this.buildEmbed(type, payload),
         CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS
       );

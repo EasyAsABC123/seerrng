@@ -5,7 +5,11 @@ import type { NotificationAgentNtfy } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
-import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import {
+  createSafeHttpUrl,
+  redactSecrets,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios from 'axios';
 import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
@@ -196,7 +200,7 @@ class NtfyAgent
       }
 
       await axios.post(
-        baseUrl.toString(),
+        stringifySafeHttpUrl(baseUrl),
         this.buildPayload(type, payload),
         authHeader
           ? {

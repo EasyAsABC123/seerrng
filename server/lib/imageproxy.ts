@@ -10,6 +10,7 @@ import {
 import {
   createSafeHttpRequestOptions,
   createSafeHttpUrl,
+  stringifySafeHttpUrl,
 } from '@server/utils/security';
 import axios, { type AxiosInstance } from 'axios';
 import rateLimit, { type rateLimitOptions } from 'axios-rate-limit';
@@ -1053,7 +1054,7 @@ class ImageProxy {
         if (!safeUrl) {
           throw new Error('Image URL is not safe to request.');
         }
-        requestPath = safeUrl.toString();
+        requestPath = stringifySafeHttpUrl(safeUrl);
       }
       const directory = resolveCachePath(this.key, cacheKey);
       const response = await withTransientHttpRetry(
