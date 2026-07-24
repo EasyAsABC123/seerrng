@@ -75,8 +75,9 @@ jobs:
         run: pnpm cypress:prepare
 
       - name: Export external runtime configuration
+        id: export-config
         run: |
-          printf 'SEERR_EXTERNAL_CONFIG=%s\n' "$(node scripts/export-external-config.mjs "$CONFIG_DIRECTORY/settings.json")" >> "$GITHUB_ENV"
+          printf 'external_config=%s\n' "$(node scripts/export-external-config.mjs "$CONFIG_DIRECTORY/settings.json")" >> "$GITHUB_OUTPUT"
         env:
           CONFIG_DIRECTORY: cypress/runtime-config
 
@@ -92,6 +93,7 @@ jobs:
           # run the suite instead of failing before the first spec starts.
           record: ${{ github.event_name == 'push' && secrets.CYPRESS_RECORD_KEY != '' }}
         env:
+          SEERR_EXTERNAL_CONFIG: ${{ steps.export-config.outputs.external_config }}
           CYPRESS_RECORD_KEY: ${{ github.event_name == 'push' && secrets.CYPRESS_RECORD_KEY || '' }}
           GITHUB_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
           WITH_MIGRATIONS: true
