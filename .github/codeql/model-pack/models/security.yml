@@ -41,3 +41,16 @@ extensions:
       extensible: barrierGuardModel
     data:
       - ['@server/middleware/auth', 'Member[matchesApiKey].Argument[0]', 'true', 'user-controlled-bypass']
+
+  # These parsers enforce the shape and protocol of administrator-configured
+  # media-service endpoints before the settings are persisted or used.
+  - addsTo:
+      pack: codeql/javascript-all
+      extensible: barrierModel
+    data:
+      - ['@server/routes/settings/index', 'Member[parsePlexSettingsBody].ReturnValue', 'request-forgery']
+      - ['@server/routes/settings/index', 'Member[parseJellyfinSettingsBody].ReturnValue', 'request-forgery']
+      - ['@server/routes/settings/index', 'Member[parseTautulliSettingsBody].ReturnValue', 'request-forgery']
+      - ['@server/routes/settings/index', 'Member[parsePlexSettingsBody].ReturnValue', 'file-access-to-http']
+      - ['@server/routes/settings/index', 'Member[parseJellyfinSettingsBody].ReturnValue', 'file-access-to-http']
+      - ['@server/routes/settings/index', 'Member[parseTautulliSettingsBody].ReturnValue', 'file-access-to-http']
