@@ -817,6 +817,7 @@ class ImageProxy {
   private cacheVersion;
   private cacheKeyScope?: string;
   private key;
+  private baseUrl;
   private allowPrivateAddresses;
 
   constructor(
@@ -836,6 +837,7 @@ class ImageProxy {
     this.cacheVersion = options.cacheVersion ?? 2;
     this.cacheKeyScope = options.cacheKeyScope;
     this.key = key;
+    this.baseUrl = baseUrl;
     this.allowPrivateAddresses = options.allowPrivateAddresses ?? false;
     this.axios = axios.create({
       baseURL: baseUrl,
@@ -1039,23 +1041,19 @@ class ImageProxy {
     cacheKey: string
   ): Promise<ImageResponse | null> {
     try {
-      let requestPath = path;
-      let isAbsoluteRequest = false;
+      let requestPath: string;
       try {
-        new URL(path);
-        isAbsoluteRequest = true;
+        requestPath = new URL(path, this.baseUrl).href;
       } catch {
-        // Relative paths are resolved against the already validated proxy base URL.
+        throw new Error('Image URL is invalid.');
       }
-      if (isAbsoluteRequest) {
-        const safeUrl = await createSafeHttpUrl(path, {
-          allowPrivateAddresses: this.allowPrivateAddresses,
-        });
-        if (!safeUrl) {
-          throw new Error('Image URL is not safe to request.');
-        }
-        requestPath = stringifySafeHttpUrl(safeUrl);
+      const safeUrl = await createSafeHttpUrl(requestPath, {
+        allowPrivateAddresses: this.allowPrivateAddresses,
+      });
+      if (!safeUrl) {
+        throw new Error('Image URL is not safe to request.');
       }
+      requestPath = stringifySafeHttpUrl(safeUrl);
       const response = await withTransientHttpRetry(
         () =>
           this.axios.get(requestPath, {
