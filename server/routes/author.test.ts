@@ -20,7 +20,6 @@ import { setupTestDb } from '@server/test/db';
 import { MAX_PAGINATION_OFFSET } from '@server/utils/pagination';
 import type { Express } from 'express';
 import express from 'express';
-import rateLimit from 'express-rate-limit';
 import session from 'express-session';
 import request from 'supertest';
 import authRoutes from './auth';
@@ -38,7 +37,7 @@ function createApp() {
       saveUninitialized: false,
     })
   );
-  app.use(rateLimit({ windowMs: 60_000, limit: 10_000 }), checkUser);
+  app.use(checkUser);
   app.use('/auth', authRoutes);
   app.use('/author', authorRoutes);
   app.use(
