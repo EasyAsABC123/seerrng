@@ -1,7 +1,10 @@
 import logger from '@server/logger';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
 import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
-import { createSafeHttpRequestOptions } from '@server/utils/security';
+import {
+  createSafeHttpRequestOptions,
+  createSafeHttpRequestUrl,
+} from '@server/utils/security';
 import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 import axios from 'axios';
 import rateLimit from 'axios-rate-limit';
@@ -330,7 +333,14 @@ class ExternalAPI {
     return this.fetchAndCache(
       'GET',
       cacheKey,
-      () => this.axios.get<T>(endpoint, config),
+      async () => {
+        const requestUrl = await createSafeHttpRequestUrl(
+          new URL(endpoint, config?.baseURL ?? this.baseUrl).toString(),
+          { allowPrivateAddresses: true }
+        );
+        if (!requestUrl) throw new Error('External API request URL is unsafe.');
+        return this.axios.get<T>(requestUrl, { ...config, baseURL: undefined });
+      },
       ttl
     );
   }
@@ -359,7 +369,17 @@ class ExternalAPI {
     return this.fetchAndCache(
       'POST',
       cacheKey,
-      () => this.axios.post<T>(endpoint, data, config),
+      async () => {
+        const requestUrl = await createSafeHttpRequestUrl(
+          new URL(endpoint, config?.baseURL ?? this.baseUrl).toString(),
+          { allowPrivateAddresses: true }
+        );
+        if (!requestUrl) throw new Error('External API request URL is unsafe.');
+        return this.axios.post<T>(requestUrl, data, {
+          ...config,
+          baseURL: undefined,
+        });
+      },
       ttl
     );
   }
@@ -393,7 +413,18 @@ class ExternalAPI {
           this.fetchAndCache(
             'GET',
             cacheKey,
-            () => this.axios.get<T>(endpoint, config),
+            async () => {
+              const requestUrl = await createSafeHttpRequestUrl(
+                new URL(endpoint, config?.baseURL ?? this.baseUrl).toString(),
+                { allowPrivateAddresses: true }
+              );
+              if (!requestUrl)
+                throw new Error('External API request URL is unsafe.');
+              return this.axios.get<T>(requestUrl, {
+                ...config,
+                baseURL: undefined,
+              });
+            },
             ttl
           )
         );
@@ -404,7 +435,14 @@ class ExternalAPI {
     return this.fetchAndCache(
       'GET',
       cacheKey,
-      () => this.axios.get<T>(endpoint, config),
+      async () => {
+        const requestUrl = await createSafeHttpRequestUrl(
+          new URL(endpoint, config?.baseURL ?? this.baseUrl).toString(),
+          { allowPrivateAddresses: true }
+        );
+        if (!requestUrl) throw new Error('External API request URL is unsafe.');
+        return this.axios.get<T>(requestUrl, { ...config, baseURL: undefined });
+      },
       ttl
     );
   }

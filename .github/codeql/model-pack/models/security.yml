@@ -11,6 +11,8 @@ extensions:
       - ['@server/utils/security', 'Member[createSafeHttpUrl].ReturnValue.Awaited.Member[toString].ReturnValue', 'file-access-to-http']
       - ['@server/utils/security', 'Member[stringifySafeHttpUrl].ReturnValue', 'request-forgery']
       - ['@server/utils/security', 'Member[stringifySafeHttpUrl].ReturnValue', 'file-access-to-http']
+      - ['@server/utils/security', 'Member[createSafeHttpRequestUrl].ReturnValue.Awaited', 'request-forgery']
+      - ['@server/utils/security', 'Member[createSafeHttpRequestUrl].ReturnValue.Awaited', 'file-access-to-http']
 
   # Callers only use a URL after the asynchronous validator accepts it.
   - addsTo:
