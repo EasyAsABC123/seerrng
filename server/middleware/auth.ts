@@ -11,7 +11,17 @@ import {
   runWithUserCredentialVersionContext,
 } from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
-import { safeStringEqual } from '@server/utils/security';
+import { getRateLimitKey, safeStringEqual } from '@server/utils/security';
+import rateLimit from 'express-rate-limit';
+
+const authenticatedRouteRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitKey,
+  skip: () => process.env.NODE_ENV === 'test',
+});
 
 export const checkUser: Middleware = async (req, res, next) => {
   const settings = getSettings();
@@ -109,5 +119,9 @@ export const isAuthenticated = (
       next();
     }
   };
-  return authMiddleware;
+  return (req, res, next) => {
+    authenticatedRouteRateLimit(req, res, () => {
+      authMiddleware(req, res, next);
+    });
+  };
 };
