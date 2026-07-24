@@ -1,6 +1,7 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Cypress Tests
+# Keep the E2E workflow path-sensitive while allowing explicit test-transport fixes to rerun it.
 
 on:
   pull_request:
