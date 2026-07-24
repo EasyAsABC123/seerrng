@@ -1056,7 +1056,6 @@ class ImageProxy {
         }
         requestPath = stringifySafeHttpUrl(safeUrl);
       }
-      const directory = resolveCachePath(this.key, cacheKey);
       const response = await withTransientHttpRetry(
         () =>
           this.axios.get(requestPath, {
@@ -1102,15 +1101,6 @@ class ImageProxy {
       const expireAt = lastModified + maxAge * 1000;
       const etag = this.getHash([buffer]);
 
-      const filePath = await this.writeToCacheDir(
-        directory,
-        extension,
-        maxAge,
-        expireAt,
-        buffer,
-        etag
-      );
-
       if (buffer.length <= LRU_ITEM_MAX_BYTES) {
         memoryCache.set(cacheKey, {
           buffer,
@@ -1135,9 +1125,7 @@ class ImageProxy {
           cacheMiss: true,
           lastModified,
         },
-        ...(buffer.length <= LRU_ITEM_MAX_BYTES
-          ? { imageBuffer: buffer }
-          : { filePath }),
+        imageBuffer: buffer,
       };
     } catch (error) {
       logger.warn('Failed to cache upstream image', {
@@ -1148,21 +1136,6 @@ class ImageProxy {
       });
       return null;
     }
-  }
-
-  private async writeToCacheDir(
-    dir: string,
-    extension: string | null,
-    maxAge: number,
-    expireAt: number,
-    buffer: Buffer,
-    etag: string
-  ): Promise<string> {
-    const safeDir = assertCachePath(dir);
-    const filename = assertCachePath(
-      path.join(safeDir, `${maxAge}.${expireAt}.${etag}.${extension}`)
-    );
-    return imageDiskCacheBudget.write(safeDir, path.basename(filename), buffer);
   }
 
   private getCacheKey(path: string) {
