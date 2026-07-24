@@ -23,7 +23,7 @@ const authenticatedRouteRateLimit = rateLimit({
   skip: () => process.env.NODE_ENV === 'test',
 });
 
-export const checkUser: Middleware = async (req, res, next) => {
+const checkUserImplementation: Middleware = async (req, res, next) => {
   const settings = getSettings();
   let user: User | undefined | null;
 
@@ -103,6 +103,12 @@ export const checkUser: Middleware = async (req, res, next) => {
   }
 
   next();
+};
+
+export const checkUser: Middleware = (req, res, next) => {
+  authenticatedRouteRateLimit(req, res, () => {
+    void Promise.resolve(checkUserImplementation(req, res, next)).catch(next);
+  });
 };
 
 export const isAuthenticated = (
