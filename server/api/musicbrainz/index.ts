@@ -480,10 +480,8 @@ class MusicBrainz extends ExternalAPI {
 
   public async getArtistWikipediaExtract({
     artistMbid,
-    language = 'en',
   }: {
     artistMbid: string;
-    language?: string;
   }): Promise<{ title: string; url: string; content: string } | null> {
     if (
       !artistMbid ||
@@ -502,7 +500,6 @@ class MusicBrainz extends ExternalAPI {
         ...WIKIPEDIA_EXTRACT_HTTP_OPTIONS,
         headers: {
           Accept: 'application/json',
-          'Accept-Language': language,
           'User-Agent': 'SeerrNG/0.1.0 (https://github.com/snapetech/seerrng)',
         },
       });
