@@ -74,3 +74,7 @@ extensions:
     data:
       - ['@server/lib/settings', 'Member[getSettings].ReturnValue', 'request-forgery']
       - ['@server/lib/settings', 'Member[getSettings].ReturnValue', 'file-access-to-http']
+      - ['@server/lib/settings', 'Member[getSettings].ReturnValue.Fuzzy', 'request-forgery']
+      - ['@server/lib/settings', 'Member[getSettings].ReturnValue.Fuzzy', 'file-access-to-http']
+      - ['@server/lib/settings/index', 'Member[getSettings].ReturnValue.Fuzzy', 'request-forgery']
+      - ['@server/lib/settings/index', 'Member[getSettings].ReturnValue.Fuzzy', 'file-access-to-http']
