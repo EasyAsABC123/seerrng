@@ -7,7 +7,10 @@ import {
   getHttpErrorDetails,
   withTransientHttpRetry,
 } from '@server/utils/httpError';
-import { createSafeHttpRequestOptions } from '@server/utils/security';
+import {
+  createSafeHttpRequestOptions,
+  createSafeHttpUrl,
+} from '@server/utils/security';
 import axios, { type AxiosInstance } from 'axios';
 import rateLimit, { type rateLimitOptions } from 'axios-rate-limit';
 import { createHash } from 'crypto';
@@ -813,6 +816,7 @@ class ImageProxy {
   private cacheVersion;
   private cacheKeyScope?: string;
   private key;
+  private allowPrivateAddresses;
 
   constructor(
     key: string,
@@ -831,6 +835,7 @@ class ImageProxy {
     this.cacheVersion = options.cacheVersion ?? 2;
     this.cacheKeyScope = options.cacheKeyScope;
     this.key = key;
+    this.allowPrivateAddresses = options.allowPrivateAddresses ?? false;
     this.axios = axios.create({
       baseURL: baseUrl,
       headers: options.headers,
@@ -1033,10 +1038,27 @@ class ImageProxy {
     cacheKey: string
   ): Promise<ImageResponse | null> {
     try {
+      let requestPath = path;
+      let isAbsoluteRequest = false;
+      try {
+        new URL(path);
+        isAbsoluteRequest = true;
+      } catch {
+        // Relative paths are resolved against the already validated proxy base URL.
+      }
+      if (isAbsoluteRequest) {
+        const safeUrl = await createSafeHttpUrl(path, {
+          allowPrivateAddresses: this.allowPrivateAddresses,
+        });
+        if (!safeUrl) {
+          throw new Error('Image URL is not safe to request.');
+        }
+        requestPath = safeUrl.toString();
+      }
       const directory = resolveCachePath(this.key, cacheKey);
       const response = await withTransientHttpRetry(
         () =>
-          this.axios.get(path, {
+          this.axios.get(requestPath, {
             responseType: 'arraybuffer',
             maxContentLength: MAX_IMAGE_BYTES,
             maxBodyLength: MAX_IMAGE_BYTES,
