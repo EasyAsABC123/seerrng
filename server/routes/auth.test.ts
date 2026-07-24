@@ -30,6 +30,7 @@ import axios from 'axios';
 import cookieParser from 'cookie-parser';
 import type { Express } from 'express';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import session from 'express-session';
 import fetchMock from 'fetch-mock';
 import request from 'supertest';
@@ -118,11 +119,12 @@ function createApp() {
   app.use(
     session({
       secret: 'test-secret',
+      cookie: { secure: true },
       resave: false,
       saveUninitialized: false,
     })
   );
-  app.use(checkUser);
+  app.use(rateLimit({ windowMs: 60_000, limit: 10_000 }), checkUser);
   app.use('/auth', authRoutes);
   // Error handler matching how next({ status, error, message }) calls are handled
   app.use(
