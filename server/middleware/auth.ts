@@ -11,8 +11,9 @@ import {
   runWithUserCredentialVersionContext,
 } from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
-import { getRateLimitKey, safeStringEqual } from '@server/utils/security';
+import { getRateLimitKey } from '@server/utils/security';
 import rateLimit from 'express-rate-limit';
+import { timingSafeEqual } from 'node:crypto';
 
 const authenticatedRouteRateLimit = rateLimit({
   windowMs: 60 * 1000,
@@ -23,13 +24,22 @@ const authenticatedRouteRateLimit = rateLimit({
   skip: () => process.env.NODE_ENV === 'test',
 });
 
+const matchesApiKey = (provided: string, configured: string): boolean => {
+  const providedBytes = Buffer.from(provided);
+  const configuredBytes = Buffer.from(configured);
+  return (
+    providedBytes.length === configuredBytes.length &&
+    timingSafeEqual(providedBytes, configuredBytes)
+  );
+};
+
 const checkUserImplementation: Middleware = async (req, res, next) => {
   const settings = getSettings();
   let user: User | undefined | null;
 
   const apiKey = req.header('X-API-Key');
   if (apiKey !== undefined) {
-    if (safeStringEqual(apiKey, settings.main.apiKey)) {
+    if (matchesApiKey(apiKey, settings.main.apiKey)) {
       const userRepository = getRepository(User);
 
       // API key access is a service-level credential. Keep it bound to the
@@ -81,7 +91,7 @@ const checkUserImplementation: Middleware = async (req, res, next) => {
     res.once('close', deactivateCredentialContext);
     return runWithUserApiKeyAuthorityContext(
       user.id,
-      () => safeStringEqual(apiKey, getSettings().main.apiKey),
+      () => matchesApiKey(apiKey, getSettings().main.apiKey),
       next,
       () => credentialContextActive
     );
