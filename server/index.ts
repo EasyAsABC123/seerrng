@@ -10,6 +10,7 @@ import { User } from '@server/entity/User';
 import { initI18n } from '@server/i18n';
 import { startJobs, stopJobs } from '@server/job/schedule';
 import { runWithConfigurationAdmission } from '@server/lib/configurationAdmission';
+import { loadExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import notificationManager from '@server/lib/notifications';
 import DiscordAgent from '@server/lib/notifications/agents/discord';
 import EmailAgent from '@server/lib/notifications/agents/email';
@@ -163,6 +164,7 @@ app
 
     // Load Settings
     const settings = await getSettings().load();
+    loadExternalRuntimeConfig();
     restartFlag.initializeSettings(settings);
 
     initI18n();

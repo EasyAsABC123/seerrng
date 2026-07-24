@@ -35,6 +35,7 @@ import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { normalizeValidIsbn } from '@server/lib/isbn';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import notificationManager, { Notification } from '@server/lib/notifications';
@@ -47,7 +48,7 @@ import {
   runWithServarrServiceCollectionAdmission,
   type ServarrServiceType,
 } from '@server/lib/serviceAdmission';
-import { getSettings, type ReadarrSettings } from '@server/lib/settings';
+import { type ReadarrSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { mapWithConcurrency } from '@server/utils/concurrency';
 import { isEqual } from 'lodash';
@@ -91,7 +92,7 @@ interface RequestDispatchServiceSelection {
 const getRequestDispatchServiceSelection = (
   request: MediaRequest
 ): RequestDispatchServiceSelection => {
-  const settings = getSettings();
+  const settings = getExternalRuntimeConfig();
   const uniqueIds = (ids: (number | undefined)[]) =>
     [...new Set(ids.filter((id): id is number => id !== undefined))].sort(
       (left, right) => left - right
@@ -647,7 +648,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
     ) {
       try {
         const mediaRepository = getRepository(Media);
-        const settings = getSettings();
+        const settings = getExternalRuntimeConfig();
         if (settings.radarr.length === 0 && !settings.radarr[0]) {
           logger.info(
             'No Radarr server configured, skipping request processing',
@@ -905,7 +906,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
     ) {
       try {
         const mediaRepository = getRepository(Media);
-        const settings = getSettings();
+        const settings = getExternalRuntimeConfig();
         if (settings.sonarr.length === 0 && !settings.sonarr[0]) {
           logger.warn(
             'No Sonarr server configured, skipping request processing',
@@ -1219,7 +1220,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
 
     try {
       const mediaRepository = getRepository(Media);
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
 
       let lidarrSettings = settings.lidarr.find((lidarr) => lidarr.isDefault);
 
@@ -1432,7 +1433,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
   ): Promise<number | undefined> {
     try {
       const mediaRepository = getRepository(Media);
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
 
       const media = await mediaRepository.findOne({
         where: { id: entity.media.id },

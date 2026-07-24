@@ -1,8 +1,12 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import type { NotificationAgentSlack } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import {
   createSafeHttpUrl,
@@ -128,9 +132,7 @@ class SlackAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.slack;
+    return getExternalNotificationAgent(NotificationAgentKey.SLACK);
   }
 
   public buildEmbed(
@@ -139,7 +141,8 @@ class SlackAgent
   ): SlackBlockEmbed {
     const settings = this.getSettings();
     const intl = getIntl(settings.options.locale);
-    const { applicationUrl, applicationTitle } = getSettings().main;
+    const { applicationUrl, applicationTitle } =
+      getExternalRuntimeConfig().main;
     const embedPoster = settings.embedPoster;
 
     const fields: EmbedField[] = [];

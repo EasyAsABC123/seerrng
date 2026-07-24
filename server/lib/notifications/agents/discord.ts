@@ -1,9 +1,13 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentDiscord } from '@server/lib/settings';
-import { NotificationAgentKey, getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { normalizeDiscordSnowflake } from '@server/utils/discord';
@@ -157,9 +161,7 @@ class DiscordAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.discord;
+    return getExternalNotificationAgent(NotificationAgentKey.DISCORD);
   }
 
   public buildEmbed(
@@ -168,8 +170,7 @@ class DiscordAgent
     locale?: AvailableLocale
   ): DiscordRichEmbed {
     const intl = getIntl(locale);
-    const settings = getSettings();
-    const { applicationUrl } = settings.main;
+    const { applicationUrl } = getExternalRuntimeConfig().main;
     const { embedPoster } = this.getSettings();
 
     const appUrl =
@@ -402,7 +403,7 @@ class DiscordAgent
         {
           username: settings.options.botUsername
             ? settings.options.botUsername
-            : getSettings().main.applicationTitle,
+            : getExternalRuntimeConfig().main.applicationTitle,
           avatar_url: settings.options.botAvatarUrl,
           embeds: [this.buildEmbed(type, payload, locale)],
           tts: false,

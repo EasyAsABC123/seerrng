@@ -3,6 +3,7 @@ import RadarrAPI from '@server/api/servarr/radarr';
 import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import type {
   RunnableScanner,
@@ -16,7 +17,6 @@ import {
   runWithServarrServiceSnapshots,
 } from '@server/lib/serviceAdmission';
 import type { RadarrSettings } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
 import { uniqWith } from 'lodash';
 
 type SyncStatus = StatusBase & {
@@ -51,7 +51,7 @@ class RadarrScanner
   }
 
   public async run(): Promise<void> {
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
     const sessionId = this.startRun();
     if (!sessionId) {
       return;

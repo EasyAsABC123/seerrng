@@ -1,8 +1,12 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import type { NotificationAgentGotify } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import {
   createSafeHttpUrl,
@@ -50,9 +54,7 @@ class GotifyAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.gotify;
+    return getExternalNotificationAgent(NotificationAgentKey.GOTIFY);
   }
 
   public shouldSend(): boolean {
@@ -76,7 +78,8 @@ class GotifyAgent
   ): GotifyPayload {
     const settings = this.getSettings();
     const intl = getIntl(settings.options.locale);
-    const { applicationUrl, applicationTitle } = getSettings().main;
+    const { applicationUrl, applicationTitle } =
+      getExternalRuntimeConfig().main;
     const priority = settings.options.priority ?? 1;
 
     const title = payload.event

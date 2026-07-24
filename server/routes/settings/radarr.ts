@@ -1,4 +1,5 @@
 import RadarrAPI from '@server/api/servarr/radarr';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
 import {
   runWithCurrentServarrService,
@@ -89,7 +90,10 @@ radarrRoutes.post<
   >(Permission.ADMIN, async (req, res, next) => {
     try {
       const parsedRadarr = parseServarrConnectionSettings(
-        preserveServarrConnectionSecret(req.body, getSettings().radarr)
+        preserveServarrConnectionSecret(
+          req.body,
+          getExternalRuntimeConfig().radarr
+        )
       );
 
       if ('error' in parsedRadarr) {

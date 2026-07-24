@@ -2,9 +2,13 @@ import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { MediaStatus } from '@server/constants/media';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentPushover } from '@server/lib/settings';
-import { NotificationAgentKey, getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { mapWithConcurrency } from '@server/utils/concurrency';
@@ -117,9 +121,7 @@ class PushoverAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.pushover;
+    return getExternalNotificationAgent(NotificationAgentKey.PUSHOVER);
   }
 
   public shouldSend(): boolean {
@@ -179,8 +181,8 @@ class PushoverAgent
     locale?: AvailableLocale
   ): Promise<Partial<PushoverPayload>> {
     const intl = getIntl(locale);
-    const settings = getSettings();
-    const { applicationUrl, applicationTitle } = settings.main;
+    const { applicationUrl, applicationTitle } =
+      getExternalRuntimeConfig().main;
     const { embedPoster } = this.getSettings();
     const escape = escapePushoverHtmlText;
 

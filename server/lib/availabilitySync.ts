@@ -18,6 +18,7 @@ import {
   runWithConfigurationSnapshot,
   type ConfigurationAuthoritySnapshot,
 } from '@server/lib/configurationAdmission';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import {
   MediaServerUserAuthorityChangedError,
@@ -35,7 +36,6 @@ import type {
   RadarrSettings,
   SonarrSettings,
 } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { getHostname } from '@server/utils/getHostname';
 import { getHttpErrorDetails, hasHttpStatus } from '@server/utils/httpError';
@@ -72,7 +72,7 @@ class AvailabilitySync {
     try {
       let mediaServerType!: MediaServerType;
       await runWithConfigurationAdmissions(['jellyfin', 'plex'], async () => {
-        const settings = getSettings();
+        const settings = getExternalRuntimeConfig();
         mediaServerType = settings.main.mediaServerType;
         const configurationSection =
           mediaServerType === MediaServerType.PLEX ? 'plex' : 'jellyfin';

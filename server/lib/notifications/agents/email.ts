@@ -3,9 +3,13 @@ import { MediaType } from '@server/constants/media';
 import { defineMessages, getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
 import PreparedEmail from '@server/lib/email';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentEmail } from '@server/lib/settings';
-import { NotificationAgentKey, getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { mapWithConcurrency } from '@server/utils/concurrency';
@@ -69,9 +73,7 @@ class EmailAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.email;
+    return getExternalNotificationAgent(NotificationAgentKey.EMAIL);
   }
 
   public shouldSend(): boolean {
@@ -97,8 +99,8 @@ class EmailAgent
     locale?: AvailableLocale
   ): EmailOptions | undefined {
     const intl = getIntl(locale);
-    const settings = getSettings();
-    const { applicationUrl, applicationTitle } = settings.main;
+    const { applicationUrl, applicationTitle } =
+      getExternalRuntimeConfig().main;
     const { embedPoster } = this.getSettings();
 
     if (type === Notification.TEST_NOTIFICATION) {

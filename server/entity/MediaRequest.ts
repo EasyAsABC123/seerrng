@@ -21,6 +21,7 @@ import {
   normalizeOpenLibraryEditionId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { normalizeValidIsbn } from '@server/lib/isbn';
 import {
   MediaServerUserAuthorityChangedError,
@@ -42,7 +43,6 @@ import {
   type ServarrServiceType,
 } from '@server/lib/serviceAdmission';
 import {
-  getSettings,
   type ReadarrSettings,
   type SonarrSettings,
 } from '@server/lib/settings';
@@ -316,7 +316,7 @@ export class MediaRequest {
     const mediaIdentifierRepository = getRepository(MediaIdentifier);
     const requestRepository = getRepository(MediaRequest);
     const userRepository = getRepository(User);
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
 
     const currentUser = await userRepository.findOne({
       where: { id: user.id },

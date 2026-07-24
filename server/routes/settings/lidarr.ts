@@ -1,4 +1,5 @@
 import LidarrAPI from '@server/api/servarr/lidarr';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
 import {
   runWithCurrentServarrService,
@@ -84,7 +85,10 @@ lidarrRoutes.post<
   >(Permission.ADMIN, async (req, res, next) => {
     try {
       const parsedLidarr = parseServarrConnectionSettings(
-        preserveServarrConnectionSecret(req.body, getSettings().lidarr)
+        preserveServarrConnectionSecret(
+          req.body,
+          getExternalRuntimeConfig().lidarr
+        )
       );
 
       if ('error' in parsedLidarr) {

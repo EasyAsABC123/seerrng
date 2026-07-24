@@ -2,6 +2,7 @@ import RadarrAPI from '@server/api/servarr/radarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
 import { getRepository } from '@server/datasource';
 import { User } from '@server/entity/User';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import type { AllSettings } from '@server/lib/settings';
 
 const migrationArrTags = async (settings: any): Promise<AllSettings> => {
@@ -14,10 +15,11 @@ const migrationArrTags = async (settings: any): Promise<AllSettings> => {
 
   const userRepository = getRepository(User);
   const users = await userRepository.find();
+  const externalSettings = getExternalRuntimeConfig();
 
   let errorOccurred = false;
 
-  for (const radarrSettings of settings.radarr || []) {
+  for (const radarrSettings of externalSettings.radarr) {
     if (!radarrSettings.tagRequests) {
       continue;
     }
@@ -59,7 +61,7 @@ const migrationArrTags = async (settings: any): Promise<AllSettings> => {
     }
   }
 
-  for (const sonarrSettings of settings.sonarr || []) {
+  for (const sonarrSettings of externalSettings.sonarr) {
     if (!sonarrSettings.tagRequests) {
       continue;
     }

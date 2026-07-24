@@ -1,8 +1,12 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import type { NotificationAgentNtfy } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import {
@@ -38,15 +42,13 @@ class NtfyAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.ntfy;
+    return getExternalNotificationAgent(NotificationAgentKey.NTFY);
   }
 
   public buildPayload(type: Notification, payload: NotificationPayload) {
     const settings = this.getSettings();
     const intl = getIntl(settings.options.locale as AvailableLocale);
-    const { applicationUrl } = getSettings().main;
+    const { applicationUrl } = getExternalRuntimeConfig().main;
     const embedPoster = settings.embedPoster;
 
     const topic = settings.options.topic;

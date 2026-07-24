@@ -6,6 +6,7 @@ import Media from '@server/entity/Media';
 import { MediaIdentifierProvider } from '@server/entity/MediaIdentifier';
 import { resolveOpenLibraryIdentifiersForReadarrBook } from '@server/lib/bookIdentifierResolver';
 import { normalizeExternalBookId } from '@server/lib/externalIds';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { normalizeIsbn, normalizeValidIsbn } from '@server/lib/isbn';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import type {
@@ -21,7 +22,6 @@ import {
   runWithServarrServiceSnapshots,
 } from '@server/lib/serviceAdmission';
 import type { ReadarrSettings } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
 import { uniqWith } from 'lodash';
 
 type SyncStatus = StatusBase & {
@@ -73,7 +73,7 @@ class ReadarrScanner
   }
 
   public async run(): Promise<void> {
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
     const sessionId = this.startRun();
     if (!sessionId) {
       return;

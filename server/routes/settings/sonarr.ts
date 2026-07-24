@@ -1,4 +1,5 @@
 import SonarrAPI from '@server/api/servarr/sonarr';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
 import { runWithServarrServiceCollectionMutationAdmission } from '@server/lib/serviceAdmission';
 import {
@@ -86,7 +87,10 @@ sonarrRoutes.post<
   >(Permission.ADMIN, async (req, res, next) => {
     try {
       const parsedSonarr = parseServarrConnectionSettings(
-        preserveServarrConnectionSecret(req.body, getSettings().sonarr)
+        preserveServarrConnectionSecret(
+          req.body,
+          getExternalRuntimeConfig().sonarr
+        )
       );
 
       if ('error' in parsedSonarr) {

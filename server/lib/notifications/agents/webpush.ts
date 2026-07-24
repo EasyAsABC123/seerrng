@@ -6,9 +6,13 @@ import { User } from '@server/entity/User';
 import { UserPushSubscription } from '@server/entity/UserPushSubscription';
 import { defineMessages, getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentConfig } from '@server/lib/settings';
-import { NotificationAgentKey, getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { mapWithConcurrency } from '@server/utils/concurrency';
@@ -103,9 +107,7 @@ class WebPushAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.webpush;
+    return getExternalNotificationAgent(NotificationAgentKey.WEBPUSH);
   }
 
   public buildPayload(
@@ -251,7 +253,7 @@ class WebPushAgent
   ): Promise<boolean> {
     const userRepository = getRepository(User);
     const userPushSubRepository = getRepository(UserPushSubscription);
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
 
     const pushSubs: { sub: UserPushSubscription; locale?: AvailableLocale }[] =
       [];

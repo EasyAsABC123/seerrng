@@ -5,8 +5,9 @@ import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { getExternalNotificationAgent } from '@server/lib/externalRuntimeConfig';
 import type { NotificationAgentWebhook } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import {
   createSafeHttpUrl,
@@ -197,9 +198,7 @@ class WebhookAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.webhook;
+    return getExternalNotificationAgent(NotificationAgentKey.WEBHOOK);
   }
 
   private parseKeys(

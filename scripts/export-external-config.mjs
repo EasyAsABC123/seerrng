@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const settingsPath = process.argv[2] ??
+  (process.env.CONFIG_DIRECTORY
+    ? path.join(process.env.CONFIG_DIRECTORY, 'settings.json')
+    : path.join(process.cwd(), 'config', 'settings.json'));
+
+const raw = await readFile(settingsPath, 'utf8');
+const settings = JSON.parse(raw);
+
+const requiredSections = [
+  'main',
+  'plex',
+  'jellyfin',
+  'oidc',
+  'tautulli',
+  'radarr',
+  'sonarr',
+  'lidarr',
+  'readarr',
+  'notifications',
+];
+for (const section of requiredSections) {
+  if (!(section in settings)) {
+    throw new Error(`Missing settings section: ${section}`);
+  }
+}
+
+const externalConfig = {
+  vapidPublic: settings.vapidPublic,
+  vapidPrivate: settings.vapidPrivate,
+  main: settings.main,
+  plex: settings.plex,
+  jellyfin: settings.jellyfin,
+  oidc: settings.oidc,
+  tautulli: settings.tautulli,
+  radarr: settings.radarr,
+  sonarr: settings.sonarr,
+  lidarr: settings.lidarr,
+  readarr: settings.readarr,
+  notifications: settings.notifications,
+};
+
+process.stdout.write(`${JSON.stringify(externalConfig)}\n`);

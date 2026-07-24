@@ -2,9 +2,10 @@ import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { MediaStatus } from '@server/constants/media';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import { getExternalNotificationAgent } from '@server/lib/externalRuntimeConfig';
 import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentPushbullet } from '@server/lib/settings';
-import { NotificationAgentKey, getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { mapWithConcurrency } from '@server/utils/concurrency';
@@ -38,9 +39,7 @@ class PushbulletAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.pushbullet;
+    return getExternalNotificationAgent(NotificationAgentKey.PUSHBULLET);
   }
 
   public shouldSend(): boolean {

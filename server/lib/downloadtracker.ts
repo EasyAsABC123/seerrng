@@ -3,16 +3,13 @@ import RadarrAPI from '@server/api/servarr/radarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
 import { MediaType } from '@server/constants/media';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import {
   hasSameServarrServiceAuthority,
   runWithServarrServiceAdmission,
   type ServarrServiceType,
 } from '@server/lib/serviceAdmission';
-import {
-  getSettings,
-  type DVRSettings,
-  type ReadarrSettings,
-} from '@server/lib/settings';
+import type { DVRSettings, ReadarrSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
 import { mapWithConcurrency } from '@server/utils/concurrency';
@@ -84,7 +81,7 @@ export class DownloadTracker {
     return runWithServarrServiceAdmission(
       [{ serviceType, serviceId: server.id }],
       async () => {
-        const current = getSettings()[serviceType].find(
+        const current = getExternalRuntimeConfig()[serviceType].find(
           (candidate) => candidate.id === server.id
         );
         if (
@@ -229,7 +226,7 @@ export class DownloadTracker {
   }
 
   private async updateRadarrDownloads() {
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
 
     // Remove duplicate servers
     const filteredServers = uniqWith(
@@ -326,7 +323,7 @@ export class DownloadTracker {
   }
 
   private async updateSonarrDownloads() {
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
 
     // Remove duplicate servers
     const filteredServers = uniqWith(
@@ -424,7 +421,7 @@ export class DownloadTracker {
   }
 
   private async updateLidarrDownloads() {
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
 
     const filteredServers = uniqWith(
       settings.lidarr.slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
@@ -521,7 +518,7 @@ export class DownloadTracker {
   }
 
   private async updateReadarrDownloads() {
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
 
     const filteredServers = uniqWith(
       settings.readarr.slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),

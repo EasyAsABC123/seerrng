@@ -10,6 +10,7 @@ import type {
 import { MediaStatus, MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import type {
   ProcessableSeason,
@@ -24,7 +25,6 @@ import {
   runWithServarrServiceSnapshots,
 } from '@server/lib/serviceAdmission';
 import type { SonarrSettings } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
 import { uniqWith } from 'lodash';
 
 type SyncStatus = StatusBase & {
@@ -59,7 +59,7 @@ class SonarrScanner
   }
 
   public async run(): Promise<void> {
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
     const sessionId = this.startRun();
     if (!sessionId) {
       return;
@@ -173,7 +173,7 @@ class SonarrScanner
       if (!(metadataProvider instanceof TheMovieDb)) {
         tvShow = await metadataProvider.getTvShow({ tvId: tmdbId });
       }
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
 
       const filteredSeasons = sonarrSeries.seasons.filter(
         (sn) =>

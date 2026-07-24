@@ -23,8 +23,8 @@ import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
-import { getSettings } from '@server/lib/settings';
 import {
   isUserCredentialVersionCurrent,
   runUserSecurityMutation,
@@ -488,7 +488,7 @@ export class Watchlist {
       return;
     }
 
-    const readarrSettings = getSettings().readarr;
+    const readarrSettings = getExternalRuntimeConfig().readarr;
     const hasDefaultEbook = readarrSettings.some(
       (readarr) =>
         readarr.isDefault && (readarr.serviceType ?? 'ebook') === 'ebook'

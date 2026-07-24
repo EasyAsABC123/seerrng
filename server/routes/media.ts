@@ -15,10 +15,10 @@ import type {
   MediaWatchDataResponse,
 } from '@server/interfaces/api/mediaInterfaces';
 import { runWithConfigurationAdmission } from '@server/lib/configurationAdmission';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import { Permission } from '@server/lib/permissions';
 import { runWithServarrServiceAdmission } from '@server/lib/serviceAdmission';
-import { getSettings } from '@server/lib/settings';
 import {
   UserMutationActorUnauthorizedError,
   runAuthorizedUserSecurityMutation,
@@ -576,7 +576,7 @@ mediaRoutes.delete(
             const specificServiceId = is4k
               ? media.serviceId4k
               : media.serviceId;
-            const selectionSettings = getSettings();
+            const selectionSettings = getExternalRuntimeConfig();
             const selectedServiceId =
               specificServiceId !== null && specificServiceId !== undefined
                 ? specificServiceId
@@ -630,7 +630,7 @@ mediaRoutes.delete(
             return runWithServarrServiceAdmission(
               serviceAdmissions,
               async () => {
-                const settings = getSettings();
+                const settings = getExternalRuntimeConfig();
                 const serviceSettings = isMovie
                   ? settings.radarr.find(
                       (radarr) => radarr.id === selectedServiceId
@@ -853,7 +853,7 @@ mediaRoutes.get<{ id: string }, MediaWatchDataResponse>(
 
     try {
       return await runWithConfigurationAdmission('tautulli', async () => {
-        const settings = getSettings().tautulli;
+        const settings = getExternalRuntimeConfig().tautulli;
         if (!settings.hostname || !settings.port || !settings.apiKey) {
           return next({
             status: 404,
