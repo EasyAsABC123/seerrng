@@ -747,34 +747,24 @@ class Settings {
     assertNoSymlinkDirectoryComponents(path.dirname(this.settingsPath), {
       label: 'Settings directory',
     });
-    let pathStat: fs.Stats;
+    let descriptor: number;
     try {
-      pathStat = fs.lstatSync(this.settingsPath);
+      descriptor = fs.openSync(
+        this.settingsPath,
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+      );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw error;
     }
-    if (
-      !pathStat.isFile() ||
-      pathStat.isSymbolicLink() ||
-      pathStat.nlink !== 1
-    ) {
-      throw new Error('Settings path must be a regular file.');
-    }
-    assertSettingsFileSize(pathStat.size);
-    const pathStamp = `${pathStat.dev}:${pathStat.ino}:${pathStat.size}:${pathStat.mtimeMs}`;
-    if (pathStamp === this.persistedFileStamp) return;
-
-    const descriptor = fs.openSync(
-      this.settingsPath,
-      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
-    );
     try {
       const stat = fs.fstatSync(descriptor);
       if (!stat.isFile() || stat.nlink !== 1) {
         throw new Error('Settings path must be a regular file.');
       }
       assertSettingsFileSize(stat.size);
+      const pathStamp = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+      if (pathStamp === this.persistedFileStamp) return;
       const persisted = JSON.parse(
         fs.readFileSync(descriptor, { encoding: 'utf8' })
       ) as DeepPartial<AllSettings>;

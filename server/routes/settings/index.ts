@@ -1020,10 +1020,17 @@ export const readLogTail = async (
 
   const directory = path.dirname(logFile);
   assertNoSymlinkDirectoryComponents(directory, { label: 'Log directory' });
-  const linkStat = await fs.promises.lstat(logFile);
   let filePath = logFile;
-
-  if (linkStat.isSymbolicLink()) {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(
+      logFile,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ELOOP') {
+      throw error;
+    }
     const target = await fs.promises.readlink(logFile);
     if (
       path.isAbsolute(target) ||
@@ -1034,12 +1041,11 @@ export const readLogTail = async (
       throw new Error('Log symlink must target a file in the log directory.');
     }
     filePath = path.join(directory, target);
+    handle = await fs.promises.open(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
+    );
   }
-
-  const handle = await fs.promises.open(
-    filePath,
-    fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
-  );
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.nlink !== 1) {
