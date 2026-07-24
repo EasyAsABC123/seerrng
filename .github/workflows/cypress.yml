@@ -67,6 +67,11 @@ jobs:
           CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
         run: pnpm exec cypress install
 
+      - name: Prepare Cypress runtime configuration
+        env:
+          CONFIG_DIRECTORY: cypress/runtime-config
+        run: pnpm cypress:prepare
+
       - name: Export external runtime configuration
         run: |
           printf 'SEERR_EXTERNAL_CONFIG=%s\n' "$(node scripts/export-external-config.mjs "$CONFIG_DIRECTORY/settings.json")" >> "$GITHUB_ENV"
