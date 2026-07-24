@@ -82,7 +82,11 @@ const checkUserImplementation: Middleware = async (req, res, next) => {
     ? user.settings.locale
     : settings.main.locale;
 
-  if (user && apiKey !== undefined) {
+  if (
+    user &&
+    apiKey !== undefined &&
+    matchesApiKey(apiKey, getSettings().main.apiKey)
+  ) {
     let credentialContextActive = true;
     const deactivateCredentialContext = () => {
       credentialContextActive = false;
@@ -91,7 +95,7 @@ const checkUserImplementation: Middleware = async (req, res, next) => {
     res.once('close', deactivateCredentialContext);
     return runWithUserApiKeyAuthorityContext(
       user.id,
-      () => matchesApiKey(apiKey, getSettings().main.apiKey),
+      () => true,
       next,
       () => credentialContextActive
     );
