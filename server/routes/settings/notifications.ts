@@ -1,5 +1,6 @@
 import type { User } from '@server/entity/User';
 import { defineMessages, getIntl } from '@server/i18n';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Notification } from '@server/lib/notifications';
 import type { NotificationAgent } from '@server/lib/notifications/agents/agent';
 import DiscordAgent from '@server/lib/notifications/agents/discord';
@@ -862,7 +863,7 @@ adminPost('/discord/test', async (req, res, next) => {
   }
   const body = preserveRedactedSecrets(
     parsedBody.value as NotificationAgentDiscord,
-    getSettings().notifications.agents.discord
+    getExternalRuntimeConfig().notifications.agents.discord
   );
 
   const validationError = await validateNotificationUrl(
@@ -1009,7 +1010,7 @@ adminPost('/telegram/test', async (req, res, next) => {
   }
   const testSettings = preserveRedactedSecrets(
     parsedBody.value as NotificationAgentTelegram,
-    getSettings().notifications.agents.telegram
+    getExternalRuntimeConfig().notifications.agents.telegram
   );
   const telegramAgent = new TelegramAgent(testSettings);
   if (await sendTestNotification(telegramAgent, req.user)) {
@@ -1063,7 +1064,7 @@ adminPost('/pushbullet/test', async (req, res, next) => {
   }
   const testSettings = preserveRedactedSecrets(
     parsedBody.value as NotificationAgentPushbullet,
-    getSettings().notifications.agents.pushbullet
+    getExternalRuntimeConfig().notifications.agents.pushbullet
   );
   const pushbulletAgent = new PushbulletAgent(testSettings);
   if (await sendTestNotification(pushbulletAgent, req.user)) {
@@ -1115,7 +1116,7 @@ adminPost('/pushover/test', async (req, res, next) => {
   }
   const testSettings = preserveRedactedSecrets(
     parsedBody.value as NotificationAgentPushover,
-    getSettings().notifications.agents.pushover
+    getExternalRuntimeConfig().notifications.agents.pushover
   );
   const pushoverAgent = new PushoverAgent(testSettings);
   if (await sendTestNotification(pushoverAgent, req.user)) {
@@ -1492,7 +1493,7 @@ adminPost('/gotify/test', async (req, res, next) => {
   }
   const body = preserveRedactedSecrets(
     parsedBody.value as NotificationAgentGotify,
-    getSettings().notifications.agents.gotify
+    getExternalRuntimeConfig().notifications.agents.gotify
   );
 
   const validationError = await validateNotificationUrl(
@@ -1565,7 +1566,7 @@ adminPost('/ntfy/test', async (req, res, next) => {
   }
   const body = preserveRedactedSecrets(
     parsedBody.value as NotificationAgentNtfy,
-    getSettings().notifications.agents.ntfy
+    getExternalRuntimeConfig().notifications.agents.ntfy
   );
 
   const validationError = await validateNotificationUrl(
