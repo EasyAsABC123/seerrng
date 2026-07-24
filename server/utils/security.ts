@@ -619,11 +619,3 @@ export const createSafeHttpUrl = async (
 };
 
 export const stringifySafeHttpUrl = (value: URL): string => value.toString();
-
-export const createSafeHttpRequestUrl = async (
-  value: unknown,
-  options: { allowPrivateAddresses?: boolean } = {}
-): Promise<string | undefined> => {
-  const safeUrl = await createSafeHttpUrl(value, options);
-  return safeUrl ? stringifySafeHttpUrl(safeUrl) : undefined;
-};
