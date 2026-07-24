@@ -41,14 +41,14 @@ const checkUserImplementation: Middleware = async (req, res, next) => {
   let user: User | undefined | null;
 
   const apiKey = req.header('X-API-Key');
-  if (apiKey !== undefined) {
-    if (matchesApiKey(apiKey, settings.main.apiKey)) {
-      const userRepository = getRepository(User);
+  const apiKeyAuthenticated =
+    apiKey !== undefined && matchesApiKey(apiKey, settings.main.apiKey);
+  if (apiKeyAuthenticated) {
+    const userRepository = getRepository(User);
 
-      // API key access is a service-level credential. Keep it bound to the
-      // owner account instead of allowing callers to impersonate arbitrary users.
-      user = await userRepository.findOne({ where: { id: 1 } });
-    }
+    // API key access is a service-level credential. Keep it bound to the
+    // owner account instead of allowing callers to impersonate arbitrary users.
+    user = await userRepository.findOne({ where: { id: 1 } });
   } else if (req.session?.userId) {
     const userRepository = getRepository(User);
 
@@ -85,11 +85,7 @@ const checkUserImplementation: Middleware = async (req, res, next) => {
     ? user.settings.locale
     : settings.main.locale;
 
-  if (
-    user &&
-    apiKey !== undefined &&
-    matchesApiKey(apiKey, getSettings().main.apiKey)
-  ) {
+  if (user && apiKeyAuthenticated) {
     let credentialContextActive = true;
     const deactivateCredentialContext = () => {
       credentialContextActive = false;
@@ -98,7 +94,7 @@ const checkUserImplementation: Middleware = async (req, res, next) => {
     res.once('close', deactivateCredentialContext);
     return runWithUserApiKeyAuthorityContext(
       user.id,
-      () => true,
+      () => apiKeyAuthenticated,
       next,
       () => credentialContextActive
     );
