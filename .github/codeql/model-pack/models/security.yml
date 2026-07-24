@@ -13,3 +13,12 @@ extensions:
       extensible: barrierGuardModel
     data:
       - ['@server/utils/security', 'Member[isSafeHttpUrl].Argument[0]', 'true', 'request-forgery']
+
+  # ExternalAPI validates configured origins and constrains every Axios request
+  # to the configured origin. Its first argument is an administrator-controlled
+  # service endpoint, including private addresses for self-hosted integrations.
+  - addsTo:
+      pack: codeql/javascript-all
+      extensible: barrierModel
+    data:
+      - ['@server/api/externalapi', 'Member[ExternalAPI].Argument[0]', 'request-forgery']
