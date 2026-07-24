@@ -7,11 +7,9 @@ import { User } from '@server/entity/User';
 import type { ImageResponse } from '@server/lib/imageproxy';
 import ImageProxy from '@server/lib/imageproxy';
 import { getSettings } from '@server/lib/settings';
-import axios from 'axios';
 import express from 'express';
 import request from 'supertest';
 import avatarproxyRoutes, {
-  AVATAR_HEAD_REQUEST_OPTIONS,
   checkAvatarChanged,
   getAvatarImageProxySettingsKey,
 } from './avatarproxy';
@@ -80,15 +78,6 @@ afterEach(() => {
   mock.restoreAll();
 });
 
-describe('AVATAR_HEAD_REQUEST_OPTIONS', () => {
-  it('bounds media-server avatar HEAD requests', () => {
-    assert.equal(AVATAR_HEAD_REQUEST_OPTIONS.timeout, 5_000);
-    assert.equal(AVATAR_HEAD_REQUEST_OPTIONS.maxRedirects, 0);
-    assert.equal(AVATAR_HEAD_REQUEST_OPTIONS.maxContentLength, 1024);
-    assert.equal(AVATAR_HEAD_REQUEST_OPTIONS.maxBodyLength, 1024);
-  });
-});
-
 describe('checkAvatarChanged', () => {
   it('persists only avatar cache metadata after external work', async () => {
     const updates: Record<string, unknown>[] = [];
@@ -102,10 +91,6 @@ describe('checkAvatarChanged', () => {
         updates.push(patch);
         return { affected: 1 };
       },
-    }));
-    mock.method(axios, 'head', async () => ({
-      status: 200,
-      headers: { 'last-modified': 'Thu, 16 Jul 2026 12:00:00 GMT' },
     }));
     mock.method(
       ImageProxy.prototype,
