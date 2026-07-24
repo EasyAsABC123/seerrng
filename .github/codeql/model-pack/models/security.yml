@@ -1,0 +1,15 @@
+extensions:
+  # createSafeHttpUrl performs scheme, credential, host, DNS, and private-address
+  # validation before returning a URL that is used as a request target.
+  - addsTo:
+      pack: codeql/javascript-all
+      extensible: barrierModel
+    data:
+      - ['@server/utils/security', 'Member[createSafeHttpUrl].ReturnValue.Awaited', 'request-forgery']
+
+  # Callers only use a URL after the asynchronous validator accepts it.
+  - addsTo:
+      pack: codeql/javascript-all
+      extensible: barrierGuardModel
+    data:
+      - ['@server/utils/security', 'Member[isSafeHttpUrl].Argument[0]', 'true', 'request-forgery']

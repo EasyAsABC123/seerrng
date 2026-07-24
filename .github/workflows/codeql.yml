@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      packages: read
       security-events: write
     strategy:
       fail-fast: false
@@ -46,6 +47,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
+          packs: snapetech/seerrng-codeql-models@0.0.1
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
