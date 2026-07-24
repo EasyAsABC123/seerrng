@@ -55,12 +55,11 @@ export function formatComment(candidates) {
     if (!Number.isSafeInteger(candidate.number) || candidate.number < 1) {
       continue;
     }
-    const score = Number.isFinite(candidate.score)
-      ? Math.min(1, Math.max(0, candidate.score))
-      : 0;
-    const confidence = `${(score * 100).toFixed(0)}%`;
     const title = sanitizeInlineText(candidate.title, MAX_TITLE_LENGTH);
-    let line = `- #${candidate.number} (${confidence} match) — ${title}`;
+    const confidence = Number.isFinite(candidate.score)
+      ? ` (${(Math.min(1, Math.max(0, candidate.score)) * 100).toFixed(0)}% match)`
+      : '';
+    let line = `- #${candidate.number}${confidence} — ${title}`;
     if (candidate.llm_reason) {
       line += `\n  > *${sanitizeInlineText(candidate.llm_reason, MAX_REASON_LENGTH)}*`;
     }
