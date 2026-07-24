@@ -301,7 +301,10 @@ app
           maxAge: 30 * 24 * 60 * 60 * 1_000,
           httpOnly: true,
           sameSite: settings.network.csrfProtection ? 'strict' : 'lax',
-          secure: true,
+          // Cypress runs the production build over local HTTP. Keep production
+          // cookies secure while allowing the test browser to retain its
+          // session cookie without requiring a local TLS certificate.
+          secure: process.env.E2E_TESTS !== 'true',
         },
         proxy: !dev,
         store: new TypeormStore({
