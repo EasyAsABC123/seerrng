@@ -7,6 +7,9 @@ export const PLEX_OAUTH_HTTP_OPTIONS = {
 const MAX_PLEX_AUTH_TOKEN_LENGTH = 4096;
 const MAX_PLEX_PIN_ID = 2_147_483_647;
 const MAX_PLEX_PIN_CODE_LENGTH = 128;
+// Plex Web requires this product value when completing third-party OAuth.
+// The API headers continue to identify SeerrNG as the requesting client.
+const PLEX_AUTH_CONTEXT_PRODUCT = 'Plex Web';
 
 export const getBoundedPlexPinDeadline = (
   expiresAt: unknown,
@@ -171,7 +174,7 @@ class PlexOAuth {
 
       const params = {
         clientID: this.plexHeaders['X-Plex-Client-Identifier'],
-        'context[device][product]': this.plexHeaders['X-Plex-Product'],
+        'context[device][product]': PLEX_AUTH_CONTEXT_PRODUCT,
         'context[device][version]': this.plexHeaders['X-Plex-Version'],
         'context[device][platform]': this.plexHeaders['X-Plex-Platform'],
         'context[device][platformVersion]':
