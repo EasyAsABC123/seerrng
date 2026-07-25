@@ -87,6 +87,7 @@ WORKDIR /app
 
 COPY --chown=node:node package.json next.config.ts seerr-api.yml ./
 COPY --chown=node:node public ./public
+COPY --chown=node:node scripts/export-external-config.mjs ./scripts/export-external-config.mjs
 COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/.next ./.next
 COPY --chown=node:node --from=build /app/dist ./dist
