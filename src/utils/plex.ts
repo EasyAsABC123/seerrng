@@ -191,7 +191,7 @@ class PlexOAuth {
         );
       }
 
-      this.popup.location.href = `https://app.plex.tv/auth/#!?${this.encodeData(
+      this.popup.location.href = `https://app.plex.tv/auth#?${this.encodeData(
         params
       )}`;
 
