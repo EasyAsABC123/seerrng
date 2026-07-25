@@ -35,7 +35,7 @@ describe('security response headers', () => {
     );
     assert.match(
       response.headers['content-security-policy'],
-      /connect-src 'self'/
+      /connect-src 'self' https:\/\/plex\.tv https:\/\/\*\.plex\.tv/
     );
     assert.match(
       response.headers['content-security-policy'],
@@ -56,6 +56,7 @@ describe('security response headers', () => {
 
     assert.match(developmentPolicy, /script-src[^;]*'unsafe-eval'/);
     assert.match(developmentPolicy, /connect-src[^;]*ws: wss:/);
+    assert.match(developmentPolicy, /connect-src[^;]*https:\/\/plex\.tv/);
     assert.doesNotMatch(productionPolicy, /'unsafe-eval'|\bws:|\bwss:/);
   });
 });
