@@ -512,12 +512,20 @@ authRoutes.get(
     if (!pinId) {
       return res.status(400).json({ error: 'Invalid Plex PIN id.' });
     }
+    const pinCode = parseBoundedString(req.query.code, {
+      fieldName: 'Plex PIN code',
+      maxLength: MAX_PLEX_PIN_CODE_LENGTH,
+    });
+    if ('error' in pinCode) {
+      return res.status(400).json({ error: pinCode.error });
+    }
 
     try {
       const response = await axios.get(
         `https://clients.plex.tv/api/v2/pins/${pinId}`,
         {
           headers: getPlexOAuthHeaders(),
+          params: { code: pinCode.value },
           ...PLEX_OAUTH_HTTP_OPTIONS,
         }
       );

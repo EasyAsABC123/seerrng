@@ -213,7 +213,9 @@ class PlexOAuth {
         }
 
         const response = await axios.get(
-          `/api/v1/auth/plex/pin/${this.pin.id}`
+          `/api/v1/auth/plex/pin/${this.pin.id}?code=${encodeURIComponent(
+            this.pin.code
+          )}`
         );
         this.assertCurrentAttempt(attemptId);
 

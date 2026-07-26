@@ -4736,6 +4736,11 @@ paths:
           schema:
             type: integer
             minimum: 1
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
       responses:
         '200':
           description: Current Plex OAuth PIN state
