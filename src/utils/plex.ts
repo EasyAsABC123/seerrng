@@ -119,14 +119,7 @@ class PlexOAuth {
         'You must initialize the plex headers clientside to login'
       );
     }
-    const response = await axios.post(
-      'https://plex.tv/api/v2/pins?strong=true',
-      undefined,
-      {
-        headers: this.plexHeaders,
-        ...PLEX_OAUTH_HTTP_OPTIONS,
-      }
-    );
+    const response = await axios.post('/api/v1/auth/plex/pin');
     this.assertCurrentAttempt(attemptId);
 
     const pin = parsePlexPin(response.data);
@@ -219,11 +212,7 @@ class PlexOAuth {
         }
 
         const response = await axios.get(
-          `https://plex.tv/api/v2/pins/${this.pin.id}`,
-          {
-            headers: this.plexHeaders,
-            ...PLEX_OAUTH_HTTP_OPTIONS,
-          }
+          `/api/v1/auth/plex/pin/${this.pin.id}`
         );
         this.assertCurrentAttempt(attemptId);
 

@@ -79,6 +79,8 @@ const MAX_HOSTNAME_LENGTH = 255;
 const MAX_URL_BASE_LENGTH = 512;
 const MAX_RESET_GUID_LENGTH = 64;
 const MAX_PORT = 65_535;
+const MAX_PLEX_PIN_ID = 2_147_483_647;
+const MAX_PLEX_PIN_CODE_LENGTH = 128;
 export const MAX_OIDC_CALLBACK_URL_LENGTH = 8_192;
 // A fixed, valid cost-12 hash keeps unknown-account and SSO-only failures on
 // the same bcrypt path as local-account failures without storing a usable
@@ -385,6 +387,45 @@ const authRateLimit = rateLimit({
   keyGenerator: getRateLimitKey,
 });
 
+const PLEX_OAUTH_HTTP_OPTIONS = {
+  timeout: 10_000,
+} as const;
+
+const getPlexOAuthHeaders = () => ({
+  Accept: 'application/json',
+  'X-Plex-Product': 'Seerr',
+  'X-Plex-Client-Identifier': getSettings().clientId,
+});
+
+const plexLoginEnabled = (): boolean => {
+  const settings = getSettings();
+  return (
+    settings.main.mediaServerType === MediaServerType.NOT_CONFIGURED ||
+    (settings.main.mediaServerLogin &&
+      settings.main.mediaServerType === MediaServerType.PLEX)
+  );
+};
+
+const parsePlexPinId = (value: unknown): number | undefined => {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 && id <= MAX_PLEX_PIN_ID
+    ? id
+    : undefined;
+};
+
+const plexPinPollRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 1_200,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitKey,
+});
+
 const passwordResetRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 20,
@@ -419,6 +460,87 @@ authRoutes.get('/me', isAuthenticated(), async (req, res) => {
 
   return res.status(200).json(user.filter(true));
 });
+
+authRoutes.post('/plex/pin', authRateLimit, async (req, res, next) => {
+  if (!plexLoginEnabled()) {
+    return res.status(403).json({ error: 'Plex login is disabled' });
+  }
+
+  try {
+    const response = await axios.post(
+      'https://clients.plex.tv/api/v2/pins?strong=true',
+      undefined,
+      {
+        headers: getPlexOAuthHeaders(),
+        ...PLEX_OAUTH_HTTP_OPTIONS,
+      }
+    );
+    const data = response.data as Record<string, unknown>;
+    const id = parsePlexPinId(String(data.id ?? ''));
+    const code = data.code;
+    if (
+      !id ||
+      typeof code !== 'string' ||
+      code.length === 0 ||
+      code.length > MAX_PLEX_PIN_CODE_LENGTH
+    ) {
+      return next({ status: 502, message: 'Plex returned an invalid PIN.' });
+    }
+
+    return res.status(200).json({
+      id,
+      code,
+      expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : null,
+    });
+  } catch (e) {
+    logger.error('Unable to create Plex OAuth PIN', {
+      label: 'Auth',
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return next({ status: 502, message: 'Unable to contact Plex.' });
+  }
+});
+
+authRoutes.get(
+  '/plex/pin/:id',
+  plexPinPollRateLimit,
+  async (req, res, next) => {
+    if (!plexLoginEnabled()) {
+      return res.status(403).json({ error: 'Plex login is disabled' });
+    }
+    const pinId = parsePlexPinId(req.params.id);
+    if (!pinId) {
+      return res.status(400).json({ error: 'Invalid Plex PIN id.' });
+    }
+
+    try {
+      const response = await axios.get(
+        `https://clients.plex.tv/api/v2/pins/${pinId}`,
+        {
+          headers: getPlexOAuthHeaders(),
+          ...PLEX_OAUTH_HTTP_OPTIONS,
+        }
+      );
+      const data = response.data as Record<string, unknown>;
+      const authToken = data.authToken;
+      return res.status(200).json({
+        authToken:
+          typeof authToken === 'string' &&
+          authToken.length <= MAX_AUTH_TOKEN_LENGTH
+            ? authToken
+            : null,
+        expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : null,
+      });
+    } catch (e) {
+      logger.warn('Unable to poll Plex OAuth PIN', {
+        label: 'Auth',
+        pinId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return next({ status: 502, message: 'Unable to contact Plex.' });
+    }
+  }
+);
 
 authRoutes.post('/plex', authRateLimit, async (req, res, next) => {
   const settings = getSettings();
