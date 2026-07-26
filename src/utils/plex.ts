@@ -177,6 +177,7 @@ class PlexOAuth {
         'context[device][screenResolution]':
           this.plexHeaders['X-Plex-Device-Screen-Resolution'],
         'context[device][layout]': 'desktop',
+        forwardUrl: `${window.location.origin}/login/plex/loading`,
         code: this.pin.code,
       };
 
