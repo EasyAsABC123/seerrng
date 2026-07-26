@@ -142,6 +142,13 @@ describe('Issue route validation', () => {
     assert.match(res.body.message, /Sort must be valid/);
   });
 
+  it('accepts sorting issues by added date', async () => {
+    const agent = await login();
+    const res = await agent.get('/issue').query({ sort: 'added' });
+
+    assert.notEqual(res.status, 400);
+  });
+
   it('rejects malformed issue create numeric fields before media lookup', async () => {
     const agent = await login();
     const res = await agent.post('/issue').send({
