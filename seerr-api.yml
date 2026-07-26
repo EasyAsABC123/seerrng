@@ -4697,6 +4697,61 @@ paths:
                   type: string
               required:
                 - authToken
+  /auth/plex/pin:
+    post:
+      summary: Create a Plex OAuth PIN
+      description: Creates a short-lived Plex OAuth PIN through the server-side Plex API proxy.
+      security: []
+      tags:
+        - auth
+      responses:
+        '200':
+          description: Plex OAuth PIN details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - code
+                properties:
+                  id:
+                    type: integer
+                  code:
+                    type: string
+                  expiresAt:
+                    type: string
+                    nullable: true
+  /auth/plex/pin/{id}:
+    get:
+      summary: Poll a Plex OAuth PIN
+      description: Polls a server-side Plex OAuth PIN until Plex claims it.
+      security: []
+      tags:
+        - auth
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Current Plex OAuth PIN state
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - authToken
+                properties:
+                  authToken:
+                    type: string
+                    nullable: true
+                  expiresAt:
+                    type: string
+                    nullable: true
   /auth/jellyfin:
     post:
       summary: Sign in using a Jellyfin username and password
