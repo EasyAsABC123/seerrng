@@ -133,6 +133,7 @@ const Login = ({ initialBackdrops }: { initialBackdrops?: string[] }) => {
           key="plex"
           isProcessing={isProcessing}
           onAuthToken={(authToken) => setAuthToken(authToken)}
+          onError={setError}
           large={!isJellyfin && !settings.currentSettings.localLogin}
         />
       ) : (
