@@ -313,7 +313,8 @@ class ExternalAPI {
   protected async get<T>(
     endpoint: string,
     config?: AxiosRequestConfig,
-    ttl?: number
+    ttl?: number,
+    isUsableResponse?: (data: T) => boolean
   ): Promise<T> {
     const cacheKey = this.serializeCacheKey(endpoint, {
       params: config?.params,
@@ -323,16 +324,32 @@ class ExternalAPI {
     if (ttl !== 0) {
       const cachedItem = this.cache?.get<T>(cacheKey);
       if (cachedItem !== undefined) {
-        return cachedItem;
+        if (!isUsableResponse || isUsableResponse(cachedItem)) {
+          return cachedItem;
+        }
+        this.cache?.del(cacheKey);
       }
     }
 
-    return this.fetchAndCache(
+    const response = await this.fetchAndCache(
       'GET',
       cacheKey,
       () => this.axios.get<T>(endpoint, config),
-      ttl
+      ttl,
+      isUsableResponse
     );
+
+    if (isUsableResponse && !isUsableResponse(response)) {
+      return this.fetchAndCache(
+        'GET',
+        cacheKey,
+        () => this.axios.get<T>(endpoint, config),
+        0,
+        isUsableResponse
+      );
+    }
+
+    return response;
   }
 
   protected async post<T>(
@@ -434,7 +451,8 @@ class ExternalAPI {
     method: 'GET' | 'POST',
     cacheKey: string,
     request: () => Promise<{ data: T }>,
-    ttl?: number
+    ttl?: number,
+    isUsableResponse?: (data: T) => boolean
   ): Promise<T> {
     const pendingKey = `${method}:${cacheKey}`;
     const cacheable =
@@ -463,7 +481,11 @@ class ExternalAPI {
     const pending = Promise.resolve()
       .then(request)
       .then((response) => {
-        if (this.cache && cacheable) {
+        if (
+          this.cache &&
+          cacheable &&
+          (!isUsableResponse || isUsableResponse(response.data))
+        ) {
           try {
             this.cache.set(cacheKey, response.data, ttl ?? DEFAULT_TTL);
           } catch (error) {

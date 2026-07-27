@@ -52,9 +52,10 @@ class TestExternalAPI extends ExternalAPI {
   public getForTest<T>(
     endpoint: string,
     config?: AxiosRequestConfig,
-    ttl?: number
+    ttl?: number,
+    isUsableResponse?: (data: T) => boolean
   ): Promise<T> {
-    return this.get<T>(endpoint, config, ttl);
+    return this.get<T>(endpoint, config, ttl, isUsableResponse);
   }
 
   public postForTest<T>(
@@ -521,6 +522,38 @@ describe('ExternalAPI rolling cache refresh', () => {
 });
 
 describe('ExternalAPI cache isolation', () => {
+  it('evicts unusable cached responses and retries an unusable provider response once', async () => {
+    const cache = new NodeCache();
+    const api = new TestExternalAPI(
+      'https://service.example',
+      {},
+      { nodeCache: cache }
+    );
+    let calls = 0;
+    api.setAdapter(async (config) => ({
+      config,
+      data: { items: ++calls < 2 ? [] : ['album'] },
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+    }));
+
+    const isUsable = (data: { items: string[] }) => data.items.length > 0;
+    assert.deepStrictEqual(
+      await api.getForTest('/music', undefined, 3600, isUsable),
+      { items: ['album'] }
+    );
+    assert.strictEqual(calls, 2);
+    assert.strictEqual(cache.keys().length, 0);
+
+    assert.deepStrictEqual(
+      await api.getForTest('/music', undefined, 3600, isUsable),
+      { items: ['album'] }
+    );
+    assert.strictEqual(calls, 3);
+    assert.strictEqual(cache.keys().length, 1);
+  });
+
   it('bypasses existing GET cache entries when TTL is zero', async () => {
     const cache = new NodeCache();
     const api = new TestExternalAPI(
