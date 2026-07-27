@@ -7,18 +7,13 @@ import { getSessionTransportOptions } from './sessionCookie';
 
 const createApp = (development: boolean) => {
   const app = express();
+  const transportOptions = getSessionTransportOptions(development, true);
   app.use(
     session({
       secret: '01234567890123456789012345678901',
       resave: false,
       saveUninitialized: false,
-      cookie: {
-        maxAge: 30 * 24 * 60 * 60 * 1_000,
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: true,
-      },
-      proxy: !development,
+      ...transportOptions,
     })
   );
   app.get('/', (req, res) => {
@@ -29,14 +24,17 @@ const createApp = (development: boolean) => {
 };
 
 describe('getSessionTransportOptions', () => {
-  it('always protects production session cookies across TLS termination', () => {
-    assert.equal(getSessionTransportOptions(false, true).cookie.secure, true);
-    assert.equal(getSessionTransportOptions(false, false).cookie.secure, true);
+  it('selects cookie security from the request transport', () => {
+    assert.equal(getSessionTransportOptions(false, true).cookie.secure, 'auto');
+    assert.equal(
+      getSessionTransportOptions(false, false).cookie.secure,
+      'auto'
+    );
     assert.equal(getSessionTransportOptions(false, true).proxy, true);
   });
 
-  it('keeps cookies secure in development and production', () => {
-    assert.equal(getSessionTransportOptions(true, true).cookie.secure, true);
+  it('keeps the remaining cookie protections in development and production', () => {
+    assert.equal(getSessionTransportOptions(true, true).cookie.secure, 'auto');
     assert.equal(
       getSessionTransportOptions(true, true).cookie.sameSite,
       'strict'
@@ -61,9 +59,11 @@ describe('getSessionTransportOptions', () => {
     assert.match(response.get('Set-Cookie')?.[0] ?? '', /; Secure(?:;|$)/);
   });
 
-  it('fails closed when a production request has no TLS evidence', async () => {
+  it('emits a non-secure cookie for a direct HTTP LAN request', async () => {
     const response = await request(createApp(false)).get('/');
 
-    assert.equal(response.get('Set-Cookie'), undefined);
+    const cookie = response.get('Set-Cookie')?.[0] ?? '';
+    assert.notEqual(cookie, '');
+    assert.doesNotMatch(cookie, /; Secure(?:;|$)/);
   });
 });

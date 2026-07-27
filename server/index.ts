@@ -55,6 +55,7 @@ import {
 import { configureHttpServer, parseListenPort } from '@server/utils/httpServer';
 import restartFlag from '@server/utils/restartFlag';
 import { getRateLimitKey } from '@server/utils/security';
+import { getSessionTransportOptions } from '@server/utils/sessionCookie';
 import axios from 'axios';
 import compression from 'compression';
 import { TypeormStore } from 'connect-typeorm/out';
@@ -291,22 +292,17 @@ app
 
     // Set up sessions
     const sessionRespository = getRepository(Session);
+    const sessionTransportOptions = getSessionTransportOptions(
+      dev,
+      settings.network.csrfProtection
+    );
     server.use(
       '/api',
       session({
         secret: settings.sessionSecret,
         resave: false,
         saveUninitialized: false,
-        cookie: {
-          maxAge: 30 * 24 * 60 * 60 * 1_000,
-          httpOnly: true,
-          sameSite: settings.network.csrfProtection ? 'strict' : 'lax',
-          // Cypress runs the production build over local HTTP. Keep production
-          // cookies secure while allowing the test browser to retain its
-          // session cookie without requiring a local TLS certificate.
-          secure: process.env.E2E_TESTS !== 'true',
-        },
-        proxy: !dev,
+        ...sessionTransportOptions,
         store: new TypeormStore({
           cleanupLimit: 2,
           ttl: 60 * 60 * 24 * 30,
