@@ -462,6 +462,11 @@ authRoutes.get('/me', isAuthenticated(), async (req, res) => {
 });
 
 authRoutes.post('/plex/pin', authRateLimit, async (req, res, next) => {
+  logger.info('Plex OAuth PIN request received', {
+    label: 'Auth',
+    route: 'plex/pin',
+    ip: req.ip,
+  });
   if (!plexLoginEnabled()) {
     return res.status(403).json({ error: 'Plex login is disabled' });
   }
@@ -486,6 +491,12 @@ authRoutes.post('/plex/pin', authRateLimit, async (req, res, next) => {
     ) {
       return next({ status: 502, message: 'Plex returned an invalid PIN.' });
     }
+
+    logger.info('Plex OAuth PIN created', {
+      label: 'Auth',
+      route: 'plex/pin',
+      pinId: id,
+    });
 
     return res.status(200).json({
       id,
@@ -531,6 +542,13 @@ authRoutes.get(
       );
       const data = response.data as Record<string, unknown>;
       const authToken = data.authToken;
+      if (typeof authToken === 'string' && authToken.length > 0) {
+        logger.info('Plex OAuth PIN claimed', {
+          label: 'Auth',
+          route: 'plex/pin',
+          pinId,
+        });
+      }
       return res.status(200).json({
         authToken:
           typeof authToken === 'string' &&
@@ -551,6 +569,11 @@ authRoutes.get(
 );
 
 authRoutes.post('/plex', authRateLimit, async (req, res, next) => {
+  logger.info('Plex auth exchange received', {
+    label: 'Auth',
+    route: 'plex',
+    ip: req.ip,
+  });
   const settings = getSettings();
   const userRepository = getRepository(User);
   const parsedBody = parseRequestBodyObject(req.body);
