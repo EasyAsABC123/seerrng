@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
+import type { fetch as UndiciFetch } from 'undici';
 
 import {
+  createOidcSafeFetch,
   OIDC_HTTP_MAX_REQUEST_BYTES,
   OIDC_HTTP_MAX_RESPONSE_BYTES,
-  oidcSafeFetch,
 } from './oidcHttp';
+
+const asUndiciFetch = (request: ReturnType<typeof mock.fn>) =>
+  request as unknown as typeof UndiciFetch;
 
 afterEach(() => {
   mock.restoreAll();
@@ -14,7 +18,8 @@ afterEach(() => {
 
 describe('oidcSafeFetch', () => {
   it('rejects private provider endpoints before dispatch', async () => {
-    const request = mock.method(globalThis, 'fetch');
+    const request = mock.fn();
+    const oidcSafeFetch = createOidcSafeFetch(asUndiciFetch(request));
 
     await assert.rejects(
       oidcSafeFetch('http://127.0.0.1/token', {
@@ -30,9 +35,7 @@ describe('oidcSafeFetch', () => {
 
   it('uses a direct dispatcher and converts bounded responses', async () => {
     process.env.OIDC_ALLOW_PRIVATE_ADDRESSES = 'true';
-    const request = mock.method(
-      globalThis,
-      'fetch',
+    const request = mock.fn(
       async (_url: string | URL | Request, init?: RequestInit) => {
         assert.strictEqual(init?.redirect, 'manual');
         assert.ok(init?.signal);
@@ -44,6 +47,7 @@ describe('oidcSafeFetch', () => {
         });
       }
     );
+    const oidcSafeFetch = createOidcSafeFetch(asUndiciFetch(request));
 
     const response = await oidcSafeFetch('http://127.0.0.1/discovery', {
       body: undefined,
@@ -63,6 +67,14 @@ describe('oidcSafeFetch', () => {
 
   it('rejects oversized request and response bodies', async () => {
     process.env.OIDC_ALLOW_PRIVATE_ADDRESSES = 'true';
+    const request = mock.fn(async () =>
+      Promise.resolve(
+        new Response(Buffer.alloc(OIDC_HTTP_MAX_RESPONSE_BYTES + 1, 0x78), {
+          status: 200,
+        })
+      )
+    );
+    const oidcSafeFetch = createOidcSafeFetch(asUndiciFetch(request));
     await assert.rejects(
       oidcSafeFetch('http://127.0.0.1/token', {
         body: 'x'.repeat(OIDC_HTTP_MAX_REQUEST_BYTES + 1),
@@ -73,13 +85,6 @@ describe('oidcSafeFetch', () => {
       /request exceeds/
     );
 
-    mock.method(globalThis, 'fetch', async () =>
-      Promise.resolve(
-        new Response(Buffer.alloc(OIDC_HTTP_MAX_RESPONSE_BYTES + 1, 0x78), {
-          status: 200,
-        })
-      )
-    );
     await assert.rejects(
       oidcSafeFetch('http://127.0.0.1/userinfo', {
         body: undefined,
