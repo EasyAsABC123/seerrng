@@ -1,7 +1,9 @@
 import { createSafeHttpLookup, isSafeHttpUrl } from '@server/utils/security';
 import type { LookupFunction } from 'node:net';
 import type { CustomFetch } from 'openid-client';
-import { Agent } from 'undici';
+import { Agent, fetch as undiciFetch } from 'undici';
+
+type UndiciFetchInit = NonNullable<Parameters<typeof undiciFetch>[1]>;
 
 export const OIDC_HTTP_MAX_RESPONSE_BYTES = 1024 * 1024;
 export const OIDC_HTTP_MAX_REQUEST_BYTES = 256 * 1024;
@@ -113,34 +115,41 @@ const readBoundedResponse = async (response: Response): Promise<Response> => {
  * endpoints learned from provider metadata, is revalidated immediately before
  * the socket connection and cannot redirect credentials elsewhere.
  */
-export const oidcSafeFetch: CustomFetch = async (url, options) => {
-  const allowPrivateAddresses = isPrivateOidcDestinationAllowed();
-  if (!(await isSafeHttpUrl(url, { allowPrivateAddresses }))) {
-    throw new Error('OIDC request destination is not allowed.');
-  }
-  if (getRequestBodySize(options.body) > OIDC_HTTP_MAX_REQUEST_BYTES) {
-    throw new Error('OIDC request exceeds the safe size limit.');
-  }
+export const createOidcSafeFetch =
+  (fetchImplementation: typeof undiciFetch = undiciFetch): CustomFetch =>
+  async (url, options) => {
+    const allowPrivateAddresses = isPrivateOidcDestinationAllowed();
+    if (!(await isSafeHttpUrl(url, { allowPrivateAddresses }))) {
+      throw new Error('OIDC request destination is not allowed.');
+    }
+    if (getRequestBodySize(options.body) > OIDC_HTTP_MAX_REQUEST_BYTES) {
+      throw new Error('OIDC request exceeds the safe size limit.');
+    }
 
-  const timeoutSignal = AbortSignal.timeout(OIDC_HTTP_TIMEOUT_MS);
-  const { signal, cleanup } = composeAbortSignals(
-    options.signal,
-    timeoutSignal
-  );
-  try {
-    const response = await fetch(url, {
-      method: options.method,
-      headers: options.headers,
-      body: options.body,
-      redirect: 'manual',
-      signal,
-      // Undici-specific extension: use a direct dispatcher whose DNS lookup
-      // rechecks every resolved address immediately before socket connection.
-      dispatcher: oidcDispatcher,
-    } as RequestInit);
+    const timeoutSignal = AbortSignal.timeout(OIDC_HTTP_TIMEOUT_MS);
+    const { signal, cleanup } = composeAbortSignals(
+      options.signal,
+      timeoutSignal
+    );
+    try {
+      // The dispatcher and fetch implementation must come from the same Undici
+      // package. Node's global fetch can use a different bundled Undici version,
+      // whose dispatcher callback interface is not compatible with this Agent.
+      const response = await fetchImplementation(url, {
+        method: options.method,
+        headers: options.headers,
+        body: options.body as UndiciFetchInit['body'],
+        redirect: 'manual',
+        signal,
+        // Undici-specific extension: use a direct dispatcher whose DNS lookup
+        // rechecks every resolved address immediately before socket connection.
+        dispatcher: oidcDispatcher,
+      });
 
-    return await readBoundedResponse(response);
-  } finally {
-    cleanup();
-  }
-};
+      return await readBoundedResponse(response as unknown as Response);
+    } finally {
+      cleanup();
+    }
+  };
+
+export const oidcSafeFetch = createOidcSafeFetch();
