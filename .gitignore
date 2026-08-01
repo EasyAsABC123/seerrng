@@ -96,3 +96,6 @@ compose.override.yaml
 
 # temporary Cypress scratch specs
 cypress/e2e/*.temp.cy.ts
+
+# CodeQL local pack install cache
+.github/codeql/model-pack/.codeql/

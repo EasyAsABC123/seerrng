@@ -235,20 +235,10 @@ describe('ExternalAPI redirect handling', () => {
     );
   });
 
-  it('defers malformed legacy base URLs without allowing absolute escapes', async () => {
-    const api = new TestExternalAPI('http://:32400', {});
-    api.setAdapter(async (config) => ({
-      config,
-      data: { path: config.url },
-      headers: {},
-      status: 200,
-      statusText: 'OK',
-    }));
-
-    assert.deepEqual(await api.getForTest('/library'), { path: '/library' });
-    await assert.rejects(
-      api.getForTest('https://attacker.example/collect'),
-      /request target is not allowed/
+  it('rejects malformed base URLs before a request can be made', () => {
+    assert.throws(
+      () => new TestExternalAPI('http://:32400', {}),
+      /Invalid URL/
     );
   });
 

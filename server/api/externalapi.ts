@@ -2,7 +2,7 @@ import logger from '@server/logger';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
 import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
 import { createSafeHttpRequestOptions } from '@server/utils/security';
-import type { AxiosInstance, AxiosRequestConfig } from 'axios';
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import axios from 'axios';
 import rateLimit from 'axios-rate-limit';
 import type NodeCache from 'node-cache';
@@ -78,19 +78,8 @@ export interface ExternalAPIOptions {
   };
 }
 
-const getHttpOrigin = (
-  value: string,
-  options: { allowMalformed?: boolean } = {}
-): string | undefined => {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch (error) {
-    if (options.allowMalformed) {
-      return undefined;
-    }
-    throw error;
-  }
+const getHttpOrigin = (value: string): string => {
+  const url = new URL(value);
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new Error('External API base URLs must use HTTP or HTTPS.');
   }
@@ -100,14 +89,19 @@ const getHttpOrigin = (
   return url.origin;
 };
 
-const isAbsoluteUrl = (value: string): boolean => {
-  try {
-    new URL(value);
-    return true;
-  } catch {
-    return false;
-  }
-};
+const encodeUrlPath = (pathname: string): string =>
+  pathname
+    .split('/')
+    .map((segment) => encodeURIComponent(decodeURIComponent(segment)))
+    .join('/');
+
+const encodeUrlQuery = (url: URL): string =>
+  [...url.searchParams]
+    .map(
+      ([key, value]) =>
+        `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
+    )
+    .join('&');
 
 export const normalizeExternalApiRequestTarget = (
   endpoint: string,
@@ -117,14 +111,10 @@ export const normalizeExternalApiRequestTarget = (
   let requestUrl: URL;
   try {
     requestUrl = new URL(endpoint, baseUrl);
-  } catch {
-    // Preserve the legacy delayed failure for incomplete administrator
-    // configuration, but never let an absolute target bypass the origin
-    // policy when URL parsing succeeds for the endpoint itself.
-    if (isAbsoluteUrl(endpoint)) {
-      throw new Error('External API request target is not allowed.');
-    }
-    return endpoint;
+  } catch (error) {
+    throw new Error('External API request target is not allowed.', {
+      cause: error,
+    });
   }
 
   if (
@@ -136,7 +126,14 @@ export const normalizeExternalApiRequestTarget = (
     throw new Error('External API request target is not allowed.');
   }
 
-  return endpoint;
+  try {
+    const query = encodeUrlQuery(requestUrl);
+    return `${encodeUrlPath(requestUrl.pathname)}${query ? `?${query}` : ''}`;
+  } catch (error) {
+    throw new Error('External API request target is not allowed.', {
+      cause: error,
+    });
+  }
 };
 
 export const createExternalApiCacheKeySuffix = (
@@ -265,7 +262,7 @@ class ExternalAPI {
     params: Record<string, unknown>,
     options: ExternalAPIOptions = {}
   ) {
-    const configuredOrigin = getHttpOrigin(baseUrl, { allowMalformed: true });
+    const configuredOrigin = getHttpOrigin(baseUrl);
     const allowedOrigins = new Set(
       [
         configuredOrigin,
@@ -291,19 +288,7 @@ class ExternalAPI {
       },
     });
     this.axios.interceptors.request.use((config) => {
-      let requestUrl: URL;
-      try {
-        requestUrl = new URL(config.url ?? '', config.baseURL ?? baseUrl);
-      } catch {
-        // Some legacy configurations contain an incomplete base URL. A
-        // relative request remains non-routable with Axios' real adapter, but
-        // delaying that failure lets configuration recovery and test adapters
-        // inspect the request. Never permit an absolute first-hop escape.
-        if (isAbsoluteUrl(config.url ?? '')) {
-          throw new Error('External API request target is not allowed.');
-        }
-        return config;
-      }
+      const requestUrl = new URL(config.url ?? '', config.baseURL ?? baseUrl);
       if (
         !['http:', 'https:'].includes(requestUrl.protocol) ||
         requestUrl.username ||
@@ -342,17 +327,36 @@ class ExternalAPI {
     );
   }
 
+  protected async request<T>(
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    endpoint: string,
+    data?: unknown,
+    config?: AxiosRequestConfig
+  ): Promise<AxiosResponse<T>> {
+    const requestEndpoint = normalizeExternalApiRequestTarget(
+      endpoint,
+      config?.baseURL ?? this.baseUrl,
+      this.allowedOrigins
+    );
+
+    switch (method) {
+      case 'GET':
+        return this.axios.get<T>(requestEndpoint, config);
+      case 'POST':
+        return this.axios.post<T>(requestEndpoint, data, config);
+      case 'PUT':
+        return this.axios.put<T>(requestEndpoint, data, config);
+      case 'DELETE':
+        return this.axios.delete<T>(requestEndpoint, config);
+    }
+  }
+
   protected async get<T>(
     endpoint: string,
     config?: AxiosRequestConfig,
     ttl?: number,
     isUsableResponse?: (data: T) => boolean
   ): Promise<T> {
-    const requestEndpoint = normalizeExternalApiRequestTarget(
-      endpoint,
-      config?.baseURL ?? this.baseUrl,
-      this.allowedOrigins
-    );
     const cacheKey = this.serializeCacheKey(endpoint, {
       params: config?.params,
       headers: config?.headers,
@@ -371,7 +375,7 @@ class ExternalAPI {
     const response = await this.fetchAndCache(
       'GET',
       cacheKey,
-      () => this.axios.get<T>(requestEndpoint, config),
+      () => this.request<T>('GET', endpoint, undefined, config),
       ttl,
       isUsableResponse
     );
@@ -380,7 +384,7 @@ class ExternalAPI {
       return this.fetchAndCache(
         'GET',
         cacheKey,
-        () => this.axios.get<T>(requestEndpoint, config),
+        () => this.request<T>('GET', endpoint, undefined, config),
         0,
         isUsableResponse
       );
@@ -395,11 +399,6 @@ class ExternalAPI {
     config?: AxiosRequestConfig,
     ttl?: number
   ): Promise<T> {
-    const requestEndpoint = normalizeExternalApiRequestTarget(
-      endpoint,
-      config?.baseURL ?? this.baseUrl,
-      this.allowedOrigins
-    );
     const cacheable = typeof ttl === 'number' && ttl > 0;
     const cacheKey = this.serializeCacheKey(endpoint, {
       params: config?.params,
@@ -418,7 +417,7 @@ class ExternalAPI {
     return this.fetchAndCache(
       'POST',
       cacheKey,
-      () => this.axios.post<T>(requestEndpoint, data, config),
+      () => this.request<T>('POST', endpoint, data, config),
       ttl
     );
   }
@@ -428,11 +427,6 @@ class ExternalAPI {
     config?: AxiosRequestConfig,
     ttl?: number
   ): Promise<T> {
-    const requestEndpoint = normalizeExternalApiRequestTarget(
-      endpoint,
-      config?.baseURL ?? this.baseUrl,
-      this.allowedOrigins
-    );
     const cacheKey = this.serializeCacheKey(endpoint, {
       params: config?.params,
       headers: config?.headers,
@@ -457,7 +451,7 @@ class ExternalAPI {
           this.fetchAndCache(
             'GET',
             cacheKey,
-            () => this.axios.get<T>(requestEndpoint, config),
+            () => this.request<T>('GET', endpoint, undefined, config),
             ttl
           )
         );
@@ -468,7 +462,7 @@ class ExternalAPI {
     return this.fetchAndCache(
       'GET',
       cacheKey,
-      () => this.axios.get<T>(requestEndpoint, config),
+      () => this.request<T>('GET', endpoint, undefined, config),
       ttl
     );
   }

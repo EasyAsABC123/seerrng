@@ -1,8 +1,4 @@
-import {
-  getSettings,
-  type AllSettings,
-  type NotificationAgentKey,
-} from '@server/lib/settings';
+import type { AllSettings, NotificationAgentKey } from '@server/lib/settings';
 
 /**
  * Configuration required by integrations that make outbound requests.
@@ -31,6 +27,10 @@ export type ExternalRuntimeConfig = Pick<
 const MAX_EXTERNAL_CONFIG_BYTES = 2 * 1024 * 1024;
 let cachedSource: string | undefined;
 let cachedConfig: ExternalRuntimeConfig | undefined;
+type ExternalRuntimeConfigTestProvider = () => unknown;
+const TEST_RUNTIME_CONFIG_SYMBOL = Symbol.for(
+  'seerrng.test.externalRuntimeConfig'
+);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -74,36 +74,20 @@ const validate = (value: unknown): ExternalRuntimeConfig => {
   return value as ExternalRuntimeConfig;
 };
 
-const getTestRuntimeConfig = (): ExternalRuntimeConfig => {
-  const settings = getSettings();
-
-  return validate({
-    clientId: settings.clientId,
-    vapidPublic: settings.vapidPublic,
-    vapidPrivate: settings.vapidPrivate,
-    main: settings.main,
-    plex: settings.plex,
-    jellyfin: settings.jellyfin,
-    oidc: settings.oidc,
-    tautulli: settings.tautulli,
-    radarr: settings.radarr,
-    sonarr: settings.sonarr,
-    lidarr: settings.lidarr,
-    readarr: settings.readarr,
-    notifications: settings.notifications,
-    network: settings.network,
-  });
+const getTestProvider = (): ExternalRuntimeConfigTestProvider | undefined => {
+  const provider = Reflect.get(globalThis, TEST_RUNTIME_CONFIG_SYMBOL);
+  return typeof provider === 'function'
+    ? (provider as ExternalRuntimeConfigTestProvider)
+    : undefined;
 };
 
 export const loadExternalRuntimeConfig = (): ExternalRuntimeConfig => {
   const source = process.env.SEERR_EXTERNAL_CONFIG;
   if (!source) {
-    if (process.env.NODE_ENV === 'test') {
-      // Tests mutate the in-memory settings object to exercise integration
-      // behavior. The adapter validates the same typed runtime shape used by
-      // injected production configuration and is never available in a
-      // production process.
-      return getTestRuntimeConfig();
+    const provider =
+      process.env.NODE_ENV === 'test' ? getTestProvider() : undefined;
+    if (provider) {
+      return validate(provider());
     }
     throw new Error(
       'SEERR_EXTERNAL_CONFIG is required for outbound integrations. Run scripts/export-external-config.mjs to migrate existing settings.'

@@ -175,7 +175,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
 
   public getMovies = async (): Promise<RadarrMovie[]> => {
     try {
-      const response = await this.axios.get<RadarrMovie[]>('/movie');
+      const response = await this.request<RadarrMovie[]>('GET', '/movie');
 
       return sanitizeServarrRecordArray<Record<string, unknown>>(
         response.data,
@@ -193,7 +193,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
 
   public getMovie = async ({ id }: { id: number }): Promise<RadarrMovie> => {
     try {
-      const response = await this.axios.get<RadarrMovie>(`/movie/${id}`);
+      const response = await this.request<RadarrMovie>('GET', `/movie/${id}`);
 
       return requireRadarrMovie(response.data);
     } catch (e) {
@@ -205,11 +205,16 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
 
   public async getMovieByTmdbId(id: number): Promise<RadarrMovie> {
     try {
-      const response = await this.axios.get<RadarrMovie[]>('/movie/lookup', {
-        params: {
-          term: `tmdb:${id}`,
-        },
-      });
+      const response = await this.request<RadarrMovie[]>(
+        'GET',
+        '/movie/lookup',
+        undefined,
+        {
+          params: {
+            term: `tmdb:${id}`,
+          },
+        }
+      );
 
       const movies = sanitizeServarrRecordArray<Record<string, unknown>>(
         response.data,
@@ -252,7 +257,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
 
       // movie exists in Radarr but is neither downloaded nor monitored
       if (movie.id && !movie.monitored) {
-        const response = await this.axios.put<RadarrMovie>(`/movie`, {
+        const response = await this.request<RadarrMovie>('PUT', `/movie`, {
           ...movie,
           title: options.title,
           qualityProfileId: options.qualityProfileId,
@@ -327,7 +332,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
         return movie;
       }
 
-      const response = await this.axios.post<RadarrMovie>(`/movie`, {
+      const response = await this.request<RadarrMovie>('POST', `/movie`, {
         title: options.title,
         qualityProfileId: options.qualityProfileId,
         profileId: options.profileId,
@@ -422,7 +427,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
     });
 
     if (!movie.monitored) {
-      const response = await this.axios.put<RadarrMovie>('/movie', {
+      const response = await this.request<RadarrMovie>('PUT', '/movie', {
         ...movie,
         title: options.title,
         qualityProfileId: options.qualityProfileId,
@@ -470,7 +475,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
   public removeMovie = async (movieId: number): Promise<void> => {
     try {
       const { id, title } = await this.getMovieByTmdbId(movieId);
-      await this.axios.delete(`/movie/${id}`, {
+      await this.request('DELETE', `/movie/${id}`, undefined, {
         params: {
           deleteFiles: true,
           addImportExclusion: false,
