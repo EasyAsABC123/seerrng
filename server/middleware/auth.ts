@@ -21,7 +21,8 @@ const authenticatedRouteRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
-  skip: () => process.env.NODE_ENV === 'test',
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
 });
 
 export const matchesApiKey = (

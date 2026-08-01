@@ -246,8 +246,13 @@ app
 
     const userRepository = getRepository(User);
     const totalUsers = await userRepository.count();
-    if (totalUsers > 0) {
+    const isE2eTest = isTruthyEnv(process.env.E2E_TESTS);
+    if (totalUsers > 0 && !isE2eTest) {
       startJobs();
+    } else if (isE2eTest) {
+      logger.info('Skipping scheduled jobs in E2E test mode', {
+        label: 'Server',
+      });
     } else {
       logger.info(
         `Skipping starting the scheduled jobs as we have no Plex/Jellyfin/Emby servers setup yet`,
