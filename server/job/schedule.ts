@@ -141,6 +141,13 @@ export const stopJobs = (): Promise<void> => {
 };
 
 export const startJobs = (): void => {
+  if (process.env.E2E_TESTS === 'true') {
+    logger.info('Skipping scheduled jobs in E2E test mode', {
+      label: 'Jobs',
+    });
+    return;
+  }
+
   if (stopJobsPromise) {
     logger.warn('Scheduled jobs are stopping; skipping job start.', {
       label: 'Jobs',
