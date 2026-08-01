@@ -1,7 +1,11 @@
 import logger from '@server/logger';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
 import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
-import { createSafeHttpRequestOptions } from '@server/utils/security';
+import {
+  createSafeHttpRequestOptions,
+  createSafeHttpUrl,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import axios from 'axios';
 import rateLimit from 'axios-rate-limit';
@@ -270,7 +274,6 @@ class ExternalAPI {
       ].filter((origin): origin is string => origin !== undefined)
     );
     this.axios = axios.create({
-      baseURL: baseUrl,
       params,
       ...createSafeHttpRequestOptions(
         options.allowPrivateAddresses ?? false,
@@ -333,21 +336,37 @@ class ExternalAPI {
     data?: unknown,
     config?: AxiosRequestConfig
   ): Promise<AxiosResponse<T>> {
-    const requestEndpoint = normalizeExternalApiRequestTarget(
+    const normalizedEndpoint = normalizeExternalApiRequestTarget(
       endpoint,
       config?.baseURL ?? this.baseUrl,
       this.allowedOrigins
     );
 
+    const requestUrl = new URL(
+      normalizedEndpoint,
+      config?.baseURL ?? this.baseUrl
+    );
+    const safeUrl = await createSafeHttpUrl(requestUrl.href, {
+      // Private-address policy is enforced again by the socket DNS lookup
+      // installed above. This validation establishes the HTTP(S), credential,
+      // and URL-shape boundary before the absolute URL reaches Axios.
+      allowPrivateAddresses: true,
+    });
+    if (!safeUrl) {
+      throw new Error('External API request target is not allowed.');
+    }
+
+    const requestTarget = stringifySafeHttpUrl(safeUrl);
+
     switch (method) {
       case 'GET':
-        return this.axios.get<T>(requestEndpoint, config);
+        return this.axios.get<T>(requestTarget, config);
       case 'POST':
-        return this.axios.post<T>(requestEndpoint, data, config);
+        return this.axios.post<T>(requestTarget, data, config);
       case 'PUT':
-        return this.axios.put<T>(requestEndpoint, data, config);
+        return this.axios.put<T>(requestTarget, data, config);
       case 'DELETE':
-        return this.axios.delete<T>(requestEndpoint, config);
+        return this.axios.delete<T>(requestTarget, config);
     }
   }
 

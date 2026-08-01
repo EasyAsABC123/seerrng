@@ -385,7 +385,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     } = {}
   ): Promise<void> => {
     try {
-      await this.axios.delete(`/queue/${queueId}`, {
+      await this.request('DELETE', `/queue/${queueId}`, undefined, {
         params: {
           removeFromClient: options.removeFromClient ?? true,
           blocklist: options.blocklist ?? true,
