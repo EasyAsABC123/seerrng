@@ -66,6 +66,20 @@ function configureReadarr(overrides: Partial<ReadarrSettings>[] = [{}]): void {
     serviceType: 'ebook',
     ...o,
   })) as ReadarrSettings[];
+  process.env.SEERR_EXTERNAL_CONFIG = JSON.stringify({
+    vapidPublic: settings.vapidPublic,
+    vapidPrivate: settings.vapidPrivate,
+    main: settings.main,
+    plex: settings.plex,
+    jellyfin: settings.jellyfin,
+    oidc: settings.oidc,
+    tautulli: settings.tautulli,
+    radarr: settings.radarr,
+    sonarr: settings.sonarr,
+    lidarr: settings.lidarr,
+    readarr: settings.readarr,
+    notifications: settings.notifications,
+  });
 }
 
 function fakeReadarrBook(overrides: Partial<ReadarrBook> = {}): ReadarrBook {
@@ -362,6 +376,36 @@ describe('Readarr Scanner', () => {
     });
 
     assert.strictEqual(getEditionsCallCount, 1);
+    assert.strictEqual(identifiers.length, 1);
+    assert.strictEqual(identifiers[0].media.mediaType, MediaType.BOOK);
+  });
+
+  it('replaces an orphaned identifier instead of failing the book scan', async () => {
+    await getRepository(MediaIdentifier).save(
+      new MediaIdentifier({
+        provider: MediaIdentifierProvider.READARR,
+        value: 'orphaned-readarr-book',
+        canonical: false,
+      })
+    );
+    configureReadarr([{ syncEnabled: true }]);
+    getBooksImpl = async () => [
+      fakeReadarrBook({
+        foreignBookId: 'orphaned-readarr-book',
+        editions: [],
+      }),
+    ];
+
+    await readarrScanner.run();
+
+    const identifiers = await getRepository(MediaIdentifier).find({
+      where: {
+        provider: MediaIdentifierProvider.READARR,
+        value: 'orphaned-readarr-book',
+      },
+      relations: { media: true },
+    });
+
     assert.strictEqual(identifiers.length, 1);
     assert.strictEqual(identifiers[0].media.mediaType, MediaType.BOOK);
   });
