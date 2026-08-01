@@ -6,6 +6,7 @@ import type {
   ReadarrBookOptions,
 } from '@server/api/servarr/readarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
+import axios from 'axios';
 
 type MockableReadarr = {
   get: (
@@ -85,6 +86,152 @@ describe('ReadarrAPI.getEditions', () => {
     assert.strictEqual(getMock.mock.calls[0].arguments[0], '/edition');
     assert.deepStrictEqual(getMock.mock.calls[0].arguments[1], {
       params: { bookId: 42 },
+    });
+  });
+});
+
+describe('ReadarrAPI.getBook', () => {
+  afterEach(() => {
+    mock.restoreAll();
+  });
+
+  it('fetches a specific book by ID', async () => {
+    const api = new ReadarrAPI({
+      url: 'http://localhost:8787/api/v1',
+      apiKey: 'key',
+    });
+    const getMock = mock.method(
+      ReadarrAPI.prototype as unknown as MockableReadarr,
+      'get',
+      async () => existingBook({ id: 42 })
+    );
+
+    const result = await api.getBook(42);
+
+    assert.strictEqual(result.id, 42);
+    assert.strictEqual(getMock.mock.calls[0].arguments[0], '/book/42');
+  });
+});
+
+describe('ReadarrAPI.getBookCover', () => {
+  afterEach(() => {
+    mock.restoreAll();
+  });
+
+  it('fetches the first advertised relative cover path outside the API base path', async () => {
+    const api = new ReadarrAPI({
+      url: 'http://localhost:8787/base/api/v1',
+      apiKey: 'key',
+    });
+    mock.method(api, 'getBook', async () =>
+      existingBook({
+        id: 42,
+        images: [
+          {
+            coverType: 'cover',
+            url: '/MediaCover/42/cover.jpg',
+          },
+        ],
+      })
+    );
+    const axiosGetMock = mock.fn(async () => ({
+      data: Buffer.from('image-bytes'),
+      headers: { 'content-type': 'image/jpeg' },
+    }));
+    (
+      api as unknown as {
+        axios: { get: typeof axiosGetMock };
+      }
+    ).axios.get = axiosGetMock;
+
+    const result = await api.getBookCover(42);
+
+    assert.deepStrictEqual(result.imageBuffer, Buffer.from('image-bytes'));
+    assert.strictEqual(result.contentType, 'image/jpeg');
+    assert.strictEqual(
+      (
+        axiosGetMock.mock.calls as unknown as {
+          arguments: [string];
+        }[]
+      )[0].arguments[0],
+      'http://localhost:8787/base/MediaCover/42/cover.jpg'
+    );
+  });
+
+  it('falls back to the standard Readarr-compatible cover path', async () => {
+    const api = new ReadarrAPI({
+      url: 'http://localhost:8787/api/v1',
+      apiKey: 'key',
+    });
+    mock.method(api, 'getBook', async () => existingBook({ id: 42 }));
+    const axiosGetMock = mock.fn(async () => ({
+      data: Buffer.from('fallback-image'),
+      headers: { 'content-type': 'image/png' },
+    }));
+    (
+      api as unknown as {
+        axios: { get: typeof axiosGetMock };
+      }
+    ).axios.get = axiosGetMock;
+
+    const result = await api.getBookCover(42);
+
+    assert.deepStrictEqual(result.imageBuffer, Buffer.from('fallback-image'));
+    assert.strictEqual(
+      (
+        axiosGetMock.mock.calls as unknown as {
+          arguments: [string];
+        }[]
+      )[0].arguments[0],
+      'http://localhost:8787/MediaCover/42/cover.jpg'
+    );
+  });
+
+  it('falls back to an advertised remote cover when local media cover is not an image', async () => {
+    const api = new ReadarrAPI({
+      url: 'http://localhost:8787/api/v1',
+      apiKey: 'key',
+    });
+    mock.method(api, 'getBook', async () =>
+      existingBook({
+        id: 42,
+        images: [
+          {
+            coverType: 'cover',
+            url: '/MediaCover/Books/42/cover.jpeg?lastWrite=123',
+            remoteUrl: 'https://assets.hardcover.app/book-cover.jpeg',
+          },
+        ],
+      })
+    );
+    const axiosGetMock = mock.fn(async () => ({
+      data: Buffer.from('login-page'),
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    }));
+    (
+      api as unknown as {
+        axios: { get: typeof axiosGetMock };
+      }
+    ).axios.get = axiosGetMock;
+    const remoteGetMock = mock.method(axios, 'get', async () => ({
+      data: Buffer.from('remote-book-image'),
+      headers: { 'content-type': 'image/jpeg' },
+    }));
+
+    const result = await api.getBookCover(42);
+
+    assert.deepStrictEqual(
+      result.imageBuffer,
+      Buffer.from('remote-book-image')
+    );
+    assert.strictEqual(result.contentType, 'image/jpeg');
+    assert.strictEqual(
+      remoteGetMock.mock.calls[0].arguments[0],
+      'https://assets.hardcover.app/book-cover.jpeg'
+    );
+    assert.deepStrictEqual(remoteGetMock.mock.calls[0].arguments[1], {
+      responseType: 'arraybuffer',
+      headers: { Accept: 'image/*' },
     });
   });
 });

@@ -2,6 +2,33 @@ export type CacheableImageType = 'tmdb' | 'avatar' | 'tvdb' | 'music' | 'book';
 
 export const AVATAR_FALLBACK_IMAGE = '/user-icon-192x192.png';
 
+export const isResolvedImageUrl = (src?: string): boolean =>
+  !!src &&
+  (src.startsWith('http') ||
+    src.startsWith('/images/') ||
+    src.startsWith('/api/'));
+
+export function getTmdbPosterImageUrl(
+  posterPath: string,
+  size?: string
+): string;
+export function getTmdbPosterImageUrl(
+  posterPath?: string,
+  size?: string
+): string | undefined;
+export function getTmdbPosterImageUrl(
+  posterPath?: string,
+  size = 'w600_and_h900_bestv2'
+): string | undefined {
+  if (!posterPath) {
+    return undefined;
+  }
+
+  return isResolvedImageUrl(posterPath)
+    ? posterPath
+    : `https://image.tmdb.org/t/p/${size}${posterPath}`;
+}
+
 export const getInitialImageUrl = (
   type: CacheableImageType,
   imageUrl: string

@@ -1,5 +1,6 @@
 import { getMetadataProvider } from '@server/api/metadata';
 import RottenTomatoes from '@server/api/rating/rottentomatoes';
+import SonarrAPI from '@server/api/servarr/sonarr';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import type { TmdbKeyword } from '@server/api/themoviedb/interfaces';
@@ -7,12 +8,16 @@ import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
+import { getSettings, type SonarrSettings } from '@server/lib/settings';
 import { rankTmdbTvResults } from '@server/lib/tmdbRank';
 import logger from '@server/logger';
 import { mapTvResult } from '@server/models/Search';
 import { mapSeasonWithEpisodes, mapTvDetails } from '@server/models/Tv';
 import { filterEntityResponse } from '@server/utils/entityResponse';
-import { parsePositiveInt } from '@server/utils/pagination';
+import {
+  parseOptionalPositiveInt,
+  parsePositiveInt,
+} from '@server/utils/pagination';
 import {
   parseNonNegativeRouteId,
   parsePositiveRouteId,
@@ -33,6 +38,71 @@ const parseTvRouteId = (id: unknown): number | undefined =>
 
 const parseSeasonRouteNumber = (seasonNumber: unknown): number | undefined =>
   parseNonNegativeRouteId(seasonNumber, maxTvSeasonNumber);
+
+const getSeriesCoverService = (
+  media?: Media,
+  is4k?: boolean
+): { server: SonarrSettings; seriesId: number; is4k: boolean } | undefined => {
+  if (!media) {
+    return undefined;
+  }
+
+  const settings = getSettings();
+  const candidates =
+    is4k === true
+      ? [
+          {
+            serviceId: media.serviceId4k,
+            externalServiceId: media.externalServiceId4k,
+            is4k: true,
+          },
+        ]
+      : is4k === false
+        ? [
+            {
+              serviceId: media.serviceId,
+              externalServiceId: media.externalServiceId,
+              is4k: false,
+            },
+          ]
+        : [
+            {
+              serviceId: media.serviceId,
+              externalServiceId: media.externalServiceId,
+              is4k: false,
+            },
+            {
+              serviceId: media.serviceId4k,
+              externalServiceId: media.externalServiceId4k,
+              is4k: true,
+            },
+          ];
+
+  for (const candidate of candidates) {
+    if (
+      candidate.serviceId === null ||
+      candidate.serviceId === undefined ||
+      candidate.externalServiceId === null ||
+      candidate.externalServiceId === undefined
+    ) {
+      continue;
+    }
+
+    const server = settings.sonarr.find(
+      (sonarr) => sonarr.id === candidate.serviceId
+    );
+
+    if (server) {
+      return {
+        server,
+        seriesId: candidate.externalServiceId,
+        is4k: candidate.is4k,
+      };
+    }
+  }
+
+  return undefined;
+};
 
 tvRoutes.get('/:id', async (req, res, next) => {
   const tmdb = new TheMovieDb();
@@ -92,6 +162,56 @@ tvRoutes.get('/:id', async (req, res, next) => {
       status: 500,
       message: 'Unable to retrieve series.',
     });
+  }
+});
+
+tvRoutes.get('/:id/cover', async (req, res) => {
+  const tvId = parseTvRouteId(req.params.id);
+  if (!tvId) {
+    return res.status(404).send('Series cover not found');
+  }
+
+  const mediaId = parseOptionalPositiveInt(req.query.mediaId, 1_000_000_000);
+  const is4k =
+    req.query.is4k === 'true'
+      ? true
+      : req.query.is4k === 'false'
+        ? false
+        : undefined;
+
+  if (!mediaId) {
+    return res.status(404).send('Series cover not found');
+  }
+
+  const media = await getRepository(Media).findOne({
+    where: { id: mediaId, mediaType: MediaType.TV, tmdbId: tvId },
+  });
+  const coverService = getSeriesCoverService(media ?? undefined, is4k);
+
+  if (!coverService) {
+    return res.status(404).send('Series cover not found');
+  }
+
+  try {
+    const sonarrApi = new SonarrAPI({
+      apiKey: coverService.server.apiKey,
+      url: SonarrAPI.buildUrl(coverService.server, '/api/v3'),
+    });
+    const cover = await sonarrApi.getSeriesCover(coverService.seriesId);
+
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Content-Type', cover.contentType);
+    res.setHeader('Content-Length', cover.imageBuffer.length);
+    return res.status(200).send(cover.imageBuffer);
+  } catch (e) {
+    logger.warn('Failed to retrieve Sonarr cover fallback', {
+      label: 'TV',
+      tvId,
+      mediaId,
+      is4k: coverService.is4k,
+      errorMessage: e instanceof Error ? e.message : 'Unknown error',
+    });
+    return res.status(404).send('Series cover not found');
   }
 });
 

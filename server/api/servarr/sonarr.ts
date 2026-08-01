@@ -1,5 +1,6 @@
 import logger from '@server/logger';
 import { redactSecrets } from '@server/utils/security';
+import axios from 'axios';
 import ServarrBase, {
   MAX_SERVARR_CONFIGURATION_RESULTS,
   MAX_SERVARR_LIBRARY_RESULTS,
@@ -219,6 +220,7 @@ export interface SonarrSeries {
   images: {
     coverType: string;
     url: string;
+    remoteUrl?: string;
   }[];
   remotePoster: string;
   seasons: SonarrSeason[];
@@ -267,6 +269,11 @@ export interface SonarrSeries {
   };
 }
 
+export type SonarrCoverImage = {
+  imageBuffer: Buffer;
+  contentType: string;
+};
+
 export interface AddSeriesOptions {
   tvdbid: number;
   title: string;
@@ -306,8 +313,42 @@ class SonarrAPI extends ServarrBase<{
   episodeId: number;
   episode: EpisodeResult;
 }> {
+  private coverBaseUrl: string;
+
   constructor({ url, apiKey }: { url: string; apiKey: string }) {
     super({ url, apiKey, apiName: 'Sonarr', cacheName: 'sonarr' });
+    this.coverBaseUrl = SonarrAPI.buildCoverBaseUrl(url);
+  }
+
+  private static buildCoverBaseUrl(url: string): string {
+    const parsedUrl = new URL(url);
+    parsedUrl.pathname = parsedUrl.pathname.replace(/\/api\/v\d+\/?$/i, '');
+    parsedUrl.search = '';
+    parsedUrl.hash = '';
+
+    return parsedUrl.toString().replace(/\/$/, '');
+  }
+
+  private buildCoverUrl(path: string): string | undefined {
+    if (!path.startsWith('/') || path.includes('://')) {
+      return undefined;
+    }
+
+    return `${this.coverBaseUrl}${path}`;
+  }
+
+  private buildRemoteCoverUrl(url: string): string | undefined {
+    try {
+      const parsedUrl = new URL(url);
+
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return undefined;
+      }
+
+      return parsedUrl.toString();
+    } catch {
+      return undefined;
+    }
   }
 
   public async getSeries(): Promise<SonarrSeries[]> {
@@ -339,6 +380,68 @@ class SonarrAPI extends ServarrBase<{
         { cause: e }
       );
     }
+  }
+
+  public async getSeriesCover(seriesId: number): Promise<SonarrCoverImage> {
+    const series = await this.getSeriesById(seriesId).catch(() => undefined);
+    const advertisedCoverPaths = (series?.images ?? [])
+      .filter((image) => {
+        const coverType = image.coverType?.toLowerCase();
+        return !coverType || coverType === 'poster' || coverType === 'cover';
+      })
+      .map((image) => image.url)
+      .filter((url): url is string => !!url && url.startsWith('/'));
+    const candidatePaths = [
+      ...advertisedCoverPaths,
+      `/MediaCover/${seriesId}/poster.jpg`,
+      `/MediaCover/${seriesId}/cover.jpg`,
+    ];
+    const remoteCoverUrls = (series?.images ?? [])
+      .filter((image) => {
+        const coverType = image.coverType?.toLowerCase();
+        return !coverType || coverType === 'poster' || coverType === 'cover';
+      })
+      .map((image) => image.remoteUrl)
+      .filter((url): url is string => !!url)
+      .map((url) => this.buildRemoteCoverUrl(url))
+      .filter((url): url is string => !!url);
+    const candidateUrls = [
+      ...candidatePaths.map((path) => this.buildCoverUrl(path)),
+      ...remoteCoverUrls,
+    ].filter((url): url is string => !!url);
+    const uniqueCandidateUrls = [...new Set(candidateUrls)];
+    let lastError: unknown;
+
+    for (const coverUrl of uniqueCandidateUrls) {
+      try {
+        const isLocalCoverUrl = coverUrl.startsWith(this.coverBaseUrl);
+        const response = await (
+          isLocalCoverUrl ? this.axios : axios
+        ).get<ArrayBuffer>(coverUrl, {
+          responseType: 'arraybuffer',
+          headers: { Accept: 'image/*' },
+        });
+        const contentType = String(response.headers['content-type'] ?? '');
+
+        if (!contentType.toLowerCase().startsWith('image/')) {
+          throw new Error('Upstream response is not an image');
+        }
+
+        return {
+          imageBuffer: Buffer.from(response.data),
+          contentType,
+        };
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw new Error(
+      `[Sonarr] Failed to retrieve cover for series ${seriesId}: ${
+        lastError instanceof Error ? lastError.message : 'No cover path worked'
+      }`,
+      { cause: lastError }
+    );
   }
 
   public async getSeriesByTitle(title: string): Promise<SonarrSeries[]> {

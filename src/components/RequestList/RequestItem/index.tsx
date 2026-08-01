@@ -14,6 +14,7 @@ import {
   normalizeOpenLibraryWorkId,
 } from '@app/utils/apiPath';
 import defineMessages from '@app/utils/defineMessages';
+import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
 import {
   ArrowPathIcon,
@@ -673,7 +674,7 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
                   (isMusic(title) || isBook(title)) && title.posterPath
                     ? title.posterPath
                     : !isMusic(title) && !isBook(title) && title.posterPath
-                      ? `https://image.tmdb.org/t/p/w600_and_h900_bestv2${title.posterPath}`
+                      ? getTmdbPosterImageUrl(title.posterPath)
                       : '/images/seerr_poster_not_found.png'
                 }
                 alt=""
