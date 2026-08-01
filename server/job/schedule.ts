@@ -1,6 +1,7 @@
 import { MediaServerType } from '@server/constants/server';
 import blocklistedTagsProcessor from '@server/job/blocklistedTagsProcessor';
 import availabilitySync from '@server/lib/availabilitySync';
+import downloadRecovery from '@server/lib/downloadRecovery';
 import downloadTracker from '@server/lib/downloadtracker';
 import ImageProxy from '@server/lib/imageproxy';
 import refreshToken from '@server/lib/refreshToken';
@@ -346,12 +347,12 @@ export const startJobs = (): void => {
   });
 
   scheduledJobs.push({
-    id: 'readarr-request-retry' as JobId,
+    id: 'readarr-request-retry',
     name: 'Bookshelf Request Retry',
     type: 'process',
     interval: 'minutes',
-    cronSchedule: '*/5 * * * *',
-    job: schedule.scheduleJob('*/5 * * * *', () => {
+    cronSchedule: jobs['readarr-request-retry'].schedule,
+    job: schedule.scheduleJob(jobs['readarr-request-retry'].schedule, () => {
       logger.info('Starting scheduled job: Bookshelf Request Retry', {
         label: 'Jobs',
       });
@@ -400,6 +401,21 @@ export const startJobs = (): void => {
         { scope: 'instance' }
       );
     }),
+  });
+
+  scheduledJobs.push({
+    id: 'download-recovery',
+    name: 'Download Recovery',
+    type: 'process',
+    interval: 'minutes',
+    cronSchedule: jobs['download-recovery'].schedule,
+    job: schedule.scheduleJob(jobs['download-recovery'].schedule, () => {
+      logger.info('Starting scheduled job: Download Recovery', {
+        label: 'Jobs',
+      });
+      void downloadRecovery.run();
+    }),
+    running: () => downloadRecovery.status().running,
   });
 
   // Reset download sync everyday at 01:00 am
@@ -478,6 +494,12 @@ export const startJobs = (): void => {
     }),
     running: () => blocklistedTagsProcessor.status().running,
     cancelFn: () => blocklistedTagsProcessor.cancel(),
+  });
+
+  scheduledJobs.forEach((scheduledJob) => {
+    if (jobs[scheduledJob.id]?.enabled === false) {
+      scheduledJob.job.cancel();
+    }
   });
 
   logger.info('Scheduled jobs loaded', { label: 'Jobs' });
