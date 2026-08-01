@@ -87,7 +87,7 @@ jobs:
         with:
           install: false
           build: pnpm cypress:build
-          start: pnpm start
+          start: E2E_TESTS=true pnpm start
           wait-on: 'http://localhost:5056'
           config: baseUrl=http://localhost:5056
           # Forks and installations without a Cypress Dashboard key must still
