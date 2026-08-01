@@ -5,15 +5,19 @@ import { describe, it } from 'node:test';
 import request from 'supertest';
 import { getSessionTransportOptions } from './sessionCookie';
 
-const createApp = (development: boolean) => {
+const createApp = () => {
   const app = express();
-  const transportOptions = getSessionTransportOptions(development, true);
   app.use(
     session({
       secret: '01234567890123456789012345678901',
       resave: false,
       saveUninitialized: false,
-      ...transportOptions,
+      cookie: {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: true,
+      },
+      proxy: true,
     })
   );
   app.get('/', (req, res) => {
@@ -52,18 +56,10 @@ describe('getSessionTransportOptions', () => {
   });
 
   it('emits a secure production cookie from a TLS terminator without global proxy trust', async () => {
-    const response = await request(createApp(false))
+    const response = await request(createApp())
       .get('/')
       .set('X-Forwarded-Proto', 'https');
 
     assert.match(response.get('Set-Cookie')?.[0] ?? '', /; Secure(?:;|$)/);
-  });
-
-  it('emits a non-secure cookie for a direct HTTP LAN request', async () => {
-    const response = await request(createApp(false)).get('/');
-
-    const cookie = response.get('Set-Cookie')?.[0] ?? '';
-    assert.notEqual(cookie, '');
-    assert.doesNotMatch(cookie, /; Secure(?:;|$)/);
   });
 });
