@@ -94,24 +94,6 @@ const waitForSavedMedia = async (
   return getRepository(Media).findOneByOrFail({ id: mediaId });
 };
 
-const syncExternalRuntimeConfig = () => {
-  const settings = getSettings();
-  process.env.SEERR_EXTERNAL_CONFIG = JSON.stringify({
-    vapidPublic: settings.vapidPublic,
-    vapidPrivate: settings.vapidPrivate,
-    main: settings.main,
-    plex: settings.plex,
-    jellyfin: settings.jellyfin,
-    oidc: settings.oidc,
-    tautulli: settings.tautulli,
-    radarr: settings.radarr,
-    sonarr: settings.sonarr,
-    lidarr: settings.lidarr,
-    readarr: settings.readarr,
-    notifications: settings.notifications,
-  });
-};
-
 describe('MediaRequestSubscriber service dispatch', () => {
   let enqueuedRequestIds: number[];
 
@@ -1058,8 +1040,6 @@ describe('MediaRequestSubscriber service dispatch', () => {
         serviceType: 'ebook',
       },
     ];
-    syncExternalRuntimeConfig();
-
     const requestedBy = await getRequester();
     const media = await getRepository(Media).save(
       new Media({
