@@ -66,20 +66,6 @@ function configureReadarr(overrides: Partial<ReadarrSettings>[] = [{}]): void {
     serviceType: 'ebook',
     ...o,
   })) as ReadarrSettings[];
-  process.env.SEERR_EXTERNAL_CONFIG = JSON.stringify({
-    vapidPublic: settings.vapidPublic,
-    vapidPrivate: settings.vapidPrivate,
-    main: settings.main,
-    plex: settings.plex,
-    jellyfin: settings.jellyfin,
-    oidc: settings.oidc,
-    tautulli: settings.tautulli,
-    radarr: settings.radarr,
-    sonarr: settings.sonarr,
-    lidarr: settings.lidarr,
-    readarr: settings.readarr,
-    notifications: settings.notifications,
-  });
 }
 
 function fakeReadarrBook(overrides: Partial<ReadarrBook> = {}): ReadarrBook {
