@@ -83,7 +83,8 @@ const API_RATE_LIMIT = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
-  skip: () => process.env.NODE_ENV === 'test',
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
 });
 const SHUTDOWN_CONNECTION_TIMEOUT_MS = 10_000;
 const SHUTDOWN_TASK_TIMEOUT_MS = 15_000;

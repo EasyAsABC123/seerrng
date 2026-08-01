@@ -94,7 +94,10 @@ const AssociationBadge = ({
       </button>
       {isOpen &&
         ReactDOM.createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            data-testid="association-popover"
+          >
             <button
               type="button"
               className="absolute inset-0 cursor-default"
@@ -103,7 +106,6 @@ const AssociationBadge = ({
             />
             <div
               className="relative z-10 max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)]"
-              data-testid="association-popover"
               role="dialog"
               aria-modal="true"
               aria-label={intl.formatMessage(messages.associations)}
