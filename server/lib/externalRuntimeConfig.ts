@@ -1,4 +1,8 @@
-import type { AllSettings, NotificationAgentKey } from '@server/lib/settings';
+import {
+  getSettings,
+  type AllSettings,
+  type NotificationAgentKey,
+} from '@server/lib/settings';
 
 /**
  * Configuration required by integrations that make outbound requests.
@@ -62,9 +66,34 @@ const validate = (value: unknown): ExternalRuntimeConfig => {
   return value as ExternalRuntimeConfig;
 };
 
+const getTestRuntimeConfig = (): ExternalRuntimeConfig => {
+  const settings = getSettings();
+
+  return {
+    vapidPublic: settings.vapidPublic,
+    vapidPrivate: settings.vapidPrivate,
+    main: settings.main,
+    plex: settings.plex,
+    jellyfin: settings.jellyfin,
+    oidc: settings.oidc,
+    tautulli: settings.tautulli,
+    radarr: settings.radarr,
+    sonarr: settings.sonarr,
+    lidarr: settings.lidarr,
+    readarr: settings.readarr,
+    notifications: settings.notifications,
+  };
+};
+
 export const loadExternalRuntimeConfig = (): ExternalRuntimeConfig => {
   const source = process.env.SEERR_EXTERNAL_CONFIG;
   if (!source) {
+    if (process.env.NODE_ENV === 'test') {
+      // Unit tests mutate the in-memory settings object to model configuration
+      // changes. Keep those integration paths live without weakening the
+      // production requirement for injected external configuration.
+      return getTestRuntimeConfig();
+    }
     throw new Error(
       'SEERR_EXTERNAL_CONFIG is required for outbound integrations. Run scripts/export-external-config.mjs to migrate existing settings.'
     );

@@ -3,7 +3,8 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const settingsPath = process.argv[2] ??
+const settingsPath =
+  process.argv[2] ??
   (process.env.CONFIG_DIRECTORY
     ? path.join(process.env.CONFIG_DIRECTORY, 'settings.json')
     : path.join(process.cwd(), 'config', 'settings.json'));
