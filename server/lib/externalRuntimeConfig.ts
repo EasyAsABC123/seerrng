@@ -12,6 +12,7 @@ import {
  */
 export type ExternalRuntimeConfig = Pick<
   AllSettings,
+  | 'clientId'
   | 'vapidPublic'
   | 'vapidPrivate'
   | 'main'
@@ -24,6 +25,7 @@ export type ExternalRuntimeConfig = Pick<
   | 'lidarr'
   | 'readarr'
   | 'notifications'
+  | 'network'
 >;
 
 const MAX_EXTERNAL_CONFIG_BYTES = 2 * 1024 * 1024;
@@ -45,6 +47,11 @@ const assertRecord = (
 
 const validate = (value: unknown): ExternalRuntimeConfig => {
   const root = assertRecord(value, 'root');
+  if (typeof root.clientId !== 'string' || root.clientId.length === 0) {
+    throw new Error(
+      'SEERR_EXTERNAL_CONFIG.clientId must be a non-empty string'
+    );
+  }
   for (const section of [
     'main',
     'plex',
@@ -52,6 +59,7 @@ const validate = (value: unknown): ExternalRuntimeConfig => {
     'oidc',
     'tautulli',
     'notifications',
+    'network',
   ]) {
     assertRecord(root[section], section);
   }
@@ -69,7 +77,8 @@ const validate = (value: unknown): ExternalRuntimeConfig => {
 const getTestRuntimeConfig = (): ExternalRuntimeConfig => {
   const settings = getSettings();
 
-  return {
+  return validate({
+    clientId: settings.clientId,
     vapidPublic: settings.vapidPublic,
     vapidPrivate: settings.vapidPrivate,
     main: settings.main,
@@ -82,16 +91,18 @@ const getTestRuntimeConfig = (): ExternalRuntimeConfig => {
     lidarr: settings.lidarr,
     readarr: settings.readarr,
     notifications: settings.notifications,
-  };
+    network: settings.network,
+  });
 };
 
 export const loadExternalRuntimeConfig = (): ExternalRuntimeConfig => {
   const source = process.env.SEERR_EXTERNAL_CONFIG;
   if (!source) {
     if (process.env.NODE_ENV === 'test') {
-      // Unit tests mutate the in-memory settings object to model configuration
-      // changes. Keep those integration paths live without weakening the
-      // production requirement for injected external configuration.
+      // Tests mutate the in-memory settings object to exercise integration
+      // behavior. The adapter validates the same typed runtime shape used by
+      // injected production configuration and is never available in a
+      // production process.
       return getTestRuntimeConfig();
     }
     throw new Error(

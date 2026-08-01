@@ -1,7 +1,8 @@
 import ExternalAPI from '@server/api/externalapi';
 import type { AvailableCacheIds } from '@server/lib/cache';
 import cacheManager from '@server/lib/cache';
-import { getSettings, type DVRSettings } from '@server/lib/settings';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
+import type { DVRSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { buildServiceUrl, trimTrailingSlashes } from '@server/utils/serviceUrl';
 
@@ -257,7 +258,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     cacheName: AvailableCacheIds;
     apiName: string;
   }) {
-    const timeout = getSettings().network.apiRequestTimeout;
+    const timeout = getExternalRuntimeConfig().network.apiRequestTimeout;
     const normalizedUrl = normalizeConfiguredServiceUrl(url, apiName);
 
     super(

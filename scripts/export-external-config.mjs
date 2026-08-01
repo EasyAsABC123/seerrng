@@ -14,6 +14,7 @@ const settings = JSON.parse(raw);
 
 const requiredSections = [
   'main',
+  'network',
   'plex',
   'jellyfin',
   'tautulli',
@@ -28,6 +29,7 @@ for (const section of requiredSections) {
 }
 
 const externalConfig = {
+  clientId: settings.clientId,
   vapidPublic: settings.vapidPublic,
   vapidPrivate: settings.vapidPrivate,
   main: settings.main,
@@ -40,6 +42,7 @@ const externalConfig = {
   lidarr: settings.lidarr ?? [],
   readarr: settings.readarr ?? [],
   notifications: settings.notifications,
+  network: settings.network,
 };
 
 process.stdout.write(`${JSON.stringify(externalConfig)}\n`);
