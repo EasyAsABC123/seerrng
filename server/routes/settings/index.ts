@@ -61,7 +61,7 @@ import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import {
   authorizedMutation,
-  authorizedRouteScope,
+  authorizedRouteAccess,
 } from '@server/middleware/authorizedMutation';
 import discoverSettingRoutes from '@server/routes/settings/discover';
 import { ApiError } from '@server/types/error';
@@ -107,7 +107,7 @@ import readarrRoutes from './readarr';
 import sonarrRoutes from './sonarr';
 
 const settingsRoutes = Router();
-settingsRoutes.use(authorizedRouteScope(Permission.ADMIN, [1]));
+settingsRoutes.use(authorizedRouteAccess(Permission.ADMIN));
 const MAX_LOG_READ_BYTES = 2 * 1024 * 1024;
 const MAX_LOG_LINE_BYTES = 64 * 1024;
 const MAX_LOG_SEARCH_DEPTH = 8;
