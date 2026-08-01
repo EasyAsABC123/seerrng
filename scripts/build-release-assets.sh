@@ -149,9 +149,9 @@ else
   tar -C "$work_dir" -czf "$archive_temporary" "$asset"
 fi
 
-chmod 0644 -- "$archive_temporary"
+chmod 0644 "$archive_temporary"
 mv -f -- "$archive_temporary" "${dist_abs}/${archive_name}"
 checksum_temporary="$(mktemp "${dist_abs}/.${asset}.sha256.tmp.XXXXXX")"
 (cd "$dist_abs" && sha256sum "$archive_name" >"$checksum_temporary")
-chmod 0644 -- "$checksum_temporary"
+chmod 0644 "$checksum_temporary"
 mv -f -- "$checksum_temporary" "${dist_abs}/${asset}.sha256"
