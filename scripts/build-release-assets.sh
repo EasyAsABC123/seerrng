@@ -61,12 +61,12 @@ while IFS= read -r -d '' link; do
   target="$(readlink "$link")"
   link_dir="$(dirname -- "$link")"
   if [[ "$target" == /* ]]; then
-    resolved="$(realpath -- "$target")" || {
+    resolved="$(realpath "$target")" || {
       echo "Refusing broken archive symlink: $link -> $target" >&2
       exit 1
     }
   else
-    resolved="$(realpath -- "$link_dir/$target")" || {
+    resolved="$(realpath "$link_dir/$target")" || {
       echo "Refusing broken archive symlink: $link -> $target" >&2
       exit 1
     }
