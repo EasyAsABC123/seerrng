@@ -3,9 +3,13 @@ import { MediaType } from '@server/constants/media';
 import { defineMessages, getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
 import PreparedEmail from '@server/lib/email';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentEmail } from '@server/lib/settings';
-import { NotificationAgentKey, getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { mapWithConcurrency } from '@server/utils/concurrency';
@@ -19,6 +23,9 @@ import {
   NOTIFICATION_DELIVERY_CONCURRENCY,
   getNotificationActionUrl,
 } from './agent';
+
+const PUBLIC_LOGO_URL =
+  'https://raw.githubusercontent.com/seerr-team/seerr/refs/heads/develop/public/logo_full.svg';
 
 const messages = defineMessages('notifications.agents.email', {
   issueType: '{type} issue',
@@ -69,9 +76,7 @@ class EmailAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.email;
+    return getExternalNotificationAgent(NotificationAgentKey.EMAIL);
   }
 
   public shouldSend(): boolean {
@@ -97,9 +102,14 @@ class EmailAgent
     locale?: AvailableLocale
   ): EmailOptions | undefined {
     const intl = getIntl(locale);
-    const settings = getSettings();
-    const { applicationUrl, applicationTitle } = settings.main;
-    const { embedPoster } = this.getSettings();
+    const { applicationUrl, applicationTitle } =
+      getExternalRuntimeConfig().main;
+    const { embedPoster, options } = this.getSettings();
+    const logoUrl = options.usePublicLogo
+      ? PUBLIC_LOGO_URL
+      : applicationUrl
+        ? `${applicationUrl}/logo_full.svg`
+        : undefined;
 
     if (type === Notification.TEST_NOTIFICATION) {
       return {
@@ -111,6 +121,7 @@ class EmailAgent
           body: payload.message,
           applicationUrl,
           applicationTitle,
+          logoUrl,
           recipientName,
           recipientEmail,
         },
@@ -197,6 +208,7 @@ class EmailAgent
           actionUrl: getNotificationActionUrl(payload, applicationUrl),
           applicationUrl,
           applicationTitle,
+          logoUrl,
           recipientName,
           recipientEmail,
         },
@@ -263,6 +275,7 @@ class EmailAgent
           actionUrl: getNotificationActionUrl(payload, applicationUrl),
           applicationUrl,
           applicationTitle,
+          logoUrl,
           recipientName,
           recipientEmail,
         },

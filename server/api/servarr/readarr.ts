@@ -419,8 +419,8 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
           }
         );
 
-        // codeql[js/request-forgery]
-        const updatedBook = await this.axios.put<ReadarrBook>(
+        const updatedBook = await this.request<ReadarrBook>(
+          'PUT',
           `/book/${existingBook.id}`,
           {
             ...existingBook,
@@ -436,7 +436,6 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
           }
         );
 
-        // codeql[js/request-forgery]
         await this.post('/command', {
           name: 'BookSearch',
           bookIds: [updatedBook.data.id],
@@ -445,7 +444,6 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
         return updatedBook.data;
       }
 
-      // codeql[js/request-forgery]
       return await this.post<ReadarrBookLookupResult>(
         '/book',
         options as unknown as Record<string, unknown>
@@ -465,7 +463,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     options: { deleteFiles?: boolean; addImportListExclusion?: boolean } = {}
   ): Promise<void> {
     try {
-      await this.axios.delete(`/book/${bookId}`, {
+      await this.request('DELETE', `/book/${bookId}`, undefined, {
         params: {
           deleteFiles: options.deleteFiles ?? true,
           addImportListExclusion: options.addImportListExclusion ?? false,

@@ -79,7 +79,7 @@ async function confirmWithLlm(newIssue, candidates) {
   const candidateText = candidates
     .map(
       (c) =>
-        `### Candidate #${c.number} (similarity: ${c.score.toFixed(2)})\n` +
+        `### Candidate #${c.number}\n` +
         `**Title:** ${c.title}\n` +
         `**State:** ${c.state}\n` +
         `**Body preview:** ${(c.body_preview || 'N/A').slice(0, 500)}`
@@ -200,6 +200,17 @@ async function main() {
   }
   const index = loadIndex(INDEX_PATH);
   console.log(`Loaded index with ${index.issues.length} issues`);
+  const liveIssues = await fetchIssues({
+    state: 'all',
+    maxIssues: 5000,
+    maxPages: 100,
+    sort: 'updated',
+  });
+  const liveIssuesByNumber = new Map(
+    liveIssues
+      .filter((candidate) => Number.isSafeInteger(candidate.number))
+      .map((candidate) => [candidate.number, candidate])
+  );
   console.log(`Loading model: ${MODEL_NAME}`);
   const extractor = await pipeline('feature-extraction', MODEL_NAME, {
     dtype: 'fp32',
@@ -220,6 +231,24 @@ async function main() {
     return;
   }
 
+  const liveCandidates = candidates
+    .map((candidate) => liveIssuesByNumber.get(candidate.number))
+    .filter((candidate) => candidate !== undefined)
+    .map((candidate) => ({
+      number: candidate.number,
+      title: candidate.title,
+      state: candidate.state,
+      body_preview:
+        typeof candidate.body === 'string'
+          ? candidate.body.slice(0, 500)
+          : 'N/A',
+    }));
+
+  if (!liveCandidates.length) {
+    console.log('No live metadata found for similar issues - done');
+    return;
+  }
+
   console.log(`Found ${candidates.length} candidates above threshold:`);
   for (const c of candidates) {
     console.log(
@@ -228,7 +257,7 @@ async function main() {
   }
 
   console.log('Running LLM confirmation via Groq...');
-  candidates = await confirmWithLlm(issue, candidates);
+  candidates = await confirmWithLlm(issue, liveCandidates);
 
   if (!candidates.length) {
     console.log('LLM ruled out all candidates - done');

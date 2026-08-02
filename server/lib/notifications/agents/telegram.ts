@@ -2,9 +2,13 @@ import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { MediaStatus } from '@server/constants/media';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentTelegram } from '@server/lib/settings';
-import { NotificationAgentKey, getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { mapWithConcurrency } from '@server/utils/concurrency';
@@ -79,9 +83,7 @@ class TelegramAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.telegram;
+    return getExternalNotificationAgent(NotificationAgentKey.TELEGRAM);
   }
 
   public shouldSend(): boolean {
@@ -100,8 +102,8 @@ class TelegramAgent
     locale?: AvailableLocale
   ): Partial<TelegramMessagePayload | TelegramPhotoPayload> {
     const intl = getIntl(locale);
-    const settings = getSettings();
-    const { applicationUrl, applicationTitle } = settings.main;
+    const { applicationUrl, applicationTitle } =
+      getExternalRuntimeConfig().main;
     const { embedPoster } = this.getSettings();
     const maxLength =
       embedPoster && payload.image

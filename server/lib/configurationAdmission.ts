@@ -18,7 +18,10 @@ export interface ConfigurationAuthoritySnapshot {
 
 const configurationAuthorityValue = (
   section: ConfigurationAdmissionSection,
-  settings: AllSettings
+  settings: Pick<
+    AllSettings,
+    'main' | 'plex' | 'jellyfin' | 'oidc' | 'tautulli'
+  >
 ): unknown => {
   if (section === 'plex') {
     return {
@@ -51,7 +54,10 @@ const configurationAuthorityValue = (
 
 export const getConfigurationAuthorityKey = (
   section: ConfigurationAdmissionSection,
-  settings: AllSettings = getSettings()
+  settings: Pick<
+    AllSettings,
+    'main' | 'plex' | 'jellyfin' | 'oidc' | 'tautulli'
+  > = getSettings()
 ): string =>
   createHash('sha256')
     .update(JSON.stringify(configurationAuthorityValue(section, settings)))
@@ -59,7 +65,10 @@ export const getConfigurationAuthorityKey = (
 
 export const captureConfigurationAuthority = (
   section: ConfigurationAdmissionSection,
-  settings: AllSettings = getSettings()
+  settings: Pick<
+    AllSettings,
+    'main' | 'plex' | 'jellyfin' | 'oidc' | 'tautulli'
+  > = getSettings()
 ): ConfigurationAuthoritySnapshot => ({
   section,
   authorityKey: getConfigurationAuthorityKey(section, settings),

@@ -106,14 +106,19 @@ describe('Plex relink maintenance script', () => {
     const result = await runScript(fixture);
 
     assert.equal(result.code, 0, result.stderr);
-    assert.equal((await fs.stat(settingsPath)).mode & 0o777, 0o640);
-    assert.deepEqual(JSON.parse(await fs.readFile(settingsPath, 'utf8')).plex, {
-      ip: '127.0.0.1',
-      machineId: 'machine-id',
-      name: 'Local Plex',
-      port: 33240,
-      useSsl: false,
-    });
+    const settingsHandle = await fs.open(settingsPath, 'r');
+    try {
+      assert.equal((await settingsHandle.stat()).mode & 0o777, 0o640);
+      assert.deepEqual(JSON.parse(await settingsHandle.readFile('utf8')).plex, {
+        ip: '127.0.0.1',
+        machineId: 'machine-id',
+        name: 'Local Plex',
+        port: 33240,
+        useSsl: false,
+      });
+    } finally {
+      await settingsHandle.close();
+    }
     const { stdout } = await execFileAsync('python', [
       '-c',
       'import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute("select plexToken from user where id=1").fetchone()[0])',

@@ -13,7 +13,7 @@ describe('auth account admission', () => {
       'private@example.com'
     );
 
-    assert.match(resource, /^auth-account:email:[a-f0-9]{64}$/);
+    assert.match(resource, /^auth-account:email:[a-f0-9]{16}$/);
     assert.doesNotMatch(resource, /private|example/);
   });
 

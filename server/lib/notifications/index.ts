@@ -222,7 +222,6 @@ export class NotificationManager {
       try {
         await this.outboxDeliveryQueue.run(async () => {
           let claimToken: string | undefined;
-          let attemptFinalized = false;
           try {
             claimToken = await claimNotificationOutboxRecord(record);
             if (!claimToken) {
@@ -235,7 +234,7 @@ export class NotificationManager {
               payload ?? (await hydrateNotificationOutboxPayload(record));
             if (!deliveryPayload) {
               await completeNotificationOutboxRecord(record.id, claimToken);
-              attemptFinalized = true;
+              claimToken = undefined;
               return;
             }
             let failed = false;
@@ -283,19 +282,19 @@ export class NotificationManager {
             );
             if (complete) {
               await completeNotificationOutboxRecord(record.id, claimToken);
-              attemptFinalized = true;
+              claimToken = undefined;
               return;
             }
 
             await markNotificationOutboxAttemptFailed(record, claimToken);
-            attemptFinalized = true;
+            claimToken = undefined;
             if (failed) {
               throw new Error(
                 `Notification outbox ${record.id} has incomplete agent deliveries`
               );
             }
           } catch (error) {
-            if (claimToken && !attemptFinalized) {
+            if (claimToken) {
               try {
                 await markNotificationOutboxAttemptFailed(record, claimToken);
               } catch (finalizationError) {
@@ -348,9 +347,7 @@ export class NotificationManager {
     try {
       await scan;
     } finally {
-      if (this.outboxScan === scan) {
-        this.outboxScan = undefined;
-      }
+      this.outboxScan = undefined;
     }
   };
 

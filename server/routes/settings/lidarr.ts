@@ -1,4 +1,5 @@
 import LidarrAPI from '@server/api/servarr/lidarr';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
 import {
   runWithCurrentServarrService,
@@ -18,8 +19,10 @@ import { REDACTED_SECRET, redactSecrets } from '@server/utils/security';
 import {
   assertServarrInstanceCapacity,
   parseLidarrSettings,
+  parseServarrConnectionSettings,
   preserveServarrApiKey,
   preserveServarrConnectionSecret,
+  type ServarrConnectionSettings,
 } from '@server/utils/servarrSettings';
 import { Router } from 'express';
 
@@ -72,17 +75,20 @@ lidarrRoutes.post(
 lidarrRoutes.post<
   undefined,
   Record<string, unknown>,
-  LidarrSettings & { tagLabel?: string }
+  ServarrConnectionSettings
 >(
   '/test',
   authorizedMutation<
     undefined,
     Record<string, unknown>,
-    LidarrSettings & { tagLabel?: string }
+    ServarrConnectionSettings
   >(Permission.ADMIN, async (req, res, next) => {
     try {
-      const parsedLidarr = parseLidarrSettings(
-        preserveServarrConnectionSecret(req.body, getSettings().lidarr)
+      const parsedLidarr = parseServarrConnectionSettings(
+        preserveServarrConnectionSecret(
+          req.body,
+          getExternalRuntimeConfig().lidarr
+        )
       );
 
       if ('error' in parsedLidarr) {

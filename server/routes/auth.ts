@@ -18,6 +18,7 @@ import {
   runWithConfigurationSnapshot,
   type ConfigurationAuthoritySnapshot,
 } from '@server/lib/configurationAdmission';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { getJellyfinAuthAuthorityKey } from '@server/lib/mediaServerAuthority';
 import {
   captureMediaServerUserAuthority,
@@ -72,6 +73,7 @@ import net from 'net';
 import * as openIdClient from 'openid-client';
 import { MoreThan } from 'typeorm';
 import validator from 'validator';
+import { z } from 'zod';
 
 const authRoutes = Router();
 const MAX_AUTH_TOKEN_LENGTH = 4096;
@@ -79,6 +81,8 @@ const MAX_HOSTNAME_LENGTH = 255;
 const MAX_URL_BASE_LENGTH = 512;
 const MAX_RESET_GUID_LENGTH = 64;
 const MAX_PORT = 65_535;
+const MAX_PLEX_PIN_ID = 2_147_483_647;
+const MAX_PLEX_PIN_CODE_LENGTH = 128;
 export const MAX_OIDC_CALLBACK_URL_LENGTH = 8_192;
 // A fixed, valid cost-12 hash keeps unknown-account and SSO-only failures on
 // the same bcrypt path as local-account failures without storing a usable
@@ -385,6 +389,45 @@ const authRateLimit = rateLimit({
   keyGenerator: getRateLimitKey,
 });
 
+const PLEX_OAUTH_HTTP_OPTIONS = {
+  timeout: 10_000,
+} as const;
+
+const getPlexOAuthHeaders = () => ({
+  Accept: 'application/json',
+  'X-Plex-Product': 'Seerr',
+  'X-Plex-Client-Identifier': getExternalRuntimeConfig().clientId,
+});
+
+const plexLoginEnabled = (): boolean => {
+  const settings = getSettings();
+  return (
+    settings.main.mediaServerType === MediaServerType.NOT_CONFIGURED ||
+    (settings.main.mediaServerLogin &&
+      settings.main.mediaServerType === MediaServerType.PLEX)
+  );
+};
+
+const parsePlexPinId = (value: unknown): number | undefined => {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 && id <= MAX_PLEX_PIN_ID
+    ? id
+    : undefined;
+};
+
+const plexPinPollRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 1_200,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitKey,
+});
+
 const passwordResetRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 20,
@@ -393,6 +436,14 @@ const passwordResetRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
+});
+
+export const quickConnectSecret = z.object({
+  secret: z
+    .string()
+    .min(8)
+    .max(128)
+    .regex(/^[A-Fa-f0-9]+$/),
 });
 
 authRoutes.get('/me', isAuthenticated(), async (req, res) => {
@@ -406,6 +457,7 @@ authRoutes.get('/me', isAuthenticated(), async (req, res) => {
   const user = await userRepository.findOneOrFail({
     where: { id: req.user.id },
   });
+  await User.populateRequestCounts([user]);
 
   // check if email is required in settings and if user has an valid email
   const settings = await getSettings();
@@ -420,7 +472,119 @@ authRoutes.get('/me', isAuthenticated(), async (req, res) => {
   return res.status(200).json(user.filter(true));
 });
 
+authRoutes.post('/plex/pin', authRateLimit, async (req, res, next) => {
+  logger.info('Plex OAuth PIN request received', {
+    label: 'Auth',
+    route: 'plex/pin',
+    ip: req.ip,
+  });
+  if (!plexLoginEnabled()) {
+    return res.status(403).json({ error: 'Plex login is disabled' });
+  }
+
+  try {
+    const response = await axios.post(
+      'https://clients.plex.tv/api/v2/pins?strong=true',
+      undefined,
+      {
+        headers: getPlexOAuthHeaders(),
+        ...PLEX_OAUTH_HTTP_OPTIONS,
+      }
+    );
+    const data = response.data as Record<string, unknown>;
+    const id = parsePlexPinId(String(data.id ?? ''));
+    const code = data.code;
+    if (
+      !id ||
+      typeof code !== 'string' ||
+      code.length === 0 ||
+      code.length > MAX_PLEX_PIN_CODE_LENGTH
+    ) {
+      return next({ status: 502, message: 'Plex returned an invalid PIN.' });
+    }
+
+    logger.info('Plex OAuth PIN created', {
+      label: 'Auth',
+      route: 'plex/pin',
+      pinId: id,
+    });
+
+    return res.status(200).json({
+      id,
+      code,
+      expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : null,
+    });
+  } catch (e) {
+    logger.error('Unable to create Plex OAuth PIN', {
+      label: 'Auth',
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return next({ status: 502, message: 'Unable to contact Plex.' });
+  }
+});
+
+authRoutes.get(
+  '/plex/pin/:id',
+  plexPinPollRateLimit,
+  async (req, res, next) => {
+    if (!plexLoginEnabled()) {
+      return res.status(403).json({ error: 'Plex login is disabled' });
+    }
+    const pinId = parsePlexPinId(req.params.id);
+    if (!pinId) {
+      return res.status(400).json({ error: 'Invalid Plex PIN id.' });
+    }
+    const pinCode = parseBoundedString(req.query.code, {
+      fieldName: 'Plex PIN code',
+      maxLength: MAX_PLEX_PIN_CODE_LENGTH,
+    });
+    if ('error' in pinCode) {
+      return res.status(400).json({ error: pinCode.error });
+    }
+
+    try {
+      const response = await axios.get(
+        `https://clients.plex.tv/api/v2/pins/${pinId}`,
+        {
+          headers: getPlexOAuthHeaders(),
+          params: { code: pinCode.value },
+          ...PLEX_OAUTH_HTTP_OPTIONS,
+        }
+      );
+      const data = response.data as Record<string, unknown>;
+      const authToken = data.authToken;
+      if (typeof authToken === 'string' && authToken.length > 0) {
+        logger.info('Plex OAuth PIN claimed', {
+          label: 'Auth',
+          route: 'plex/pin',
+          pinId,
+        });
+      }
+      return res.status(200).json({
+        authToken:
+          typeof authToken === 'string' &&
+          authToken.length <= MAX_AUTH_TOKEN_LENGTH
+            ? authToken
+            : null,
+        expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : null,
+      });
+    } catch (e) {
+      logger.warn('Unable to poll Plex OAuth PIN', {
+        label: 'Auth',
+        pinId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return next({ status: 502, message: 'Unable to contact Plex.' });
+    }
+  }
+);
+
 authRoutes.post('/plex', authRateLimit, async (req, res, next) => {
+  logger.info('Plex auth exchange received', {
+    label: 'Auth',
+    route: 'plex',
+    ip: req.ip,
+  });
   const settings = getSettings();
   const userRepository = getRepository(User);
   const parsedBody = parseRequestBodyObject(req.body);
@@ -1269,6 +1433,186 @@ authRoutes.post('/jellyfin', authRateLimit, async (req, res, next) => {
     await administratorSetupLease?.release();
   }
 });
+
+authRoutes.post(
+  '/jellyfin/quickconnect/initiate',
+  authRateLimit,
+  async (req, res, next) => {
+    try {
+      const hostname = getHostname();
+      const jellyfinServer = new JellyfinAPI(
+        hostname ?? '',
+        undefined,
+        undefined
+      );
+
+      const response = await jellyfinServer.initiateQuickConnect();
+
+      return res.status(200).json({
+        code: response.Code,
+        secret: response.Secret,
+      });
+    } catch (error) {
+      logger.error('Error initiating Jellyfin quick connect', {
+        label: 'Auth',
+        errorMessage: error.message,
+      });
+      return next({
+        status: 500,
+        message: 'Failed to initiate quick connect.',
+      });
+    }
+  }
+);
+
+authRoutes.get(
+  '/jellyfin/quickconnect/check',
+  authRateLimit,
+  async (req, res, next) => {
+    const result = quickConnectSecret.safeParse(req.query);
+    if (!result.success) {
+      return next({
+        status: 400,
+        message: 'Invalid secret format',
+      });
+    }
+
+    const { secret } = result.data;
+
+    try {
+      const hostname = getHostname();
+      const jellyfinServer = new JellyfinAPI(
+        hostname ?? '',
+        undefined,
+        undefined
+      );
+
+      const response = await jellyfinServer.checkQuickConnect(secret);
+
+      return res.status(200).json({ authenticated: response.Authenticated });
+    } catch (e) {
+      return next({
+        status: e.statusCode || 500,
+        message: 'Failed to check Quick Connect status',
+      });
+    }
+  }
+);
+
+authRoutes.post(
+  '/jellyfin/quickconnect/authenticate',
+  authRateLimit,
+  async (req, res, next) => {
+    const settings = getSettings();
+    const userRepository = getRepository(User);
+    const result = quickConnectSecret.safeParse(req.body);
+    if (!result.success) {
+      return next({
+        status: 400,
+        message: 'Secret required',
+      });
+    }
+
+    const { secret } = result.data;
+
+    if (
+      settings.main.mediaServerType === MediaServerType.NOT_CONFIGURED ||
+      !(await userRepository.count())
+    ) {
+      return next({
+        status: 403,
+        message: 'Quick Connect is not available during initial setup.',
+      });
+    }
+
+    try {
+      const hostname = getHostname();
+      const jellyfinServer = new JellyfinAPI(
+        hostname ?? '',
+        undefined,
+        undefined
+      );
+
+      const account = await jellyfinServer.authenticateQuickConnect(secret);
+
+      let user = await userRepository.findOne({
+        where: { jellyfinUserId: account.User.Id },
+      });
+
+      const deviceId = Buffer.from(
+        `BOT_seerr_${account.User.Name ?? ''}`
+      ).toString('base64');
+
+      if (user) {
+        logger.info('Quick Connect sign-in from existing user', {
+          label: 'API',
+          ip: req.ip,
+          jellyfinUsername: account.User.Name,
+          userId: user.id,
+        });
+
+        user.jellyfinAuthToken = account.AccessToken;
+        user.jellyfinDeviceId = deviceId;
+        user.avatar = getUserAvatarUrl(user);
+        await userRepository.save(user);
+      } else if (!settings.main.newPlexLogin) {
+        logger.warn(
+          'Failed Quick Connect sign-in attempt by unimported Jellyfin user',
+          {
+            label: 'API',
+            ip: req.ip,
+            jellyfinUserId: account.User.Id,
+            jellyfinUsername: account.User.Name,
+          }
+        );
+        return next({
+          status: 403,
+          message: 'Access denied.',
+        });
+      } else {
+        logger.info(
+          'Quick Connect sign-in from new Jellyfin user; creating new Seerr user',
+          {
+            label: 'API',
+            ip: req.ip,
+            jellyfinUsername: account.User.Name,
+          }
+        );
+
+        user = new User({
+          email: account.User.Name,
+          jellyfinUsername: account.User.Name,
+          jellyfinUserId: account.User.Id,
+          jellyfinDeviceId: deviceId,
+          permissions: settings.main.defaultPermissions,
+          userType:
+            settings.main.mediaServerType === MediaServerType.JELLYFIN
+              ? UserType.JELLYFIN
+              : UserType.EMBY,
+        });
+        user.avatar = getUserAvatarUrl(user);
+        await userRepository.save(user);
+      }
+
+      // Set session
+      if (req.session) {
+        req.session.userId = user.id;
+      }
+
+      return res.status(200).json(user?.filter() ?? {});
+    } catch (e) {
+      logger.error('Quick Connect authentication failed', {
+        label: 'Auth',
+        error: e.message,
+        ip: req.ip,
+      });
+      return next({
+        status: e.statusCode || 500,
+        message: ApiErrorCode.InvalidCredentials,
+      });
+    }
+  }
+);
 
 authRoutes.post('/local', authRateLimit, async (req, res, next) => {
   const settings = getSettings();

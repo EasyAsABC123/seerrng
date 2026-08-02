@@ -227,6 +227,7 @@ class PlexAPI extends ExternalAPI {
       {},
       {
         allowPrivateAddresses: true,
+        allowUnconfiguredBaseUrl: true,
         timeout,
         headers: {
           'X-Plex-Token': plexToken ?? '',

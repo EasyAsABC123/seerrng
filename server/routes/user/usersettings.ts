@@ -33,9 +33,11 @@ import {
   isUserSessionCredentialVersionCurrent,
   runAuthorizedUserSecurityMutation,
   runUserSecurityMutationWithActor,
+  runUserSecurityReadWithActor,
 } from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
+import { quickConnectSecret } from '@server/routes/auth';
 import { ApiError } from '@server/types/error';
 import { isAvailableLocale } from '@server/types/languages';
 import AsyncLock from '@server/utils/asyncLock';
@@ -197,7 +199,6 @@ const parseCardTextVisibilityBody = (
 type GeneralStringField =
   | 'username'
   | 'email'
-  | 'discordId'
   | 'locale'
   | 'discoverRegion'
   | 'streamingRegion'
@@ -205,7 +206,6 @@ type GeneralStringField =
 
 type NotificationStringField =
   | 'pgpKey'
-  | 'discordId'
   | 'pushbulletAccessToken'
   | 'pushoverApplicationToken'
   | 'pushoverUserKey'
@@ -213,19 +213,44 @@ type NotificationStringField =
   | 'telegramChatId'
   | 'telegramMessageThreadId';
 
-const parseOptionalDiscordId = (value: unknown) => {
-  const parsed = parseOptionalBoundedString(value, {
-    fieldName: 'discordId',
-    maxLength: USER_SETTINGS_LIMITS.discordId,
-  });
-  if ('error' in parsed || !parsed.value) {
-    return parsed;
+const parseOptionalDiscordIds = (
+  value: unknown
+): { value: string[] | undefined } | { error: string } => {
+  if (value === undefined) {
+    return { value: undefined };
   }
 
-  const normalized = normalizeDiscordSnowflake(parsed.value);
-  return normalized
-    ? { value: normalized }
-    : { error: 'discordId must be a valid Discord user ID.' };
+  if (!Array.isArray(value)) {
+    return { error: 'discordIds must be an array of Discord user IDs.' };
+  }
+
+  if (value.length > USER_SETTINGS_LIMITS.discordIdsMax) {
+    return {
+      error: `discordIds may not contain more than ${USER_SETTINGS_LIMITS.discordIdsMax} entries.`,
+    };
+  }
+
+  const ids: string[] = [];
+  for (const item of value) {
+    const parsed = parseOptionalBoundedString(item, {
+      fieldName: 'discordId',
+      maxLength: USER_SETTINGS_LIMITS.discordId,
+    });
+    if ('error' in parsed) {
+      return parsed;
+    }
+    if (!parsed.value) {
+      continue;
+    }
+
+    const normalized = normalizeDiscordSnowflake(parsed.value);
+    if (!normalized) {
+      return { error: 'discordId must be a valid Discord user ID.' };
+    }
+    ids.push(normalized);
+  }
+
+  return { value: ids };
 };
 
 const parseGeneralSettingsBody = (
@@ -245,7 +270,6 @@ const parseGeneralSettingsBody = (
   const boundedFields: [GeneralStringField, number][] = [
     ['username', USER_SETTINGS_LIMITS.username],
     ['email', USER_SETTINGS_LIMITS.email],
-    ['discordId', USER_SETTINGS_LIMITS.discordId],
     ['locale', USER_SETTINGS_LIMITS.locale],
     ['discoverRegion', USER_SETTINGS_LIMITS.region],
     ['streamingRegion', USER_SETTINGS_LIMITS.region],
@@ -273,13 +297,10 @@ const parseGeneralSettingsBody = (
       continue;
     }
 
-    const parsed =
-      fieldName === 'discordId'
-        ? parseOptionalDiscordId(bodyObject[fieldName])
-        : parseOptionalBoundedString(bodyObject[fieldName], {
-            fieldName,
-            maxLength,
-          });
+    const parsed = parseOptionalBoundedString(bodyObject[fieldName], {
+      fieldName,
+      maxLength,
+    });
 
     if ('error' in parsed) {
       return parsed;
@@ -294,6 +315,14 @@ const parseGeneralSettingsBody = (
     }
 
     value[fieldName] = parsed.value;
+  }
+
+  if (hasOwn(bodyObject, 'discordIds')) {
+    const discordIds = parseOptionalDiscordIds(bodyObject.discordIds);
+    if ('error' in discordIds) {
+      return discordIds;
+    }
+    value.discordIds = discordIds.value;
   }
 
   for (const fieldName of [
@@ -428,7 +457,6 @@ const parseNotificationsBody = (
   }
   const boundedFields: [NotificationStringField, number][] = [
     ['pgpKey', USER_SETTINGS_LIMITS.pgpKey],
-    ['discordId', USER_SETTINGS_LIMITS.discordId],
     ['pushbulletAccessToken', USER_SETTINGS_LIMITS.pushbulletAccessToken],
     ['pushoverApplicationToken', USER_SETTINGS_LIMITS.pushoverApplicationToken],
     ['pushoverUserKey', USER_SETTINGS_LIMITS.pushoverUserKey],
@@ -445,19 +473,24 @@ const parseNotificationsBody = (
       continue;
     }
 
-    const parsed =
-      fieldName === 'discordId'
-        ? parseOptionalDiscordId(bodyObject[fieldName])
-        : parseOptionalBoundedString(bodyObject[fieldName], {
-            fieldName,
-            maxLength,
-          });
+    const parsed = parseOptionalBoundedString(bodyObject[fieldName], {
+      fieldName,
+      maxLength,
+    });
 
     if ('error' in parsed) {
       return parsed;
     }
 
     parsedBody[fieldName] = parsed.value;
+  }
+
+  if (hasOwn(bodyObject, 'discordIds')) {
+    const discordIds = parseOptionalDiscordIds(bodyObject.discordIds);
+    if ('error' in discordIds) {
+      return discordIds;
+    }
+    parsedBody.discordIds = discordIds.value;
   }
 
   if (hasOwn(bodyObject, 'telegramSendSilently')) {
@@ -584,7 +617,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsGeneralResponse>(
         return next({ status: 404, message: 'User not found.' });
       }
 
-      return await runUserSecurityMutationWithActor(
+      return await runUserSecurityReadWithActor(
         req.user!.id,
         userId,
         Permission.MANAGE_USERS,
@@ -600,7 +633,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsGeneralResponse>(
           return res.status(200).json({
             username: user.username,
             email: user.email,
-            discordId: user.settings?.discordId,
+            discordIds: user.settings?.discordIds,
             locale: user.settings?.locale,
             discoverRegion: user.settings?.discoverRegion,
             streamingRegion: user.settings?.streamingRegion,
@@ -734,7 +767,7 @@ userSettingsRoutes.post<
           }
 
           for (const fieldName of [
-            'discordId',
+            'discordIds',
             'locale',
             'discoverRegion',
             'streamingRegion',
@@ -772,7 +805,7 @@ userSettingsRoutes.post<
 
           return res.status(200).json({
             username: savedUser.username,
-            discordId: savedUser.settings?.discordId,
+            discordIds: savedUser.settings?.discordIds ?? [],
             locale: savedUser.settings?.locale,
             discoverRegion: savedUser.settings?.discoverRegion,
             streamingRegion: savedUser.settings?.streamingRegion,
@@ -822,7 +855,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsCardTextResponse>(
         return next({ status: 404, message: 'User not found.' });
       }
 
-      return await runUserSecurityMutationWithActor(
+      return await runUserSecurityReadWithActor(
         req.user!.id,
         userId,
         Permission.MANAGE_USERS,
@@ -932,7 +965,7 @@ userSettingsRoutes.get<{ id: string }, { hasPassword: boolean }>(
         return next({ status: 404, message: 'User not found.' });
       }
 
-      return await runUserSecurityMutationWithActor(
+      return await runUserSecurityReadWithActor(
         req.user!.id,
         userId,
         Permission.MANAGE_USERS,
@@ -1489,7 +1522,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsLinkedAccountResponse>(
     }
 
     try {
-      return await runUserSecurityMutationWithActor(
+      return await runUserSecurityReadWithActor(
         req.user!.id,
         userId,
         Permission.MANAGE_USERS,
@@ -1604,91 +1637,74 @@ userSettingsRoutes.delete<{ id: string; acctId: string }>(
   }
 );
 
-userSettingsRoutes.get<{ id: string }, UserSettingsLinkedAccountResponse>(
-  '/linked-accounts',
-  isOwnProfileOrAdmin(),
+userSettingsRoutes.post<{ secret: string }>(
+  '/linked-accounts/jellyfin/quickconnect',
+  isOwnProfile(),
   async (req, res) => {
     const settings = getSettings();
     const userRepository = getRepository(User);
 
-    const user = await userRepository
-      .createQueryBuilder('user')
-      .leftJoinAndSelect('user.linkedAccounts', 'linkedAccounts')
-      .where({ id: Number(req.params.id) })
-      .getOne();
-
-    if (!user) {
-      return res.status(404).send();
+    if (!req.user) {
+      return res.status(401).json({ code: ApiErrorCode.Unauthorized });
     }
 
-    const linkedAccountInfo = user.getActiveLinkedAccounts().map((acc) => {
-      const provider = settings.oidc.providers.find(
-        (p) => p.slug === acc.provider
-      )!;
-
-      return {
-        id: acc.id,
-        username: acc.username,
-        provider: {
-          slug: provider.slug,
-          name: provider.name,
-          logo: provider.logo,
-        },
-      } satisfies UserSettingsLinkedAccount;
-    });
-
-    return res.status(200).json(linkedAccountInfo);
-  }
-);
-
-userSettingsRoutes.delete<{ id: string; acctId: string }>(
-  '/linked-accounts/:acctId',
-  isOwnProfileOrAdmin(),
-  async (req, res) => {
-    const settings = getSettings();
-    const userRepository = getRepository(User);
-    const linkedAccountsRepository = getRepository(LinkedAccount);
-    const acctId = Number(req.params.acctId);
-
-    const user = await userRepository
-      .createQueryBuilder('user')
-      .addSelect('user.password')
-      .leftJoinAndSelect('user.linkedAccounts', 'linkedAccounts')
-      .where({ id: Number(req.params.id) })
-      .getOne();
-
-    if (!user) {
-      return res.status(404).send();
+    const result = quickConnectSecret.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ message: 'Invalid secret format' });
     }
 
-    const remainingOidcCount = user
-      .getActiveLinkedAccounts()
-      .filter((a) => a.id !== acctId).length;
-    const hasMediaServer =
-      (settings.main.mediaServerType === MediaServerType.PLEX &&
-        !!user.plexId) ||
-      ([MediaServerType.JELLYFIN, MediaServerType.EMBY].includes(
-        settings.main.mediaServerType
-      ) &&
-        !!user.jellyfinUserId);
-    if (!user.password && remainingOidcCount === 0 && !hasMediaServer) {
-      return res.status(400).json({
-        message: 'User does not have a local password or other linked account.',
-      });
+    const { secret } = result.data;
+
+    if (
+      settings.main.mediaServerType !== MediaServerType.JELLYFIN &&
+      settings.main.mediaServerType !== MediaServerType.EMBY
+    ) {
+      return res
+        .status(500)
+        .json({ message: 'Jellyfin/Emby login is disabled' });
     }
 
-    const condition: FindOptionsWhere<LinkedAccount> = {
-      id: acctId,
-      user: {
-        id: Number(req.params.id),
-      },
-    };
+    const hostname = getHostname();
+    const jellyfinServer = new JellyfinAPI(hostname);
 
-    if (await linkedAccountsRepository.exists({ where: condition })) {
-      await linkedAccountsRepository.delete(condition);
+    try {
+      const account = await jellyfinServer.authenticateQuickConnect(secret);
+
+      if (
+        await userRepository.exist({
+          where: { jellyfinUserId: account.User.Id },
+        })
+      ) {
+        return res.status(422).json({
+          message: 'The specified account is already linked to a Seerr user',
+        });
+      }
+
+      const user = req.user;
+      const deviceId = Buffer.from(
+        user.id === 1 ? 'BOT_seerr' : `BOT_seerr_${user.username ?? ''}`
+      ).toString('base64');
+
+      user.userType =
+        settings.main.mediaServerType === MediaServerType.EMBY
+          ? UserType.EMBY
+          : UserType.JELLYFIN;
+      user.jellyfinUserId = account.User.Id;
+      user.jellyfinUsername = account.User.Name;
+      user.jellyfinAuthToken = account.AccessToken;
+      user.jellyfinDeviceId = deviceId;
+      await userRepository.save(user);
+
       return res.status(204).send();
-    } else {
-      return res.status(404).send();
+    } catch (e) {
+      logger.error('Failed to link account with Quick Connect.', {
+        label: 'API',
+        ip: req.ip,
+        error: e,
+      });
+
+      const status = e instanceof ApiError ? e.statusCode : 500;
+      return res.status(status).send();
     }
   }
 );
@@ -1706,7 +1722,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsNotificationsResponse>(
         return next({ status: 404, message: 'User not found.' });
       }
 
-      return await runUserSecurityMutationWithActor(
+      return await runUserSecurityReadWithActor(
         req.user!.id,
         userId,
         Permission.MANAGE_USERS,
@@ -1731,7 +1747,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsNotificationsResponse>(
                 settings.discord.options.enableMentions
                   ? settings.discord.types
                   : 0,
-              discordId: user.settings?.discordId,
+              discordIds: user.settings?.discordIds ?? [],
               pushbulletAccessToken: user.settings?.pushbulletAccessToken,
               pushoverApplicationToken: user.settings?.pushoverApplicationToken,
               pushoverUserKey: user.settings?.pushoverUserKey,
@@ -1804,7 +1820,7 @@ userSettingsRoutes.post<{ id: string }, UserSettingsNotificationsResponse>(
 
           for (const fieldName of [
             'pgpKey',
-            'discordId',
+            'discordIds',
             'pushbulletAccessToken',
             'pushoverApplicationToken',
             'pushoverUserKey',
@@ -1830,7 +1846,7 @@ userSettingsRoutes.post<{ id: string }, UserSettingsNotificationsResponse>(
           return res.status(200).json(
             redactSecrets({
               pgpKey: user.settings.pgpKey,
-              discordId: user.settings.discordId,
+              discordIds: user.settings.discordIds ?? [],
               pushbulletAccessToken: user.settings.pushbulletAccessToken,
               pushoverApplicationToken: user.settings.pushoverApplicationToken,
               pushoverUserKey: user.settings.pushoverUserKey,
@@ -1867,7 +1883,7 @@ userSettingsRoutes.get<{ id: string }, { permissions?: number }>(
         return next({ status: 404, message: 'User not found.' });
       }
 
-      return await runAuthorizedUserSecurityMutation(
+      return await runUserSecurityReadWithActor(
         req.user!.id,
         userId,
         Permission.MANAGE_USERS,

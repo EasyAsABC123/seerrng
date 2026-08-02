@@ -1,12 +1,14 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Cypress Tests
+# Keep the E2E workflow path-sensitive while allowing explicit test-transport fixes to rerun it.
 
 on:
   pull_request:
     branches: ['*']
     paths:
       - '{src,server,config,cypress}/**'
+      - 'scripts/export-external-config.mjs'
       - 'cypress.config.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -17,6 +19,7 @@ on:
     branches: [main]
     paths:
       - '{src,server,config,cypress}/**'
+      - 'scripts/export-external-config.mjs'
       - 'cypress.config.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -43,7 +46,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: package.json
           package-manager-cache: false
@@ -55,7 +58,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Setup cypress cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/Cypress
           key: ${{ runner.os }}-cypress-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -67,18 +70,31 @@ jobs:
           CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
         run: pnpm exec cypress install
 
+      - name: Prepare Cypress runtime configuration
+        env:
+          CONFIG_DIRECTORY: cypress/runtime-config
+        run: pnpm cypress:prepare
+
+      - name: Export external runtime configuration
+        id: export-config
+        run: |
+          printf 'external_config=%s\n' "$(node scripts/export-external-config.mjs "$CONFIG_DIRECTORY/settings.json")" >> "$GITHUB_OUTPUT"
+        env:
+          CONFIG_DIRECTORY: cypress/runtime-config
+
       - name: Cypress run
         uses: cypress-io/github-action@fa4a118725a8f001170d49631ea89e5d66fee626 # v7.4.1
         with:
           install: false
           build: pnpm cypress:build
-          start: pnpm start
+          start: env E2E_TESTS=true pnpm start
           wait-on: 'http://localhost:5056'
           config: baseUrl=http://localhost:5056
           # Forks and installations without a Cypress Dashboard key must still
           # run the suite instead of failing before the first spec starts.
           record: ${{ github.event_name == 'push' && secrets.CYPRESS_RECORD_KEY != '' }}
         env:
+          SEERR_EXTERNAL_CONFIG: ${{ steps.export-config.outputs.external_config }}
           CYPRESS_RECORD_KEY: ${{ github.event_name == 'push' && secrets.CYPRESS_RECORD_KEY || '' }}
           GITHUB_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
           WITH_MIGRATIONS: true

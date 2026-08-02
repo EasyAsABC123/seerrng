@@ -20,6 +20,7 @@ import { checkUser } from '@server/middleware/auth';
 import { setupTestDb } from '@server/test/db';
 import type { Express } from 'express';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import session from 'express-session';
 import request from 'supertest';
 import type { EntityManager } from 'typeorm';
@@ -45,11 +46,12 @@ function createApp() {
   app.use(
     session({
       secret: 'test-secret',
+      cookie: { secure: 'auto' },
       resave: false,
       saveUninitialized: false,
     })
   );
-  app.use(checkUser);
+  app.use(rateLimit({ windowMs: 60_000, limit: 10_000 }), checkUser);
   app.use('/auth', authRoutes);
   app.use('/user', userRoutes);
   app.use(
@@ -878,11 +880,11 @@ describe('User route input validation', () => {
     const mainRes = await agent.post('/user/1/settings/main').send({
       username: 'admin',
       email: 'admin@seerr.dev',
-      discordId: maliciousId,
+      discordIds: [maliciousId],
     });
     const notificationRes = await agent
       .post('/user/1/settings/notifications')
-      .send({ discordId: maliciousId, notificationTypes: {} });
+      .send({ discordIds: [maliciousId], notificationTypes: {} });
 
     assert.strictEqual(mainRes.status, 400);
     assert.match(mainRes.body.message, /valid Discord user ID/i);
@@ -2087,7 +2089,10 @@ describe('User route input validation', () => {
         [201, 201]
       );
       assert.strictEqual(
-        responses.reduce((total, response) => total + response.body.length, 0),
+        responses.reduce(
+          (total, response) => total + response.body.createdUsers.length,
+          0
+        ),
         1
       );
       assert.strictEqual(await userRepository.countBy({ plexId: 8765432 }), 1);
@@ -2196,7 +2201,7 @@ describe('User route input validation', () => {
       });
 
       assert.strictEqual(res.status, 201);
-      assert.deepStrictEqual(res.body, []);
+      assert.deepStrictEqual(res.body, { createdUsers: [], refreshedUsers: 0 });
       const persisted = await userRepository.findOneByOrFail({ id: target.id });
       assert.strictEqual(persisted.userType, UserType.LOCAL);
       assert.strictEqual(persisted.plexId, null);
@@ -2495,7 +2500,7 @@ describe('User route input validation', () => {
       discoverRegion: 'CA',
       streamingRegion: 'US',
       originalLanguage: 'ja',
-      discordId: '12345678901234567',
+      discordIds: ['12345678901234567'],
       watchlistSyncMovies: true,
       watchlistSyncTv: true,
     });
@@ -2514,7 +2519,7 @@ describe('User route input validation', () => {
     assert.strictEqual(saved.settings?.discoverRegion, 'CA');
     assert.strictEqual(saved.settings?.streamingRegion, 'US');
     assert.strictEqual(saved.settings?.originalLanguage, 'ja');
-    assert.strictEqual(saved.settings?.discordId, '12345678901234567');
+    assert.deepStrictEqual(saved.settings?.discordIds, ['12345678901234567']);
     assert.strictEqual(saved.settings?.watchlistSyncMovies, true);
     assert.strictEqual(saved.settings?.watchlistSyncTv, true);
     assert.strictEqual(saved.movieQuotaLimit, 9);

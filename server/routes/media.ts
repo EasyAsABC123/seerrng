@@ -15,10 +15,10 @@ import type {
   MediaWatchDataResponse,
 } from '@server/interfaces/api/mediaInterfaces';
 import { runWithConfigurationAdmission } from '@server/lib/configurationAdmission';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import { Permission } from '@server/lib/permissions';
 import { runWithServarrServiceAdmission } from '@server/lib/serviceAdmission';
-import { getSettings } from '@server/lib/settings';
 import {
   UserMutationActorUnauthorizedError,
   runAuthorizedUserSecurityMutation,
@@ -27,7 +27,7 @@ import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import {
   authorizedMutation,
-  authorizedRouteScope,
+  authorizedRouteAccess,
 } from '@server/middleware/authorizedMutation';
 import { filterEntityResponse } from '@server/utils/entityResponse';
 import { parsePageParams } from '@server/utils/pagination';
@@ -40,7 +40,7 @@ import {
 } from '@server/utils/validation';
 import { Router } from 'express';
 import type { FindOneOptions, FindOptionsWhere } from 'typeorm';
-import { In, IsNull, Not } from 'typeorm';
+import { EntityNotFoundError, In, IsNull, Not } from 'typeorm';
 
 const mediaRoutes = Router();
 const maxMediaId = 1_000_000_000;
@@ -226,7 +226,7 @@ const parseOptionalMediaStatusBody = (
 mediaRoutes.get(
   '/',
   isAuthenticated(mediaListPermissions, { type: 'or' }),
-  authorizedRouteScope(mediaListPermissions),
+  authorizedRouteAccess(mediaListPermissions),
   async (req, res, next) => {
     const mediaRepository = getRepository(Media);
 
@@ -516,11 +516,15 @@ mediaRoutes.delete(
           message: 'You no longer have permission to modify media.',
         });
       }
+      if (e instanceof EntityNotFoundError) {
+        return res.status(204).send();
+      }
       logger.error('Something went wrong fetching media in delete request', {
         label: 'Media',
+        mediaId: req.params.id,
         message: e.message,
       });
-      next({ status: 404, message: 'Media not found' });
+      next({ status: 500, message: 'Failed to delete media' });
     }
   }
 );
@@ -576,7 +580,7 @@ mediaRoutes.delete(
             const specificServiceId = is4k
               ? media.serviceId4k
               : media.serviceId;
-            const selectionSettings = getSettings();
+            const selectionSettings = getExternalRuntimeConfig();
             const selectedServiceId =
               specificServiceId !== null && specificServiceId !== undefined
                 ? specificServiceId
@@ -630,7 +634,7 @@ mediaRoutes.delete(
             return runWithServarrServiceAdmission(
               serviceAdmissions,
               async () => {
-                const settings = getSettings();
+                const settings = getExternalRuntimeConfig();
                 const serviceSettings = isMovie
                   ? settings.radarr.find(
                       (radarr) => radarr.id === selectedServiceId
@@ -825,8 +829,12 @@ mediaRoutes.delete(
           message: 'You no longer have permission to modify media.',
         });
       }
+      if (e instanceof EntityNotFoundError) {
+        return next({ status: 404, message: 'Media not found' });
+      }
       logger.error('Something went wrong fetching media in delete request', {
         label: 'Media',
+        mediaId: req.params.id,
         message: e.message,
       });
       next({ status: 404, message: 'Media not found' });
@@ -853,7 +861,7 @@ mediaRoutes.get<{ id: string }, MediaWatchDataResponse>(
 
     try {
       return await runWithConfigurationAdmission('tautulli', async () => {
-        const settings = getSettings().tautulli;
+        const settings = getExternalRuntimeConfig().tautulli;
         if (!settings.hostname || !settings.port || !settings.apiKey) {
           return next({
             status: 404,

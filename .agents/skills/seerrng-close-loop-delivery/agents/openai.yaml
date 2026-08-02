@@ -1,4 +1,0 @@
-interface:
-  display_name: 'Close-Loop SeerrNG Delivery'
-  short_description: 'Ship, deploy, and verify live fixes'
-  default_prompt: 'Use $seerrng-close-loop-delivery to ship this SeerrNG change and keep looping until live verification passes.'

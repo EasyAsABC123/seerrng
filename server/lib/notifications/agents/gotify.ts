@@ -1,10 +1,18 @@
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import type { NotificationAgentGotify } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
-import { createSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import {
+  createSafeHttpUrl,
+  redactSecrets,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios from 'axios';
 import { Notification, hasNotificationType } from '..';
 import type { NotificationAgent, NotificationPayload } from './agent';
@@ -46,9 +54,7 @@ class GotifyAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.gotify;
+    return getExternalNotificationAgent(NotificationAgentKey.GOTIFY);
   }
 
   public shouldSend(): boolean {
@@ -72,7 +78,8 @@ class GotifyAgent
   ): GotifyPayload {
     const settings = this.getSettings();
     const intl = getIntl(settings.options.locale);
-    const { applicationUrl, applicationTitle } = getSettings().main;
+    const { applicationUrl, applicationTitle } =
+      getExternalRuntimeConfig().main;
     const priority = settings.options.priority ?? 1;
 
     const title = payload.event
@@ -198,14 +205,14 @@ class GotifyAgent
     }
 
     try {
-      const endpoint = new URL(gotifyBaseUrl.toString());
+      const endpoint = new URL(stringifySafeHttpUrl(gotifyBaseUrl));
       endpoint.pathname = `${trimPathTrailingSlashes(endpoint.pathname)}/message`;
       endpoint.searchParams.set('token', settings.options.token);
       const notificationPayload = this.buildPayload(type, payload);
 
       // codeql[js/request-forgery]
       await axios.post(
-        endpoint.toString(),
+        stringifySafeHttpUrl(endpoint),
         notificationPayload,
         CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS
       );

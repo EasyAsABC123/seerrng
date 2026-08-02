@@ -4,6 +4,7 @@ export const USER_SETTINGS_LIMITS = {
   password: 1024,
   avatar: 2048,
   discordId: 64,
+  discordIdsMax: 10,
   locale: 35,
   region: 16,
   language: 16,

@@ -8,7 +8,11 @@ import { getRepository } from '@server/datasource';
 import Issue from '@server/entity/Issue';
 import IssueComment from '@server/entity/IssueComment';
 import Media from '@server/entity/Media';
-import type { IssueResultsResponse } from '@server/interfaces/api/issueInterfaces';
+import { User } from '@server/entity/User';
+import type {
+  IssueRequestBody,
+  IssueResultsResponse,
+} from '@server/interfaces/api/issueInterfaces';
 import { hydrateIssueRelations } from '@server/lib/issueHydration';
 import issueMutationCoordinator from '@server/lib/issueMutation';
 import { Permission } from '@server/lib/permissions';
@@ -18,7 +22,7 @@ import {
 } from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
-import { authorizedRouteScope } from '@server/middleware/authorizedMutation';
+import { authorizedRouteAccess } from '@server/middleware/authorizedMutation';
 import { filterEntityResponse } from '@server/utils/entityResponse';
 import {
   parseOptionalPositiveInt,
@@ -32,9 +36,11 @@ import {
 } from '@server/utils/validation';
 import { Router } from 'express';
 
+class IssueUserNotFoundError extends Error {}
+
 const issueRoutes = Router();
 const MAX_ISSUE_ROUTE_ID = 1_000_000_000;
-const issueSortFields = ['modified'] as const;
+const issueSortFields = ['added', 'modified'] as const;
 const issueStatusFilters = ['open', 'resolved'] as const;
 
 const parseIssueStatusAction = (status: unknown): IssueStatus | undefined => {
@@ -96,7 +102,7 @@ issueRoutes.get<
     ],
     { type: 'or' }
   ),
-  authorizedRouteScope([
+  authorizedRouteAccess([
     Permission.MANAGE_ISSUES,
     Permission.VIEW_ISSUES,
     Permission.CREATE_ISSUES,
@@ -194,17 +200,7 @@ issueRoutes.get<
   }
 );
 
-issueRoutes.post<
-  Record<string, string>,
-  Issue,
-  {
-    message: string;
-    mediaId: number;
-    issueType: number;
-    problemSeason: number;
-    problemEpisode: number;
-  }
->(
+issueRoutes.post<Record<string, string>, Issue, IssueRequestBody>(
   '/',
   isAuthenticated([Permission.MANAGE_ISSUES, Permission.CREATE_ISSUES], {
     type: 'or',
@@ -217,6 +213,7 @@ issueRoutes.post<
 
     const issueRepository = getRepository(Issue);
     const mediaRepository = getRepository(Media);
+    const userRepository = getRepository(User);
     const parsedBody = parseIssueBodyObject(req.body);
     if ('error' in parsedBody) {
       return next({ status: 400, message: parsedBody.error });
@@ -252,6 +249,7 @@ issueRoutes.post<
     if ('error' in problemEpisode) {
       return next({ status: 400, message: problemEpisode.error });
     }
+    const onBehalfOfUserId = parseOptionalPositiveInt(body.userId) ?? null;
 
     const media = await mediaRepository.findOne({
       where: { id: mediaId.value },
@@ -264,24 +262,47 @@ issueRoutes.post<
     try {
       const newIssue = await runAuthorizedUserSecurityMutation(
         req.user.id,
-        req.user.id,
+        onBehalfOfUserId && onBehalfOfUserId !== req.user.id
+          ? [req.user.id, onBehalfOfUserId]
+          : req.user.id,
         [Permission.MANAGE_ISSUES, Permission.CREATE_ISSUES],
-        async (actor) =>
-          issueRepository.save(
+        async (actor) => {
+          let createdBy = actor;
+
+          if (onBehalfOfUserId && onBehalfOfUserId !== actor.id) {
+            if (!actor.hasPermission(Permission.MANAGE_ISSUES)) {
+              throw new UserMutationActorUnauthorizedError(
+                'You do not have permission to create an issue on behalf of another user.'
+              );
+            }
+
+            const targetUser = await userRepository.findOne({
+              where: { id: onBehalfOfUserId },
+            });
+
+            if (!targetUser) {
+              throw new IssueUserNotFoundError('Issue user not found');
+            }
+
+            createdBy = targetUser;
+          }
+
+          return issueRepository.save(
             new Issue({
-              createdBy: actor,
+              createdBy,
               issueType: issueType.value,
               problemSeason: problemSeason.value,
               problemEpisode: problemEpisode.value,
               media,
               comments: [
                 new IssueComment({
-                  user: actor,
+                  user: createdBy,
                   message: parsedMessage.value,
                 }),
               ],
             })
-          )
+          );
+        }
       );
 
       return res.status(200).json(filterEntityResponse(newIssue, req.user));
@@ -289,8 +310,12 @@ issueRoutes.post<
       if (e instanceof UserMutationActorUnauthorizedError) {
         return next({
           status: 403,
-          message: 'You no longer have permission to create issues.',
+          message:
+            e.message || 'You no longer have permission to create issues.',
         });
+      }
+      if (e instanceof IssueUserNotFoundError) {
+        return next({ status: 404, message: e.message });
       }
       throw e;
     }
@@ -307,7 +332,7 @@ issueRoutes.get(
     ],
     { type: 'or' }
   ),
-  authorizedRouteScope([
+  authorizedRouteAccess([
     Permission.MANAGE_ISSUES,
     Permission.VIEW_ISSUES,
     Permission.CREATE_ISSUES,
@@ -381,7 +406,7 @@ issueRoutes.get<{ issueId: string }>(
     ],
     { type: 'or' }
   ),
-  authorizedRouteScope([
+  authorizedRouteAccess([
     Permission.MANAGE_ISSUES,
     Permission.VIEW_ISSUES,
     Permission.CREATE_ISSUES,

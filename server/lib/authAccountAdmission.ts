@@ -1,6 +1,6 @@
 import requestAdmissionCoordinator from '@server/lib/requestAdmission';
 import AsyncLock from '@server/utils/asyncLock';
-import { createHash } from 'crypto';
+import { createDeterministicKey } from '@server/utils/deterministicKey';
 
 const authAccountAdmissionLock = new AsyncLock();
 
@@ -13,9 +13,7 @@ export const getAuthAccountAdmissionResource = (
   if (!identity) {
     throw new Error('A non-empty auth account identity is required.');
   }
-  return `auth-account:${type}:${createHash('sha256')
-    .update(identity)
-    .digest('hex')}`;
+  return `auth-account:${type}:${createDeterministicKey(identity)}`;
 };
 
 /**
@@ -33,7 +31,7 @@ export const runAuthAccountAdmission = <Result>(
     keys.length === 0 ||
     keys.some(
       (key) =>
-        !/^auth-account:(?:email|jellyfin|oidc|plex):[a-f0-9]{64}$/.test(key)
+        !/^auth-account:(?:email|jellyfin|oidc|plex):[a-f0-9]{16}$/.test(key)
     )
   ) {
     throw new Error('At least one valid auth account resource is required.');

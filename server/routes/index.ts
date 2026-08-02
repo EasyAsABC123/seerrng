@@ -13,12 +13,12 @@ import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import {
   UserMutationActorUnauthorizedError,
-  runUserSecurityMutationWithActor,
+  runUserSecurityReadWithActor,
 } from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { apiResponseCache } from '@server/middleware/apiResponseCache';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
-import { authorizedRouteScope } from '@server/middleware/authorizedMutation';
+import { authorizedRouteAccess } from '@server/middleware/authorizedMutation';
 import deprecatedRoute from '@server/middleware/deprecation';
 import { mapProductionCompany } from '@server/models/Movie';
 import { mapNetwork } from '@server/models/Tv';
@@ -155,32 +155,38 @@ router.get<Record<string, never>, StatusResponse>(
   '/status',
   publicStatusRateLimit,
   async (req, res) => {
-    const githubApi = new GithubAPI();
-
+    const settings = getSettings();
     const currentVersion = getAppVersion();
     const commitTag = getCommitTag();
+    const checkUpdate =
+      req.query.checkUpdateAvailable !== undefined
+        ? Boolean(req.query.checkUpdateAvailable)
+        : settings.fullPublicSettings.versionCheck;
     let updateAvailable = false;
     let commitsBehind = 0;
 
-    const branchMatch = currentVersion.match(/^main-/);
+    if (checkUpdate) {
+      const githubApi = new GithubAPI();
+      const branchMatch = currentVersion.match(/^main-/);
 
-    if (branchMatch && commitTag !== 'local') {
-      const commits = await githubApi.getSeerrCommits({
-        branch: branchMatch[1],
-      });
+      if (branchMatch && commitTag !== 'local') {
+        const commits = await githubApi.getSeerrCommits({
+          branch: branchMatch[1],
+        });
 
-      ({ updateAvailable, commitsBehind } = getCommitUpdateStatus(
-        commits,
-        commitTag
-      ));
-    } else if (commitTag !== 'local') {
-      const releases = await githubApi.getSeerrReleases();
+        ({ updateAvailable, commitsBehind } = getCommitUpdateStatus(
+          commits,
+          commitTag
+        ));
+      } else if (commitTag !== 'local') {
+        const releases = await githubApi.getSeerrReleases();
 
-      if (releases.length) {
-        const latestVersion = releases[0];
+        if (releases.length) {
+          const latestVersion = releases[0];
 
-        if (!latestVersion.name.includes(currentVersion)) {
-          updateAvailable = true;
+          if (!latestVersion.name.includes(currentVersion)) {
+            updateAvailable = true;
+          }
         }
       }
     }
@@ -188,8 +194,7 @@ router.get<Record<string, never>, StatusResponse>(
     return res.status(200).json({
       version: getAppVersion(),
       commitTag: getCommitTag(),
-      updateAvailable,
-      commitsBehind,
+      ...(checkUpdate && { updateAvailable, commitsBehind }),
       restartRequired: restartFlag.isSet(),
     });
   }
@@ -198,7 +203,7 @@ router.get<Record<string, never>, StatusResponse>(
 router.get(
   '/status/appdata',
   isAuthenticated(Permission.ADMIN),
-  authorizedRouteScope(Permission.ADMIN),
+  authorizedRouteAccess(Permission.ADMIN),
   (_req, res) => {
     return res.status(200).json({
       appData: appDataStatus(),
@@ -240,7 +245,7 @@ router.get(
         return next({ status: 400, message: 'Invalid user ID.' });
       }
       const actorId = req.user!.id;
-      return await runUserSecurityMutationWithActor(
+      return await runUserSecurityReadWithActor(
         actorId,
         requestedUserId ?? actorId,
         Permission.ADMIN,

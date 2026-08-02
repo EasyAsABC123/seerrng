@@ -2,9 +2,13 @@ import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { MediaStatus } from '@server/constants/media';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
+import {
+  getExternalNotificationAgent,
+  getExternalRuntimeConfig,
+} from '@server/lib/externalRuntimeConfig';
 import { forEachNotificationUserBatch } from '@server/lib/notifications/userBatches';
 import type { NotificationAgentPushover } from '@server/lib/settings';
-import { NotificationAgentKey, getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
 import type { AvailableLocale } from '@server/types/languages';
 import { mapWithConcurrency } from '@server/utils/concurrency';
@@ -58,14 +62,55 @@ export const escapePushoverHtmlText = (value: string): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const pushoverHtmlToPlainText = (value: string): string =>
-  value
-    .replace(/<[^>]*>/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&');
+const pushoverHtmlToPlainText = (value: string): string => {
+  let text = '';
+  let index = 0;
+  let skipUntilClosingTag: 'script' | 'style' | undefined;
+
+  while (index < value.length) {
+    if (skipUntilClosingTag) {
+      const closingTag = `</${skipUntilClosingTag}`;
+      const closingIndex = value.toLowerCase().indexOf(closingTag, index);
+      if (closingIndex === -1) {
+        break;
+      }
+      index = closingIndex;
+      skipUntilClosingTag = undefined;
+    }
+
+    if (value[index] !== '<') {
+      text += value[index];
+      index += 1;
+      continue;
+    }
+
+    const tagEnd = value.indexOf('>', index + 1);
+    if (tagEnd === -1) {
+      break;
+    }
+
+    const tagName = value
+      .slice(index + 1, tagEnd)
+      .trim()
+      .toLowerCase();
+    if (tagName.startsWith('script') && /^(?:script)(?:\s|$)/.test(tagName)) {
+      skipUntilClosingTag = 'script';
+    } else if (
+      tagName.startsWith('style') &&
+      /^(?:style)(?:\s|$)/.test(tagName)
+    ) {
+      skipUntilClosingTag = 'style';
+    }
+    index = tagEnd + 1;
+  }
+
+  return text
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&amp;', '&');
+};
 
 class PushoverAgent
   extends BaseAgent<NotificationAgentPushover>
@@ -76,9 +121,7 @@ class PushoverAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.pushover;
+    return getExternalNotificationAgent(NotificationAgentKey.PUSHOVER);
   }
 
   public shouldSend(): boolean {
@@ -138,8 +181,8 @@ class PushoverAgent
     locale?: AvailableLocale
   ): Promise<Partial<PushoverPayload>> {
     const intl = getIntl(locale);
-    const settings = getSettings();
-    const { applicationUrl, applicationTitle } = settings.main;
+    const { applicationUrl, applicationTitle } =
+      getExternalRuntimeConfig().main;
     const { embedPoster } = this.getSettings();
     const escape = escapePushoverHtmlText;
 

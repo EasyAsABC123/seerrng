@@ -2,18 +2,22 @@ import { assertNoSymlinkDirectoryComponents } from '@server/lib/pathSecurity';
 import logger from '@server/logger';
 import AsyncLock from '@server/utils/asyncLock';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
-import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
+import { proxyRequestInterceptor } from '@server/utils/customProxyAgent';
 import {
   getHttpErrorDetails,
   withTransientHttpRetry,
 } from '@server/utils/httpError';
-import { createSafeHttpRequestOptions } from '@server/utils/security';
+import {
+  createSafeHttpRequestOptions,
+  createSafeHttpUrl,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios, { type AxiosInstance } from 'axios';
 import rateLimit, { type rateLimitOptions } from 'axios-rate-limit';
 import { createHash } from 'crypto';
 import type { Response } from 'express';
 import { constants, promises } from 'fs';
-import mime from 'mime/lite';
+import mime from 'mime';
 import path from 'path';
 import sharp from 'sharp';
 import { pipeline } from 'stream/promises';
@@ -813,6 +817,8 @@ class ImageProxy {
   private cacheVersion;
   private cacheKeyScope?: string;
   private key;
+  private baseUrl;
+  private allowPrivateAddresses;
 
   constructor(
     key: string,
@@ -831,6 +837,8 @@ class ImageProxy {
     this.cacheVersion = options.cacheVersion ?? 2;
     this.cacheKeyScope = options.cacheKeyScope;
     this.key = key;
+    this.baseUrl = baseUrl;
+    this.allowPrivateAddresses = options.allowPrivateAddresses ?? false;
     this.axios = axios.create({
       baseURL: baseUrl,
       headers: options.headers,
@@ -839,7 +847,7 @@ class ImageProxy {
     });
     this.axios.interceptors.request.use((config) => {
       options.requestValidator?.();
-      return requestInterceptorFunction(config);
+      return proxyRequestInterceptor(config);
     });
 
     if (options.rateLimitOptions) {
@@ -1033,10 +1041,22 @@ class ImageProxy {
     cacheKey: string
   ): Promise<ImageResponse | null> {
     try {
-      const directory = resolveCachePath(this.key, cacheKey);
+      let requestPath: string;
+      try {
+        requestPath = new URL(path, this.baseUrl).href;
+      } catch {
+        throw new Error('Image URL is invalid.');
+      }
+      const safeUrl = await createSafeHttpUrl(requestPath, {
+        allowPrivateAddresses: this.allowPrivateAddresses,
+      });
+      if (!safeUrl) {
+        throw new Error('Image URL is not safe to request.');
+      }
+      requestPath = stringifySafeHttpUrl(safeUrl);
       const response = await withTransientHttpRetry(
         () =>
-          this.axios.get(path, {
+          this.axios.get(requestPath, {
             responseType: 'arraybuffer',
             maxContentLength: MAX_IMAGE_BYTES,
             maxBodyLength: MAX_IMAGE_BYTES,
@@ -1079,15 +1099,6 @@ class ImageProxy {
       const expireAt = lastModified + maxAge * 1000;
       const etag = this.getHash([buffer]);
 
-      const filePath = await this.writeToCacheDir(
-        directory,
-        extension,
-        maxAge,
-        expireAt,
-        buffer,
-        etag
-      );
-
       if (buffer.length <= LRU_ITEM_MAX_BYTES) {
         memoryCache.set(cacheKey, {
           buffer,
@@ -1112,9 +1123,7 @@ class ImageProxy {
           cacheMiss: true,
           lastModified,
         },
-        ...(buffer.length <= LRU_ITEM_MAX_BYTES
-          ? { imageBuffer: buffer }
-          : { filePath }),
+        imageBuffer: buffer,
       };
     } catch (error) {
       logger.warn('Failed to cache upstream image', {
@@ -1125,21 +1134,6 @@ class ImageProxy {
       });
       return null;
     }
-  }
-
-  private async writeToCacheDir(
-    dir: string,
-    extension: string | null,
-    maxAge: number,
-    expireAt: number,
-    buffer: Buffer,
-    etag: string
-  ): Promise<string> {
-    const safeDir = assertCachePath(dir);
-    const filename = assertCachePath(
-      path.join(safeDir, `${maxAge}.${expireAt}.${etag}.${extension}`)
-    );
-    return imageDiskCacheBudget.write(safeDir, path.basename(filename), buffer);
   }
 
   private getCacheKey(path: string) {

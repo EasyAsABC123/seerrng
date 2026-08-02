@@ -40,10 +40,10 @@ import {
   normalizeOpenLibraryEditionId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { hydrateMediaRequestRelations } from '@server/lib/mediaRequestHydration';
 import { Permission } from '@server/lib/permissions';
 import { runWithCurrentServarrService } from '@server/lib/serviceAdmission';
-import { getSettings } from '@server/lib/settings';
 import {
   UserMutationActorUnauthorizedError,
   acquireAuthorizedUserSecurityMutation,
@@ -796,7 +796,7 @@ const validateExternalServiceConfiguration = (
   bookFormat?: 'ebook' | 'audiobook' | 'both' | null,
   is4k = false
 ) => {
-  const settings = getSettings();
+  const settings = getExternalRuntimeConfig();
 
   if (requestType === MediaType.MOVIE || requestType === MediaType.TV) {
     if (serverId === undefined || serverId === null) {
@@ -1274,7 +1274,7 @@ requestRoutes.get<
         { type: 'or' }
       ) ?? false;
 
-    const settings = getSettings();
+    const settings = getExternalRuntimeConfig();
     const sonarrSettings = canHydrateServiceProfiles ? settings.sonarr : [];
     const radarrSettings = canHydrateServiceProfiles ? settings.radarr : [];
     const lidarrSettings = canHydrateServiceProfiles ? settings.lidarr : [];

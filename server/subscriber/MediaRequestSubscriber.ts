@@ -35,6 +35,7 @@ import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { normalizeValidIsbn } from '@server/lib/isbn';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
 import notificationManager, { Notification } from '@server/lib/notifications';
@@ -47,7 +48,7 @@ import {
   runWithServarrServiceCollectionAdmission,
   type ServarrServiceType,
 } from '@server/lib/serviceAdmission';
-import { getSettings, type ReadarrSettings } from '@server/lib/settings';
+import { type ReadarrSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { mapWithConcurrency } from '@server/utils/concurrency';
 import { isEqual } from 'lodash';
@@ -92,7 +93,7 @@ interface RequestDispatchServiceSelection {
 const getRequestDispatchServiceSelection = (
   request: MediaRequest
 ): RequestDispatchServiceSelection => {
-  const settings = getSettings();
+  const settings = getExternalRuntimeConfig();
   const uniqueIds = (ids: (number | undefined)[]) =>
     [...new Set(ids.filter((id): id is number => id !== undefined))].sort(
       (left, right) => left - right
@@ -655,7 +656,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
     ) {
       try {
         const mediaRepository = getRepository(Media);
-        const settings = getSettings();
+        const settings = getExternalRuntimeConfig();
         if (settings.radarr.length === 0 && !settings.radarr[0]) {
           logger.info(
             'No Radarr server configured, skipping request processing',
@@ -913,7 +914,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
     ) {
       try {
         const mediaRepository = getRepository(Media);
-        const settings = getSettings();
+        const settings = getExternalRuntimeConfig();
         if (settings.sonarr.length === 0 && !settings.sonarr[0]) {
           logger.warn(
             'No Sonarr server configured, skipping request processing',
@@ -1227,7 +1228,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
 
     try {
       const mediaRepository = getRepository(Media);
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
 
       let lidarrSettings = settings.lidarr.find((lidarr) => lidarr.isDefault);
 
@@ -1443,7 +1444,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
   ): Promise<number | undefined> {
     try {
       const mediaRepository = getRepository(Media);
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
 
       const media = await mediaRepository.findOne({
         where: { id: entity.media.id },
@@ -2177,29 +2178,64 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       return;
     }
 
-    const [hasActiveStandardRequests, hasActive4kRequests] = await Promise.all([
+    const [
+      hasActiveStandardRequests,
+      hasActive4kRequests,
+      hadCompletedStandardRequest,
+      hadCompleted4kRequest,
+    ] = await Promise.all([
       requestRepository.exists({
         where: { ...activeRequestWhere, is4k: false },
       }),
       requestRepository.exists({
         where: { ...activeRequestWhere, is4k: true },
       }),
+      requestRepository.exists({
+        where: {
+          media: { id: media.id },
+          is4k: false,
+          status: MediaRequestStatus.COMPLETED,
+        },
+      }),
+      requestRepository.exists({
+        where: {
+          media: { id: media.id },
+          is4k: true,
+          status: MediaRequestStatus.COMPLETED,
+        },
+      }),
     ]);
     const needsStatusUpdate =
       !hasActiveStandardRequests &&
       media.status !== MediaStatus.AVAILABLE &&
-      media.status !== MediaStatus.DELETED;
+      media.status !== MediaStatus.PARTIALLY_AVAILABLE;
     const needs4kStatusUpdate =
       !hasActive4kRequests &&
       media.status4k !== MediaStatus.AVAILABLE &&
-      media.status4k !== MediaStatus.DELETED;
+      media.status4k !== MediaStatus.PARTIALLY_AVAILABLE;
 
     if (needsStatusUpdate || needs4kStatusUpdate) {
       if (needsStatusUpdate) {
-        media.status = MediaStatus.UNKNOWN;
+        // A previously COMPLETED request implies the media was actually
+        // delivered; if nothing active remains, treat this as the delivered
+        // file having been removed rather than the media never existing.
+        // If there's no such evidence and the removed request was not
+        // itself the completion record, leave an already-DELETED status
+        // alone rather than resurrecting it to UNKNOWN.
+        media.status = hadCompletedStandardRequest
+          ? MediaStatus.DELETED
+          : media.status === MediaStatus.DELETED &&
+              !(!entity.is4k && entity.status === MediaRequestStatus.COMPLETED)
+            ? MediaStatus.DELETED
+            : MediaStatus.UNKNOWN;
       }
       if (needs4kStatusUpdate) {
-        media.status4k = MediaStatus.UNKNOWN;
+        media.status4k = hadCompleted4kRequest
+          ? MediaStatus.DELETED
+          : media.status4k === MediaStatus.DELETED &&
+              !(entity.is4k && entity.status === MediaRequestStatus.COMPLETED)
+            ? MediaStatus.DELETED
+            : MediaStatus.UNKNOWN;
       }
 
       await manager.save(media);

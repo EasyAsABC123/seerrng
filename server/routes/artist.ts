@@ -311,7 +311,6 @@ artistRoutes.get('/:id', async (req, res, next) => {
       musicbrainz
         .getArtistWikipediaExtract({
           artistMbid: artistId,
-          language: req.locale,
         })
         .catch(() => null),
       !metadataArtist?.tadbThumb && !metadataArtist?.tadbCover

@@ -61,7 +61,7 @@ import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import {
   authorizedMutation,
-  authorizedRouteScope,
+  authorizedRouteAccess,
 } from '@server/middleware/authorizedMutation';
 import discoverSettingRoutes from '@server/routes/settings/discover';
 import { ApiError } from '@server/types/error';
@@ -107,7 +107,7 @@ import readarrRoutes from './readarr';
 import sonarrRoutes from './sonarr';
 
 const settingsRoutes = Router();
-settingsRoutes.use(authorizedRouteScope(Permission.ADMIN, [1]));
+settingsRoutes.use(authorizedRouteAccess(Permission.ADMIN));
 const MAX_LOG_READ_BYTES = 2 * 1024 * 1024;
 const MAX_LOG_LINE_BYTES = 64 * 1024;
 const MAX_LOG_SEARCH_DEPTH = 8;
@@ -1021,10 +1021,16 @@ export const readLogTail = async (
 
   const directory = path.dirname(logFile);
   assertNoSymlinkDirectoryComponents(directory, { label: 'Log directory' });
-  const linkStat = await fs.promises.lstat(logFile);
-  let filePath = logFile;
-
-  if (linkStat.isSymbolicLink()) {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(
+      logFile,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ELOOP') {
+      throw error;
+    }
     const target = await fs.promises.readlink(logFile);
     if (
       path.isAbsolute(target) ||
@@ -1034,13 +1040,12 @@ export const readLogTail = async (
     ) {
       throw new Error('Log symlink must target a file in the log directory.');
     }
-    filePath = path.join(directory, target);
+    const filePath = path.join(directory, target);
+    handle = await fs.promises.open(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
+    );
   }
-
-  const handle = await fs.promises.open(
-    filePath,
-    fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
-  );
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.nlink !== 1) {

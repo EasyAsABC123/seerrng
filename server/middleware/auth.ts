@@ -11,22 +11,48 @@ import {
   runWithUserCredentialVersionContext,
 } from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
-import { safeStringEqual } from '@server/utils/security';
+import { getRateLimitKey } from '@server/utils/security';
+import rateLimit from 'express-rate-limit';
+import { timingSafeEqual } from 'node:crypto';
 
-export const checkUser: Middleware = async (req, res, next) => {
+const authenticatedRouteRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitKey,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+});
+
+export const matchesApiKey = (
+  provided: string,
+  configured: string
+): boolean => {
+  const providedBytes = Buffer.from(provided);
+  const configuredBytes = Buffer.from(configured);
+  return (
+    providedBytes.length === configuredBytes.length &&
+    timingSafeEqual(providedBytes, configuredBytes)
+  );
+};
+
+const checkUserImplementation: Middleware = async (req, res, next) => {
   const settings = getSettings();
   let user: User | undefined | null;
 
   const apiKey = req.header('X-API-Key');
-  if (apiKey !== undefined) {
-    if (safeStringEqual(apiKey, settings.main.apiKey)) {
-      const userRepository = getRepository(User);
+  const apiKeyProvided = apiKey !== undefined;
+  const isApiKeyCurrent = () =>
+    apiKey !== undefined && matchesApiKey(apiKey, settings.main.apiKey);
+  const apiKeyAuthenticated = isApiKeyCurrent();
+  if (apiKeyAuthenticated) {
+    const userRepository = getRepository(User);
 
-      // API key access is a service-level credential. Keep it bound to the
-      // owner account instead of allowing callers to impersonate arbitrary users.
-      user = await userRepository.findOne({ where: { id: 1 } });
-    }
-  } else if (req.session?.userId) {
+    // API key access is a service-level credential. Keep it bound to the
+    // owner account instead of allowing callers to impersonate arbitrary users.
+    user = await userRepository.findOne({ where: { id: 1 } });
+  } else if (!apiKeyProvided && req.session?.userId) {
     const userRepository = getRepository(User);
 
     user = await userRepository.findOne({
@@ -62,7 +88,7 @@ export const checkUser: Middleware = async (req, res, next) => {
     ? user.settings.locale
     : settings.main.locale;
 
-  if (user && apiKey !== undefined) {
+  if (user && apiKeyAuthenticated) {
     let credentialContextActive = true;
     const deactivateCredentialContext = () => {
       credentialContextActive = false;
@@ -71,7 +97,7 @@ export const checkUser: Middleware = async (req, res, next) => {
     res.once('close', deactivateCredentialContext);
     return runWithUserApiKeyAuthorityContext(
       user.id,
-      () => safeStringEqual(apiKey, getSettings().main.apiKey),
+      isApiKeyCurrent,
       next,
       () => credentialContextActive
     );
@@ -95,6 +121,12 @@ export const checkUser: Middleware = async (req, res, next) => {
   next();
 };
 
+export const checkUser: Middleware = (req, res, next) => {
+  authenticatedRouteRateLimit(req, res, () => {
+    void Promise.resolve(checkUserImplementation(req, res, next)).catch(next);
+  });
+};
+
 export const isAuthenticated = (
   permissions?: Permission | Permission[],
   options?: PermissionCheckOptions
@@ -109,5 +141,9 @@ export const isAuthenticated = (
       next();
     }
   };
-  return authMiddleware;
+  return (req, res, next) => {
+    authenticatedRouteRateLimit(req, res, () => {
+      authMiddleware(req, res, next);
+    });
+  };
 };

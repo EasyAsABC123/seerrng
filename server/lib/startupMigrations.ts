@@ -16,7 +16,6 @@ export const runStartupMigrations = async (
 
   const queryRunner = source.createQueryRunner();
   await queryRunner.connect();
-  let transactionStarted = false;
 
   try {
     if (databaseType === 'sqlite') {
@@ -36,7 +35,6 @@ export const runStartupMigrations = async (
     }
 
     await queryRunner.startTransaction();
-    transactionStarted = true;
 
     if (databaseType === 'postgres') {
       await queryRunner.query(
@@ -58,10 +56,9 @@ export const runStartupMigrations = async (
     const migrations = await executor.executePendingMigrations();
 
     await queryRunner.commitTransaction();
-    transactionStarted = false;
     return migrations;
   } catch (error) {
-    if (transactionStarted && queryRunner.isTransactionActive) {
+    if (queryRunner.isTransactionActive) {
       await queryRunner.rollbackTransaction().catch(() => undefined);
     }
     throw error;

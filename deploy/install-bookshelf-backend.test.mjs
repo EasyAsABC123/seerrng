@@ -3,6 +3,7 @@ import { execFile, spawn } from 'node:child_process';
 import {
   mkdir,
   mkdtemp,
+  open,
   readFile,
   readdir,
   rm,
@@ -290,11 +291,16 @@ describe('Bookshelf backup permissions', () => {
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal(await readFile(outside, 'utf8'), 'unchanged');
-    assert.equal((await stat(reportPath)).mode & 0o777, 0o600);
-    assert.equal(
-      JSON.parse(await readFile(reportPath, 'utf8')).status,
-      'matching_complete'
-    );
+    const reportHandle = await open(reportPath, 'r');
+    try {
+      assert.equal((await reportHandle.stat()).mode & 0o777, 0o600);
+      assert.equal(
+        JSON.parse(await reportHandle.readFile('utf8')).status,
+        'matching_complete'
+      );
+    } finally {
+      await reportHandle.close();
+    }
   });
 
   it('rejects control characters before writing deployment inputs', async () => {

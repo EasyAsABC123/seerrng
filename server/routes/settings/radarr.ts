@@ -1,4 +1,5 @@
 import RadarrAPI from '@server/api/servarr/radarr';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
 import {
   runWithCurrentServarrService,
@@ -19,8 +20,10 @@ import { REDACTED_SECRET, redactSecrets } from '@server/utils/security';
 import {
   assertServarrInstanceCapacity,
   parseRadarrSettings,
+  parseServarrConnectionSettings,
   preserveServarrApiKey,
   preserveServarrConnectionSecret,
+  type ServarrConnectionSettings,
 } from '@server/utils/servarrSettings';
 import { Router } from 'express';
 
@@ -77,17 +80,20 @@ radarrRoutes.post(
 radarrRoutes.post<
   undefined,
   Record<string, unknown>,
-  RadarrSettings & { tagLabel?: string }
+  ServarrConnectionSettings
 >(
   '/test',
   authorizedMutation<
     undefined,
     Record<string, unknown>,
-    RadarrSettings & { tagLabel?: string }
+    ServarrConnectionSettings
   >(Permission.ADMIN, async (req, res, next) => {
     try {
-      const parsedRadarr = parseRadarrSettings(
-        preserveServarrConnectionSecret(req.body, getSettings().radarr)
+      const parsedRadarr = parseServarrConnectionSettings(
+        preserveServarrConnectionSecret(
+          req.body,
+          getExternalRuntimeConfig().radarr
+        )
       );
 
       if ('error' in parsedRadarr) {

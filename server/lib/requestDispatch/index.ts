@@ -344,7 +344,6 @@ export class RequestDispatchManager {
       try {
         await this.deliveryQueue.run(async () => {
           let claimToken: string | undefined;
-          let finalized = false;
           try {
             claimToken = await this.claim(record);
             if (!claimToken) {
@@ -374,16 +373,16 @@ export class RequestDispatchManager {
                   `Request dispatch outbox ${record.id} claim was lost.`
                 );
               }
-              finalized = true;
+              claimToken = undefined;
               return;
             }
             await this.failAttempt(record, claimToken, outcome.retryAfterMs);
-            finalized = true;
+            claimToken = undefined;
             throw new Error(
               `Request dispatch outbox ${record.id} remains pending.`
             );
           } catch (error) {
-            if (claimToken && !finalized) {
+            if (claimToken) {
               try {
                 await this.failAttempt(record, claimToken);
               } catch (finalizationError) {
@@ -435,9 +434,7 @@ export class RequestDispatchManager {
     try {
       await scan;
     } finally {
-      if (this.scan === scan) {
-        this.scan = undefined;
-      }
+      this.scan = undefined;
     }
   }
 

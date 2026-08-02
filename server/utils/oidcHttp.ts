@@ -152,4 +152,13 @@ export const createOidcSafeFetch =
     }
   };
 
-export const oidcSafeFetch = createOidcSafeFetch();
+const oidcFetchImplementation: typeof undiciFetch =
+  process.env.NODE_ENV === 'test'
+    ? (url, options) =>
+        globalThis.fetch(
+          url as Parameters<typeof globalThis.fetch>[0],
+          options as RequestInit
+        ) as ReturnType<typeof undiciFetch>
+    : undiciFetch;
+
+export const oidcSafeFetch = createOidcSafeFetch(oidcFetchImplementation);

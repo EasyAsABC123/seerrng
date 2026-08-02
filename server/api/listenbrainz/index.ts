@@ -55,6 +55,18 @@ const clampOffset = (value: number): number =>
     ? Math.min(MAX_LISTENBRAINZ_TOTAL_RESULTS, Math.max(0, Math.trunc(value)))
     : 0;
 
+const hasReleaseGroups = (data: unknown): boolean =>
+  isRecord(data) &&
+  isRecord(data.payload) &&
+  Array.isArray(data.payload.release_groups) &&
+  data.payload.release_groups.length > 0;
+
+const hasFreshReleases = (data: unknown): boolean =>
+  isRecord(data) &&
+  isRecord(data.payload) &&
+  Array.isArray(data.payload.releases) &&
+  data.payload.releases.length > 0;
+
 const sanitizeReleaseGroup = (value: unknown): LbReleaseGroup | undefined => {
   if (!isRecord(value)) {
     return undefined;
@@ -204,7 +216,8 @@ class ListenBrainzAPI extends ExternalAPI {
           count: boundedCount.toString(),
         },
       },
-      43200
+      43200,
+      hasReleaseGroups
     );
     const payload =
       isRecord(data) && isRecord(data.payload) ? data.payload : {};
@@ -307,7 +320,8 @@ class ListenBrainzAPI extends ExternalAPI {
           count: boundedCount.toString(),
         },
       },
-      43200
+      43200,
+      hasFreshReleases
     );
     const payload =
       isRecord(data) && isRecord(data.payload) ? data.payload : {};

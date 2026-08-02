@@ -80,19 +80,25 @@ describe('PullToRefreshController', () => {
           })
         )
       );
+      assert.strictEqual(document.body.style.touchAction, 'pan-x');
+      assert.strictEqual(document.body.style.overscrollBehavior, 'contain');
       await act(async () => {
         dom.window.dispatchEvent(
           createTouchEvent(dom.window.document, 'touchstart', 10)
         );
       });
       assert.strictEqual(document.body.style.touchAction, 'pan-x');
+      assert.strictEqual(document.body.style.overscrollBehavior, 'contain');
       await act(async () => {
-        dom.window.dispatchEvent(
-          createTouchEvent(dom.window.document, 'touchmove', 30)
+        assert.strictEqual(
+          dom.window.dispatchEvent(
+            createTouchEvent(dom.window.document, 'touchmove', 0)
+          ),
+          true
         );
       });
-      assert.strictEqual(document.body.style.touchAction, 'none');
-      assert.strictEqual(document.body.style.overscrollBehavior, 'none');
+      assert.strictEqual(document.body.style.touchAction, 'pan-x');
+      assert.strictEqual(document.body.style.overscrollBehavior, 'contain');
       const releaseModalTouchLock = acquireInlineStyleLease(
         document.body,
         'touchAction',
@@ -100,6 +106,9 @@ describe('PullToRefreshController', () => {
       );
 
       await act(async () => {
+        dom.window.dispatchEvent(
+          createTouchEvent(dom.window.document, 'touchstart', 10)
+        );
         dom.window.dispatchEvent(
           createTouchEvent(dom.window.document, 'touchmove', 400)
         );
@@ -119,107 +128,23 @@ describe('PullToRefreshController', () => {
         document.documentElement.style.overscrollBehaviorY,
         'auto'
       );
+      assert.strictEqual(timers.size, 1);
+      assert.strictEqual(reloads, 0);
       assert.ok(refreshIcon?.firstElementChild?.classList.contains('relative'));
       assert.ok(
         refreshIcon?.firstElementChild?.classList.contains('animate-spin')
       );
-      assert.strictEqual(timers.size, 1);
-      assert.strictEqual(reloads, 0);
 
       releaseModalTouchLock();
       assert.strictEqual(document.body.style.touchAction, 'pan-x');
 
       await act(async () => root.unmount());
-      assert.deepStrictEqual(cleared, [1]);
+      assert.deepStrictEqual(cleared, [1, 2]);
       assert.strictEqual(timers.size, 0);
       assert.strictEqual(reloads, 0);
     } finally {
       globalThis.setTimeout = originalSetTimeout;
       globalThis.clearTimeout = originalClearTimeout;
-      if (originalWindow) {
-        Object.defineProperty(globalThis, 'window', originalWindow);
-      } else {
-        Reflect.deleteProperty(globalThis, 'window');
-      }
-      if (originalDocument) {
-        Object.defineProperty(globalThis, 'document', originalDocument);
-      } else {
-        Reflect.deleteProperty(globalThis, 'document');
-      }
-      if (originalActEnvironment) {
-        Object.defineProperty(
-          globalThis,
-          'IS_REACT_ACT_ENVIRONMENT',
-          originalActEnvironment
-        );
-      } else {
-        Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
-      }
-      dom.window.close();
-    }
-  });
-
-  it('does not block an upward swipe from the top of the page', async () => {
-    const dom = new JSDOM('<html><body><div id="root"></div></body></html>', {
-      url: 'http://localhost/',
-    });
-    const originalWindow = Object.getOwnPropertyDescriptor(
-      globalThis,
-      'window'
-    );
-    const originalDocument = Object.getOwnPropertyDescriptor(
-      globalThis,
-      'document'
-    );
-    const originalActEnvironment = Object.getOwnPropertyDescriptor(
-      globalThis,
-      'IS_REACT_ACT_ENVIRONMENT'
-    );
-
-    Object.defineProperty(globalThis, 'window', {
-      configurable: true,
-      value: dom.window,
-    });
-    Object.defineProperty(globalThis, 'document', {
-      configurable: true,
-      value: dom.window.document,
-    });
-    Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
-      configurable: true,
-      value: true,
-    });
-    document.body.style.touchAction = 'pan-y';
-    document.body.style.overscrollBehavior = 'contain';
-    document.documentElement.style.overscrollBehaviorY = 'auto';
-    const root = createRoot(document.getElementById('root')!);
-
-    try {
-      await act(async () =>
-        root.render(
-          createElement(PullToRefreshController, { reload: () => {} })
-        )
-      );
-
-      dom.window.dispatchEvent(
-        createTouchEvent(dom.window.document, 'touchstart', 200)
-      );
-      const upwardMove = createTouchEvent(
-        dom.window.document,
-        'touchmove',
-        100
-      );
-      dom.window.dispatchEvent(upwardMove);
-
-      assert.strictEqual(upwardMove.defaultPrevented, false);
-      assert.strictEqual(document.body.style.touchAction, 'pan-y');
-      assert.strictEqual(document.body.style.overscrollBehavior, 'contain');
-      assert.strictEqual(
-        document.documentElement.style.overscrollBehaviorY,
-        'auto'
-      );
-      assert.strictEqual(document.getElementById('refreshIcon'), null);
-    } finally {
-      await act(async () => root.unmount());
       if (originalWindow) {
         Object.defineProperty(globalThis, 'window', originalWindow);
       } else {

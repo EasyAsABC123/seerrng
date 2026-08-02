@@ -10,9 +10,9 @@ import type {
   ServiceCommonServer,
   ServiceCommonServerWithDetails,
 } from '@server/interfaces/api/serviceInterfaces';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
 import { runWithCurrentServarrService } from '@server/lib/serviceAdmission';
-import { getSettings } from '@server/lib/settings';
 import {
   UserMutationActorUnauthorizedError,
   isUserSessionCredentialVersionCurrent,
@@ -136,7 +136,7 @@ const filterServiceServer = (
 serviceRoutes.get('/radarr', async (req, res, next) => {
   try {
     return await runServiceSummaryRead(req, (includeOperationalDetails) => {
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
       const filteredRadarrServers: ServiceCommonServer[] = settings.radarr.map(
         (radarr) =>
           filterServiceServer(
@@ -225,7 +225,7 @@ serviceRoutes.get<{ radarrId: string }>(
 serviceRoutes.get('/sonarr', async (req, res, next) => {
   try {
     return await runServiceSummaryRead(req, (includeOperationalDetails) => {
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
       const filteredSonarrServers: ServiceCommonServer[] = settings.sonarr.map(
         (sonarr) =>
           filterServiceServer(
@@ -338,7 +338,7 @@ serviceRoutes.get<{ sonarrId: string }>(
 serviceRoutes.get('/lidarr', async (req, res, next) => {
   try {
     return await runServiceSummaryRead(req, (includeOperationalDetails) => {
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
       const filteredLidarrServers: ServiceCommonServer[] = settings.lidarr.map(
         (lidarr) =>
           filterServiceServer(
@@ -366,7 +366,7 @@ serviceRoutes.get('/lidarr', async (req, res, next) => {
 serviceRoutes.get('/readarr', async (req, res, next) => {
   try {
     return await runServiceSummaryRead(req, (includeOperationalDetails) => {
-      const settings = getSettings();
+      const settings = getExternalRuntimeConfig();
       const filteredReadarrServers: ServiceCommonServer[] =
         settings.readarr.map((readarr) =>
           filterServiceServer(
@@ -572,7 +572,7 @@ serviceRoutes.get<{ tmdbId: string }>(
           tvId: tmdbId,
           language: 'en',
         });
-        const sonarrId = getSettings().sonarr[0]?.id;
+        const sonarrId = getExternalRuntimeConfig().sonarr[0]?.id;
         if (sonarrId === undefined) {
           logger.error('No sonarr server has been setup', {
             label: 'Media Request',

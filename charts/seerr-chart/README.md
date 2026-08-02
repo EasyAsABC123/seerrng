@@ -1,6 +1,6 @@
 # seerr-chart
 
-![Version: 1.0.2](https://img.shields.io/badge/Version-1.0.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v3.5.1](https://img.shields.io/badge/AppVersion-v3.5.1-informational?style=flat-square)
+![Version: 1.0.2](https://img.shields.io/badge/Version-1.0.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v3.8.0](https://img.shields.io/badge/AppVersion-v3.8.0-informational?style=flat-square)
 
 SeerrNG Helm chart for Kubernetes
 
@@ -53,10 +53,13 @@ If `replicaCount` value was used - remove it. Helm update should work fine after
 | config.persistence.storageClass | string | `""` | Storage class for the PVC. Set to "-" to disable dynamic provisioning. Uses default storage class if no value is provided |
 | config.persistence.subPath | string | `""` | Subpath of the pvc which should be mounted |
 | config.persistence.volumeName | string | `""` | Name of the permanent volume to reference in the claim. Can be used to bind to existing volumes. |
+| dnsConfig | object | `{}` | docs: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config |
+| dnsPolicy | string | `""` | docs: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-policy |
 | enableServiceLinks | bool | `false` | Inject environment variables for active Kubernetes Services into the pod |
 | extraEnv | list | `[]` | Environment variables to add to the seerr pods |
 | extraEnvFrom | list | `[]` | Environment variables from secrets or configmaps to add to the seerr pods |
 | fullnameOverride | string | `""` |  |
+| hostUsers | bool | `true` | docs: https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/ |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.registry | string | `"ghcr.io"` |  |
 | image.repository | string | `"snapetech/seerrng"` |  |
@@ -76,6 +79,7 @@ If `replicaCount` value was used - remove it. Helm update should work fine after
 | podLabels | object | `{}` |  |
 | podSecurityContext.fsGroup | int | `1000` |  |
 | podSecurityContext.fsGroupChangePolicy | string | `"OnRootMismatch"` |  |
+| priorityClassName | string | `nil` | Specify a priorityclass, or use default if unset. |
 | probes.livenessProbe | object | `{"initialDelaySeconds":20,"periodSeconds":15,"timeoutSeconds":3}` | Configure liveness probe |
 | probes.readinessProbe | object | `{"initialDelaySeconds":60,"periodSeconds":15,"timeoutSeconds":3}` | Configure readiness probe |
 | probes.startupProbe | object | `{"failureThreshold":120,"httpGet":{"path":"/api/v1/settings/public","port":"http"},"periodSeconds":5,"timeoutSeconds":3}` | Configure startup probe |

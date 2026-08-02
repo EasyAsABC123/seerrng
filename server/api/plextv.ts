@@ -426,8 +426,10 @@ class PlexTvAPI extends ExternalAPI {
 
   public async getDevices(): Promise<PlexDevice[]> {
     try {
-      const devicesResp = await this.axios.get(
+      const devicesResp = await this.request<string>(
+        'GET',
         '/api/resources?includeHttps=1',
+        undefined,
         {
           transformResponse: [],
           responseType: 'text',
@@ -446,7 +448,8 @@ class PlexTvAPI extends ExternalAPI {
 
   public async getUser(): Promise<PlexUser> {
     try {
-      const account = await this.axios.get<PlexAccountResponse>(
+      const account = await this.request<PlexAccountResponse>(
+        'GET',
         '/users/account.json'
       );
 
@@ -488,10 +491,15 @@ class PlexTvAPI extends ExternalAPI {
   }
 
   public async getUsers(): Promise<UsersResponse> {
-    const response = await this.axios.get('/api/users', {
-      transformResponse: [],
-      responseType: 'text',
-    });
+    const response = await this.request<string>(
+      'GET',
+      '/api/users',
+      undefined,
+      {
+        transformResponse: [],
+        responseType: 'text',
+      }
+    );
 
     const parsedXml = await xml2js.parseStringPromise(response.data);
     return parsePlexSharedUsers(parsedXml);
@@ -522,17 +530,22 @@ class PlexTvAPI extends ExternalAPI {
 
       const response = await withTransientHttpRetry(
         () =>
-          this.axios.get<WatchlistResponse>('/library/sections/watchlist/all', {
-            params: {
-              'X-Plex-Container-Start': offset,
-              'X-Plex-Container-Size': size,
-            },
-            headers: {
-              'If-None-Match': cachedWatchlist?.etag,
-            },
-            baseURL: 'https://discover.provider.plex.tv',
-            validateStatus: (status) => status < 400, // Allow HTTP 304 to return without error
-          }),
+          this.request<WatchlistResponse>(
+            'GET',
+            '/library/sections/watchlist/all',
+            undefined,
+            {
+              params: {
+                'X-Plex-Container-Start': offset,
+                'X-Plex-Container-Size': size,
+              },
+              headers: {
+                'If-None-Match': cachedWatchlist?.etag,
+              },
+              baseURL: 'https://discover.provider.plex.tv',
+              validateStatus: (status) => status < 400, // Allow HTTP 304 to return without error
+            }
+          ),
         {
           onRetry: (error, nextAttempt) => {
             logger.warn('Retrying transient Plex watchlist request', {
@@ -638,11 +651,16 @@ class PlexTvAPI extends ExternalAPI {
 
   public async pingToken() {
     try {
-      const response = await this.axios.get('/api/v2/ping', {
-        headers: {
-          'X-Plex-Client-Identifier': randomUUID(),
-        },
-      });
+      const response = await this.request<{ pong?: boolean }>(
+        'GET',
+        '/api/v2/ping',
+        undefined,
+        {
+          headers: {
+            'X-Plex-Client-Identifier': randomUUID(),
+          },
+        }
+      );
       if (!response?.data?.pong) {
         throw new Error('No pong response');
       }

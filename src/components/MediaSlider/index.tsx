@@ -22,6 +22,7 @@ import {
 } from '@app/utils/discoverStateOverlay';
 import {
   MEDIA_SLIDER_TITLE_LIMIT,
+  hasMediaSliderResults,
   shouldShowMoreSliderCard,
 } from '@app/utils/mediaSlider';
 import {
@@ -149,6 +150,7 @@ const MediaSlider = ({
       ? seedOverride?.seed
       : snapshot?.metadata.seed) ?? initialShuffleSeed;
   const fallbackData = snapshot?.data;
+  const fallbackHasResults = hasMediaSliderResults(fallbackData);
   const shouldLoad =
     !!user && snapshotHydrated && (!!fallbackData || isEditingSafe() || inView);
   const getKey = useCallback(
@@ -183,8 +185,8 @@ const MediaSlider = ({
     mutate: revalidate,
   } = useSWRInfinite<MixedResult>(getKey, {
     initialSize: 1,
-    revalidateFirstPage: false,
-    revalidateOnMount: !fallbackData,
+    revalidateFirstPage: !fallbackHasResults,
+    revalidateOnMount: !fallbackData || !fallbackHasResults,
     dedupingInterval: 30000,
     fetcher: ([requestUrl]: [string, string]) =>
       axios.get<MixedResult>(requestUrl).then((response) => response.data),
@@ -377,7 +379,8 @@ const MediaSlider = ({
       cacheContextKey &&
       snapshotKey &&
       data?.length &&
-      data !== fallbackData
+      data !== fallbackData &&
+      (!hideWhenEmpty || hasMediaSliderResults(data))
     ) {
       void setDiscoverSnapshot(
         snapshotKey,
@@ -394,6 +397,7 @@ const MediaSlider = ({
     cacheContextKey,
     data,
     fallbackData,
+    hideWhenEmpty,
     manifest,
     randomizeOrder,
     shuffleSeed,

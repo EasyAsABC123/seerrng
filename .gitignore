@@ -10,7 +10,7 @@ lcov.info
 # next.js
 /.next/
 /out/
-next-env.d.ts
+/next-env.d.ts
 
 # production
 /build
@@ -96,3 +96,17 @@ compose.override.yaml
 
 # temporary Cypress scratch specs
 cypress/e2e/*.temp.cy.ts
+
+# CodeQL local pack install cache
+.github/codeql/model-pack/.codeql/
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml

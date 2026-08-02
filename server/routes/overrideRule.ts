@@ -1,15 +1,15 @@
 import { getRepository } from '@server/datasource';
 import OverrideRule from '@server/entity/OverrideRule';
 import type { OverrideRuleResultsResponse } from '@server/interfaces/api/overrideRuleInterfaces';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { runOverrideRuleMutation } from '@server/lib/overrideRuleMutation';
 import { Permission } from '@server/lib/permissions';
 import { runWithServarrServiceAdmission } from '@server/lib/serviceAdmission';
-import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import {
   authorizedMutation,
-  authorizedRouteScope,
+  authorizedRouteAccess,
 } from '@server/middleware/authorizedMutation';
 import { parsePositiveRouteId } from '@server/utils/routeId';
 import {
@@ -228,7 +228,7 @@ const validateOverrideRuleShape = (
     return { error: 'Override rules must target exactly one service.' };
   }
 
-  const settings = getSettings();
+  const settings = getExternalRuntimeConfig();
   if (
     (rule.radarrServiceId != null &&
       !settings.radarr.some(({ id }) => id === rule.radarrServiceId)) ||
@@ -364,7 +364,7 @@ const parseOverrideRuleBody = (
 overrideRuleRoutes.get(
   '/',
   isAuthenticated(Permission.ADMIN),
-  authorizedRouteScope(Permission.ADMIN),
+  authorizedRouteAccess(Permission.ADMIN),
   async (req, res, next) => {
     const overrideRuleRepository = getRepository(OverrideRule);
 

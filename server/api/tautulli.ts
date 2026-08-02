@@ -1,10 +1,15 @@
 import type { User } from '@server/entity/User';
-import { getSettings, type TautulliSettings } from '@server/lib/settings';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
+import type { TautulliSettings } from '@server/lib/settings';
 import logger from '@server/logger';
-import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
-import { createSafeHttpRequestOptions } from '@server/utils/security';
+import { proxyRequestInterceptor } from '@server/utils/customProxyAgent';
+import {
+  createSafeHttpRequestOptions,
+  createSafeHttpUrl,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import { buildServiceUrl } from '@server/utils/serviceUrl';
-import type { AxiosInstance } from 'axios';
+import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 import axios from 'axios';
 import { uniqWith } from 'lodash';
 
@@ -139,27 +144,49 @@ interface TautulliInfoResponse {
 
 class TautulliAPI {
   private axios: AxiosInstance;
+  private baseUrl: string;
 
   constructor(settings: TautulliSettings) {
+    this.baseUrl = buildServiceUrl({
+      useSsl: settings.useSsl,
+      hostname: settings.hostname,
+      port: settings.port,
+      urlBase: settings.urlBase,
+    });
     this.axios = axios.create({
-      baseURL: buildServiceUrl({
-        useSsl: settings.useSsl,
-        hostname: settings.hostname,
-        port: settings.port,
-        urlBase: settings.urlBase,
-      }),
       params: { apikey: settings.apiKey },
       ...createSafeHttpRequestOptions(true, false),
-      timeout: getSettings().network.apiRequestTimeout,
+      timeout: getExternalRuntimeConfig().network.apiRequestTimeout,
       ...TAUTULLI_HTTP_LIMITS,
     });
-    this.axios.interceptors.request.use(requestInterceptorFunction);
+    this.axios.interceptors.request.use(proxyRequestInterceptor);
+  }
+
+  private async get<T>(
+    path: string,
+    config?: AxiosRequestConfig
+  ): Promise<{ data: T }> {
+    let requestUrl: string;
+    try {
+      requestUrl = new URL(path, this.baseUrl).href;
+    } catch (error) {
+      throw new Error('Invalid Tautulli request URL.', { cause: error });
+    }
+
+    const safeUrl = await createSafeHttpUrl(requestUrl, {
+      allowPrivateAddresses: true,
+    });
+    if (!safeUrl) {
+      throw new Error('Tautulli request URL is not safe.');
+    }
+
+    return this.axios.get<T>(stringifySafeHttpUrl(safeUrl), config);
   }
 
   public async getInfo(): Promise<TautulliInfo> {
     try {
       return (
-        await this.axios.get<TautulliInfoResponse>('/api/v2', {
+        await this.get<TautulliInfoResponse>('/api/v2', {
           params: { cmd: 'get_tautulli_info' },
         })
       ).data.response.data;
@@ -180,7 +207,7 @@ class TautulliAPI {
   ): Promise<TautulliWatchStats[]> {
     try {
       return (
-        await this.axios.get<TautulliWatchStatsResponse>('/api/v2', {
+        await this.get<TautulliWatchStatsResponse>('/api/v2', {
           params: {
             cmd: 'get_item_watch_time_stats',
             rating_key: ratingKey,
@@ -209,7 +236,7 @@ class TautulliAPI {
   ): Promise<TautulliWatchUser[]> {
     try {
       return (
-        await this.axios.get<TautulliWatchUsersResponse>('/api/v2', {
+        await this.get<TautulliWatchUsersResponse>('/api/v2', {
           params: {
             cmd: 'get_item_user_stats',
             rating_key: ratingKey,
@@ -240,7 +267,7 @@ class TautulliAPI {
       }
 
       return (
-        await this.axios.get<TautulliWatchStatsResponse>('/api/v2', {
+        await this.get<TautulliWatchStatsResponse>('/api/v2', {
           params: {
             cmd: 'get_user_watch_time_stats',
             user_id: user.plexId,
@@ -285,7 +312,7 @@ class TautulliAPI {
         page += 1
       ) {
         const rawTautulliData = (
-          await this.axios.get<TautulliHistoryResponse>('/api/v2', {
+          await this.get<TautulliHistoryResponse>('/api/v2', {
             params: {
               cmd: 'get_history',
               grouping: 1,

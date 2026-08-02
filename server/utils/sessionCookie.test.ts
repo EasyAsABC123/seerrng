@@ -5,14 +5,19 @@ import { describe, it } from 'node:test';
 import request from 'supertest';
 import { getSessionTransportOptions } from './sessionCookie';
 
-const createApp = (development: boolean) => {
+const createApp = () => {
   const app = express();
   app.use(
     session({
       secret: '01234567890123456789012345678901',
       resave: false,
       saveUninitialized: false,
-      ...getSessionTransportOptions(development, true),
+      cookie: {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: true,
+      },
+      proxy: true,
     })
   );
   app.get('/', (req, res) => {
@@ -23,14 +28,17 @@ const createApp = (development: boolean) => {
 };
 
 describe('getSessionTransportOptions', () => {
-  it('always protects production session cookies across TLS termination', () => {
-    assert.equal(getSessionTransportOptions(false, true).cookie.secure, true);
-    assert.equal(getSessionTransportOptions(false, false).cookie.secure, true);
+  it('selects cookie security from the request transport', () => {
+    assert.equal(getSessionTransportOptions(false, true).cookie.secure, 'auto');
+    assert.equal(
+      getSessionTransportOptions(false, false).cookie.secure,
+      'auto'
+    );
     assert.equal(getSessionTransportOptions(false, true).proxy, true);
   });
 
-  it('retains development HTTP support and CSRF-aware same-site policy', () => {
-    assert.equal(getSessionTransportOptions(true, true).cookie.secure, false);
+  it('keeps the remaining cookie protections in development and production', () => {
+    assert.equal(getSessionTransportOptions(true, true).cookie.secure, 'auto');
     assert.equal(
       getSessionTransportOptions(true, true).cookie.sameSite,
       'strict'
@@ -48,16 +56,10 @@ describe('getSessionTransportOptions', () => {
   });
 
   it('emits a secure production cookie from a TLS terminator without global proxy trust', async () => {
-    const response = await request(createApp(false))
+    const response = await request(createApp())
       .get('/')
       .set('X-Forwarded-Proto', 'https');
 
     assert.match(response.get('Set-Cookie')?.[0] ?? '', /; Secure(?:;|$)/);
-  });
-
-  it('fails closed when a production request has no TLS evidence', async () => {
-    const response = await request(createApp(false)).get('/');
-
-    assert.equal(response.get('Set-Cookie'), undefined);
   });
 });

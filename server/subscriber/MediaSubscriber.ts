@@ -7,6 +7,7 @@ import Media from '@server/entity/Media';
 import { MediaRequest } from '@server/entity/MediaRequest';
 import Season from '@server/entity/Season';
 import SeasonRequest from '@server/entity/SeasonRequest';
+import logger from '@server/logger';
 import type {
   EntityManager,
   EntitySubscriberInterface,
@@ -293,30 +294,55 @@ export class MediaSubscriber implements EntitySubscriberInterface<Media> {
       });
     };
 
-    if (
-      (event.entity.status !== event.databaseEntity?.status ||
-        (event.entity.mediaType === MediaType.TV &&
-          seasonStatusCheck(false))) &&
-      validStatuses.includes(event.entity.status)
-    ) {
-      await this.updateRelatedMediaRequest(
-        event.manager,
-        event.entity as Media,
-        event.databaseEntity as Media,
-        false
+    try {
+      if (
+        (event.entity.status !== event.databaseEntity?.status ||
+          (event.entity.mediaType === MediaType.TV &&
+            seasonStatusCheck(false))) &&
+        validStatuses.includes(event.entity.status)
+      ) {
+        await this.updateRelatedMediaRequest(
+          event.manager,
+          event.entity as Media,
+          event.databaseEntity as Media,
+          false
+        );
+      }
+    } catch (e) {
+      logger.error(
+        'Error while updating related requests in afterUpdate subscriber',
+        {
+          label: 'Media',
+          mediaId: event.entity.id,
+          is4k: false,
+          errorMessage: e instanceof Error ? e.message : String(e),
+        }
       );
     }
 
-    if (
-      (event.entity.status4k !== event.databaseEntity?.status4k ||
-        (event.entity.mediaType === MediaType.TV && seasonStatusCheck(true))) &&
-      validStatuses.includes(event.entity.status4k)
-    ) {
-      await this.updateRelatedMediaRequest(
-        event.manager,
-        event.entity as Media,
-        event.databaseEntity as Media,
-        true
+    try {
+      if (
+        (event.entity.status4k !== event.databaseEntity?.status4k ||
+          (event.entity.mediaType === MediaType.TV &&
+            seasonStatusCheck(true))) &&
+        validStatuses.includes(event.entity.status4k)
+      ) {
+        await this.updateRelatedMediaRequest(
+          event.manager,
+          event.entity as Media,
+          event.databaseEntity as Media,
+          true
+        );
+      }
+    } catch (e) {
+      logger.error(
+        'Error while updating related requests in afterUpdate subscriber',
+        {
+          label: 'Media',
+          mediaId: event.entity.id,
+          is4k: true,
+          errorMessage: e instanceof Error ? e.message : String(e),
+        }
       );
     }
   }

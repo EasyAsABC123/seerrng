@@ -14,7 +14,9 @@ describe('General Settings', () => {
 
   it('modifies setting that requires restart', () => {
     cy.intercept('POST', '/api/v1/settings/network').as('saveNetwork');
-    cy.intercept('GET', '/api/v1/status').as('getStatus');
+    cy.intercept('GET', '/api/v1/status?checkUpdateAvailable=false').as(
+      'getStatus'
+    );
     cy.visit('/settings/network');
     cy.wait('@getStatus');
 

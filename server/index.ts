@@ -10,6 +10,7 @@ import { User } from '@server/entity/User';
 import { initI18n } from '@server/i18n';
 import { startJobs, stopJobs } from '@server/job/schedule';
 import { runWithConfigurationAdmission } from '@server/lib/configurationAdmission';
+import { loadExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import notificationManager from '@server/lib/notifications';
 import DiscordAgent from '@server/lib/notifications/agents/discord';
 import EmailAgent from '@server/lib/notifications/agents/email';
@@ -45,7 +46,9 @@ import imageproxy from '@server/routes/imageproxy';
 import { appDataPermissions } from '@server/utils/appDataVolume';
 import { getAppVersion } from '@server/utils/appVersion';
 import { waitForBackgroundTasks } from '@server/utils/backgroundTasks';
-import createCustomProxyAgent from '@server/utils/customProxyAgent';
+import createCustomProxyAgent, {
+  setForceIpv4First,
+} from '@server/utils/customProxyAgent';
 import { initializeDnsCache } from '@server/utils/dnsCache';
 import {
   createProcessShutdownController,
@@ -53,19 +56,19 @@ import {
 } from '@server/utils/gracefulShutdown';
 import { configureHttpServer, parseListenPort } from '@server/utils/httpServer';
 import restartFlag from '@server/utils/restartFlag';
+import { getRateLimitKey } from '@server/utils/security';
 import { getSessionTransportOptions } from '@server/utils/sessionCookie';
-import axios from 'axios';
 import compression from 'compression';
 import { TypeormStore } from 'connect-typeorm/out';
 import cookieParser from 'cookie-parser';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
+import rateLimit from 'express-rate-limit';
 import type { Store } from 'express-session';
 import session from 'express-session';
 import fs from 'fs/promises';
 import http from 'http';
-import https from 'https';
 import yaml from 'js-yaml';
 import next from 'next';
 import path from 'path';
@@ -74,6 +77,15 @@ import swaggerUi from 'swagger-ui-express';
 const API_SPEC_PATH = path.join(__dirname, '../seerr-api.yml');
 const API_BODY_LIMIT = '100kb';
 const API_URLENCODED_PARAMETER_LIMIT = 100;
+const API_RATE_LIMIT = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitKey,
+  skip: () =>
+    process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
+});
 const SHUTDOWN_CONNECTION_TIMEOUT_MS = 10_000;
 const SHUTDOWN_TASK_TIMEOUT_MS = 15_000;
 
@@ -154,14 +166,12 @@ app
 
     // Load Settings
     const settings = await getSettings().load();
+    loadExternalRuntimeConfig();
     restartFlag.initializeSettings(settings);
 
     initI18n();
 
-    if (settings.network.forceIpv4First) {
-      axios.defaults.httpAgent = new http.Agent({ family: 4 });
-      axios.defaults.httpsAgent = new https.Agent({ family: 4 });
-    }
+    setForceIpv4First(settings.network.forceIpv4First);
 
     // Add DNS caching
     if (settings.network.dnsCache?.enabled) {
@@ -178,6 +188,8 @@ app
         settings.network.forceIpv4First
       );
     }
+
+    const isE2eTest = isTruthyEnv(process.env.E2E_TESTS);
 
     // Migrate library types
     if (
@@ -225,16 +237,26 @@ app
       new WebhookAgent(),
       new WebPushAgent(),
     ]);
-    await notificationManager.resumePendingNotifications();
-    notificationManager.startOutboxRetryLoop();
-    await requestDispatchManager.resume();
-    requestDispatchManager.start();
-    await resumePendingPasswordResetDeliveries();
+    if (isE2eTest) {
+      logger.info('Skipping background delivery loops in E2E test mode', {
+        label: 'Server',
+      });
+    } else {
+      await notificationManager.resumePendingNotifications();
+      notificationManager.startOutboxRetryLoop();
+      await requestDispatchManager.resume();
+      requestDispatchManager.start();
+      await resumePendingPasswordResetDeliveries();
+    }
 
     const userRepository = getRepository(User);
     const totalUsers = await userRepository.count();
-    if (totalUsers > 0) {
+    if (totalUsers > 0 && !isE2eTest) {
       startJobs();
+    } else if (isE2eTest) {
+      logger.info('Skipping scheduled jobs in E2E test mode', {
+        label: 'Server',
+      });
     } else {
       logger.info(
         `Skipping starting the scheduled jobs as we have no Plex/Jellyfin/Emby servers setup yet`,
@@ -269,28 +291,38 @@ app
           cookie: {
             httpOnly: true,
             sameSite: true,
-            secure: !dev,
+            secure: true,
             key: '_csrf',
             path: '/',
           },
         })
       );
-      server.use(csrfTokenCookie(!dev));
+      server.use(csrfTokenCookie(true));
     }
 
     // Set up sessions
     const sessionRespository = getRepository(Session);
+    const sessionTransportOptions = getSessionTransportOptions(
+      dev,
+      settings.network.csrfProtection
+    );
+    // Cypress drives many concurrent API requests through one SQLite session
+    // row. Keep E2E session state process-local so those requests cannot queue
+    // behind TypeORM session touches. Production retains durable sessions.
+    const sessionStore = isE2eTest
+      ? undefined
+      : (new TypeormStore({
+          cleanupLimit: 2,
+          ttl: 60 * 60 * 24 * 30,
+        }).connect(sessionRespository) as Store);
     server.use(
       '/api',
       session({
         secret: settings.sessionSecret,
         resave: false,
         saveUninitialized: false,
-        ...getSessionTransportOptions(dev, settings.network.csrfProtection),
-        store: new TypeormStore({
-          cleanupLimit: 2,
-          ttl: 60 * 60 * 24 * 30,
-        }).connect(sessionRespository) as Store,
+        ...sessionTransportOptions,
+        ...(sessionStore ? { store: sessionStore } : {}),
       })
     );
     const apiSpecContent = await fs.readFile(API_SPEC_PATH, 'utf-8');
@@ -302,7 +334,7 @@ app
         validateRequests: true,
       })
     );
-    server.use('/api/v1', routes);
+    server.use('/api/v1', API_RATE_LIMIT, routes);
 
     // Do not set cookies so CDNs can cache them
     server.use('/imageproxy', clearCookies, imageproxy);
@@ -362,6 +394,14 @@ app
         });
       });
     }
+
+    listener.on('error', (err: Error) => {
+      logger.error('Failed to start server', {
+        label: 'Server',
+        message: err.message,
+      });
+      process.exit(1);
+    });
 
     let stoppingJobs: Promise<void> | undefined;
     const shutdownController = createProcessShutdownController({

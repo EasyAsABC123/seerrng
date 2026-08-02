@@ -5,10 +5,15 @@ import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { getExternalNotificationAgent } from '@server/lib/externalRuntimeConfig';
 import type { NotificationAgentWebhook } from '@server/lib/settings';
-import { getSettings } from '@server/lib/settings';
+import { NotificationAgentKey } from '@server/lib/settings';
 import logger from '@server/logger';
-import { isSafeHttpUrl, redactSecrets } from '@server/utils/security';
+import {
+  createSafeHttpUrl,
+  redactSecrets,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios from 'axios';
 import { get } from 'lodash';
 import { Notification, hasNotificationType } from '..';
@@ -111,7 +116,7 @@ const KeyMap: Record<string, string | KeyMapFunction> = {
   notifyuser_username: 'notifyUser.displayName',
   notifyuser_email: 'notifyUser.email',
   notifyuser_avatar: 'notifyUser.avatar',
-  notifyuser_settings_discordId: 'notifyUser.settings.discordId',
+  notifyuser_settings_discordIds: 'notifyUser.settings.discordIds',
   notifyuser_settings_telegramChatId: 'notifyUser.settings.telegramChatId',
   media_imdbid: 'media.imdbId',
   media_tmdbid: 'media.tmdbId',
@@ -163,7 +168,7 @@ const KeyMap: Record<string, string | KeyMapFunction> = {
   requestedBy_username: 'request.requestedBy.displayName',
   requestedBy_email: 'request.requestedBy.email',
   requestedBy_avatar: 'request.requestedBy.avatar',
-  requestedBy_settings_discordId: 'request.requestedBy.settings.discordId',
+  requestedBy_settings_discordIds: 'request.requestedBy.settings.discordIds',
   requestedBy_settings_telegramChatId:
     'request.requestedBy.settings.telegramChatId',
   issue_id: 'issue.id',
@@ -174,13 +179,13 @@ const KeyMap: Record<string, string | KeyMapFunction> = {
   reportedBy_username: 'issue.createdBy.displayName',
   reportedBy_email: 'issue.createdBy.email',
   reportedBy_avatar: 'issue.createdBy.avatar',
-  reportedBy_settings_discordId: 'issue.createdBy.settings.discordId',
+  reportedBy_settings_discordIds: 'issue.createdBy.settings.discordIds',
   reportedBy_settings_telegramChatId: 'issue.createdBy.settings.telegramChatId',
   comment_message: 'comment.message',
   commentedBy_username: 'comment.user.displayName',
   commentedBy_email: 'comment.user.email',
   commentedBy_avatar: 'comment.user.avatar',
-  commentedBy_settings_discordId: 'comment.user.settings.discordId',
+  commentedBy_settings_discordIds: 'comment.user.settings.discordIds',
   commentedBy_settings_telegramChatId: 'comment.user.settings.telegramChatId',
 };
 
@@ -193,9 +198,7 @@ class WebhookAgent
       return this.settings;
     }
 
-    const settings = getSettings();
-
-    return settings.notifications.agents.webhook;
+    return getExternalNotificationAgent(NotificationAgentKey.WEBHOOK);
   }
 
   private parseKeys(
@@ -345,12 +348,11 @@ class WebhookAgent
       return false;
     }
 
-    if (
-      !(await isSafeHttpUrl(webhookUrl, {
-        allowPrivateAddresses:
-          process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
-      }))
-    ) {
+    const safeWebhookUrl = await createSafeHttpUrl(webhookUrl, {
+      allowPrivateAddresses:
+        process.env.SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS === 'true',
+    });
+    if (!safeWebhookUrl) {
       logger.error('Invalid webhook notification URL', {
         label: 'Notifications',
         type: Notification[type],
@@ -395,7 +397,7 @@ class WebhookAgent
       }
 
       await axios.post(
-        webhookUrl,
+        stringifySafeHttpUrl(safeWebhookUrl),
         this.buildPayload(type, payload),
         Object.keys(headers).length > 0
           ? { ...CONFIGURABLE_NOTIFICATION_HTTP_OPTIONS, headers }

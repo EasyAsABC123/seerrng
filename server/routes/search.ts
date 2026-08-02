@@ -15,11 +15,11 @@ import {
   normalizeMusicBrainzId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import {
   findSearchProvider,
   type CombinedSearchResponse,
 } from '@server/lib/search';
-import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { mapOpenLibrarySearchDoc } from '@server/models/Book';
 import { mapSearchResults } from '@server/models/Search';
@@ -154,7 +154,7 @@ searchRoutes.get('/', async (req, res, next) => {
     return res.status(400).json({ status: 400, message: parsedType.error });
   }
   const typeFilter = parsedType.value;
-  const settings = getSettings();
+  const settings = getExternalRuntimeConfig();
   const musicEnabled = settings.lidarr.length > 0;
   const booksEnabled = settings.readarr.length > 0;
 

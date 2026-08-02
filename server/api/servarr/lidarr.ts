@@ -315,7 +315,7 @@ class LidarrAPI extends ServarrBase<{ albumId: number }> {
 
   public async removeAlbum(albumId: number): Promise<void> {
     try {
-      await this.axios.delete(`/album/${albumId}`, {
+      await this.request('DELETE', `/album/${albumId}`, undefined, {
         params: {
           deleteFiles: 'true',
           addImportExclusion: 'false',
@@ -405,7 +405,8 @@ class LidarrAPI extends ServarrBase<{ albumId: number }> {
           }
         );
 
-        const updatedAlbum = await this.axios.put<LidarrAlbum>(
+        const updatedAlbum = await this.request<LidarrAlbum>(
+          'PUT',
           `/album/${normalizedExistingAlbums[0].id}`,
           {
             ...normalizedExistingAlbums[0],

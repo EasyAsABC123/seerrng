@@ -204,6 +204,7 @@ export interface MainSettings {
   enableSpecialEpisodes: boolean;
   locale: string;
   youtubeUrl: string;
+  versionCheck: boolean;
 }
 
 export interface ProxySettings {
@@ -264,6 +265,7 @@ interface FullPublicSettings extends PublicSettings {
   userEmailRequired: boolean;
   newPlexLogin: boolean;
   youtubeUrl: string;
+  versionCheck: boolean;
   plexClientIdentifier: string;
   openIdProviders: PublicOidcProvider[];
 }
@@ -280,6 +282,7 @@ export interface NotificationAgentDiscord extends NotificationAgentConfig {
     botAvatarUrl?: string;
     webhookUrl: string;
     webhookRoleId?: string;
+    webhookThreadId?: string;
     enableMentions: boolean;
     locale: AvailableLocale;
     useUserLocale: boolean;
@@ -306,6 +309,7 @@ export interface NotificationAgentEmail extends NotificationAgentConfig {
     authPass?: string;
     allowSelfSigned: boolean;
     senderName: string;
+    usePublicLogo: boolean;
     pgpPrivateKey?: string;
     pgpPassword?: string;
   };
@@ -498,6 +502,7 @@ class Settings {
         enableSpecialEpisodes: false,
         locale: 'en',
         youtubeUrl: '',
+        versionCheck: true,
       },
       plex: {
         name: '',
@@ -548,6 +553,7 @@ class Settings {
               requireTls: false,
               allowSelfSigned: false,
               senderName: 'Seerr',
+              usePublicLogo: false,
             },
           },
           discord: {
@@ -757,34 +763,24 @@ class Settings {
     assertNoSymlinkDirectoryComponents(path.dirname(this.settingsPath), {
       label: 'Settings directory',
     });
-    let pathStat: fs.Stats;
+    let descriptor: number;
     try {
-      pathStat = fs.lstatSync(this.settingsPath);
+      descriptor = fs.openSync(
+        this.settingsPath,
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+      );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw error;
     }
-    if (
-      !pathStat.isFile() ||
-      pathStat.isSymbolicLink() ||
-      pathStat.nlink !== 1
-    ) {
-      throw new Error('Settings path must be a regular file.');
-    }
-    assertSettingsFileSize(pathStat.size);
-    const pathStamp = `${pathStat.dev}:${pathStat.ino}:${pathStat.size}:${pathStat.mtimeMs}`;
-    if (pathStamp === this.persistedFileStamp) return;
-
-    const descriptor = fs.openSync(
-      this.settingsPath,
-      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
-    );
     try {
       const stat = fs.fstatSync(descriptor);
       if (!stat.isFile() || stat.nlink !== 1) {
         throw new Error('Settings path must be a regular file.');
       }
       assertSettingsFileSize(stat.size);
+      const pathStamp = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+      if (pathStamp === this.persistedFileStamp) return;
       const persisted = JSON.parse(
         fs.readFileSync(descriptor, { encoding: 'utf8' })
       ) as DeepPartial<AllSettings>;
@@ -1001,6 +997,7 @@ class Settings {
         this.data.notifications.agents.email.options.userEmailRequired,
       newPlexLogin: this.data.main.newPlexLogin,
       youtubeUrl: this.data.main.youtubeUrl,
+      versionCheck: this.data.main.versionCheck,
       plexClientIdentifier: this.data.clientId,
       openIdProviders: this.data.main.oidcLogin
         ? this.data.oidc.providers.map((p) => ({
@@ -1226,6 +1223,7 @@ class Settings {
         enableSpecialEpisodes: false,
         locale: 'en',
         youtubeUrl: '',
+        versionCheck: true,
       },
       plex: {
         name: '',
@@ -1276,6 +1274,7 @@ class Settings {
               requireTls: false,
               allowSelfSigned: false,
               senderName: 'Seerr',
+              usePublicLogo: false,
             },
           },
           discord: {

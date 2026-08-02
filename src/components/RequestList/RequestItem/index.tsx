@@ -16,7 +16,6 @@ import {
 import defineMessages from '@app/utils/defineMessages';
 import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
 import { refreshIntervalHelper } from '@app/utils/refreshIntervalHelper';
-import { getRequestMetadataApiPath } from '@app/utils/requestMetadata';
 import {
   ArrowPathIcon,
   CheckIcon,
@@ -62,6 +61,7 @@ const messages = defineMessages('components.RequestList.RequestItem', {
   olid: 'Open Library ID',
   unknowntitle: 'Unknown Title',
   removearr: 'Remove from {arr}',
+  removemediaerror: 'Something went wrong while removing the media.',
   profileName: 'Profile',
   bookFormat: 'Format',
   ebook: 'Ebook',
@@ -481,6 +481,23 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
   const intl = useIntl();
   const { user, hasPermission } = useUser();
   const [showEditModal, setShowEditModal] = useState(false);
+  const bookId =
+    request.type === 'book' ? getNormalizedBookId(request) : undefined;
+  const musicId =
+    request.type === 'music' ? getNormalizedMusicId(request) : undefined;
+  const url =
+    request.type === 'movie'
+      ? `/api/v1/movie/${request.media.tmdbId}`
+      : request.type === 'tv'
+        ? `/api/v1/tv/${request.media.tmdbId}`
+        : request.type === 'music' && musicId
+          ? `/api/v1/music/${encodeApiPathSegment(musicId)}`
+          : request.type === 'book' && bookId
+            ? `/api/v1/book/${encodeApiPathSegment(bookId)}`
+            : null;
+  const { data: title, error } = useSWR<
+    MovieDetails | TvDetails | MusicDetails | BookDetails
+  >(inView ? url : null);
   const { data: requestData, mutate: revalidate } = useSWR<
     NonFunctionProperties<MediaRequest>
   >(`/api/v1/request/${request.id}`, {
@@ -494,19 +511,6 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
       15000
     ),
   });
-  const resolvedRequest = requestData ?? request;
-  const bookId =
-    resolvedRequest.type === 'book'
-      ? getNormalizedBookId(resolvedRequest)
-      : undefined;
-  const musicId =
-    resolvedRequest.type === 'music'
-      ? getNormalizedMusicId(resolvedRequest)
-      : undefined;
-  const metadataUrl = getRequestMetadataApiPath(resolvedRequest);
-  const { data: title, error } = useSWR<
-    MovieDetails | TvDetails | MusicDetails | BookDetails
-  >(inView ? metadataUrl : null);
 
   const [isRetrying, setRetrying] = useState(false);
   const [updatingType, setUpdatingType] = useState<
@@ -533,6 +537,7 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
     try {
       await axios.post(`/api/v1/request/${request.id}/${type}`);
       revalidate();
+      revalidateList();
       mutate('/api/v1/request/count');
     } catch {
       addToast(intl.formatMessage(messages.failedmodify), {
@@ -558,11 +563,22 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
           ? `&format=${removableBookFormat}`
           : '';
 
-      await axios.delete(
-        `/api/v1/media/${requestData.media.id}/file?is4k=${requestData.is4k}${formatQuery}`
-      );
-      if (requestData.type !== 'book' || removableBookFormat === 'both') {
-        await axios.delete(`/api/v1/media/${requestData.media.id}`);
+      try {
+        await axios.delete(
+          `/api/v1/media/${requestData.media.id}/file?is4k=${requestData.is4k}${formatQuery}`
+        );
+        if (requestData.type !== 'book' || removableBookFormat === 'both') {
+          await axios.delete(`/api/v1/media/${requestData.media.id}`);
+        }
+      } catch (e) {
+        if (!axios.isAxiosError(e) || e.response?.status !== 404) {
+          addToast(intl.formatMessage(messages.removemediaerror), {
+            autoDismiss: true,
+            appearance: 'error',
+          });
+          revalidateList();
+          return;
+        }
       }
       revalidateList();
     }

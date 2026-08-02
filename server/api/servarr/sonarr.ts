@@ -353,7 +353,7 @@ class SonarrAPI extends ServarrBase<{
 
   public async getSeries(): Promise<SonarrSeries[]> {
     try {
-      const response = await this.axios.get<SonarrSeries[]>('/series');
+      const response = await this.request<SonarrSeries[]>('GET', '/series');
 
       return sanitizeServarrRecordArray<Record<string, unknown>>(
         response.data,
@@ -371,7 +371,7 @@ class SonarrAPI extends ServarrBase<{
 
   public async getSeriesById(id: number): Promise<SonarrSeries> {
     try {
-      const response = await this.axios.get<SonarrSeries>(`/series/${id}`);
+      const response = await this.request<SonarrSeries>('GET', `/series/${id}`);
 
       return requireSonarrSeries(response.data);
     } catch (e) {
@@ -446,11 +446,16 @@ class SonarrAPI extends ServarrBase<{
 
   public async getSeriesByTitle(title: string): Promise<SonarrSeries[]> {
     try {
-      const response = await this.axios.get<SonarrSeries[]>('/series/lookup', {
-        params: {
-          term: title,
-        },
-      });
+      const response = await this.request<SonarrSeries[]>(
+        'GET',
+        '/series/lookup',
+        undefined,
+        {
+          params: {
+            term: title,
+          },
+        }
+      );
 
       const series = sanitizeServarrRecordArray<Record<string, unknown>>(
         response.data,
@@ -476,11 +481,16 @@ class SonarrAPI extends ServarrBase<{
 
   public async getSeriesByTvdbId(id: number): Promise<SonarrSeries> {
     try {
-      const response = await this.axios.get<SonarrSeries[]>('/series/lookup', {
-        params: {
-          term: `tvdb:${id}`,
-        },
-      });
+      const response = await this.request<SonarrSeries[]>(
+        'GET',
+        '/series/lookup',
+        undefined,
+        {
+          params: {
+            term: `tvdb:${id}`,
+          },
+        }
+      );
 
       const series = sanitizeServarrRecordArray<Record<string, unknown>>(
         response.data,
@@ -500,7 +510,7 @@ class SonarrAPI extends ServarrBase<{
         errorMessage: e.message,
         tvdbId: id,
       });
-      throw new Error('Series not found', { cause: e });
+      throw e;
     }
   }
 
@@ -516,7 +526,8 @@ class SonarrAPI extends ServarrBase<{
           : series.tags;
         series.seasons = this.buildSeasonList(options.seasons, series.seasons);
 
-        const newSeriesResponse = await this.axios.put<SonarrSeries>(
+        const newSeriesResponse = await this.request<SonarrSeries>(
+          'PUT',
           '/series',
           series
         );
@@ -579,7 +590,8 @@ class SonarrAPI extends ServarrBase<{
         }
       }
 
-      const createdSeriesResponse = await this.axios.post<SonarrSeries>(
+      const createdSeriesResponse = await this.request<SonarrSeries>(
+        'POST',
         '/series',
         {
           tvdbId: options.tvdbid,
@@ -693,7 +705,7 @@ class SonarrAPI extends ServarrBase<{
       : series.tags;
     series.seasons = this.buildSeasonList(options.seasons, series.seasons);
 
-    const response = await this.axios.put<SonarrSeries>('/series', series);
+    const response = await this.request<SonarrSeries>('PUT', '/series', series);
 
     const updatedSeries = requireSonarrSeries(
       isRecord(response.data) ? { ...series, ...response.data } : response.data
@@ -749,9 +761,12 @@ class SonarrAPI extends ServarrBase<{
 
   public async getEpisodes(seriesId: number): Promise<EpisodeResult[]> {
     try {
-      const response = await this.axios.get<EpisodeResult[]>('/episode', {
-        params: { seriesId },
-      });
+      const response = await this.request<EpisodeResult[]>(
+        'GET',
+        '/episode',
+        undefined,
+        { params: { seriesId } }
+      );
       return sanitizeServarrRecordArray<Record<string, unknown>>(
         response.data,
         MAX_SERVARR_LIBRARY_RESULTS
@@ -783,7 +798,7 @@ class SonarrAPI extends ServarrBase<{
       if (normalizedEpisodeIds.length === 0) {
         return;
       }
-      await this.axios.put('/episode/monitor', {
+      await this.request('PUT', '/episode/monitor', {
         episodeIds: normalizedEpisodeIds,
         monitored: true,
       });
@@ -821,10 +836,18 @@ class SonarrAPI extends ServarrBase<{
 
     return newSeasons;
   }
-  public removeSeries = async (serieId: number): Promise<void> => {
+  public removeSeries = async (tvdbId: number): Promise<void> => {
+    const { id, title } = await this.getSeriesByTvdbId(tvdbId);
+
+    if (!id) {
+      logger.info(`[Sonarr] Series not in library, nothing to remove`, {
+        tvdbId,
+      });
+      return;
+    }
+
     try {
-      const { id, title } = await this.getSeriesByTvdbId(serieId);
-      await this.axios.delete(`/series/${id}`, {
+      await this.request('DELETE', `/series/${id}`, undefined, {
         params: {
           deleteFiles: true,
           addImportExclusion: false,
@@ -832,9 +855,13 @@ class SonarrAPI extends ServarrBase<{
       });
       logger.info(`[Sonarr] Removed series ${title}`);
     } catch (e) {
-      throw new Error(`[Sonarr] Failed to remove series: ${e.message}`, {
-        cause: e,
-      });
+      if (e?.response?.status === 404) {
+        logger.info(`[Sonarr] Series already removed from Sonarr`, {
+          tvdbId,
+        });
+        return;
+      }
+      throw e;
     }
   };
 

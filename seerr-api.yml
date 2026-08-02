@@ -150,10 +150,6 @@ components:
         email:
           type: string
           example: 'user@example.com'
-        discordId:
-          type: string
-          nullable: true
-          example: '123456789'
         locale:
           type: string
           nullable: true
@@ -303,6 +299,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PublicOidcProvider'
+        versionCheck:
+          type: boolean
+          example: false
     PublicOidcProvider:
       type: object
       readOnly: true
@@ -1637,6 +1636,10 @@ components:
           type: string
           enum: [ebook, audiobook, both]
           nullable: true
+        ignoreQuota:
+          type: boolean
+          example: false
+          description: If true, this request will not count against the user's quota. Requires MANAGE_REQUESTS permission.
       required:
         - id
         - status
@@ -2049,6 +2052,10 @@ components:
               type: boolean
             token:
               type: string
+            priority:
+              type: number
+            locale:
+              type: string
     NotificationEmailSettings:
       type: object
       properties:
@@ -2440,8 +2447,10 @@ components:
         discordEnabledTypes:
           type: number
           nullable: true
-        discordId:
-          type: string
+        discordIds:
+          type: array
+          items:
+            type: string
           nullable: true
         pushbulletAccessToken:
           type: string
@@ -2891,10 +2900,18 @@ paths:
   /status:
     get:
       summary: Get Seerr status
-      description: Returns the current Seerr status in a JSON object.
+      description: Returns the current Seerr status in a JSON object. updateAvailable and commitsBehind are omitted when checkUpdateAvailable is false.
       security: []
       tags:
         - public
+      parameters:
+        - in: query
+          name: checkUpdateAvailable
+          description: If false, updateAvailable and commitsBehind will be omitted from the response. Defaults to the versionCheck setting.
+          required: false
+          example: false
+          schema:
+            type: boolean
       responses:
         '200':
           description: Returned status
@@ -3512,27 +3529,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                hostname:
-                  type: string
-                  example: '127.0.0.1'
-                port:
-                  type: number
-                  example: 7878
-                apiKey:
-                  type: string
-                  example: yourapikey
-                useSsl:
-                  type: boolean
-                  example: false
-                baseUrl:
-                  type: string
-              required:
-                - hostname
-                - port
-                - apiKey
-                - useSsl
+              $ref: '#/components/schemas/ServarrConnectionSettings'
       responses:
         '200':
           description: Succesfully connected to Radarr instance
@@ -3656,27 +3653,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                hostname:
-                  type: string
-                  example: '127.0.0.1'
-                port:
-                  type: number
-                  example: 8989
-                apiKey:
-                  type: string
-                  example: yourapikey
-                useSsl:
-                  type: boolean
-                  example: false
-                baseUrl:
-                  type: string
-              required:
-                - hostname
-                - port
-                - apiKey
-                - useSsl
+              $ref: '#/components/schemas/ServarrConnectionSettings'
       responses:
         '200':
           description: Succesfully connected to Sonarr instance
@@ -4737,6 +4714,66 @@ paths:
                   type: string
               required:
                 - authToken
+  /auth/plex/pin:
+    post:
+      summary: Create a Plex OAuth PIN
+      description: Creates a short-lived Plex OAuth PIN through the server-side Plex API proxy.
+      security: []
+      tags:
+        - auth
+      responses:
+        '200':
+          description: Plex OAuth PIN details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - code
+                properties:
+                  id:
+                    type: integer
+                  code:
+                    type: string
+                  expiresAt:
+                    type: string
+                    nullable: true
+  /auth/plex/pin/{id}:
+    get:
+      summary: Poll a Plex OAuth PIN
+      description: Polls a server-side Plex OAuth PIN until Plex claims it.
+      security: []
+      tags:
+        - auth
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current Plex OAuth PIN state
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - authToken
+                properties:
+                  authToken:
+                    type: string
+                    nullable: true
+                  expiresAt:
+                    type: string
+                    nullable: true
   /auth/jellyfin:
     post:
       summary: Sign in using a Jellyfin username and password
@@ -4771,6 +4808,85 @@ paths:
               required:
                 - username
                 - password
+  /auth/jellyfin/quickconnect/initiate:
+    post:
+      summary: Initiate Jellyfin Quick Connect
+      description: Initiates a Quick Connect session and returns a code for the user to authorize on their Jellyfin server.
+      security: []
+      tags:
+        - auth
+      responses:
+        '200':
+          description: Quick Connect session initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    example: '123456'
+                  secret:
+                    type: string
+                    example: 'abc123def456'
+        '500':
+          description: Failed to initiate Quick Connect
+  /auth/jellyfin/quickconnect/check:
+    get:
+      summary: Check Quick Connect authorization status
+      description: Checks if the Quick Connect code has been authorized by the user.
+      security: []
+      tags:
+        - auth
+      parameters:
+        - in: query
+          name: secret
+          required: true
+          schema:
+            type: string
+          description: The secret returned from the initiate endpoint
+      responses:
+        '200':
+          description: Authorization status returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                    example: false
+        '404':
+          description: Quick Connect session not found or expired
+  /auth/jellyfin/quickconnect/authenticate:
+    post:
+      summary: Authenticate with Quick Connect
+      description: Completes the Quick Connect authentication flow and creates a user session.
+      security: []
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                secret:
+                  type: string
+              required:
+                - secret
+      responses:
+        '200':
+          description: Successfully authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '403':
+          description: Quick Connect not authorized or access denied
+        '500':
+          description: Authentication failed
   /auth/local:
     post:
       summary: Sign in using a local account
@@ -7930,7 +8046,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LidarrSettings'
+              $ref: '#/components/schemas/ServarrConnectionSettings'
       responses:
         '200':
           description: Lidarr connection details returned
@@ -8266,6 +8382,10 @@ paths:
                 userId:
                   type: number
                   nullable: true
+                ignoreQuota:
+                  type: boolean
+                  example: false
+                  description: If true, this request will not count against the user's quota. Requires MANAGE_REQUESTS permission.
               required:
                 - mediaType
                 - mediaId
@@ -9604,6 +9724,9 @@ paths:
                   type: string
                 mediaId:
                   type: number
+                userId:
+                  type: number
+                  nullable: true
       responses:
         '201':
           description: Succesfully created the issue

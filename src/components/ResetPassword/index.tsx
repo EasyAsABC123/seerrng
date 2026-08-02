@@ -33,7 +33,8 @@ const ResetPassword = () => {
   const router = useRouter();
   const [hasSubmitted, setSubmitted] = useState(false);
 
-  const guid = router.query.guid;
+  const guid =
+    typeof router.query.guid === 'string' ? router.query.guid : undefined;
 
   const ResetSchema = Yup.object().shape({
     password: Yup.string()
@@ -106,8 +107,12 @@ const ResetPassword = () => {
                 }}
                 validationSchema={ResetSchema}
                 onSubmit={async (values) => {
+                  if (!guid) {
+                    throw new Error('Reset password link is invalid.');
+                  }
+
                   const response = await axios.post(
-                    `/api/v1/auth/reset-password/${guid}`,
+                    `/api/v1/auth/reset-password/${encodeURIComponent(guid)}`,
                     {
                       password: values.password,
                     }

@@ -116,6 +116,8 @@ test('the main deployment runs the pulled digest inside the container boundary',
   assert.match(deploymentValidationScript, /SEERRNG_CONFIG_DIR/u);
   assert.match(prepareScript, /"\$SEERRNG_IMAGE_REF"/u);
   assert.match(deployScript, /"\$SEERRNG_IMAGE_REF"/u);
+  assert.match(deployScript, /export-external-config\.mjs/u);
+  assert.match(deployScript, /--env-file "\$external_env_file"/u);
   assert.match(deployScript, /docker rename/u);
   assert.match(deployScript, /\/api\/v1\/status\/ready/u);
   assert.match(verifyScript, /\$RUNNER_TEMP\/seerr-main-status\.json/u);
@@ -212,6 +214,10 @@ case "\$command" in
         shift
       fi
     done
+    if [ -z "\$name" ]; then
+      printf '{"main":{},"plex":{},"jellyfin":{},"tautulli":{},"radarr":[],"sonarr":[],"notifications":{}}\\n'
+      exit 0
+    fi
     test -n "\$name"
     printf 'new' > "\$state/\$name"
     printf 'run %s\\n' "\$name" >> "\$state/operations"

@@ -10,7 +10,13 @@ const config: Config = {
 
   url: 'https://snapetech.github.io',
   baseUrl: '/seerrng/',
-  trailingSlash: false,
+  trailingSlash: true,
+
+  future: {
+    faster: {
+      swcJsMinimizer: true,
+    },
+  },
 
   organizationName: 'snapetech',
   projectName: 'seerrng',
@@ -38,6 +44,19 @@ const config: Config = {
           path: '../docs',
           editUrl: 'https://github.com/snapetech/seerrng/edit/main/docs/',
           docItemComponent: '@theme/ApiItem',
+          async sidebarItemsGenerator({
+            defaultSidebarItemsGenerator,
+            ...args
+          }) {
+            const items = await defaultSidebarItemsGenerator(args);
+            return items.filter(
+              (item) =>
+                !(
+                  item.type === 'category' &&
+                  item.label?.toLowerCase() === 'api'
+                )
+            );
+          },
         },
         pages: false,
         theme: {
@@ -97,6 +116,11 @@ const config: Config = {
       },
       items: [
         {
+          to: '/api/seerr-api',
+          label: 'REST API',
+          position: 'right',
+        },
+        {
           to: 'blog',
           label: 'Blog',
           position: 'right',
@@ -122,6 +146,10 @@ const config: Config = {
             {
               label: 'Documentation',
               to: '/',
+            },
+            {
+              label: 'REST API',
+              to: '/api/seerr-api',
             },
           ],
         },

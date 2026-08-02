@@ -14,6 +14,7 @@ import ExternalAPI, {
   MAX_PENDING_EXTERNAL_API_REQUESTS,
   containsCredentialFields,
   createExternalApiCacheKeySuffix,
+  normalizeExternalApiRequestTarget,
 } from './externalapi';
 
 class TestExternalAPI extends ExternalAPI {
@@ -52,9 +53,10 @@ class TestExternalAPI extends ExternalAPI {
   public getForTest<T>(
     endpoint: string,
     config?: AxiosRequestConfig,
-    ttl?: number
+    ttl?: number,
+    isUsableResponse?: (data: T) => boolean
   ): Promise<T> {
-    return this.get<T>(endpoint, config, ttl);
+    return this.get<T>(endpoint, config, ttl, isUsableResponse);
   }
 
   public postForTest<T>(
@@ -176,6 +178,38 @@ describe('ExternalAPI credential detection', () => {
 });
 
 describe('ExternalAPI redirect handling', () => {
+  it('preserves versioned base paths for relative endpoints', () => {
+    const allowedOrigins = new Set(['https://api.themoviedb.org']);
+
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        '/trending/all/week',
+        'https://api.themoviedb.org/3',
+        allowedOrigins
+      ),
+      '/3/trending/all/week'
+    );
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        'movie/550?language=en',
+        'https://api.themoviedb.org/3/',
+        allowedOrigins
+      ),
+      '/3/movie/550?language=en'
+    );
+  });
+
+  it('preserves allowed absolute request targets', () => {
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        'https://api.themoviedb.org/3/movie/550',
+        'https://api.themoviedb.org/3',
+        new Set(['https://api.themoviedb.org'])
+      ),
+      '/3/movie/550'
+    );
+  });
+
   it('rejects first-hop absolute URLs outside the configured origin', async () => {
     const api = new TestExternalAPI(
       'https://service.example/api',
@@ -234,20 +268,10 @@ describe('ExternalAPI redirect handling', () => {
     );
   });
 
-  it('defers malformed legacy base URLs without allowing absolute escapes', async () => {
-    const api = new TestExternalAPI('http://:32400', {});
-    api.setAdapter(async (config) => ({
-      config,
-      data: { path: config.url },
-      headers: {},
-      status: 200,
-      statusText: 'OK',
-    }));
-
-    assert.deepEqual(await api.getForTest('/library'), { path: '/library' });
-    await assert.rejects(
-      api.getForTest('https://attacker.example/collect'),
-      /request target is not allowed/
+  it('rejects malformed base URLs before a request can be made', () => {
+    assert.throws(
+      () => new TestExternalAPI('http://:32400', {}),
+      /Invalid URL/
     );
   });
 
@@ -521,6 +545,38 @@ describe('ExternalAPI rolling cache refresh', () => {
 });
 
 describe('ExternalAPI cache isolation', () => {
+  it('evicts unusable cached responses and retries an unusable provider response once', async () => {
+    const cache = new NodeCache();
+    const api = new TestExternalAPI(
+      'https://service.example',
+      {},
+      { nodeCache: cache }
+    );
+    let calls = 0;
+    api.setAdapter(async (config) => ({
+      config,
+      data: { items: ++calls < 2 ? [] : ['album'] },
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+    }));
+
+    const isUsable = (data: { items: string[] }) => data.items.length > 0;
+    assert.deepStrictEqual(
+      await api.getForTest('/music', undefined, 3600, isUsable),
+      { items: ['album'] }
+    );
+    assert.strictEqual(calls, 2);
+    assert.strictEqual(cache.keys().length, 0);
+
+    assert.deepStrictEqual(
+      await api.getForTest('/music', undefined, 3600, isUsable),
+      { items: ['album'] }
+    );
+    assert.strictEqual(calls, 3);
+    assert.strictEqual(cache.keys().length, 1);
+  });
+
   it('bypasses existing GET cache entries when TTL is zero', async () => {
     const cache = new NodeCache();
     const api = new TestExternalAPI(

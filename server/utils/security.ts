@@ -617,3 +617,5 @@ export const createSafeHttpUrl = async (
 
   return typeof candidate === 'string' ? new URL(candidate) : undefined;
 };
+
+export const stringifySafeHttpUrl = (value: URL): string => value.toString();

@@ -1,5 +1,6 @@
 import type { ReadarrBookLookupResult } from '@server/api/servarr/readarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
+import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
 import { runWithServarrServiceCollectionMutationAdmission } from '@server/lib/serviceAdmission';
 import {
@@ -216,7 +217,10 @@ readarrRoutes.post<
   >(Permission.ADMIN, async (req, res, next) => {
     try {
       const parsedReadarr = parseServarrConnectionSettings(
-        preserveServarrConnectionSecret(req.body, getSettings().readarr)
+        preserveServarrConnectionSecret(
+          req.body,
+          getExternalRuntimeConfig().readarr
+        )
       );
 
       if ('error' in parsedReadarr) {
@@ -278,7 +282,10 @@ readarrRoutes.post<
     Partial<ReadarrSettings> & { term?: unknown; testAdd?: unknown }
   >(Permission.ADMIN, async (req, res) => {
     const parsedReadarr = parseServarrConnectionSettings(
-      preserveServarrConnectionSecret(req.body, getSettings().readarr)
+      preserveServarrConnectionSecret(
+        req.body,
+        getExternalRuntimeConfig().readarr
+      )
     );
 
     if ('error' in parsedReadarr) {

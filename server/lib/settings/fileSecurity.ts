@@ -174,22 +174,25 @@ export const enforcePrivateSettingsFile = async (
   filePath: string
 ): Promise<void> => {
   await enforcePrivateSettingsDirectory(path.dirname(filePath));
-  const stat = await fs.lstat(filePath);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) {
-    throw new Error('Settings path must be a regular file.');
+  const handle = await fs.open(
+    filePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW
+  );
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1) {
+      throw new Error('Settings path must be a regular file.');
+    }
+    await handle.chmod(PRIVATE_SETTINGS_FILE_MODE);
+  } finally {
+    await handle.close();
   }
-  await fs.chmod(filePath, PRIVATE_SETTINGS_FILE_MODE);
 };
 
 export const readPrivateSettingsFile = async (
   filePath: string
 ): Promise<string> => {
   await enforcePrivateSettingsDirectory(path.dirname(filePath));
-  const pathStat = await fs.lstat(filePath);
-  if (!pathStat.isFile() || pathStat.isSymbolicLink() || pathStat.nlink !== 1) {
-    throw new Error('Settings path must be a regular file.');
-  }
-
   const handle = await fs.open(
     filePath,
     constants.O_RDONLY | constants.O_NOFOLLOW

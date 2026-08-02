@@ -15,10 +15,10 @@ import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { getAppVersion } from '@server/utils/appVersion';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
+import { createDeterministicKey } from '@server/utils/deterministicKey';
 import { getHostname } from '@server/utils/getHostname';
 import { getRateLimitKey } from '@server/utils/security';
 import { parseOptionalBoundedString } from '@server/utils/validation';
-import axios from 'axios';
 import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import gravatarUrl from 'gravatar-url';
@@ -34,13 +34,6 @@ const REMOTE_AVATAR_FALLBACK_URL = gravatarUrl('none', {
 const REMOTE_PLEX_AVATAR_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_REMOTE_PLEX_AVATAR_RETRY_ENTRIES = 1000;
 const remotePlexAvatarRetryAfter = new Map<string, number>();
-export const AVATAR_HEAD_REQUEST_OPTIONS = {
-  timeout: 5_000,
-  maxRedirects: 0,
-  maxContentLength: 1024,
-  maxBodyLength: 1024,
-};
-
 const avatarProxyRateLimit = rateLimit({
   windowMs: 60 * 1000,
   limit: 240,
@@ -100,16 +93,14 @@ const refreshPlexAvatarInBackground = (
 
 export const getAvatarImageProxySettingsKey = (): string => {
   const settings = getSettings();
-  return createHash('sha256')
-    .update(
-      JSON.stringify([
-        getHostname(),
-        settings.main.mediaServerType,
-        settings.jellyfin.apiKey,
-        getAppVersion(),
-      ])
-    )
-    .digest('hex');
+  return createDeterministicKey(
+    JSON.stringify([
+      getHostname(),
+      settings.main.mediaServerType,
+      settings.jellyfin.apiKey,
+      getAppVersion(),
+    ])
+  );
 };
 
 async function initAvatarImageProxy(): Promise<ImageProxy> {
@@ -163,9 +154,7 @@ async function initAvatarImageProxy(): Promise<ImageProxy> {
     }
     return proxy;
   } finally {
-    if (_avatarImageProxyInitialization?.promise === initialization) {
-      _avatarImageProxyInitialization = undefined;
-    }
+    _avatarImageProxyInitialization = undefined;
   }
 }
 
@@ -240,38 +229,6 @@ export async function checkAvatarChanged(
 
     const jellyfinAvatarUrl = getJellyfinAvatarUrl(user.jellyfinUserId);
 
-    let headResponse;
-    try {
-      headResponse = await axios.head(
-        jellyfinAvatarUrl,
-        AVATAR_HEAD_REQUEST_OPTIONS
-      );
-      if (headResponse.status !== 200) {
-        return { changed: false };
-      }
-    } catch {
-      return { changed: false };
-    }
-
-    const settings = getSettings();
-    let remoteVersion: string;
-    if (settings.main.mediaServerType === MediaServerType.JELLYFIN) {
-      const remoteLastModifiedStr = headResponse.headers['last-modified'] || '';
-      remoteVersion = (
-        Date.parse(remoteLastModifiedStr) || Date.now()
-      ).toString();
-    } else if (settings.main.mediaServerType === MediaServerType.EMBY) {
-      remoteVersion =
-        headResponse.headers['etag']?.replace(/"/g, '') ||
-        Date.now().toString();
-    } else {
-      remoteVersion = Date.now().toString();
-    }
-
-    if (user.avatarVersion && user.avatarVersion === remoteVersion) {
-      return { changed: false, etag: user.avatarETag ?? undefined };
-    }
-
     const avatarImageCache = await initAvatarImageProxy();
     await avatarImageCache.clearCachedImage(jellyfinAvatarUrl);
     const imageData = await avatarImageCache.getImage(jellyfinAvatarUrl);
@@ -284,7 +241,7 @@ export async function checkAvatarChanged(
 
     const hasChanged = user.avatarETag !== newHash;
 
-    user.avatarVersion = remoteVersion;
+    user.avatarVersion = newHash;
     if (hasChanged) {
       user.avatarETag = newHash;
     }

@@ -119,6 +119,7 @@ describe('Plex login attempt ownership', () => {
         innerHeight: 800,
         innerWidth: 1200,
         navigator: { userAgent: 'Mozilla/5.0' },
+        location: { origin: 'http://localhost' },
         open: () => ({
           close() {},
           closed: true,
