@@ -58,6 +58,13 @@ export interface ReadarrBookLookupResult {
     asin?: string;
     monitored: boolean;
   }[];
+  images?: ReadarrBookImage[];
+}
+
+export interface ReadarrBookImage {
+  coverType?: string;
+  url?: string;
+  remoteUrl?: string;
 }
 
 export interface ReadarrAuthorLookupResult {
@@ -103,6 +110,11 @@ type ReadarrQueueItem = {
   };
 };
 
+export type ReadarrCoverImage = {
+  imageBuffer: Buffer;
+  contentType: string;
+};
+
 const getReadarrErrorMessage = (error: unknown): string => {
   if (!axios.isAxiosError(error)) {
     return error instanceof Error ? error.message : String(error);
@@ -123,6 +135,8 @@ const getReadarrErrorMessage = (error: unknown): string => {
 };
 
 class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
+  private coverBaseUrl: string;
+
   constructor({ url, apiKey }: { url: string; apiKey: string }) {
     super({
       url,
@@ -130,6 +144,38 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
       cacheName: 'readarr',
       apiName: 'Readarr',
     });
+    this.coverBaseUrl = ReadarrAPI.buildCoverBaseUrl(url);
+  }
+
+  private static buildCoverBaseUrl(url: string): string {
+    const parsedUrl = new URL(url);
+    parsedUrl.pathname = parsedUrl.pathname.replace(/\/api\/v\d+\/?$/i, '');
+    parsedUrl.search = '';
+    parsedUrl.hash = '';
+
+    return parsedUrl.toString().replace(/\/$/, '');
+  }
+
+  private buildCoverUrl(path: string): string | undefined {
+    if (!path.startsWith('/') || path.includes('://')) {
+      return undefined;
+    }
+
+    return `${this.coverBaseUrl}${path}`;
+  }
+
+  private buildRemoteCoverUrl(url: string): string | undefined {
+    try {
+      const parsedUrl = new URL(url);
+
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return undefined;
+      }
+
+      return parsedUrl.toString();
+    } catch {
+      return undefined;
+    }
   }
 
   public async getMetadataProfiles(): Promise<ReadarrMetadataProfile[]> {
@@ -180,6 +226,79 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     } catch (e) {
       throw new Error(`[Readarr] Failed to retrieve books: ${e.message}`);
     }
+  }
+
+  public async getBook(bookId: number): Promise<ReadarrBook> {
+    try {
+      return await this.get<ReadarrBook>(`/book/${bookId}`);
+    } catch (e) {
+      throw new Error(
+        `[Readarr] Failed to retrieve book ${bookId}: ${e.message}`,
+        { cause: e }
+      );
+    }
+  }
+
+  public async getBookCover(bookId: number): Promise<ReadarrCoverImage> {
+    const book = await this.getBook(bookId).catch(() => undefined);
+    const advertisedCoverPaths = (book?.images ?? [])
+      .filter((image) => {
+        const coverType = image.coverType?.toLowerCase();
+        return !coverType || coverType === 'cover' || coverType === 'poster';
+      })
+      .map((image) => image.url)
+      .filter((url): url is string => !!url && url.startsWith('/'));
+    const candidatePaths = [
+      ...advertisedCoverPaths,
+      `/MediaCover/${bookId}/cover.jpg`,
+      `/MediaCover/${bookId}/poster.jpg`,
+    ];
+    const remoteCoverUrls = (book?.images ?? [])
+      .filter((image) => {
+        const coverType = image.coverType?.toLowerCase();
+        return !coverType || coverType === 'cover' || coverType === 'poster';
+      })
+      .map((image) => image.remoteUrl)
+      .filter((url): url is string => !!url)
+      .map((url) => this.buildRemoteCoverUrl(url))
+      .filter((url): url is string => !!url);
+    const candidateUrls = [
+      ...candidatePaths.map((path) => this.buildCoverUrl(path)),
+      ...remoteCoverUrls,
+    ].filter((url): url is string => !!url);
+    const uniqueCandidateUrls = [...new Set(candidateUrls)];
+    let lastError: unknown;
+
+    for (const coverUrl of uniqueCandidateUrls) {
+      try {
+        const isLocalCoverUrl = coverUrl.startsWith(this.coverBaseUrl);
+        const response = await (
+          isLocalCoverUrl ? this.axios : axios
+        ).get<ArrayBuffer>(coverUrl, {
+          responseType: 'arraybuffer',
+          headers: { Accept: 'image/*' },
+        });
+        const contentType = String(response.headers['content-type'] ?? '');
+
+        if (!contentType.toLowerCase().startsWith('image/')) {
+          throw new Error('Upstream response is not an image');
+        }
+
+        return {
+          imageBuffer: Buffer.from(response.data),
+          contentType,
+        };
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw new Error(
+      `[Readarr] Failed to retrieve cover for book ${bookId}: ${
+        lastError instanceof Error ? lastError.message : 'No cover path worked'
+      }`,
+      { cause: lastError }
+    );
   }
 
   public async getEditions(bookId: number): Promise<ReadarrEdition[]> {

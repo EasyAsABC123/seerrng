@@ -217,7 +217,7 @@ function mockServarrTagsEndpoint(tags: { id: number; label: string }[]) {
       const instance = realCreate(config);
       const realGet = instance.get.bind(instance);
       instance.get = ((url: string, requestConfig?: unknown) =>
-        url === '/tag'
+        url === '/tag' || url.endsWith('/tag')
           ? Promise.resolve({ data: tags })
           : realGet(url, requestConfig as never)) as typeof instance.get;
       return instance;

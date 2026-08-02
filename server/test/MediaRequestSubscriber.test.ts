@@ -182,46 +182,53 @@ describe('MediaRequestSubscriber service dispatch', () => {
     const heldAdd = new Promise<void>((resolve) => {
       releaseAdd = resolve;
     });
-    mock.method(axios, 'create', (config: { baseURL?: string }) => {
-      if (config?.baseURL === 'https://api.themoviedb.org/3') {
-        return originalCreate.call(axios, config);
-      }
+    mock.method(
+      axios,
+      'create',
+      (config: { params?: { api_key?: string } }) => {
+        // ExternalAPI no longer passes baseURL into the axios.create config
+        // (absolute URLs are built per-request instead), so the TMDB client
+        // is identified by its distinctive auth param instead.
+        if (config?.params?.api_key) {
+          return originalCreate.call(axios, config);
+        }
 
-      return {
-        interceptors: { request: { use: () => undefined } },
-        get: async (endpoint: string) => {
-          if (endpoint === '/movie/lookup') {
+        return {
+          interceptors: { request: { use: () => undefined } },
+          get: async (endpoint: string) => {
+            if (endpoint.endsWith('/movie/lookup')) {
+              return {
+                data: [
+                  {
+                    title: 'Fight Club',
+                    tmdbId: 550,
+                    year: 1999,
+                    hasFile: false,
+                    monitored: false,
+                    tags: [],
+                  },
+                ],
+              };
+            }
+
+            throw new Error(`Unexpected GET ${endpoint}`);
+          },
+          post: async (endpoint: string, payload: Record<string, unknown>) => {
+            assert.ok(endpoint.endsWith('/movie'));
+            addPayload = payload;
+            await heldAdd;
+
             return {
-              data: [
-                {
-                  title: 'Fight Club',
-                  tmdbId: 550,
-                  year: 1999,
-                  hasFile: false,
-                  monitored: false,
-                  tags: [],
-                },
-              ],
+              data: {
+                id: 77,
+                title: 'Fight Club',
+                titleSlug: 'fight-club-1999',
+              },
             };
-          }
-
-          throw new Error(`Unexpected GET ${endpoint}`);
-        },
-        post: async (endpoint: string, payload: Record<string, unknown>) => {
-          assert.equal(endpoint, '/movie');
-          addPayload = payload;
-          await heldAdd;
-
-          return {
-            data: {
-              id: 77,
-              title: 'Fight Club',
-              titleSlug: 'fight-club-1999',
-            },
-          };
-        },
-      };
-    });
+          },
+        };
+      }
+    );
 
     const request = await createApprovedRequest(media, requestedBy);
     await getRepository(MediaRequest).save(request);
@@ -338,46 +345,53 @@ describe('MediaRequestSubscriber service dispatch', () => {
 
     const originalCreate = axios.create;
     let addPayload: Record<string, unknown> | undefined;
-    mock.method(axios, 'create', (config: { baseURL?: string }) => {
-      if (config?.baseURL === 'https://api.themoviedb.org/3') {
-        return originalCreate.call(axios, config);
-      }
+    mock.method(
+      axios,
+      'create',
+      (config: { params?: { api_key?: string } }) => {
+        // ExternalAPI no longer passes baseURL into the axios.create config
+        // (absolute URLs are built per-request instead), so the TMDB client
+        // is identified by its distinctive auth param instead.
+        if (config?.params?.api_key) {
+          return originalCreate.call(axios, config);
+        }
 
-      return {
-        interceptors: { request: { use: () => undefined } },
-        get: async (endpoint: string) => {
-          if (endpoint === '/series/lookup') {
+        return {
+          interceptors: { request: { use: () => undefined } },
+          get: async (endpoint: string) => {
+            if (endpoint.endsWith('/series/lookup')) {
+              return {
+                data: [
+                  {
+                    title: 'Game of Thrones',
+                    tvdbId: 121361,
+                    seasons: [
+                      { seasonNumber: 1, monitored: false },
+                      { seasonNumber: 2, monitored: false },
+                    ],
+                    tags: [],
+                  },
+                ],
+              };
+            }
+
+            throw new Error(`Unexpected GET ${endpoint}`);
+          },
+          post: async (endpoint: string, payload: Record<string, unknown>) => {
+            assert.ok(endpoint.endsWith('/series'));
+            addPayload = payload;
+
             return {
-              data: [
-                {
-                  title: 'Game of Thrones',
-                  tvdbId: 121361,
-                  seasons: [
-                    { seasonNumber: 1, monitored: false },
-                    { seasonNumber: 2, monitored: false },
-                  ],
-                  tags: [],
-                },
-              ],
+              data: {
+                id: 88,
+                title: 'Game of Thrones',
+                titleSlug: 'game-of-thrones',
+              },
             };
-          }
-
-          throw new Error(`Unexpected GET ${endpoint}`);
-        },
-        post: async (endpoint: string, payload: Record<string, unknown>) => {
-          assert.equal(endpoint, '/series');
-          addPayload = payload;
-
-          return {
-            data: {
-              id: 88,
-              title: 'Game of Thrones',
-              titleSlug: 'game-of-thrones',
-            },
-          };
-        },
-      };
-    });
+          },
+        };
+      }
+    );
 
     mock.method(MediaRequest, 'sendNotification', async () => undefined);
     const request = await getRepository(MediaRequest).save(

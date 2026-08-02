@@ -53,6 +53,20 @@ If you enable this setting and find yourself unable to access Seerr, you can dis
 
 This setting is **disabled** by default.
 
+## Session cookies and HTTP
+
+Plex sign-in creates a browser session cookie. SeerrNG keeps direct HTTP
+support for LAN deployments by using an automatic cookie policy: HTTPS
+requests receive a `Secure` session cookie, while direct HTTP requests can
+retain the session required to complete Plex sign-in.
+
+Direct HTTP is not suitable for untrusted networks because an authenticated
+session can be observed or modified in transit. To protect sessions and clear
+the corresponding security finding, place SeerrNG behind a working HTTPS
+reverse proxy that redirects HTTP to HTTPS. Do not change the application to
+use `Secure` cookies unconditionally before that proxy is deployed; doing so
+breaks Plex sign-in for direct HTTP deployments.
+
 ## API Request Timeout
 
 The API Request Timeout setting defines the maximum time (in seconds) Seerr will wait for a response from external services, such as Radarr or Sonarr. The default value is 10 seconds, though it can be entirely disabled by setting it to 0. Please note that any changes to this value require restarting Seerr to take effect.
