@@ -14,6 +14,7 @@ import ExternalAPI, {
   MAX_PENDING_EXTERNAL_API_REQUESTS,
   containsCredentialFields,
   createExternalApiCacheKeySuffix,
+  normalizeExternalApiRequestTarget,
 } from './externalapi';
 
 class TestExternalAPI extends ExternalAPI {
@@ -264,6 +265,38 @@ describe('ExternalAPI redirect handling', () => {
     await api.getForTest('/trending/all/day');
 
     assert.equal(requestedUrl, 'https://service.example/v3/trending/all/day');
+  });
+
+  it('preserves versioned base paths for relative endpoints', () => {
+    const allowedOrigins = new Set(['https://api.themoviedb.org']);
+
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        '/trending/all/week',
+        'https://api.themoviedb.org/3',
+        allowedOrigins
+      ),
+      '/3/trending/all/week'
+    );
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        'movie/550?language=en',
+        'https://api.themoviedb.org/3/',
+        allowedOrigins
+      ),
+      '/3/movie/550?language=en'
+    );
+  });
+
+  it('preserves allowed absolute request targets', () => {
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        'https://api.themoviedb.org/3/movie/550',
+        'https://api.themoviedb.org/3',
+        new Set(['https://api.themoviedb.org'])
+      ),
+      '/3/movie/550'
+    );
   });
 
   it('bounds requests when a client does not specify a timeout', () => {
