@@ -23,6 +23,7 @@ describe('notification agent delivery status', () => {
       types: Notification.MEDIA_PENDING,
       options: {
         userEmailRequired: false,
+        usePublicLogo: false,
         emailFrom: 'seerr@example.com',
         smtpHost: 'smtp.example.com',
         smtpPort: 587,

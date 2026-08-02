@@ -234,7 +234,7 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
         errorMessage: e.message,
         tmdbId: id,
       });
-      throw new Error('Movie not found', { cause: e });
+      throw e;
     }
   }
 
@@ -472,9 +472,17 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
       );
     }
   }
-  public removeMovie = async (movieId: number): Promise<void> => {
+  public removeMovie = async (tmdbId: number): Promise<void> => {
+    const { id, title } = await this.getMovieByTmdbId(tmdbId);
+
+    if (!id) {
+      logger.info(`[Radarr] Movie not in library, nothing to remove`, {
+        tmdbId,
+      });
+      return;
+    }
+
     try {
-      const { id, title } = await this.getMovieByTmdbId(movieId);
       await this.request('DELETE', `/movie/${id}`, undefined, {
         params: {
           deleteFiles: true,
@@ -483,9 +491,13 @@ class RadarrAPI extends ServarrBase<{ movieId: number }> {
       });
       logger.info(`[Radarr] Removed movie ${title}`);
     } catch (e) {
-      throw new Error(`[Radarr] Failed to remove movie: ${e.message}`, {
-        cause: e,
-      });
+      if (e?.response?.status === 404) {
+        logger.info(`[Radarr] Movie already removed from Radarr`, {
+          tmdbId,
+        });
+        return;
+      }
+      throw e;
     }
   };
 

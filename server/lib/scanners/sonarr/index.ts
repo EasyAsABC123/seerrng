@@ -43,6 +43,8 @@ class SonarrScanner
   private scanned4kTvdbIds: Set<number> = new Set();
   private didScanStandard = false;
   private didScan4k = false;
+  private serverReturnedEmpty = false;
+  private server4kReturnedEmpty = false;
 
   constructor() {
     super('Sonarr Scan', { bundleSize: 50 });
@@ -68,6 +70,8 @@ class SonarrScanner
     this.scanned4kTvdbIds.clear();
     this.didScanStandard = false;
     this.didScan4k = false;
+    this.serverReturnedEmpty = false;
+    this.server4kReturnedEmpty = false;
 
     try {
       this.servers = uniqWith(
@@ -105,6 +109,18 @@ class SonarrScanner
             this.didScanStandard = true;
           }
 
+          if (this.items.length === 0) {
+            if (server4k) {
+              this.server4kReturnedEmpty = true;
+            } else {
+              this.serverReturnedEmpty = true;
+            }
+            this.log(
+              `Sonarr server ${server.name} returned no series. Orphan cleanup for this profile type will be skipped.`,
+              'warn'
+            );
+          }
+
           await this.loop(this.processSonarrSeries.bind(this), { sessionId });
         } else {
           this.log(`Sync not enabled. Skipping Sonarr server: ${server.name}`);
@@ -126,6 +142,13 @@ class SonarrScanner
         this.didScanStandard = false;
       }
       if (!all4kScanned) {
+        this.didScan4k = false;
+      }
+
+      if (this.serverReturnedEmpty) {
+        this.didScanStandard = false;
+      }
+      if (this.server4kReturnedEmpty) {
         this.didScan4k = false;
       }
 
@@ -175,11 +198,28 @@ class SonarrScanner
       }
       const settings = getExternalRuntimeConfig();
 
-      const filteredSeasons = sonarrSeries.seasons.filter(
-        (sn) =>
-          tvShow.seasons.find((s) => s.season_number === sn.seasonNumber) &&
-          (!settings.main.enableSpecialEpisodes ? sn.seasonNumber !== 0 : true)
-      );
+      const filteredSeasons = tvShow.seasons
+        .filter(
+          (sn) => settings.main.enableSpecialEpisodes || sn.season_number !== 0
+        )
+        .map((season) => {
+          const sonarrSeason = sonarrSeries.seasons.find(
+            (s) => s.seasonNumber === season.season_number
+          );
+          if (!sonarrSeason) {
+            return {
+              seasonNumber: season.season_number,
+              episodeCount: season.episode_count,
+              monitored: false,
+              statistics: {
+                episodeFileCount: 0,
+                totalEpisodeCount: season.episode_count,
+              },
+            };
+          } else {
+            return sonarrSeason;
+          }
+        });
 
       for (const season of filteredSeasons) {
         const totalAvailableEpisodes = season.statistics?.episodeFileCount ?? 0;
@@ -251,6 +291,7 @@ class SonarrScanner
               )
             );
             if (changed) {
+              await this.declineOrphanedRequests(media, false);
               this.log(
                 `Show ${media.tmdbId} (tvdb: ${media.tvdbId}) not found in any Sonarr server. Status reset to UNKNOWN.`,
                 'info'
@@ -258,7 +299,7 @@ class SonarrScanner
             }
           }
         },
-        { relations: { seasons: true } }
+        { relations: { seasons: true, requests: true } }
       );
     } else {
       this.log(
@@ -302,6 +343,7 @@ class SonarrScanner
               )
             );
             if (changed) {
+              await this.declineOrphanedRequests(media, true);
               this.log(
                 `Show ${media.tmdbId} (tvdb: ${media.tvdbId}) not found in any 4K Sonarr server. 4K status reset to UNKNOWN.`,
                 'info'
@@ -309,7 +351,7 @@ class SonarrScanner
             }
           }
         },
-        { relations: { seasons: true } }
+        { relations: { seasons: true, requests: true } }
       );
     } else if (this.enable4kShow) {
       this.log(

@@ -517,6 +517,7 @@ export class User {
             status: Not(
               In([MediaRequestStatus.DECLINED, MediaRequestStatus.FAILED])
             ),
+            ignoreQuota: false,
           },
         })
       : 0;
@@ -558,9 +559,13 @@ export class User {
 
     let tvQuotaUsed = 0;
     if (tvQuotaLimit) {
-      const rawCount = await tvQuotaUsedQuery.getRawOne<{
-        count: string | number | null;
-      }>();
+      const rawCount = await tvQuotaUsedQuery
+        .andWhere('request.ignoreQuota = :ignoreQuota', {
+          ignoreQuota: false,
+        })
+        .getRawOne<{
+          count: string | number | null;
+        }>();
       tvQuotaUsed = Number(rawCount?.count ?? 0);
       if (!Number.isSafeInteger(tvQuotaUsed) || tvQuotaUsed < 0) {
         throw new Error('Invalid TV quota count returned by database.');
@@ -588,6 +593,7 @@ export class User {
             status: Not(
               In([MediaRequestStatus.DECLINED, MediaRequestStatus.FAILED])
             ),
+            ignoreQuota: false,
           },
         })
       : 0;
@@ -613,6 +619,7 @@ export class User {
             status: Not(
               In([MediaRequestStatus.DECLINED, MediaRequestStatus.FAILED])
             ),
+            ignoreQuota: false,
           },
         })
       : 0;

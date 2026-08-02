@@ -54,7 +54,7 @@ const StatusChecker = () => {
   }, [isAuthPage]);
 
   const { data, error } = useSWR<StatusResponse>(
-    statusCheckEnabled ? '/api/v1/status' : null,
+    statusCheckEnabled ? '/api/v1/status?checkUpdateAvailable=false' : null,
     {
       refreshInterval: 60 * 1000,
       revalidateOnFocus: false,

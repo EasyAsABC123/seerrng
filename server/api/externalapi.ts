@@ -1,6 +1,6 @@
 import logger from '@server/logger';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
-import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
+import { proxyRequestInterceptor } from '@server/utils/customProxyAgent';
 import { createSafeHttpRequestOptions } from '@server/utils/security';
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import axios from 'axios';
@@ -76,10 +76,26 @@ export interface ExternalAPIOptions {
     maxRPS: number;
     maxRequests: number;
   };
+  // Some callers (e.g. JellyfinAPI) build their base URL from structured
+  // settings where an unset hostname is a normal "not yet configured" state,
+  // not an admin-entered typo. For those, defer the failure to request time
+  // instead of throwing during construction.
+  allowUnconfiguredBaseUrl?: boolean;
 }
 
-const getHttpOrigin = (value: string): string => {
-  const url = new URL(value);
+const getHttpOrigin = (
+  value: string,
+  options: { allowUnconfiguredBaseUrl?: boolean } = {}
+): string | undefined => {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch (error) {
+    if (options.allowUnconfiguredBaseUrl) {
+      return undefined;
+    }
+    throw error;
+  }
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new Error('External API base URLs must use HTTP or HTTPS.');
   }
@@ -262,7 +278,9 @@ class ExternalAPI {
     params: Record<string, unknown>,
     options: ExternalAPIOptions = {}
   ) {
-    const configuredOrigin = getHttpOrigin(baseUrl);
+    const configuredOrigin = getHttpOrigin(baseUrl, {
+      allowUnconfiguredBaseUrl: options.allowUnconfiguredBaseUrl,
+    });
     const allowedOrigins = new Set(
       [
         configuredOrigin,
@@ -299,7 +317,7 @@ class ExternalAPI {
       }
       return config;
     });
-    this.axios.interceptors.request.use(requestInterceptorFunction);
+    this.axios.interceptors.request.use(proxyRequestInterceptor);
 
     if (options.rateLimit) {
       this.axios = rateLimit(this.axios, {

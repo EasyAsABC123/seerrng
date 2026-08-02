@@ -97,17 +97,17 @@ jobs:
           retry gh issue close "$NUMBER" -R "$GH_REPO" || true
           gh issue lock "$NUMBER" -R "$GH_REPO" -r "off_topic" || true
 
-      - name: Label removed, reopen and unlock issue
-        if: github.event.action == 'unlabeled' && github.event.label.name == 'support'
-        shell: bash
-        run: |
-          retry() { n=0; until "$@"; do n=$((n+1)); [ $n -ge 3 ] && break; echo "retry $n: $*" >&2; sleep 2; done; }
-          retry gh issue reopen "$NUMBER" -R "$GH_REPO" || true
-          gh issue unlock "$NUMBER" -R "$GH_REPO" || true
+          - name: Label removed, reopen and unlock issue
+            if: github.event.action == 'unlabeled' && github.event.label.name == 'support'
+            shell: bash
+            run: |
+              retry() { n=0; until "$@"; do n=$((n+1)); [ $n -ge 3 ] && break; echo "retry $n: $*" >&2; sleep 2; done; }
+              retry gh issue reopen "$NUMBER" -R "$GH_REPO" || true
+              gh issue unlock "$NUMBER" -R "$GH_REPO" || true
 
-      - name: Remove support label on manual reopen
-        if: github.event.action == 'reopened'
-        shell: bash
-        run: |
-          gh issue edit "$NUMBER" -R "$GH_REPO" --remove-label "support" || true
-          gh issue unlock "$NUMBER" -R "$GH_REPO" || true
+          - name: Remove support label on manual reopen
+            if: github.event.action == 'reopened'
+            shell: bash
+            run: |
+              gh issue edit "$NUMBER" -R "$GH_REPO" --remove-label "support" || true
+              gh issue unlock "$NUMBER" -R "$GH_REPO" || true

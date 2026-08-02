@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import CachedImage from '@app/components/Common/CachedImage';
 import { SmallLoadingSpinner } from '@app/components/Common/LoadingSpinner';
+import SlideCheckbox from '@app/components/Common/SlideCheckbox';
 import type { User } from '@app/hooks/useUser';
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
@@ -14,7 +15,7 @@ import type {
   ServiceCommonServerWithDetails,
 } from '@server/interfaces/api/serviceInterfaces';
 import { hasPermission } from '@server/lib/permissions';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import Select from 'react-select';
 import useSWR from 'swr';
@@ -41,6 +42,9 @@ const messages = defineMessages('components.RequestModal.AdvancedRequester', {
   tags: 'Tags',
   selecttags: 'Select tags',
   notagoptions: 'No tags.',
+  ignoreQuotaTitle: 'Bypass User Quota',
+  ignoreQuotaDescription:
+    "This request will not count against the user's quota limits. Use with caution.",
 });
 
 export type RequestOverrides = {
@@ -51,6 +55,7 @@ export type RequestOverrides = {
   tags?: number[];
   language?: number;
   user?: RequestUser;
+  ignoreQuota?: boolean;
 };
 
 type RequestUser = Pick<
@@ -69,6 +74,12 @@ interface AdvancedRequesterProps {
   bookFormat?: 'ebook' | 'audiobook' | 'both';
   defaultOverrides?: RequestOverrides;
   requestUser?: RequestUser;
+  quota?: {
+    movie: { limit?: number };
+    tv: { limit?: number };
+    music: { limit?: number };
+    book: { limit?: number };
+  };
   onChange: (overrides: RequestOverrides) => void;
 }
 
@@ -79,6 +90,7 @@ const AdvancedRequester = ({
   bookFormat,
   defaultOverrides,
   requestUser,
+  quota,
   onChange,
 }: AdvancedRequesterProps) => {
   const intl = useIntl();
@@ -122,6 +134,21 @@ const AdvancedRequester = ({
     defaultOverrides?.tags ?? []
   );
 
+  const [ignoreQuota, setIgnoreQuota] = useState<boolean>(
+    defaultOverrides?.ignoreQuota ?? false
+  );
+  const quotaLimitForType =
+    type === 'movie'
+      ? quota?.movie.limit
+      : type === 'music'
+        ? quota?.music.limit
+        : type === 'book'
+          ? quota?.book.limit
+          : quota?.tv.limit;
+  const isIgnoreQuotaVisible =
+    currentHasPermission([Permission.MANAGE_REQUESTS]) &&
+    (quotaLimitForType ?? 0) > 0;
+
   const { data: serverData, isValidating } =
     useSWR<ServiceCommonServerWithDetails>(
       selectedServer !== null
@@ -153,6 +180,8 @@ const AdvancedRequester = ({
     () => (data ?? []).filter((server) => server.is4k === is4k),
     [data, is4k]
   );
+  const selectedUserId = selectedUser?.id;
+  const previousSelectedUserIdRef = useRef<number | undefined>(selectedUserId);
 
   const { data: userData } = useSWR<ClientUserResultsResponse>(
     currentHasPermission([Permission.MANAGE_REQUESTS, Permission.MANAGE_USERS])
@@ -189,9 +218,14 @@ const AdvancedRequester = ({
 
   useEffect(() => {
     if (filteredUserData && !requestUser) {
-      setSelectedUser(
-        filteredUserData.find((u) => u.id === currentUser?.id) ?? null
-      );
+      const nextSelectedUser =
+        filteredUserData.find((u) => u.id === currentUser?.id) ?? null;
+
+      if (nextSelectedUser?.id !== selectedUserId) {
+        setIgnoreQuota(false);
+      }
+
+      setSelectedUser(nextSelectedUser);
     }
   }, [filteredUserData]);
 
@@ -326,6 +360,10 @@ const AdvancedRequester = ({
     if (defaultOverrides && defaultOverrides.tags != null) {
       setSelectedTags(defaultOverrides.tags);
     }
+
+    if (defaultOverrides && defaultOverrides.ignoreQuota != null) {
+      setIgnoreQuota(defaultOverrides.ignoreQuota);
+    }
   }, [
     defaultOverrides?.server,
     defaultOverrides?.folder,
@@ -333,7 +371,18 @@ const AdvancedRequester = ({
     defaultOverrides?.metadataProfile,
     defaultOverrides?.language,
     defaultOverrides?.tags,
+    defaultOverrides?.ignoreQuota,
   ]);
+
+  useEffect(() => {
+    const selectedUserChanged =
+      previousSelectedUserIdRef.current !== selectedUserId;
+    previousSelectedUserIdRef.current = selectedUserId;
+
+    if (!isIgnoreQuotaVisible || selectedUserChanged) {
+      setIgnoreQuota(false);
+    }
+  }, [isIgnoreQuotaVisible, selectedUserId]);
 
   useEffect(() => {
     if (selectedServer !== null || selectedUser) {
@@ -359,6 +408,7 @@ const AdvancedRequester = ({
             ? selectedLanguage
             : undefined,
         tags: serviceOverridesEnabled ? selectedTags : undefined,
+        ignoreQuota: isIgnoreQuotaVisible && ignoreQuota ? true : undefined,
       });
     }
   }, [
@@ -370,6 +420,8 @@ const AdvancedRequester = ({
     selectedLanguage,
     selectedTags,
     serviceOverridesEnabled,
+    ignoreQuota,
+    isIgnoreQuotaVisible,
   ]);
 
   if (!data && !error) {
@@ -685,6 +737,22 @@ const AdvancedRequester = ({
               />
             </div>
           )}
+        {isIgnoreQuotaVisible && (
+          <div className="mb-2">
+            <label htmlFor="ignoreQuota">
+              {intl.formatMessage(messages.ignoreQuotaTitle)}
+            </label>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.ignoreQuotaDescription)}
+              </p>
+              <SlideCheckbox
+                checked={ignoreQuota}
+                onClick={() => setIgnoreQuota(!ignoreQuota)}
+              />
+            </div>
+          </div>
+        )}
         {currentHasPermission([
           Permission.MANAGE_REQUESTS,
           Permission.MANAGE_USERS,
@@ -694,7 +762,10 @@ const AdvancedRequester = ({
             <Listbox
               as="div"
               value={selectedUser}
-              onChange={(value) => setSelectedUser(value)}
+              onChange={(value) => {
+                setIgnoreQuota(false);
+                setSelectedUser(value);
+              }}
               className="space-y-1"
             >
               {({ open }) => (

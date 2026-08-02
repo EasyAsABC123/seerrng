@@ -62,7 +62,7 @@ import 'country-flag-icons/3x2/flags.css';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
 
@@ -131,7 +131,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
   const intl = useIntl();
   const { locale } = useLocale();
   const [showRequestModal, setShowRequestModal] = useState(false);
-  const [showManager, setShowManager] = useState(router.query.manage == '1');
+  const [showManager, setShowManager] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
   const [toggleWatchlist, setToggleWatchlist] = useState<boolean>(
@@ -173,8 +173,14 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
   );
 
   useEffect(() => {
-    setShowManager(router.query.manage == '1');
-  }, [router.query.manage]);
+    if (router.query.manage === '1') {
+      setShowManager(true);
+      router.replace({
+        pathname: router.pathname,
+        query: { tvId: router.query.tvId },
+      });
+    }
+  }, [router, router.query.manage]);
 
   const closeBlocklistModal = useCallback(
     () => setShowBlocklistModal(false),
@@ -283,12 +289,12 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
           </Link>
         ))
         .reduce((prev, curr) => (
-          <>
+          <Fragment key={`${prev.key}-${curr.key}`}>
             {intl.formatMessage(globalMessages.delimitedlist, {
               a: prev,
               b: curr,
             })}
-          </>
+          </Fragment>
         ))
     );
   }
@@ -546,7 +552,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
           mediaType="tv"
           onClose={() => {
             setShowManager(false);
-            router.push({
+            router.replace({
               pathname: router.pathname,
               query: { tvId: router.query.tvId },
             });
@@ -628,11 +634,11 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
               seriesAttributes
                 .map((t, k) => <span key={k}>{t}</span>)
                 .reduce((prev, curr) => (
-                  <>
+                  <Fragment key={`${prev.key}-${curr.key}`}>
                     {prev}
                     <span>|</span>
                     {curr}
-                  </>
+                  </Fragment>
                 ))}
           </span>
         </div>
@@ -1304,12 +1310,12 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                       </Link>
                     ))
                     .reduce((prev, curr) => (
-                      <>
+                      <Fragment key={`${prev.key}-${curr.key}`}>
                         {intl.formatMessage(globalMessages.delimitedlist, {
                           a: prev,
                           b: curr,
                         })}
-                      </>
+                      </Fragment>
                     ))}
                 </span>
               </div>
@@ -1320,7 +1326,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
                 <span className="media-fact-value flex flex-row flex-wrap gap-5">
                   {streamingProviders.map((p) => {
                     return (
-                      <Tooltip content={p.name}>
+                      <Tooltip content={p.name} key={`tooltip-${p.id}`}>
                         <span
                           className="opacity-50 transition duration-300 hover:opacity-100"
                           key={`provider-${p.id}`}

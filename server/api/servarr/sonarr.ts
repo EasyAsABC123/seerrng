@@ -407,7 +407,7 @@ class SonarrAPI extends ServarrBase<{
         errorMessage: e.message,
         tvdbId: id,
       });
-      throw new Error('Series not found', { cause: e });
+      throw e;
     }
   }
 
@@ -733,9 +733,17 @@ class SonarrAPI extends ServarrBase<{
 
     return newSeasons;
   }
-  public removeSeries = async (serieId: number): Promise<void> => {
+  public removeSeries = async (tvdbId: number): Promise<void> => {
+    const { id, title } = await this.getSeriesByTvdbId(tvdbId);
+
+    if (!id) {
+      logger.info(`[Sonarr] Series not in library, nothing to remove`, {
+        tvdbId,
+      });
+      return;
+    }
+
     try {
-      const { id, title } = await this.getSeriesByTvdbId(serieId);
       await this.request('DELETE', `/series/${id}`, undefined, {
         params: {
           deleteFiles: true,
@@ -744,9 +752,13 @@ class SonarrAPI extends ServarrBase<{
       });
       logger.info(`[Sonarr] Removed series ${title}`);
     } catch (e) {
-      throw new Error(`[Sonarr] Failed to remove series: ${e.message}`, {
-        cause: e,
-      });
+      if (e?.response?.status === 404) {
+        logger.info(`[Sonarr] Series already removed from Sonarr`, {
+          tvdbId,
+        });
+        return;
+      }
+      throw e;
     }
   };
 

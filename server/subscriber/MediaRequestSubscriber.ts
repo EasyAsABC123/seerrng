@@ -2178,29 +2178,64 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       return;
     }
 
-    const [hasActiveStandardRequests, hasActive4kRequests] = await Promise.all([
+    const [
+      hasActiveStandardRequests,
+      hasActive4kRequests,
+      hadCompletedStandardRequest,
+      hadCompleted4kRequest,
+    ] = await Promise.all([
       requestRepository.exists({
         where: { ...activeRequestWhere, is4k: false },
       }),
       requestRepository.exists({
         where: { ...activeRequestWhere, is4k: true },
       }),
+      requestRepository.exists({
+        where: {
+          media: { id: media.id },
+          is4k: false,
+          status: MediaRequestStatus.COMPLETED,
+        },
+      }),
+      requestRepository.exists({
+        where: {
+          media: { id: media.id },
+          is4k: true,
+          status: MediaRequestStatus.COMPLETED,
+        },
+      }),
     ]);
     const needsStatusUpdate =
       !hasActiveStandardRequests &&
       media.status !== MediaStatus.AVAILABLE &&
-      media.status !== MediaStatus.DELETED;
+      media.status !== MediaStatus.PARTIALLY_AVAILABLE;
     const needs4kStatusUpdate =
       !hasActive4kRequests &&
       media.status4k !== MediaStatus.AVAILABLE &&
-      media.status4k !== MediaStatus.DELETED;
+      media.status4k !== MediaStatus.PARTIALLY_AVAILABLE;
 
     if (needsStatusUpdate || needs4kStatusUpdate) {
       if (needsStatusUpdate) {
-        media.status = MediaStatus.UNKNOWN;
+        // A previously COMPLETED request implies the media was actually
+        // delivered; if nothing active remains, treat this as the delivered
+        // file having been removed rather than the media never existing.
+        // If there's no such evidence and the removed request was not
+        // itself the completion record, leave an already-DELETED status
+        // alone rather than resurrecting it to UNKNOWN.
+        media.status = hadCompletedStandardRequest
+          ? MediaStatus.DELETED
+          : media.status === MediaStatus.DELETED &&
+              !(!entity.is4k && entity.status === MediaRequestStatus.COMPLETED)
+            ? MediaStatus.DELETED
+            : MediaStatus.UNKNOWN;
       }
       if (needs4kStatusUpdate) {
-        media.status4k = MediaStatus.UNKNOWN;
+        media.status4k = hadCompleted4kRequest
+          ? MediaStatus.DELETED
+          : media.status4k === MediaStatus.DELETED &&
+              !(entity.is4k && entity.status === MediaRequestStatus.COMPLETED)
+            ? MediaStatus.DELETED
+            : MediaStatus.UNKNOWN;
       }
 
       await manager.save(media);

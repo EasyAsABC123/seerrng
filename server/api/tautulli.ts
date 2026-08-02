@@ -2,7 +2,7 @@ import type { User } from '@server/entity/User';
 import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import type { TautulliSettings } from '@server/lib/settings';
 import logger from '@server/logger';
-import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
+import { proxyRequestInterceptor } from '@server/utils/customProxyAgent';
 import {
   createSafeHttpRequestOptions,
   createSafeHttpUrl,
@@ -159,7 +159,7 @@ class TautulliAPI {
       timeout: getExternalRuntimeConfig().network.apiRequestTimeout,
       ...TAUTULLI_HTTP_LIMITS,
     });
-    this.axios.interceptors.request.use(requestInterceptorFunction);
+    this.axios.interceptors.request.use(proxyRequestInterceptor);
   }
 
   private async get<T>(

@@ -445,20 +445,54 @@ export class MediaRequest {
 
     const quotas = await requestUser.getQuota();
 
-    if (requestBody.mediaType === MediaType.MOVIE && quotas.movie.restricted) {
-      throw new QuotaRestrictedError('Movie Quota exceeded.');
-    } else if (requestBody.mediaType === MediaType.TV && quotas.tv.restricted) {
-      throw new QuotaRestrictedError('Series Quota exceeded.');
-    } else if (
-      requestBody.mediaType === MediaType.MUSIC &&
-      quotas.music.restricted
-    ) {
-      throw new QuotaRestrictedError('Music Quota exceeded.');
-    } else if (
-      requestBody.mediaType === MediaType.BOOK &&
-      quotas.book.restricted
-    ) {
-      throw new QuotaRestrictedError('Book Quota exceeded.');
+    const canBypassQuota = requestUser.hasPermission(
+      Permission.MANAGE_REQUESTS
+    );
+    const quotaForMediaType = (mediaType: MediaType) => {
+      switch (mediaType) {
+        case MediaType.MOVIE:
+          return quotas.movie;
+        case MediaType.TV:
+          return quotas.tv;
+        case MediaType.MUSIC:
+          return quotas.music;
+        case MediaType.BOOK:
+          return quotas.book;
+        default:
+          return undefined;
+      }
+    };
+    const ignoreQuota =
+      requestBody.ignoreQuota === true &&
+      canBypassQuota &&
+      (quotaForMediaType(requestBody.mediaType)?.limit ?? 0) > 0;
+
+    if (!ignoreQuota) {
+      if (requestBody.ignoreQuota && !canBypassQuota) {
+        throw new RequestPermissionError(
+          'You do not have permission to bypass user quota limits.'
+        );
+      } else if (
+        requestBody.mediaType === MediaType.MOVIE &&
+        quotas.movie.restricted
+      ) {
+        throw new QuotaRestrictedError('Movie Quota exceeded.');
+      } else if (
+        requestBody.mediaType === MediaType.TV &&
+        quotas.tv.restricted
+      ) {
+        throw new QuotaRestrictedError('Series Quota exceeded.');
+      } else if (
+        requestBody.mediaType === MediaType.MUSIC &&
+        quotas.music.restricted
+      ) {
+        throw new QuotaRestrictedError('Music Quota exceeded.');
+      } else if (
+        requestBody.mediaType === MediaType.BOOK &&
+        quotas.book.restricted
+      ) {
+        throw new QuotaRestrictedError('Book Quota exceeded.');
+      }
     }
 
     // Canonical media admission must precede Servarr admission. Media mutation
@@ -808,6 +842,7 @@ export class MediaRequest {
         rootFolder,
         tags,
         isAutoRequest: options.isAutoRequest ?? false,
+        ignoreQuota,
       });
 
       return dataSource.transaction(async (manager) => {
@@ -1002,6 +1037,7 @@ export class MediaRequest {
           : selectedReadarr?.tags,
         bookFormat: requestedBookFormat,
         isAutoRequest: options.isAutoRequest ?? false,
+        ignoreQuota,
       });
 
       return dataSource.transaction(async (manager) => {
@@ -1100,11 +1136,19 @@ export class MediaRequest {
         throw new BlocklistedMediaError('This media is blocklisted.');
       }
 
-      if (media.status === MediaStatus.UNKNOWN && !requestBody.is4k) {
+      if (
+        (media.status === MediaStatus.UNKNOWN ||
+          media.status === MediaStatus.DELETED) &&
+        !requestBody.is4k
+      ) {
         media.status = MediaStatus.PENDING;
       }
 
-      if (media.status4k === MediaStatus.UNKNOWN && requestBody.is4k) {
+      if (
+        (media.status4k === MediaStatus.UNKNOWN ||
+          media.status4k === MediaStatus.DELETED) &&
+        requestBody.is4k
+      ) {
         media.status4k = MediaStatus.PENDING;
       }
     }
@@ -1155,7 +1199,11 @@ export class MediaRequest {
     }
 
     // If an existing auto-request for this media exists from the same user,
-    // don't allow a new one.
+    // don't allow a new one, unless the previously requested media was
+    // since deleted.
+    const autoRequestStatusColumn = requestBody.is4k
+      ? 'media.status4k'
+      : 'media.status';
     const hasExistingAutoRequest = await existingRequestQuery
       .clone()
       .innerJoin('request.requestedBy', 'requestedBy')
@@ -1164,6 +1212,9 @@ export class MediaRequest {
       })
       .andWhere('request.isAutoRequest = :isAutoRequest', {
         isAutoRequest: true,
+      })
+      .andWhere(`${autoRequestStatusColumn} != :deletedStatus`, {
+        deletedStatus: MediaStatus.DELETED,
       })
       .getExists();
     if (hasExistingAutoRequest) {
@@ -1364,6 +1415,7 @@ export class MediaRequest {
         rootFolder: rootFolder,
         tags: tags,
         isAutoRequest: options.isAutoRequest ?? false,
+        ignoreQuota,
       });
 
       return dataSource.transaction(async (manager) => {
@@ -1440,6 +1492,7 @@ export class MediaRequest {
       if (finalSeasons.length === 0) {
         throw new NoSeasonsAvailableError('No seasons available to request');
       } else if (
+        !ignoreQuota &&
         quotas.tv.limit &&
         finalSeasons.length > (quotas.tv.remaining ?? 0)
       ) {
@@ -1486,6 +1539,7 @@ export class MediaRequest {
               })
           ),
           isAutoRequest: options.isAutoRequest ?? false,
+          ignoreQuota,
         });
 
         return dataSource.transaction(async (manager) => {
@@ -1651,6 +1705,9 @@ export class MediaRequest {
 
   @Column({ default: false })
   public isAutoRequest: boolean;
+
+  @Column({ default: false })
+  public ignoreQuota: boolean;
 
   constructor(init?: Partial<MediaRequest>) {
     Object.assign(this, init);

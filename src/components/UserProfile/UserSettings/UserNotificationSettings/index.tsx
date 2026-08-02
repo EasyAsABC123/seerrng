@@ -77,7 +77,6 @@ const UserNotificationSettings = ({
       ),
       route: '/settings/notifications/discord',
       regex: /\/settings\/notifications\/discord/,
-      hidden: !data?.discordEnabled,
     },
     {
       text: 'Pushbullet',

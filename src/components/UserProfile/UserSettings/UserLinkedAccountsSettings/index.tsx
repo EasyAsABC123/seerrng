@@ -5,6 +5,7 @@ import Alert from '@app/components/Common/Alert';
 import ConfirmButton from '@app/components/Common/ConfirmButton';
 import Dropdown from '@app/components/Common/Dropdown';
 import PageTitle from '@app/components/Common/PageTitle';
+import LinkJellyfinQuickConnectModal from '@app/components/UserProfile/UserSettings/UserLinkedAccountsSettings/LinkJellyfinQuickConnectModal';
 import useSettings from '@app/hooks/useSettings';
 import { getPositiveQueryParamNumber } from '@app/hooks/useUpdateQueryParams';
 import { Permission, UserType, useUser } from '@app/hooks/useUser';
@@ -90,6 +91,8 @@ const UserLinkedAccountsSettings = () => {
   const [showJellyfinModal, setShowJellyfinModal] = useState(false);
   const plexAttemptRef = useRef<number | undefined>(undefined);
   const oidcCallbackProviderRef = useRef<string | null>(null);
+  const [showJellyfinQuickConnectModal, setShowJellyfinQuickConnectModal] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Handle OIDC callback when the provider redirects back to this page
@@ -405,6 +408,23 @@ const UserLinkedAccountsSettings = () => {
         onSave={() => {
           setShowJellyfinModal(false);
           revalidateUser();
+        }}
+        onSwitchToQuickConnect={() => {
+          setShowJellyfinModal(false);
+          setShowJellyfinQuickConnectModal(true);
+        }}
+      />
+
+      <LinkJellyfinQuickConnectModal
+        show={showJellyfinQuickConnectModal}
+        onClose={() => setShowJellyfinQuickConnectModal(false)}
+        onSave={() => {
+          setShowJellyfinQuickConnectModal(false);
+          revalidateUser();
+        }}
+        onSwitchToPassword={() => {
+          setShowJellyfinQuickConnectModal(false);
+          setShowJellyfinModal(true);
         }}
       />
     </>

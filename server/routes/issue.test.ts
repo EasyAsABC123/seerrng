@@ -280,6 +280,131 @@ describe('Issue route validation', () => {
   });
 });
 
+describe('POST /issue on behalf of another user', () => {
+  async function seedMedia(tmdbId: number) {
+    return getRepository(Media).save(
+      new Media({
+        mediaType: MediaType.MOVIE,
+        tmdbId,
+        status: MediaStatus.AVAILABLE,
+        status4k: MediaStatus.UNKNOWN,
+      })
+    );
+  }
+
+  it('creates an issue on behalf of the supplied userId', async () => {
+    const issueRepo = getRepository(Issue);
+    const userRepo = getRepository(User);
+    const media = await seedMedia(20001);
+    const friend = await userRepo.findOneOrFail({
+      where: { email: 'friend@seerr.dev' },
+    });
+
+    const agent = await login();
+    const res = await agent.post('/issue').send({
+      issueType: IssueType.VIDEO,
+      message: 'Playback stutters near the end.',
+      mediaId: media.id,
+      problemSeason: 0,
+      problemEpisode: 0,
+      userId: friend.id,
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.createdBy.id, friend.id);
+    assert.strictEqual(res.body.comments[0].user.id, friend.id);
+
+    const persisted = await issueRepo.findOneOrFail({
+      where: { id: res.body.id },
+      relations: { createdBy: true, comments: { user: true } },
+    });
+
+    assert.strictEqual(persisted.createdBy.id, friend.id);
+    assert.strictEqual(persisted.comments[0].user.id, friend.id);
+  });
+
+  it('defaults to the authenticated user when userId is omitted', async () => {
+    const media = await seedMedia(20002);
+
+    const agent = await login();
+    const res = await agent.post('/issue').send({
+      issueType: IssueType.AUDIO,
+      message: 'Audio is out of sync.',
+      mediaId: media.id,
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.createdBy.id, 1);
+    assert.strictEqual(res.body.comments[0].user.id, 1);
+  });
+
+  it('allows creators to supply their own userId', async () => {
+    const userRepo = getRepository(User);
+    const media = await seedMedia(20003);
+    const friend = await userRepo.findOneOrFail({
+      where: { email: 'friend@seerr.dev' },
+    });
+
+    friend.permissions = Permission.CREATE_ISSUES;
+    await userRepo.save(friend);
+
+    const agent = await loginAs('friend@seerr.dev');
+    const res = await agent.post('/issue').send({
+      issueType: IssueType.SUBTITLES,
+      message: 'Subtitles are missing.',
+      mediaId: media.id,
+      userId: friend.id,
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.createdBy.id, friend.id);
+    assert.strictEqual(res.body.comments[0].user.id, friend.id);
+  });
+
+  it('prevents non-managers from supplying another userId', async () => {
+    const userRepo = getRepository(User);
+    const media = await seedMedia(20004);
+    const friend = await userRepo.findOneOrFail({
+      where: { email: 'friend@seerr.dev' },
+    });
+    const admin = await userRepo.findOneOrFail({
+      where: { email: 'admin@seerr.dev' },
+    });
+
+    friend.permissions = Permission.CREATE_ISSUES;
+    await userRepo.save(friend);
+
+    const agent = await loginAs('friend@seerr.dev');
+    const res = await agent.post('/issue').send({
+      issueType: IssueType.OTHER,
+      message: 'Something else is wrong.',
+      mediaId: media.id,
+      userId: admin.id,
+    });
+
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(
+      res.body.message,
+      'You do not have permission to create an issue on behalf of another user.'
+    );
+  });
+
+  it('returns 404 when the supplied userId does not exist', async () => {
+    const media = await seedMedia(20005);
+
+    const agent = await login();
+    const res = await agent.post('/issue').send({
+      issueType: IssueType.OTHER,
+      message: 'Something else is wrong.',
+      mediaId: media.id,
+      userId: 999999,
+    });
+
+    assert.strictEqual(res.status, 404);
+    assert.strictEqual(res.body.message, 'Issue user not found');
+  });
+});
+
 describe('Issue route authorization', () => {
   it('uses persisted issue authority for list, count, detail, and comment reads', async () => {
     const ownIssue = await createIssue('admin@seerr.dev', 107);

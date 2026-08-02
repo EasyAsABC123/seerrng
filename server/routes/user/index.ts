@@ -1753,6 +1753,7 @@ router.post(
             )
         );
       const createdUsers: User[] = [];
+      let refreshedUsers = 0;
       for (const rawUser of plexUsers) {
         const account = rawUser.$;
         const plexId = parsePositiveRouteId(account.id, MAX_USER_ID_VALUE);
@@ -1821,6 +1822,7 @@ router.post(
                     activeUser.plexId = plexId;
                   }
                   await userRepository.save(activeUser);
+                  refreshedUsers += 1;
                 });
               } else if (
                 plexUserHasServerAccess(rawUser, importAuthority.machineId)
@@ -1849,7 +1851,10 @@ router.post(
         }
       }
 
-      return res.status(201).json(User.filterMany(createdUsers));
+      return res.status(201).json({
+        createdUsers: User.filterMany(createdUsers),
+        refreshedUsers,
+      });
     } catch (e) {
       if (e instanceof UserMutationActorUnauthorizedError) {
         return next({

@@ -3,7 +3,7 @@ name: Rebuild Issue Index
 
 on:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 permissions: {}

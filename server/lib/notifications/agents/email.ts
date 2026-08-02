@@ -24,6 +24,9 @@ import {
   getNotificationActionUrl,
 } from './agent';
 
+const PUBLIC_LOGO_URL =
+  'https://raw.githubusercontent.com/seerr-team/seerr/refs/heads/develop/public/logo_full.svg';
+
 const messages = defineMessages('notifications.agents.email', {
   issueType: '{type} issue',
   issue: 'issue',
@@ -101,7 +104,12 @@ class EmailAgent
     const intl = getIntl(locale);
     const { applicationUrl, applicationTitle } =
       getExternalRuntimeConfig().main;
-    const { embedPoster } = this.getSettings();
+    const { embedPoster, options } = this.getSettings();
+    const logoUrl = options.usePublicLogo
+      ? PUBLIC_LOGO_URL
+      : applicationUrl
+        ? `${applicationUrl}/logo_full.svg`
+        : undefined;
 
     if (type === Notification.TEST_NOTIFICATION) {
       return {
@@ -113,6 +121,7 @@ class EmailAgent
           body: payload.message,
           applicationUrl,
           applicationTitle,
+          logoUrl,
           recipientName,
           recipientEmail,
         },
@@ -199,6 +208,7 @@ class EmailAgent
           actionUrl: getNotificationActionUrl(payload, applicationUrl),
           applicationUrl,
           applicationTitle,
+          logoUrl,
           recipientName,
           recipientEmail,
         },
@@ -265,6 +275,7 @@ class EmailAgent
           actionUrl: getNotificationActionUrl(payload, applicationUrl),
           applicationUrl,
           applicationTitle,
+          logoUrl,
           recipientName,
           recipientEmail,
         },

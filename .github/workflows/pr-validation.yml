@@ -61,25 +61,25 @@ jobs:
               page: 1,
             });
 
-            const botComment = allComments.find(
-              c => c.user.type === 'Bot' && c.body && c.body.includes('### PR Title Validation Failed')
-            );
+                const botComment = allComments.find(
+                  c => c.user.type === 'Bot' && c.body && c.body.includes('### PR Title Validation Failed')
+                );
 
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body,
-              });
-            }
+                if (botComment) {
+                  await github.rest.issues.updateComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    comment_id: botComment.id,
+                    body,
+                  });
+                } else {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: prNumber,
+                    body,
+                  });
+                }
 
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         if: always() && steps.lint_pr_title.outputs.error_message == null

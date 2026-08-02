@@ -1,3 +1,4 @@
+import useSettings from '@app/hooks/useSettings';
 import defineMessages from '@app/utils/defineMessages';
 import {
   ArrowUpCircleIcon,
@@ -24,6 +25,7 @@ interface VersionStatusProps {
 }
 
 const VersionStatus = ({ onClick }: VersionStatusProps) => {
+  const settings = useSettings();
   const intl = useIntl();
   const [statusEnabled, setStatusEnabled] = useState(false);
 
@@ -43,7 +45,9 @@ const VersionStatus = ({ onClick }: VersionStatusProps) => {
   }, []);
 
   const { data } = useSWR<StatusResponse>(
-    statusEnabled ? '/api/v1/status' : null,
+    statusEnabled
+      ? `/api/v1/status?checkUpdateAvailable=${settings.currentSettings.versionCheck}`
+      : null,
     {
       refreshInterval: 60 * 1000,
       revalidateOnFocus: false,
@@ -87,21 +91,23 @@ const VersionStatus = ({ onClick }: VersionStatusProps) => {
       )}
       <div className="flex min-w-0 flex-1 flex-col truncate px-2 last:pr-0">
         <span className="font-bold">{versionStream}</span>
-        <span className="truncate">
-          {data.commitTag === 'local' ? (
-            '(⌐■_■)'
-          ) : data.commitsBehind > 0 ? (
-            intl.formatMessage(messages.commitsbehind, {
-              commitsBehind: data.commitsBehind,
-            })
-          ) : data.commitsBehind === -1 ? (
-            intl.formatMessage(messages.outofdate)
-          ) : (
-            <code className="bg-transparent p-0">
-              {data.version.replace('main-', '')}
-            </code>
-          )}
-        </span>
+        {data.commitsBehind !== undefined && (
+          <span className="truncate">
+            {data.commitTag === 'local' ? (
+              '(⌐■_■)'
+            ) : data.commitsBehind > 0 ? (
+              intl.formatMessage(messages.commitsbehind, {
+                commitsBehind: data.commitsBehind,
+              })
+            ) : data.commitsBehind === -1 ? (
+              intl.formatMessage(messages.outofdate)
+            ) : (
+              <code className="bg-transparent p-0">
+                {data.version.replace('main-', '')}
+              </code>
+            )}
+          </span>
+        )}
       </div>
       {data.updateAvailable && <ArrowUpCircleIcon className="h-6 w-6" />}
     </Link>

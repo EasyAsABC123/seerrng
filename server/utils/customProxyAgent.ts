@@ -5,19 +5,78 @@ import {
   requiresDirectSafeHttpConnection,
 } from '@server/utils/security';
 import axios, { type InternalAxiosRequestConfig } from 'axios';
+import http from 'http';
 import { HttpProxyAgent } from 'http-proxy-agent';
+import https from 'https';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import type { Dispatcher } from 'undici';
 import { Agent, ProxyAgent, setGlobalDispatcher } from 'undici';
 
-export let requestInterceptorFunction: (
-  config: InternalAxiosRequestConfig
-) => InternalAxiosRequestConfig = (config) => config;
+interface ProxyState {
+  httpAgent: HttpProxyAgent<string>;
+  httpsAgent: HttpsProxyAgent<string>;
+  skipUrl: (url: string | URL) => boolean;
+}
 
-let axiosRequestInterceptorId: number | undefined;
-let axiosProxyConfigured = false;
-let fallbackHttpAgent: unknown;
-let fallbackHttpsAgent: unknown;
+let proxyState: ProxyState | null = null;
+let ipv4Agents: { httpAgent: http.Agent; httpsAgent: https.Agent } | null =
+  null;
+
+export function setForceIpv4First(enabled: boolean) {
+  ipv4Agents = enabled
+    ? {
+        httpAgent: new http.Agent({ family: 4 }),
+        httpsAgent: new https.Agent({ family: 4 }),
+      }
+    : null;
+}
+
+export function proxyRequestInterceptor(
+  config: InternalAxiosRequestConfig
+): InternalAxiosRequestConfig {
+  let url: URL | undefined;
+  try {
+    if (config.baseURL) {
+      url = new URL(config.url ?? '', config.baseURL);
+    } else if (config.url) {
+      url = new URL(config.url);
+    }
+  } catch {
+    url = undefined;
+  }
+
+  const lookup = (config as InternalAxiosRequestConfig & { lookup?: unknown })
+    .lookup;
+
+  if (
+    requiresDirectSafeHttpConnection(lookup) ||
+    (url && proxyState?.skipUrl(url))
+  ) {
+    // Already-validated safe URLs (and anything the proxy config says to
+    // bypass) must connect directly using the resolved-safe address, not
+    // through a proxy that could re-resolve DNS and bypass the SSRF check.
+    config.httpAgent = ipv4Agents?.httpAgent ?? false;
+    config.httpsAgent = ipv4Agents?.httpsAgent ?? false;
+    // Axios can independently honor HTTP_PROXY/HTTPS_PROXY after custom
+    // agents are cleared. Disable that fallback as well.
+    config.proxy = false;
+    return config;
+  }
+
+  if (proxyState) {
+    config.httpAgent = proxyState.httpAgent;
+    config.httpsAgent = proxyState.httpsAgent;
+    config.proxy = false;
+  } else if (ipv4Agents) {
+    config.httpAgent = ipv4Agents.httpAgent;
+    config.httpsAgent = ipv4Agents.httpsAgent;
+  }
+
+  return config;
+}
+
+// default instance only, axios.create() clients register this themselves
+axios.interceptors.request.use(proxyRequestInterceptor);
 
 const createDefaultAgent = (forceIpv4First?: boolean) =>
   new Agent({
@@ -27,18 +86,7 @@ const createDefaultAgent = (forceIpv4First?: boolean) =>
   });
 
 const clearAxiosProxyConfiguration = () => {
-  if (axiosRequestInterceptorId !== undefined) {
-    axios.interceptors.request.eject(axiosRequestInterceptorId);
-    axiosRequestInterceptorId = undefined;
-  }
-
-  if (axiosProxyConfigured) {
-    axios.defaults.httpAgent = fallbackHttpAgent;
-    axios.defaults.httpsAgent = fallbackHttpsAgent;
-    axiosProxyConfigured = false;
-  }
-
-  requestInterceptorFunction = (config) => config;
+  proxyState = null;
 };
 
 export const resetCustomProxyAgent = (forceIpv4First?: boolean): void => {
@@ -51,20 +99,6 @@ export const PROXY_CONNECTIVITY_CHECK_OPTIONS = {
   maxContentLength: 1024,
   maxBodyLength: 1024,
 } as const;
-
-const getAxiosRequestUrl = (
-  config: InternalAxiosRequestConfig
-): string | URL | undefined => {
-  if (!config.url) {
-    return config.baseURL;
-  }
-
-  try {
-    return config.baseURL ? new URL(config.url, config.baseURL) : config.url;
-  } catch {
-    return config.url;
-  }
-};
 
 const normalizeProxyHostname = (value: string): string =>
   value.trim().toLowerCase().replace(/\.+$/, '');
@@ -101,10 +135,6 @@ export default async function createCustomProxyAgent(
   proxySettings: ProxySettings,
   forceIpv4First?: boolean
 ) {
-  if (!axiosProxyConfigured) {
-    fallbackHttpAgent = axios.defaults.httpAgent;
-    fallbackHttpsAgent = axios.defaults.httpsAgent;
-  }
   clearAxiosProxyConfiguration();
 
   const defaultAgent = createDefaultAgent(forceIpv4First);
@@ -171,33 +201,19 @@ export default async function createCustomProxyAgent(
       scheduling: 'lifo' as const,
       family: forceIpv4First ? 4 : undefined,
     };
-    axios.defaults.httpAgent = new HttpProxyAgent(proxyUrl, agentOptions);
-    axios.defaults.httpsAgent = new HttpsProxyAgent(proxyUrl, agentOptions);
 
-    requestInterceptorFunction = (config) => {
-      const url = getAxiosRequestUrl(config);
-      const lookup = (
-        config as InternalAxiosRequestConfig & { lookup?: unknown }
-      ).lookup;
-      if (requiresDirectSafeHttpConnection(lookup) || (url && skipUrl(url))) {
-        config.httpAgent = false;
-        config.httpsAgent = false;
-        // Axios can independently honor HTTP_PROXY/HTTPS_PROXY after custom
-        // agents are cleared. Disable that fallback as well.
-        config.proxy = false;
-      }
-      return config;
+    proxyState = {
+      httpAgent: new HttpProxyAgent(proxyUrl, agentOptions),
+      httpsAgent: new HttpsProxyAgent(proxyUrl, agentOptions),
+      skipUrl,
     };
-    axiosRequestInterceptorId = axios.interceptors.request.use(
-      requestInterceptorFunction
-    );
-    axiosProxyConfigured = true;
   } catch (e) {
     logger.error('Failed to connect to the proxy: ' + e.message, {
       label: 'Proxy',
     });
     clearAxiosProxyConfiguration();
     setGlobalDispatcher(defaultAgent);
+    proxyState = null;
     return;
   }
 

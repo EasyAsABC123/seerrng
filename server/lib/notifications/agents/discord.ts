@@ -1,3 +1,4 @@
+import { EmbedColors } from '@server/constants/discord';
 import { IssueStatus, IssueTypeName } from '@server/constants/issue';
 import { getIntl } from '@server/i18n';
 import globalMessages from '@server/i18n/globalMessages';
@@ -37,32 +38,6 @@ export const DISCORD_EMBED_FIELD_NAME_LIMIT = 256;
 export const DISCORD_EMBED_FIELD_VALUE_LIMIT = 1_024;
 export const DISCORD_EMBED_FIELD_COUNT_LIMIT = 25;
 export const DISCORD_EMBED_TOTAL_TEXT_LIMIT = 6_000;
-
-enum EmbedColors {
-  DEFAULT = 0,
-  AQUA = 1752220,
-  GREEN = 3066993,
-  BLUE = 3447003,
-  PURPLE = 10181046,
-  GOLD = 15844367,
-  ORANGE = 15105570,
-  RED = 15158332,
-  GREY = 9807270,
-  DARKER_GREY = 8359053,
-  NAVY = 3426654,
-  DARK_AQUA = 1146986,
-  DARK_GREEN = 2067276,
-  DARK_BLUE = 2123412,
-  DARK_PURPLE = 7419530,
-  DARK_GOLD = 12745742,
-  DARK_ORANGE = 11027200,
-  DARK_RED = 10038562,
-  DARK_GREY = 9936031,
-  LIGHT_GREY = 12370112,
-  DARK_NAVY = 2899536,
-  LUMINOUS_VIVID_PINK = 16580705,
-  DARK_VIVID_PINK = 12320855,
-}
 
 interface DiscordImageEmbed {
   url?: string;
@@ -363,9 +338,11 @@ class DiscordAgent
               NotificationAgentKey.DISCORD,
               type
             ) &&
-            payload.notifyUser.settings.discordId
+            payload.notifyUser.settings.discordIds?.length
           ) {
-            addUserMention(payload.notifyUser.settings.discordId);
+            for (const discordId of payload.notifyUser.settings.discordIds) {
+              addUserMention(discordId);
+            }
           }
         }
 
@@ -377,10 +354,13 @@ class DiscordAgent
                   NotificationAgentKey.DISCORD,
                   type
                 ) &&
-                shouldSendAdminNotification(type, user, payload) &&
-                !addUserMention(user.settings.discordId)
+                shouldSendAdminNotification(type, user, payload)
               ) {
-                return false;
+                for (const discordId of user.settings.discordIds ?? []) {
+                  if (!addUserMention(discordId)) {
+                    return false;
+                  }
+                }
               }
             }
           });
@@ -397,6 +377,13 @@ class DiscordAgent
       const locale = settings.options.useUserLocale
         ? (payload.notifyUser?.settings?.locale as AvailableLocale)
         : (settings.options.locale as AvailableLocale);
+
+      if (settings.options.webhookThreadId) {
+        webhookUrl.searchParams.set(
+          'thread_id',
+          settings.options.webhookThreadId
+        );
+      }
 
       await axios.post(
         stringifySafeHttpUrl(webhookUrl),

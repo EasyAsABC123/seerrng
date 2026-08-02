@@ -2,7 +2,7 @@ import { assertNoSymlinkDirectoryComponents } from '@server/lib/pathSecurity';
 import logger from '@server/logger';
 import AsyncLock from '@server/utils/asyncLock';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
-import { requestInterceptorFunction } from '@server/utils/customProxyAgent';
+import { proxyRequestInterceptor } from '@server/utils/customProxyAgent';
 import {
   getHttpErrorDetails,
   withTransientHttpRetry,
@@ -17,7 +17,7 @@ import rateLimit, { type rateLimitOptions } from 'axios-rate-limit';
 import { createHash } from 'crypto';
 import type { Response } from 'express';
 import { constants, promises } from 'fs';
-import mime from 'mime/lite';
+import mime from 'mime';
 import path from 'path';
 import sharp from 'sharp';
 import { pipeline } from 'stream/promises';
@@ -847,7 +847,7 @@ class ImageProxy {
     });
     this.axios.interceptors.request.use((config) => {
       options.requestValidator?.();
-      return requestInterceptorFunction(config);
+      return proxyRequestInterceptor(config);
     });
 
     if (options.rateLimitOptions) {

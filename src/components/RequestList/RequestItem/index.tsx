@@ -60,6 +60,7 @@ const messages = defineMessages('components.RequestList.RequestItem', {
   olid: 'Open Library ID',
   unknowntitle: 'Unknown Title',
   removearr: 'Remove from {arr}',
+  removemediaerror: 'Something went wrong while removing the media.',
   profileName: 'Profile',
   bookFormat: 'Format',
   ebook: 'Ebook',
@@ -561,11 +562,22 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
           ? `&format=${removableBookFormat}`
           : '';
 
-      await axios.delete(
-        `/api/v1/media/${requestData.media.id}/file?is4k=${requestData.is4k}${formatQuery}`
-      );
-      if (requestData.type !== 'book' || removableBookFormat === 'both') {
-        await axios.delete(`/api/v1/media/${requestData.media.id}`);
+      try {
+        await axios.delete(
+          `/api/v1/media/${requestData.media.id}/file?is4k=${requestData.is4k}${formatQuery}`
+        );
+        if (requestData.type !== 'book' || removableBookFormat === 'both') {
+          await axios.delete(`/api/v1/media/${requestData.media.id}`);
+        }
+      } catch (e) {
+        if (!axios.isAxiosError(e) || e.response?.status !== 404) {
+          addToast(intl.formatMessage(messages.removemediaerror), {
+            autoDismiss: true,
+            appearance: 'error',
+          });
+          revalidateList();
+          return;
+        }
       }
       revalidateList();
     }

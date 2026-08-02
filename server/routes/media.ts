@@ -40,7 +40,7 @@ import {
 } from '@server/utils/validation';
 import { Router } from 'express';
 import type { FindOneOptions, FindOptionsWhere } from 'typeorm';
-import { In, IsNull, Not } from 'typeorm';
+import { EntityNotFoundError, In, IsNull, Not } from 'typeorm';
 
 const mediaRoutes = Router();
 const maxMediaId = 1_000_000_000;
@@ -516,11 +516,15 @@ mediaRoutes.delete(
           message: 'You no longer have permission to modify media.',
         });
       }
+      if (e instanceof EntityNotFoundError) {
+        return res.status(204).send();
+      }
       logger.error('Something went wrong fetching media in delete request', {
         label: 'Media',
+        mediaId: req.params.id,
         message: e.message,
       });
-      next({ status: 404, message: 'Media not found' });
+      next({ status: 500, message: 'Failed to delete media' });
     }
   }
 );
@@ -825,8 +829,12 @@ mediaRoutes.delete(
           message: 'You no longer have permission to modify media.',
         });
       }
+      if (e instanceof EntityNotFoundError) {
+        return next({ status: 404, message: 'Media not found' });
+      }
       logger.error('Something went wrong fetching media in delete request', {
         label: 'Media',
+        mediaId: req.params.id,
         message: e.message,
       });
       next({ status: 404, message: 'Media not found' });
