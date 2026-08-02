@@ -104,7 +104,7 @@ describe('SonarrAPI removeSeries', () => {
     assert.strictEqual(del.mock.callCount(), 1);
     assert.strictEqual(
       del.mock.calls[0].arguments[0],
-      'http://localhost:8989/series/9'
+      'http://localhost:8989/api/v3/series/9'
     );
   });
 
