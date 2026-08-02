@@ -75,7 +75,7 @@ describe('RadarrAPI removeMovie', () => {
     assert.strictEqual(del.mock.callCount(), 1);
     assert.strictEqual(
       del.mock.calls[0].arguments[0],
-      'http://localhost:7878/movie/7'
+      'http://localhost:7878/api/v3/movie/7'
     );
   });
 
