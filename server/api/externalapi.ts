@@ -123,6 +123,25 @@ const encodeUrlQuery = (url: URL): string =>
     )
     .join('&');
 
+// `new URL(endpoint, baseUrl)` treats an endpoint starting with "/" as
+// path-absolute, which discards any path segment already on `baseUrl`
+// (e.g. TMDB's "/3" API version prefix). Every call site in this codebase
+// writes endpoints as absolute-looking paths like "/movie/{id}", so they
+// must resolve relative to the base URL's own path, not its origin.
+const resolveExternalApiRequestUrl = (
+  endpoint: string,
+  baseUrl: string
+): URL => {
+  const base = new URL(baseUrl);
+  if (!base.pathname.endsWith('/')) {
+    base.pathname += '/';
+  }
+  const relativeEndpoint = endpoint.startsWith('/')
+    ? endpoint.slice(1)
+    : endpoint;
+  return new URL(relativeEndpoint, base);
+};
+
 export const normalizeExternalApiRequestTarget = (
   endpoint: string,
   baseUrl: string,
@@ -130,7 +149,7 @@ export const normalizeExternalApiRequestTarget = (
 ): string => {
   let requestUrl: URL;
   try {
-    requestUrl = new URL(endpoint, baseUrl);
+    requestUrl = resolveExternalApiRequestUrl(endpoint, baseUrl);
   } catch (error) {
     throw new Error('External API request target is not allowed.', {
       cause: error,

@@ -242,6 +242,30 @@ describe('ExternalAPI redirect handling', () => {
     );
   });
 
+  it('preserves a base URL path prefix when the endpoint starts with a slash', async () => {
+    // Regression test: `new URL('/x', 'https://host/prefix')` resolves to
+    // 'https://host/x', silently dropping '/prefix'. TMDB's base URL is
+    // 'https://api.themoviedb.org/3' and every endpoint in this codebase is
+    // written as an absolute-looking path like '/trending/all/day', so the
+    // '/3' version prefix must survive.
+    const api = new TestExternalAPI('https://service.example/v3', {});
+    let requestedUrl: string | undefined;
+    api.setAdapter(async (config) => {
+      requestedUrl = config.url;
+      return {
+        config,
+        data: { ok: true },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      };
+    });
+
+    await api.getForTest('/trending/all/day');
+
+    assert.equal(requestedUrl, 'https://service.example/v3/trending/all/day');
+  });
+
   it('bounds requests when a client does not specify a timeout', () => {
     const defaultApi = new TestExternalAPI('https://service.example', {});
     const customApi = new TestExternalAPI(
