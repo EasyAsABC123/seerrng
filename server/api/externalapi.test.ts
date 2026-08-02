@@ -14,6 +14,7 @@ import ExternalAPI, {
   MAX_PENDING_EXTERNAL_API_REQUESTS,
   containsCredentialFields,
   createExternalApiCacheKeySuffix,
+  normalizeExternalApiRequestTarget,
 } from './externalapi';
 
 class TestExternalAPI extends ExternalAPI {
@@ -177,6 +178,38 @@ describe('ExternalAPI credential detection', () => {
 });
 
 describe('ExternalAPI redirect handling', () => {
+  it('preserves versioned base paths for relative endpoints', () => {
+    const allowedOrigins = new Set(['https://api.themoviedb.org']);
+
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        '/trending/all/week',
+        'https://api.themoviedb.org/3',
+        allowedOrigins
+      ),
+      '/3/trending/all/week'
+    );
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        'movie/550?language=en',
+        'https://api.themoviedb.org/3/',
+        allowedOrigins
+      ),
+      '/3/movie/550?language=en'
+    );
+  });
+
+  it('preserves allowed absolute request targets', () => {
+    assert.equal(
+      normalizeExternalApiRequestTarget(
+        'https://api.themoviedb.org/3/movie/550',
+        'https://api.themoviedb.org/3',
+        new Set(['https://api.themoviedb.org'])
+      ),
+      '/3/movie/550'
+    );
+  });
+
   it('rejects first-hop absolute URLs outside the configured origin', async () => {
     const api = new TestExternalAPI(
       'https://service.example/api',

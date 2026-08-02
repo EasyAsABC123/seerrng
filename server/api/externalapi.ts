@@ -130,7 +130,18 @@ export const normalizeExternalApiRequestTarget = (
 ): string => {
   let requestUrl: URL;
   try {
-    requestUrl = new URL(endpoint, baseUrl);
+    try {
+      requestUrl = new URL(endpoint);
+    } catch {
+      const relativeBaseUrl = new URL(baseUrl);
+      relativeBaseUrl.pathname = `${relativeBaseUrl.pathname.replace(
+        /\/+$/,
+        ''
+      )}/`;
+      relativeBaseUrl.search = '';
+      relativeBaseUrl.hash = '';
+      requestUrl = new URL(endpoint.replace(/^\/+/, ''), relativeBaseUrl);
+    }
   } catch (error) {
     throw new Error('External API request target is not allowed.', {
       cause: error,
