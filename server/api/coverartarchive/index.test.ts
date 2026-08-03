@@ -166,6 +166,55 @@ describe('CoverArtArchive metadata persistence', () => {
     assert.strictEqual(result.images[0]?.approved, false);
   });
 
+  it('caches a negative result only for a confirmed 404', async () => {
+    const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
+    (
+      mock.method as (
+        object: object,
+        methodName: string,
+        implementation: () => Promise<unknown>
+      ) => unknown
+    )(ExternalAPI.prototype, 'get', async () => {
+      throw Object.assign(new Error('Request failed with status code 404'), {
+        isAxiosError: true,
+        response: { status: 404 },
+      });
+    });
+
+    const result = await new CoverArtArchive().getCoverArt(albumId);
+
+    assert.deepStrictEqual(result.images, []);
+    const metadata = await getRepository(MetadataAlbum).findOneBy({
+      mbAlbumId: albumId,
+    });
+    assert.ok(metadata);
+    assert.strictEqual(metadata?.caaUrl, null);
+  });
+
+  it('does not persist a negative cache result for a transient failure', async () => {
+    const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
+    (
+      mock.method as (
+        object: object,
+        methodName: string,
+        implementation: () => Promise<unknown>
+      ) => unknown
+    )(ExternalAPI.prototype, 'get', async () => {
+      throw Object.assign(new Error('timeout of 10000ms exceeded'), {
+        isAxiosError: true,
+        code: 'ECONNABORTED',
+      });
+    });
+
+    const result = await new CoverArtArchive().getCoverArt(albumId);
+
+    assert.deepStrictEqual(result.images, []);
+    const metadata = await getRepository(MetadataAlbum).findOneBy({
+      mbAlbumId: albumId,
+    });
+    assert.strictEqual(metadata, null);
+  });
+
   it('caps batch IDs and bounds concurrent cache-miss fetches', async () => {
     const archive = new CoverArtArchive();
     let active = 0;

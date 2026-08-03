@@ -9,6 +9,7 @@ import {
 } from '@server/lib/externalIds';
 import logger from '@server/logger';
 import { mapWithConcurrency } from '@server/utils/concurrency';
+import axios from 'axios';
 import { In } from 'typeorm';
 import type { CoverArtResponse } from './interfaces';
 
@@ -193,11 +194,29 @@ class CoverArtArchive extends ExternalAPI {
       }
 
       return data;
-    } catch {
-      await getRepository(MetadataAlbum).upsert(
-        { mbAlbumId: albumId, caaUrl: null },
-        { conflictPaths: ['mbAlbumId'] }
-      );
+    } catch (error) {
+      // Only a confirmed "no cover art for this release" response (Cover
+      // Art Archive returns 404) should be cached as a negative result.
+      // Transient failures (timeouts, DNS errors, 5xx) must not poison the
+      // cache for up to STALE_THRESHOLD (30 days) — leave no metadata row
+      // so the next request retries instead of serving a stale empty
+      // response for something that may already be fetchable again.
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        await getRepository(MetadataAlbum).upsert(
+          { mbAlbumId: albumId, caaUrl: null },
+          { conflictPaths: ['mbAlbumId'] }
+        );
+      } else {
+        logger.warn(
+          'Transient failure fetching cover art, will retry on next request',
+          {
+            label: 'CoverArtArchive',
+            id: albumId,
+            errorMessage:
+              error instanceof Error ? error.message : 'Unknown error',
+          }
+        );
+      }
       return this.createEmptyResponse(albumId);
     }
   }

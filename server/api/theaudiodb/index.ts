@@ -183,16 +183,21 @@ class TheAudioDb extends ExternalAPI {
         });
 
       return result;
-    } catch {
-      await getRepository(MetadataArtist).upsert(
+    } catch (error) {
+      // TheAudioDb signals "no artist found" with a normal 200 response
+      // (handled in the try block above, which already persists a
+      // confirmed-empty result). Anything that lands here is a genuine
+      // request failure (timeout, network error, non-2xx status), so it
+      // must not be cached as a permanent negative result — let the next
+      // request retry instead of serving stale empty images for up to
+      // STALE_THRESHOLD (30 days).
+      logger.warn(
+        'Transient failure fetching artist images, will retry on next request',
         {
-          mbArtistId: artistId,
-          tadbThumb: null,
-          tadbCover: null,
-          tadbUpdatedAt: new Date(),
-        },
-        {
-          conflictPaths: ['mbArtistId'],
+          label: 'TheAudioDb',
+          id: artistId,
+          errorMessage:
+            error instanceof Error ? error.message : 'Unknown error',
         }
       );
       return this.createEmptyResponse();

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 
+import ExternalAPI from '@server/api/externalapi';
+import { getRepository } from '@server/datasource';
+import MetadataArtist from '@server/entity/MetadataArtist';
 import { setupTestDb } from '@server/test/db';
 import TheAudioDb, { sanitizeTheAudioDbImageUrl } from '.';
 
@@ -28,6 +31,37 @@ describe('TheAudioDb batch hydration', () => {
     assert.strictEqual(Object.keys(result).length, 20);
     assert.ok(peak <= TheAudioDb.BATCH_FETCH_CONCURRENCY);
     assert.strictEqual(TheAudioDb.BATCH_FETCH_CONCURRENCY, 5);
+  });
+});
+
+describe('TheAudioDb transient failure handling', () => {
+  afterEach(() => mock.restoreAll());
+
+  it('does not persist a negative cache result for a transient failure', async () => {
+    const artistId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
+    (
+      mock.method as (
+        object: object,
+        methodName: string,
+        implementation: () => Promise<unknown>
+      ) => unknown
+    )(ExternalAPI.prototype, 'get', async () => {
+      throw Object.assign(new Error('timeout of 10000ms exceeded'), {
+        isAxiosError: true,
+        code: 'ECONNABORTED',
+      });
+    });
+
+    const result = await new TheAudioDb().getArtistImages(artistId);
+
+    assert.deepStrictEqual(result, {
+      artistThumb: null,
+      artistBackground: null,
+    });
+    const metadata = await getRepository(MetadataArtist).findOneBy({
+      mbArtistId: artistId,
+    });
+    assert.strictEqual(metadata, null);
   });
 });
 
