@@ -209,7 +209,7 @@ describe('GET /search', () => {
   it('returns global video, music, and book results together', async () => {
     mock.method(MusicBrainz.prototype, 'searchAlbum', async () => [
       {
-        id: 'album-1',
+        id: 'a1a2a3a4-b1b2-c1c2-d1d2-e1e2e3e4e5e6',
         media_type: 'album',
         title: 'Global Album',
         score: 95,
@@ -228,7 +228,7 @@ describe('GET /search', () => {
         posterPath: undefined,
       },
       {
-        id: 'ALBUM-1',
+        id: 'A1A2A3A4-B1B2-C1C2-D1D2-E1E2E3E4E5E6',
         media_type: 'album',
         title: 'Global Album',
         score: 94,
@@ -324,7 +324,7 @@ describe('GET /search', () => {
 
     await getRepository(MetadataAlbum).save(
       new MetadataAlbum({
-        mbAlbumId: 'album-1',
+        mbAlbumId: 'a1a2a3a4-b1b2-c1c2-d1d2-e1e2e3e4e5e6',
         caaUrl: 'https://covers.example/album.jpg',
       })
     );

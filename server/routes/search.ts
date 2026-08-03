@@ -1,3 +1,4 @@
+import CoverArtArchive from '@server/api/coverartarchive';
 import MusicBrainz from '@server/api/musicbrainz';
 import OpenLibraryAPI from '@server/api/openlibrary';
 import TheAudioDb from '@server/api/theaudiodb';
@@ -5,7 +6,6 @@ import TheMovieDb from '@server/api/themoviedb';
 import TmdbPersonMapper from '@server/api/themoviedb/personMapper';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
-import MetadataAlbum from '@server/entity/MetadataAlbum';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import {
   findBookMediaForBookResults,
@@ -194,6 +194,7 @@ searchRoutes.get('/', async (req, res, next) => {
       const musicbrainz = new MusicBrainz();
       const openLibrary = new OpenLibraryAPI();
       const theAudioDb = new TheAudioDb();
+      const coverArtArchive = new CoverArtArchive();
       const personMapper = new TmdbPersonMapper();
       const musicOffset = (page - 1) * 20;
 
@@ -273,49 +274,38 @@ searchRoutes.get('/', async (req, res, next) => {
         .filter((result) => result.media_type === 'person')
         .map((person) => person.id.toString());
 
-      const [artistMetadata, albumMetadata, artistsMetadata, existingMappings] =
-        await Promise.all([
-          personIds.length > 0
-            ? getRepository(MetadataArtist).find({
-                where: { tmdbPersonId: In(personIds) },
-                cache: true,
-                select: ['tmdbPersonId', 'tadbThumb', 'tadbCover'],
-              })
-            : [],
-          albumIds.length > 0
-            ? getRepository(MetadataAlbum).find({
-                where: { mbAlbumId: In(albumIds) },
-                cache: true,
-                select: ['mbAlbumId', 'caaUrl'],
-              })
-            : [],
-          artistIds.length > 0
-            ? getRepository(MetadataArtist).find({
-                where: { mbArtistId: In(artistIds) },
-                cache: true,
-                select: [
-                  'mbArtistId',
-                  'tmdbPersonId',
-                  'tadbThumb',
-                  'tadbCover',
-                ],
-              })
-            : [],
-          tmdbPersonIds.length > 0
-            ? getRepository(MetadataArtist).find({
-                where: { tmdbPersonId: In(tmdbPersonIds) },
-                cache: true,
-                select: ['mbArtistId', 'tmdbPersonId'],
-              })
-            : [],
-        ]);
+      const [
+        artistMetadata,
+        coverArtByAlbumId,
+        artistsMetadata,
+        existingMappings,
+      ] = await Promise.all([
+        personIds.length > 0
+          ? getRepository(MetadataArtist).find({
+              where: { tmdbPersonId: In(personIds) },
+              cache: true,
+              select: ['tmdbPersonId', 'tadbThumb', 'tadbCover'],
+            })
+          : [],
+        coverArtArchive.batchGetCoverArt(albumIds),
+        artistIds.length > 0
+          ? getRepository(MetadataArtist).find({
+              where: { mbArtistId: In(artistIds) },
+              cache: true,
+              select: ['mbArtistId', 'tmdbPersonId', 'tadbThumb', 'tadbCover'],
+            })
+          : [],
+        tmdbPersonIds.length > 0
+          ? getRepository(MetadataArtist).find({
+              where: { tmdbPersonId: In(tmdbPersonIds) },
+              cache: true,
+              select: ['mbArtistId', 'tmdbPersonId'],
+            })
+          : [],
+      ]);
 
       const artistMetadataMap = new Map(
         artistMetadata.map((m) => [m.tmdbPersonId, m])
-      );
-
-      const albumMetadataMap = new Map(
-        albumMetadata.map((m) => [normalizeMusicBrainzId(m.mbAlbumId), m])
       );
 
       const artistsMetadataMap = new Map(
@@ -409,13 +399,14 @@ searchRoutes.get('/', async (req, res, next) => {
       }
 
       const albumsWithArt = dedupedAlbumResults.map((album) => {
-        const metadata = albumMetadataMap.get(normalizeMusicBrainzId(album.id));
+        const posterPath =
+          coverArtByAlbumId[normalizeMusicBrainzId(album.id)] ?? undefined;
 
         return {
           ...album,
           media_type: 'album' as const,
-          posterPath: metadata?.caaUrl ?? undefined,
-          needsCoverArt: !metadata?.caaUrl,
+          posterPath,
+          needsCoverArt: !posterPath,
           score: album.score || 0,
         };
       });

@@ -1,10 +1,10 @@
+import CoverArtArchive from '@server/api/coverartarchive';
 import ListenBrainzAPI from '@server/api/listenbrainz';
 import type { LbReleaseGroupExtended } from '@server/api/listenbrainz/interfaces';
 import MusicBrainz from '@server/api/musicbrainz';
 import TheAudioDb from '@server/api/theaudiodb';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
-import MetadataAlbum from '@server/entity/MetadataAlbum';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import { getAssociations } from '@server/lib/associations';
 import {
@@ -18,7 +18,6 @@ import {
   parseOptionalBoundedString,
 } from '@server/utils/validation';
 import { Router } from 'express';
-import { In } from 'typeorm';
 
 const artistRoutes = Router();
 const DEFAULT_PAGE_SIZE = 20;
@@ -206,6 +205,7 @@ artistRoutes.get('/:id', async (req, res, next) => {
   const listenbrainz = new ListenBrainzAPI();
   const musicbrainz = new MusicBrainz();
   const theAudioDb = new TheAudioDb();
+  const coverArtArchive = new CoverArtArchive();
 
   const page = parsePositiveInt(req.query.page, 1, MAX_PAGE);
   const pageSize = parsePositiveInt(
@@ -317,10 +317,7 @@ artistRoutes.get('/:id', async (req, res, next) => {
         ? theAudioDb.getArtistImages(artistId)
         : theAudioDb.getArtistImagesFromCache(artistId),
       Media.getRelatedMedia(req.user, mbIds),
-      getRepository(MetadataAlbum).find({
-        where: { mbAlbumId: In(mbIds) },
-        cache: true,
-      }),
+      coverArtArchive.batchGetCoverArt(mbIds),
     ]);
 
     const artistWikipedia =
@@ -329,15 +326,8 @@ artistRoutes.get('/:id', async (req, res, next) => {
       responses[1].status === 'fulfilled' ? responses[1].value : null;
     const relatedMedia =
       responses[2].status === 'fulfilled' ? responses[2].value : [];
-    const albumMetadata =
-      responses[3].status === 'fulfilled' ? responses[3].value : [];
-
-    const metadataMap = new Map(
-      albumMetadata.map((metadata) => [
-        normalizeMusicBrainzId(metadata.mbAlbumId),
-        metadata,
-      ])
-    );
+    const coverArtByAlbumId =
+      responses[3].status === 'fulfilled' ? responses[3].value : {};
 
     const mediaMap = new Map(
       relatedMedia
@@ -347,8 +337,7 @@ artistRoutes.get('/:id', async (req, res, next) => {
 
     const mappedReleaseGroups = releaseGroupsToProcess.map((releaseGroup) => {
       const releaseGroupId = normalizeMusicBrainzId(releaseGroup.mbid);
-      const metadata = metadataMap.get(releaseGroupId);
-      const coverArtUrl = metadata?.caaUrl || null;
+      const coverArtUrl = coverArtByAlbumId[releaseGroupId] ?? null;
 
       return {
         id: releaseGroupId,

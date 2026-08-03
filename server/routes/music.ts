@@ -1,3 +1,4 @@
+import CoverArtArchive from '@server/api/coverartarchive';
 import ListenBrainzAPI from '@server/api/listenbrainz';
 import type { LbAlbumDetails } from '@server/api/listenbrainz/interfaces';
 import MusicBrainz from '@server/api/musicbrainz';
@@ -7,7 +8,6 @@ import TmdbPersonMapper from '@server/api/themoviedb/personMapper';
 import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
-import MetadataAlbum from '@server/entity/MetadataAlbum';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import { Watchlist } from '@server/entity/Watchlist';
 import {
@@ -242,6 +242,7 @@ musicRoutes.get('/:id', async (req, res, next) => {
   const musicbrainz = new MusicBrainz();
   const personMapper = new TmdbPersonMapper();
   const theAudioDb = new TheAudioDb();
+  const coverArtArchive = new CoverArtArchive();
 
   try {
     const [albumDetails, media, onUserWatchlist] = await Promise.all([
@@ -287,34 +288,31 @@ musicRoutes.get('/:id', async (req, res, next) => {
     const trackArtists = collectAlbumTrackArtists(albumDetails.mediums);
     const trackArtistIds = trackArtists.map((artist) => artist.artistId);
 
-    const [
-      metadataAlbum,
-      metadataArtist,
-      trackArtistMetadata,
-      artistWikipedia,
-    ] = await Promise.allSettled([
-      getRepository(MetadataAlbum).findOne({
-        where: { mbAlbumId: mbId },
-      }),
-      artistId
-        ? getRepository(MetadataArtist).findOne({
-            where: { mbArtistId: artistId },
-          })
-        : Promise.resolve(undefined),
-      getRepository(MetadataArtist).find({
-        where: { mbArtistId: In(trackArtistIds) },
-      }),
-      artistId && isPerson
-        ? musicbrainz
-            .getArtistWikipediaExtract({
-              artistMbid: artistId,
+    const [coverArt, metadataArtist, trackArtistMetadata, artistWikipedia] =
+      await Promise.allSettled([
+        coverArtArchive.getCoverArt(mbId),
+        artistId
+          ? getRepository(MetadataArtist).findOne({
+              where: { mbArtistId: artistId },
             })
-            .catch(() => null)
-        : Promise.resolve(null),
-    ]);
+          : Promise.resolve(undefined),
+        getRepository(MetadataArtist).find({
+          where: { mbArtistId: In(trackArtistIds) },
+        }),
+        artistId && isPerson
+          ? musicbrainz
+              .getArtistWikipediaExtract({
+                artistMbid: artistId,
+              })
+              .catch(() => null)
+          : Promise.resolve(null),
+      ]);
 
-    const resolvedMetadataAlbum =
-      metadataAlbum.status === 'fulfilled' ? metadataAlbum.value : null;
+    const resolvedCoverArtUrl =
+      coverArt.status === 'fulfilled'
+        ? (coverArt.value.images.find((image) => image.front)
+            ?.thumbnails[250] ?? null)
+        : null;
     const resolvedMetadataArtist =
       metadataArtist.status === 'fulfilled' ? metadataArtist.value : undefined;
     const resolvedTrackArtistMetadata =
@@ -382,8 +380,8 @@ musicRoutes.get('/:id', async (req, res, next) => {
       filterEntityResponse(
         {
           ...mappedDetails,
-          posterPath: resolvedMetadataAlbum?.caaUrl ?? null,
-          needsCoverArt: !resolvedMetadataAlbum?.caaUrl,
+          posterPath: resolvedCoverArtUrl,
+          needsCoverArt: !resolvedCoverArtUrl,
           artistWikipedia: resolvedArtistWikipedia,
           artistThumb:
             updatedMetadataArtist?.tmdbThumb ??
@@ -538,7 +536,7 @@ musicRoutes.get('/:id/artist-discography', async (req, res, next) => {
 
   try {
     const listenbrainzApi = new ListenBrainzAPI();
-    const metadataAlbumRepository = getRepository(MetadataAlbum);
+    const coverArtArchive = new CoverArtArchive();
 
     const page = parsePositiveInt(req.query.page, 1, MAX_PAGE);
     const pageSize = parsePositiveInt(req.query.pageSize, 20, 50);
@@ -585,22 +583,13 @@ musicRoutes.get('/:id/artist-discography', async (req, res, next) => {
 
     const mediaResponses = await Promise.allSettled([
       Media.getRelatedMedia(req.user, releaseGroupIds),
-      metadataAlbumRepository.find({
-        where: { mbAlbumId: In(releaseGroupIds) },
-      }),
+      coverArtArchive.batchGetCoverArt(releaseGroupIds),
     ]);
 
     const relatedMedia =
       mediaResponses[0].status === 'fulfilled' ? mediaResponses[0].value : [];
-    const albumMetadata =
-      mediaResponses[1].status === 'fulfilled' ? mediaResponses[1].value : [];
-
-    const albumMetadataMap = new Map(
-      albumMetadata.map((metadata) => [
-        normalizeMusicBrainzId(metadata.mbAlbumId),
-        metadata,
-      ])
-    );
+    const coverArtByAlbumId =
+      mediaResponses[1].status === 'fulfilled' ? mediaResponses[1].value : {};
 
     const relatedMediaMap = new Map(
       relatedMedia
@@ -611,7 +600,7 @@ musicRoutes.get('/:id/artist-discography', async (req, res, next) => {
     const transformedReleaseGroups = paginatedReleaseGroups.map(
       (releaseGroup) => {
         const releaseGroupId = normalizeMusicBrainzId(releaseGroup.mbid);
-        const metadata = albumMetadataMap.get(releaseGroupId);
+        const posterPath = coverArtByAlbumId[releaseGroupId] ?? null;
         return {
           id: releaseGroupId,
           mediaType: 'album',
@@ -619,8 +608,8 @@ musicRoutes.get('/:id/artist-discography', async (req, res, next) => {
           'first-release-date': releaseGroup.date,
           'artist-credit': [{ name: releaseGroup.artist_credit_name }],
           'primary-type': releaseGroup.type || 'Other',
-          posterPath: metadata?.caaUrl ?? null,
-          needsCoverArt: !metadata?.caaUrl,
+          posterPath,
+          needsCoverArt: !posterPath,
           mediaInfo: relatedMediaMap.get(releaseGroupId),
         };
       }
