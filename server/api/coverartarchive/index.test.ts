@@ -2,11 +2,32 @@ import assert from 'node:assert/strict';
 import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
 import CoverArtArchive from '@server/api/coverartarchive';
-import ExternalAPI from '@server/api/externalapi';
 import { getRepository } from '@server/datasource';
 import MetadataAlbum from '@server/entity/MetadataAlbum';
 import { MAX_MUSICBRAINZ_BATCH_IDS } from '@server/lib/externalIds';
 import { resetTestDb, seedTestDb } from '@server/utils/seedTestDb';
+import axios from 'axios';
+
+type CoverArtArchiveInternal = {
+  fetchReleaseGroupMetadata: (albumId: string) => Promise<unknown>;
+};
+
+const redirectError = (status: number, location: string) =>
+  Object.assign(new Error(`Request failed with status code ${status}`), {
+    isAxiosError: true,
+    response: { status, headers: { location } },
+  });
+
+const mockFetchReleaseGroupMetadata = (
+  implementation: (albumId: string) => Promise<unknown>
+) =>
+  (
+    mock.method as (
+      object: object,
+      methodName: string,
+      implementation: (albumId: string) => Promise<unknown>
+    ) => { mock: { callCount: () => number } }
+  )(CoverArtArchive.prototype, 'fetchReleaseGroupMetadata', implementation);
 
 describe('CoverArtArchive metadata persistence', () => {
   before(async () => {
@@ -24,13 +45,7 @@ describe('CoverArtArchive metadata persistence', () => {
   it('does not return fetched artwork before its cache row is persisted', async () => {
     const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
     const releaseId = '55f7c1d9-b4f4-4c8d-a578-7d98687c4e45';
-    (
-      mock.method as (
-        object: object,
-        methodName: string,
-        implementation: () => Promise<unknown>
-      ) => unknown
-    )(ExternalAPI.prototype, 'get', async () => ({
+    mockFetchReleaseGroupMetadata(async () => ({
       images: [
         {
           approved: true,
@@ -88,13 +103,7 @@ describe('CoverArtArchive metadata persistence', () => {
 
   it('encodes untrusted upstream image identifiers in generated URLs', async () => {
     const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
-    (
-      mock.method as (
-        object: object,
-        methodName: string,
-        implementation: () => Promise<unknown>
-      ) => unknown
-    )(ExternalAPI.prototype, 'get', async () => ({
+    mockFetchReleaseGroupMetadata(async () => ({
       images: [
         {
           approved: true,
@@ -116,13 +125,7 @@ describe('CoverArtArchive metadata persistence', () => {
   });
 
   it('rejects path-control MusicBrainz IDs before dispatch', async () => {
-    const get = (
-      mock.method as (
-        object: object,
-        methodName: string,
-        implementation: () => Promise<unknown>
-      ) => { mock: { callCount: () => number } }
-    )(ExternalAPI.prototype, 'get', async () => ({}));
+    const get = mockFetchReleaseGroupMetadata(async () => ({}));
 
     const result = await new CoverArtArchive().getCoverArt('../release/unsafe');
 
@@ -132,13 +135,7 @@ describe('CoverArtArchive metadata persistence', () => {
 
   it('bounds and structurally validates upstream image collections', async () => {
     const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
-    (
-      mock.method as (
-        object: object,
-        methodName: string,
-        implementation: () => Promise<unknown>
-      ) => unknown
-    )(ExternalAPI.prototype, 'get', async () => ({
+    mockFetchReleaseGroupMetadata(async () => ({
       images: [
         null,
         { front: true, id: {} },
@@ -168,13 +165,7 @@ describe('CoverArtArchive metadata persistence', () => {
 
   it('caches a negative result only for a confirmed 404', async () => {
     const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
-    (
-      mock.method as (
-        object: object,
-        methodName: string,
-        implementation: () => Promise<unknown>
-      ) => unknown
-    )(ExternalAPI.prototype, 'get', async () => {
+    mockFetchReleaseGroupMetadata(async () => {
       throw Object.assign(new Error('Request failed with status code 404'), {
         isAxiosError: true,
         response: { status: 404 },
@@ -193,13 +184,7 @@ describe('CoverArtArchive metadata persistence', () => {
 
   it('does not persist a negative cache result for a transient failure', async () => {
     const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
-    (
-      mock.method as (
-        object: object,
-        methodName: string,
-        implementation: () => Promise<unknown>
-      ) => unknown
-    )(ExternalAPI.prototype, 'get', async () => {
+    mockFetchReleaseGroupMetadata(async () => {
       throw Object.assign(new Error('timeout of 10000ms exceeded'), {
         isAxiosError: true,
         code: 'ECONNABORTED',
@@ -251,5 +236,71 @@ describe('CoverArtArchive metadata persistence', () => {
     assert.strictEqual(calls, MAX_MUSICBRAINZ_BATCH_IDS);
     assert.ok(peak <= CoverArtArchive.BATCH_FETCH_CONCURRENCY);
     assert.strictEqual(Object.keys(result).length, MAX_MUSICBRAINZ_BATCH_IDS);
+  });
+});
+
+describe('CoverArtArchive redirect chain resolution', () => {
+  afterEach(() => mock.restoreAll());
+
+  it('follows Cover Art Archive through archive.org to its CDN subdomain', async () => {
+    const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
+    const cdnUrl = 'https://dn710405.ca.archive.org/0/items/mbid-x/index.json';
+    const calls: string[] = [];
+    mock.method(axios, 'get', async (url: string) => {
+      calls.push(url);
+      if (calls.length === 1) {
+        throw redirectError(
+          307,
+          'https://archive.org/download/mbid-x/index.json'
+        );
+      }
+      if (calls.length === 2) {
+        throw redirectError(302, cdnUrl);
+      }
+      return { data: { images: [], release: `/release/${albumId}` } };
+    });
+
+    const archive = new CoverArtArchive() as unknown as CoverArtArchiveInternal;
+    const result = await archive.fetchReleaseGroupMetadata(albumId);
+
+    assert.deepStrictEqual(result, {
+      images: [],
+      release: `/release/${albumId}`,
+    });
+    assert.strictEqual(calls.length, 3);
+    assert.strictEqual(calls[2], cdnUrl);
+  });
+
+  it('refuses to follow a redirect outside Cover Art Archive/Internet Archive', async () => {
+    const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
+    mock.method(axios, 'get', async () => {
+      throw redirectError(302, 'https://evil.example/steal-me.json');
+    });
+
+    const archive = new CoverArtArchive() as unknown as CoverArtArchiveInternal;
+
+    await assert.rejects(
+      archive.fetchReleaseGroupMetadata(albumId),
+      /status code 302/
+    );
+  });
+
+  it('gives up after too many redirects', async () => {
+    const albumId = 'f5093c06-23e3-404f-aeaa-40f72885ee3a';
+    let hop = 0;
+    mock.method(axios, 'get', async () => {
+      hop += 1;
+      throw redirectError(
+        302,
+        `https://archive.org/download/mbid-x/hop-${hop}.json`
+      );
+    });
+
+    const archive = new CoverArtArchive() as unknown as CoverArtArchiveInternal;
+
+    await assert.rejects(
+      archive.fetchReleaseGroupMetadata(albumId),
+      /Too many redirects/
+    );
   });
 });

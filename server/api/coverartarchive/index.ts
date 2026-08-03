@@ -1,4 +1,6 @@
-import ExternalAPI from '@server/api/externalapi';
+import ExternalAPI, {
+  DEFAULT_EXTERNAL_API_TIMEOUT_MS,
+} from '@server/api/externalapi';
 import { getRepository } from '@server/datasource';
 import MetadataAlbum from '@server/entity/MetadataAlbum';
 import cacheManager from '@server/lib/cache';
@@ -9,12 +11,22 @@ import {
 } from '@server/lib/externalIds';
 import logger from '@server/logger';
 import { mapWithConcurrency } from '@server/utils/concurrency';
+import {
+  createSafeHttpUrl,
+  stringifySafeHttpUrl,
+} from '@server/utils/security';
 import axios from 'axios';
 import { In } from 'typeorm';
 import type { CoverArtResponse } from './interfaces';
 
 const MAX_COVER_ART_IMAGES = 100;
 const MAX_COVER_ART_IDENTIFIER_LENGTH = 256;
+const MAX_ARCHIVE_ORG_REDIRECTS = 4;
+
+const isArchiveOrgHostname = (hostname: string): boolean =>
+  hostname === 'coverartarchive.org' ||
+  hostname === 'archive.org' ||
+  hostname.endsWith('.archive.org');
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -123,6 +135,57 @@ class CoverArtArchive extends ExternalAPI {
     }
   }
 
+  // Cover Art Archive's metadata endpoints redirect to archive.org's own
+  // storage, which itself redirects again to a per-request Internet Archive
+  // CDN subdomain (e.g. dn710405.ca.archive.org) to serve the actual
+  // payload. ExternalAPI's hardened axios instance refuses to follow any
+  // cross-origin redirect at all — that guard is baked into the instance's
+  // `beforeRedirect` hook and fires regardless of per-request
+  // `maxRedirects`, so it can't be selectively relaxed per call.
+  //
+  // Follow this specific, known chain manually with a plain, unwrapped
+  // axios client instead: validate each hop is a safe, non-private URL
+  // (createSafeHttpUrl) and stays within coverartarchive.org/archive.org
+  // (including its dynamic CDN subdomains) before following it, bounded to
+  // a small number of hops.
+  private async fetchReleaseGroupMetadata(albumId: string): Promise<unknown> {
+    let url = `https://coverartarchive.org/release-group/${encodeURIComponent(albumId)}`;
+
+    for (let hop = 0; hop <= MAX_ARCHIVE_ORG_REDIRECTS; hop++) {
+      const safeUrl = await createSafeHttpUrl(url);
+      if (!safeUrl) {
+        throw new Error('Cover Art Archive redirect target is not a safe URL');
+      }
+
+      try {
+        const response = await axios.get(stringifySafeHttpUrl(safeUrl), {
+          maxRedirects: 0,
+          timeout: DEFAULT_EXTERNAL_API_TIMEOUT_MS,
+        });
+        return response.data;
+      } catch (error) {
+        if (!axios.isAxiosError(error) || !error.response) {
+          throw error;
+        }
+        const { status, headers } = error.response;
+        if (status < 300 || status >= 400) {
+          throw error;
+        }
+        const location = headers?.location;
+        if (typeof location !== 'string') {
+          throw error;
+        }
+        const nextUrl = new URL(location, url);
+        if (!isArchiveOrgHostname(nextUrl.hostname)) {
+          throw error;
+        }
+        url = nextUrl.href;
+      }
+    }
+
+    throw new Error('Too many redirects resolving Cover Art Archive metadata');
+  }
+
   private async fetchCoverArt(id: string): Promise<CoverArtResponse> {
     const albumId = normalizeMusicBrainzId(id);
 
@@ -131,11 +194,7 @@ class CoverArtArchive extends ExternalAPI {
     }
 
     try {
-      const rawData = await this.get<unknown>(
-        `/release-group/${encodeURIComponent(albumId)}`,
-        undefined,
-        this.CACHE_TTL
-      );
+      const rawData = await this.fetchReleaseGroupMetadata(albumId);
 
       if (!isRecord(rawData)) {
         throw new Error('Invalid Cover Art Archive response');
