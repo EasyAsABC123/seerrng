@@ -1,10 +1,12 @@
 import type { AllSettings, NotificationAgentKey } from '@server/lib/settings';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
  * Configuration required by integrations that make outbound requests.
  *
- * This deliberately has no file-backed fallback. Secret managers should
- * inject the JSON directly into SEERR_EXTERNAL_CONFIG.
+ * Falls back to reading from settings.json when SEERR_EXTERNAL_CONFIG is not set.
+ * Secret managers can inject the JSON directly into SEERR_EXTERNAL_CONFIG.
  */
 export type ExternalRuntimeConfig = Pick<
   AllSettings,
@@ -81,6 +83,35 @@ const getTestProvider = (): ExternalRuntimeConfigTestProvider | undefined => {
     : undefined;
 };
 
+const SETTINGS_PATH = process.env.CONFIG_DIRECTORY
+  ? `${process.env.CONFIG_DIRECTORY}/settings.json`
+  : path.join(__dirname, '../../config/settings.json');
+
+const loadFromSettingsFile = (): ExternalRuntimeConfig | undefined => {
+  try {
+    const content = fs.readFileSync(SETTINGS_PATH, 'utf8');
+    const settings = JSON.parse(content);
+    return {
+      clientId: settings.clientId,
+      vapidPublic: settings.vapidPublic,
+      vapidPrivate: settings.vapidPrivate,
+      main: settings.main,
+      plex: settings.plex,
+      jellyfin: settings.jellyfin,
+      oidc: settings.oidc ?? { providers: [] },
+      tautulli: settings.tautulli,
+      radarr: settings.radarr ?? [],
+      sonarr: settings.sonarr ?? [],
+      lidarr: settings.lidarr ?? [],
+      readarr: settings.readarr ?? [],
+      notifications: settings.notifications,
+      network: settings.network,
+    };
+  } catch {
+    return undefined;
+  }
+};
+
 export const loadExternalRuntimeConfig = (): ExternalRuntimeConfig => {
   const source = process.env.SEERR_EXTERNAL_CONFIG;
   if (!source) {
@@ -88,6 +119,10 @@ export const loadExternalRuntimeConfig = (): ExternalRuntimeConfig => {
       process.env.NODE_ENV === 'test' ? getTestProvider() : undefined;
     if (provider) {
       return validate(provider());
+    }
+    const fileConfig = loadFromSettingsFile();
+    if (fileConfig) {
+      return validate(fileConfig);
     }
     throw new Error(
       'SEERR_EXTERNAL_CONFIG is required for outbound integrations. Run scripts/export-external-config.mjs to migrate existing settings.'

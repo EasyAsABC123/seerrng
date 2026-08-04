@@ -1,24 +1,22 @@
 # External runtime integration configuration
 
-Outbound integrations are configured through the `SEERR_EXTERNAL_CONFIG`
+Outbound integrations can be configured through the `SEERR_EXTERNAL_CONFIG`
 environment variable. Its value is a JSON object containing the integration
 sections exported from `settings.json`.
 
-The application does not read integration URLs, credentials, notification
-webhooks, or media-server credentials from `settings.json` at runtime. This
-keeps those values in the deployment secret manager while leaving the file
-available for local metadata and migration state.
+When `SEERR_EXTERNAL_CONFIG` is not set, the application falls back to reading
+integration configuration directly from `settings.json`. This maintains
+backward compatibility with existing installations.
 
-To migrate an existing installation, inject the exported JSON directly into
+For deployments using a secret manager, inject the exported JSON directly into
 the environment:
 
 ```sh
 SEERR_EXTERNAL_CONFIG="$(node scripts/export-external-config.mjs /path/to/settings.json)" pnpm start
 ```
 
-For production, configure the same variable through the deployment secret
-manager rather than shell history. The application fails during startup when
-the variable is absent or malformed; integrations are not silently disabled.
+For production with a secret manager, configure the variable through the
+deployment's secret injection mechanism rather than shell history.
 
 The value must be supplied directly as an environment variable. The
 application intentionally does not support a file-valued fallback such as
