@@ -89,6 +89,14 @@ const getQueueFingerprint = (item: RecoveryQueueItem): string =>
     .filter(Boolean)
     .join(' ');
 
+export const deduplicateRecoveryQueue = <T extends { downloadId?: string }>(
+  queueItems: T[]
+): T[] =>
+  uniqWith(
+    queueItems,
+    (a, b) => !!a.downloadId && a.downloadId === b.downloadId
+  );
+
 const isProgressState = (item: RecoveryQueueItem): boolean => {
   const status = normalize(item.status);
   const trackedState = normalize(item.trackedDownloadState);
@@ -239,10 +247,11 @@ class DownloadRecovery {
       });
 
       const queueItems = await service.api.getQueue();
-      const activeDownloadIds = queueItems.map((item) => item.downloadId);
+      const uniqueQueueItems = deduplicateRecoveryQueue(queueItems);
+      const activeDownloadIds = uniqueQueueItems.map((item) => item.downloadId);
 
       await Promise.all(
-        queueItems.map((item) => this.processQueueItem(service, item))
+        uniqueQueueItems.map((item) => this.processQueueItem(service, item))
       );
 
       await stateRepository.delete({
@@ -255,7 +264,7 @@ class DownloadRecovery {
         label: 'Download Recovery',
         service: service.label,
         server: service.server.name,
-        queueItems: queueItems.length,
+        queueItems: uniqueQueueItems.length,
         activeDownloadIds: activeDownloadIds.length,
       });
     } catch (e) {
