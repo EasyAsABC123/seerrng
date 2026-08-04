@@ -294,6 +294,54 @@ The proxy is deployed locally to avoid rate-limiting issues with shared public
 instances. Both BookshelfNG instances use the same proxy and cache; they do not
 need separate Hardcover integrations.
 
+### Hardcover outage behavior
+
+The proxy improves outage tolerance through a persistent, shared read-through
+cache, but it is not an unlimited offline mirror. A metadata request follows
+this path:
+
+1. BookshelfNG calls the local `rreading-glasses` endpoint; it does not call
+   Hardcover directly.
+2. `rreading-glasses` checks its in-memory cache and then its PostgreSQL-backed
+   cache.
+3. For a direct resource lookup, a cached, still-valid author, work, edition,
+   or series response is returned without contacting Hardcover.
+4. A cache miss, an expired entry, or a free-text search needs a Hardcover
+   request. Successful responses are written back to the shared cache.
+
+This means a short Hardcover outage can leave already-loaded metadata usable for
+direct lookups during its cache lifetime. The two BookshelfNG instances share
+the cache, request coalescing prevents duplicate upstream work for the same
+resource, and upstream rate limiting prevents refreshes or recovery traffic
+from creating an uncontrolled request burst. Hardcover authentication is also
+configured once on the proxy, so token rotation is a single integration change.
+
+The failure boundary is explicit:
+
+- A new search, a new book, or an expired cache entry still needs Hardcover. If
+  Hardcover is unavailable at that point, the metadata request fails.
+- Free-text search and recommendations remain upstream-dependent even when
+  some of the resources they would return are already cached.
+- The current proxy treats expired entries as refresh candidates; it does not
+  guarantee stale-if-error responses for an upstream failure. A prolonged
+  outage can therefore outlast the useful cache lifetime.
+- The PostgreSQL cache survives a `rreading-glasses` container restart when its
+  persistent data volume is healthy. If the proxy itself is down, or its
+  PostgreSQL data is unavailable after a restart, both BookshelfNG instances
+  lose this metadata path.
+- There is no automatic runtime failover from Hardcover to Goodreads or
+  OpenLibrary. Migration recovery sources are separate from live Bookshelf
+  metadata serving.
+
+During an outage, keep `rreading-glasses` and its PostgreSQL data volume
+running, and do not delete the cache while troubleshooting. The installer backs
+up `RREADING_GLASSES_POSTGRES_DIR`. The installer's proxy readiness check only
+proves that the local process is serving; it does not prove that Hardcover is
+reachable. Use `--validate-api`, an actual lookup, and the proxy logs after
+recovery. Library files, imports, and download-client work that does not require
+a fresh metadata lookup is not routed through Hardcover, but searches,
+refreshes, and new additions may be affected.
+
 For Hardcover mode (default), you must provide your own Hardcover API token via
 `HARDCOVER_AUTH`. Get a free token from
 https://hardcover.app/settings → Hardcover API.
