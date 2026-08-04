@@ -207,7 +207,7 @@ describe('Bookshelf backup permissions', () => {
     });
   });
 
-  it('renders the official Hardcover image and auth contract', async () => {
+  it('defaults fresh Hardcover deployments to the local compatibility proxy', async () => {
     const root = await createTemporaryDirectory();
     const environment = await createDeploymentEnvironment(root);
 
@@ -222,16 +222,116 @@ describe('Bookshelf backup permissions', () => {
       path.join(environment.INSTALL_DIR, '.env'),
       'utf8'
     );
-    assert.match(compose, /rreading-glasses:hardcover@sha256:/);
+    assert.match(
+      compose,
+      /image: \$\{BOOKSHELF_IMAGE:-ghcr\.io\/snapetech\/bookshelfng:hardcover@sha256:/
+    );
+    assert.match(compose, /profiles: \['rreading-glasses'\]/);
     assert.match(compose, /entrypoint: \['\/main', 'serve'\]/);
     assert.doesNotMatch(compose, /\/bin\/sh/);
+    assert.match(env, /BOOKSHELF_METADATA_MODE=compatibility/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=false/);
+    assert.match(env, /COMPOSE_PROFILES=rreading-glasses/);
+    assert.match(env, /BOOKSHELF_METADATA_URL=http:\/\/127\.0\.0\.1:8790/);
     assert.match(env, /HARDCOVER_AUTH=Bearer test-token/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_AUTH=\n/);
   });
 
-  it('selects the Goodreads image and upstream in softcover mode', async () => {
+  it('supports explicit native Hardcover mode without starting the proxy', async () => {
+    const root = await createTemporaryDirectory();
+    const environment = await createDeploymentEnvironment(root);
+    environment.BOOKSHELF_BACKEND = 'hardcover';
+    environment.BOOKSHELF_METADATA_MODE = 'native';
+
+    const result = await runInstaller(environment, '--skip-pull');
+
+    assert.equal(result.code, 0, result.stderr);
+    const compose = await readFile(
+      path.join(environment.INSTALL_DIR, 'compose.yml'),
+      'utf8'
+    );
+    const env = await readFile(
+      path.join(environment.INSTALL_DIR, '.env'),
+      'utf8'
+    );
+    assert.match(compose, /profiles: \['rreading-glasses'\]/);
+    assert.match(env, /BOOKSHELF_METADATA_MODE=native/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=true/);
+    assert.match(env, /COMPOSE_PROFILES=\n/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_AUTH=Bearer test-token/);
+  });
+
+  it('preserves an existing local proxy deployment on rerun', async () => {
+    const root = await createTemporaryDirectory();
+    const environment = await createDeploymentEnvironment(root);
+    await mkdir(environment.INSTALL_DIR, { recursive: true });
+    await writeFile(
+      path.join(environment.INSTALL_DIR, '.env'),
+      [
+        'BOOKSHELF_BACKEND=hardcover',
+        'BOOKSHELF_METADATA_URL=http://localhost:8790',
+        'COMPOSE_PROFILES=rreading-glasses',
+        'HARDCOVER_AUTH=Bearer old-token',
+      ].join('\n') + '\n'
+    );
+
+    const result = await runInstaller(environment, '--skip-pull');
+
+    assert.equal(result.code, 0, result.stderr);
+    const env = await readFile(
+      path.join(environment.INSTALL_DIR, '.env'),
+      'utf8'
+    );
+    assert.match(env, /BOOKSHELF_METADATA_MODE=compatibility/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=false/);
+    assert.match(env, /COMPOSE_PROFILES=rreading-glasses/);
+    assert.match(env, /BOOKSHELF_METADATA_URL=http:\/\/localhost:8790/);
+  });
+
+  it('supports hosted metadata without requiring a local Hardcover token', async () => {
+    const root = await createTemporaryDirectory();
+    const environment = await createDeploymentEnvironment(root);
+    environment.BOOKSHELF_BACKEND = 'hardcover';
+    environment.BOOKSHELF_METADATA_MODE = 'hosted';
+    delete environment.HARDCOVER_AUTH;
+
+    const result = await runInstaller(environment, '--skip-pull');
+
+    assert.equal(result.code, 0, result.stderr);
+    const env = await readFile(
+      path.join(environment.INSTALL_DIR, '.env'),
+      'utf8'
+    );
+    assert.match(env, /BOOKSHELF_METADATA_MODE=hosted/);
+    assert.match(
+      env,
+      /BOOKSHELF_METADATA_URL=https:\/\/hardcover\.bookinfo\.pro/
+    );
+    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=false/);
+    assert.match(env, /COMPOSE_PROFILES=\n/);
+  });
+
+  it('rejects native metadata mode for softcover deployments', async () => {
     const root = await createTemporaryDirectory();
     const environment = await createDeploymentEnvironment(root);
     environment.BOOKSHELF_BACKEND = 'softcover';
+    environment.BOOKSHELF_METADATA_MODE = 'native';
+    delete environment.HARDCOVER_AUTH;
+
+    const result = await runInstaller(environment, '--skip-pull');
+
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /requires BOOKSHELF_BACKEND=hardcover/);
+    await assert.rejects(readFile(path.join(environment.INSTALL_DIR, '.env')), {
+      code: 'ENOENT',
+    });
+  });
+
+  it('uses the pinned Goodreads proxy image for softcover compatibility mode', async () => {
+    const root = await createTemporaryDirectory();
+    const environment = await createDeploymentEnvironment(root);
+    environment.BOOKSHELF_BACKEND = 'softcover';
+    environment.BOOKSHELF_METADATA_MODE = 'compatibility';
     delete environment.HARDCOVER_AUTH;
 
     const result = await runInstaller(environment, '--skip-pull');
@@ -246,6 +346,9 @@ describe('Bookshelf backup permissions', () => {
       /RREADING_GLASSES_IMAGE=blampe\/rreading-glasses:latest@sha256:/
     );
     assert.match(env, /RREADING_GLASSES_UPSTREAM=www\.goodreads\.com/);
+    assert.match(env, /COMPOSE_PROFILES=rreading-glasses/);
+    assert.match(env, /BOOKSHELF_METADATA_URL=http:\/\/127\.0\.0\.1:8790/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=false/);
   });
 
   it('creates private backup directories, archives, and manifests', async () => {

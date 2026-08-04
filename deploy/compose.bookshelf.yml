@@ -1,5 +1,6 @@
 services:
   rreading-glasses-postgres:
+    profiles: ['rreading-glasses']
     image: ${RREADING_GLASSES_POSTGRES_IMAGE:-postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777}
     container_name: ${RREADING_GLASSES_POSTGRES_CONTAINER_NAME:-rreading-glasses-postgres}
     restart: unless-stopped
@@ -22,6 +23,7 @@ services:
       - ${RREADING_GLASSES_POSTGRES_DIR:-/mnt/datapool_lvm_media/rreading-glasses-postgres/data}:/var/lib/postgresql/data
 
   rreading-glasses:
+    profiles: ['rreading-glasses']
     image: ${RREADING_GLASSES_IMAGE:-blampe/rreading-glasses:hardcover@sha256:3489e722a73c9cbab5b9ba530cf8a60c2280367fb03db1fb649261dfb064b52f}
     container_name: ${RREADING_GLASSES_CONTAINER_NAME:-rreading-glasses}
     entrypoint: ['/main', 'serve']
@@ -47,14 +49,15 @@ services:
     container_name: ${BOOKSHELF_EBOOKS_CONTAINER_NAME:-bookshelf-ebooks}
     network_mode: host
     restart: unless-stopped
-    depends_on:
-      - rreading-glasses
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-953}
       TZ: ${TZ:-America/Regina}
       METADATA_URL: ${BOOKSHELF_METADATA_URL:-http://127.0.0.1:${RREADING_GLASSES_PORT:-8790}}
-      HARDCOVER: ${BOOKSHELF_HARDCOVER:-}
+      HARDCOVER: ${BOOKSHELF_HARDCOVER:-true}
+      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-false}
+      HARDCOVER_AUTH: ${BOOKSHELF_HARDCOVER_AUTH:-}
+      HARDCOVER_API_URL: ${BOOKSHELF_HARDCOVER_API_URL:-}
     volumes:
       - ${BOOKSHELF_EBOOKS_CONFIG_DIR:-/mnt/datapool_lvm_media/readarr-config}:/config
       - ${MEDIA_ROOT:-/mnt/datapool_lvm_media}:/data
@@ -68,14 +71,15 @@ services:
     container_name: ${BOOKSHELF_AUDIOBOOKS_CONTAINER_NAME:-bookshelf-audiobooks}
     network_mode: host
     restart: unless-stopped
-    depends_on:
-      - rreading-glasses
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-953}
       TZ: ${TZ:-America/Regina}
       METADATA_URL: ${BOOKSHELF_METADATA_URL:-http://127.0.0.1:${RREADING_GLASSES_PORT:-8790}}
-      HARDCOVER: ${BOOKSHELF_HARDCOVER:-}
+      HARDCOVER: ${BOOKSHELF_HARDCOVER:-true}
+      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-false}
+      HARDCOVER_AUTH: ${BOOKSHELF_HARDCOVER_AUTH:-}
+      HARDCOVER_API_URL: ${BOOKSHELF_HARDCOVER_API_URL:-}
     volumes:
       - ${BOOKSHELF_AUDIOBOOKS_CONFIG_DIR:-/mnt/datapool_lvm_media/bookshelf-audiobooks-config}:/config
       - ${MEDIA_ROOT:-/mnt/datapool_lvm_media}:/data

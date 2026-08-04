@@ -12,7 +12,7 @@ softcover deployments should be backed up and inventoried before cutover because
 Goodreads/softcover foreign IDs are provider-specific and cannot be safely
 reused as Hardcover IDs.
 
-## Proposed Plan
+## Deployment Policy
 
 ### Readarr to Softcover to Hardcover Migration
 
@@ -49,11 +49,25 @@ Core policy:
     migration flow.
 - For fresh Hardcover installs:
   - use `ghcr.io/snapetech/bookshelfng:hardcover`;
-  - deploy local `rreading-glasses` with user's own Hardcover API token;
-  - BookshelfNG points to local rreading-glasses instance.
+  - enable the rreading-glasses and PostgreSQL Compose profile;
+  - point both BookshelfNG instances at the local proxy;
+  - provide `HARDCOVER_AUTH` to rreading-glasses;
+  - keep native Hardcover available as an explicit opt-in.
 - Installer reruns rewrite the generated `.env` to match the resolved backend
   mode. Existing `.env` files are kept as timestamped `.env.bak-*` files, and
   the existing `RREADING_GLASSES_POSTGRES_PASSWORD` is preserved when present.
+- `BOOKSHELF_METADATA_MODE` controls the metadata path:
+  - `compatibility` (default for fresh Hardcover): local rreading-glasses and
+    its PostgreSQL cache;
+  - `native`: direct GraphQL from BookshelfNG, with no local proxy;
+  - `hosted`: disable native mode and use the hosted `METADATA_URL` without a
+    local proxy;
+  - compatibility mode activates the rreading-glasses and PostgreSQL Compose
+    profile, and points BookshelfNG at the local proxy.
+- Existing installs that have `BOOKSHELF_METADATA_URL` set to
+  `http://127.0.0.1:*` or already use the `rreading-glasses` Compose profile
+  are detected as `compatibility` on rerun. Set the mode explicitly to change
+  that behavior.
 - Keep two instances:
   - ebook on `8787`;
   - audiobook on `8788`.
@@ -207,7 +221,10 @@ Cutover:
 Fresh install:
 
 - no existing config path creates Hardcover instances by default;
-- compose always includes `rreading-glasses` with user's own Hardcover API token;
+- compatibility metadata is enabled by default and the rreading-glasses profile
+  provides the shared PostgreSQL cache;
+- explicit `BOOKSHELF_METADATA_MODE=native` disables the proxy and uses
+  BookshelfNG's direct Hardcover provider;
 - Seerr can add ebook, audiobook, and both-format requests.
 
 Legacy softcover install:
@@ -272,79 +289,81 @@ Run separate Bookshelf instances for ebooks and audiobooks:
 
 - `bookshelf-ebooks` on port `8787`
 - `bookshelf-audiobooks` on port `8788`
-- `rreading-glasses` on port `8790` (metadata proxy, always deployed)
-- `rreading-glasses-postgres` on localhost-only port `15433`
 
-BookshelfNG and rreading-glasses solve different problems:
+BookshelfNG is the maintained Readarr-style application. It owns library
+management, download clients, importing, file organization, and the
+Readarr-compatible API that SeerrNG calls. rreading-glasses is a metadata
+compatibility/proxy layer: it exposes the metadata API BookshelfNG expects,
+translates requests to Hardcover, caches results in PostgreSQL, and
+coalesces/rate-limits upstream work. Metadata has three deliberate deployment
+modes:
 
-- **BookshelfNG** is the maintained Readarr-style application. It owns library
-  management, download clients, importing, file organization, and the
-  Readarr-compatible API that SeerrNG calls.
-- **rreading-glasses** is the metadata compatibility/proxy layer. It exposes
-  the metadata API BookshelfNG expects, translates those requests to Hardcover
-  (or Goodreads in legacy softcover mode), caches responses in PostgreSQL, and
-  coalesces/rate-limits upstream work.
-- The proxy sits between the application and the upstream provider. This keeps
-  BookshelfNG decoupled from Hardcover's GraphQL API and avoids making every
-  BookshelfNG instance handle Hardcover authentication, caching, and upstream
-  throttling independently. One local proxy can serve both the ebook and
-  audiobook instances.
+| Mode | Bookshelf metadata path | rreading-glasses | Use it when |
+| --- | --- | --- | --- |
+| `compatibility` (default for fresh Hardcover) | BookshelfNG → local rreading-glasses → upstream | On, with PostgreSQL | A shared durable cache, centralized throttling, or a compatibility boundary |
+| `native` (explicit opt-in) | BookshelfNG → Hardcover GraphQL | Off | The shortest direct Hardcover path |
+| `hosted` | BookshelfNG → `METADATA_URL` such as `https://hardcover.bookinfo.pro` | Off | Native credentials are unavailable or a hosted compatibility endpoint is preferred |
 
-The proxy is deployed locally to avoid rate-limiting issues with shared public
-instances. Both BookshelfNG instances use the same proxy and cache; they do not
-need separate Hardcover integrations.
+Compatibility is the installer default because it keeps BookshelfNG decoupled
+from Hardcover's GraphQL API and centralizes Hardcover authentication,
+caching, request coalescing, and upstream throttling. One proxy and PostgreSQL
+cache can serve both the ebook and audiobook instances. Existing local proxy
+installs are detected and preserved on rerun.
 
-### Hardcover outage behavior
+Native remains an explicit alternative when the shortest direct path is more
+valuable than the shared proxy boundary. BookshelfNG maps Hardcover metadata
+directly and keeps only a process-local cache per instance. Select it with
+`BOOKSHELF_METADATA_MODE=native`.
 
-The proxy improves outage tolerance through a persistent, shared read-through
-cache, but it is not an unlimited offline mirror. A metadata request follows
-this path:
+### Native Hardcover failure behavior
 
-1. BookshelfNG calls the local `rreading-glasses` endpoint; it does not call
-   Hardcover directly.
-2. `rreading-glasses` checks its in-memory cache and then its PostgreSQL-backed
-   cache.
-3. For a direct resource lookup, a cached, still-valid author, work, edition,
-   or series response is returned without contacting Hardcover.
-4. A cache miss, an expired entry, or a free-text search needs a Hardcover
-   request. Successful responses are written back to the shared cache.
+Native mode intentionally has no hidden runtime failover. The request path is:
 
-This means a short Hardcover outage can leave already-loaded metadata usable for
-direct lookups during its cache lifetime. The two BookshelfNG instances share
-the cache, request coalescing prevents duplicate upstream work for the same
-resource, and upstream rate limiting prevents refreshes or recovery traffic
-from creating an uncontrolled request burst. Hardcover authentication is also
-configured once on the proxy, so token rotation is a single integration change.
+1. BookshelfNG checks its in-process metadata cache.
+2. On a miss, it sends the GraphQL request directly to Hardcover using
+   `HARDCOVER_AUTH`.
+3. A successful response is mapped into BookshelfNG's normal metadata models
+   and cached for later lookups.
+4. If native mode is disabled, the same application falls back to
+   `METADATA_URL`; switching to hosted or compatibility mode is explicit and
+   visible in `.env`.
 
-The failure boundary is explicit:
+This avoids a partially working deployment that silently changes providers or
+duplicates requests during an outage. The tradeoff is that native mode does
+not provide rreading-glasses' durable cross-instance cache. A fresh search or
+refresh still needs Hardcover, and an operator must select compatibility mode
+if persistent proxy caching is required.
 
-- A new search, a new book, or an expired cache entry still needs Hardcover. If
-  Hardcover is unavailable at that point, the metadata request fails.
-- Free-text search and recommendations remain upstream-dependent even when
-  some of the resources they would return are already cached.
-- The current proxy treats expired entries as refresh candidates; it does not
-  guarantee stale-if-error responses for an upstream failure. A prolonged
-  outage can therefore outlast the useful cache lifetime.
-- The PostgreSQL cache survives a `rreading-glasses` container restart when its
-  persistent data volume is healthy. If the proxy itself is down, or its
-  PostgreSQL data is unavailable after a restart, both BookshelfNG instances
-  lose this metadata path.
-- There is no automatic runtime failover from Hardcover to Goodreads or
-  OpenLibrary. Migration recovery sources are separate from live Bookshelf
-  metadata serving.
+### Compatibility-mode outage behavior
 
-During an outage, keep `rreading-glasses` and its PostgreSQL data volume
-running, and do not delete the cache while troubleshooting. The installer backs
-up `RREADING_GLASSES_POSTGRES_DIR`. The installer's proxy readiness check only
-proves that the local process is serving; it does not prove that Hardcover is
-reachable. Use `--validate-api`, an actual lookup, and the proxy logs after
-recovery. Library files, imports, and download-client work that does not require
-a fresh metadata lookup is not routed through Hardcover, but searches,
-refreshes, and new additions may be affected.
+In compatibility mode, rreading-glasses provides the older shared path:
 
-For Hardcover mode (default), you must provide your own Hardcover API token via
-`HARDCOVER_AUTH`. Get a free token from
-https://hardcover.app/settings → Hardcover API.
+1. BookshelfNG calls the local rreading-glasses endpoint on port `8790`.
+2. rreading-glasses checks its in-memory cache and then its PostgreSQL-backed
+   cache on localhost port `15433`.
+3. Cached author, work, edition, or series responses can be served without a
+   fresh upstream call until their cache lifetime expires.
+4. A cache miss, expired entry, or free-text search still needs the configured
+   upstream. The proxy is not an unlimited offline mirror.
+
+The shared cache can help both Bookshelf instances and survives a proxy restart
+when its PostgreSQL volume is healthy. It also adds two local failure points:
+the proxy and its database. If either is unavailable, both instances lose this
+metadata path. There is no automatic runtime failover from Hardcover to
+Goodreads or OpenLibrary in either mode.
+
+During a compatibility-mode outage, keep rreading-glasses and
+`RREADING_GLASSES_POSTGRES_DIR` intact. The installer backs up that directory
+when it exists. The proxy readiness check proves only that the local process is
+serving; use `--validate-api`, an actual lookup, and the proxy logs to verify
+upstream recovery.
+
+For compatibility mode, provide `HARDCOVER_AUTH` with the `Bearer ` prefix;
+the token is used by rreading-glasses. Native mode passes it to BookshelfNG.
+Get a token from
+https://hardcover.app/settings → Hardcover API. Hosted mode does not require a
+local token for metadata, although Bookshelf's own Hardcover list-import
+settings still need an API key when that feature is used.
 
 For Goodreads/softcover mode, provide a Goodreads cookie via `COOKIE` if your
 upstream requires one.
@@ -373,12 +392,13 @@ The deployment compose defaults to the Snapetech image:
 ghcr.io/snapetech/bookshelfng:hardcover
 ```
 
-That image is built from the public `bookshelfng` fork and uses the Hardcover
-metadata backend. To force the legacy softcover path, set
-`BOOKSHELF_BACKEND=softcover`; this switches the image to
-`ghcr.io/snapetech/bookshelfng:softcover`. The local `rreading-glasses` proxy
-is used in both modes: Hardcover uses `HARDCOVER_AUTH`, while softcover uses
-`COOKIE`.
+That image is built from the public `bookshelfng` fork and provides the native
+Hardcover metadata backend. Fresh installs use the local rreading-glasses
+compatibility path by default; set `BOOKSHELF_METADATA_MODE=native` to pass
+`HARDCOVER_AUTH` directly to BookshelfNG. To force the legacy softcover path,
+set `BOOKSHELF_BACKEND=softcover`; this switches the image to
+`ghcr.io/snapetech/bookshelfng:softcover` and keeps compatibility mode. Softcover
+deployments use `COOKIE` when the Goodreads upstream requires it.
 
 The image is published from GitHub Actions in the `snapetech/bookshelfng`
 repository:
@@ -464,7 +484,9 @@ It does the following:
 - creates or patches each Bookshelf `config.xml` so the ebook instance binds
   port `8787` and the audiobook instance binds port `8788`,
 - optionally stops an old Readarr container,
-- starts Bookshelf, rreading-glasses, and Postgres with Docker Compose,
+- starts the two Bookshelf instances with Docker Compose; starts
+  rreading-glasses and Postgres only when
+  `BOOKSHELF_METADATA_MODE=compatibility`,
 - prints the Seerr settings and validation commands.
 
 Preview the install without changing files or containers:
@@ -544,7 +566,10 @@ TZ=America/Regina
 
 BOOKSHELF_BACKEND=hardcover
 BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:hardcover
+BOOKSHELF_METADATA_MODE=compatibility
 BOOKSHELF_METADATA_URL=http://127.0.0.1:8790
+BOOKSHELF_HARDCOVER=true
+BOOKSHELF_HARDCOVER_NATIVE=false
 BOOKSHELF_EBOOKS_CONFIG_DIR=/mnt/datapool_lvm_media/readarr-config
 BOOKSHELF_AUDIOBOOKS_CONFIG_DIR=/mnt/datapool_lvm_media/bookshelf-audiobooks-config
 
@@ -552,21 +577,40 @@ MEDIA_ROOT=/mnt/datapool_lvm_media
 DOWNLOAD_ROOT=/mnt/datapool_lvm_media/download
 PLEX_ROOT=/mnt/datapool_lvm_media/plex
 
+HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
+COMPOSE_PROFILES=rreading-glasses
 RREADING_GLASSES_UPSTREAM=api.hardcover.app
 RREADING_GLASSES_IMAGE=blampe/rreading-glasses:hardcover
-HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
 RREADING_GLASSES_POSTGRES_DIR=/mnt/datapool_lvm_media/rreading-glasses-postgres/data
 RREADING_GLASSES_POSTGRES_PASSWORD=replace-with-a-long-random-password
 ```
 
-For Goodreads/softcover mode, use:
+For explicit native mode, use the same file with these metadata settings and
+the native Bookshelf token:
+
+```env
+BOOKSHELF_METADATA_MODE=native
+BOOKSHELF_METADATA_URL=https://hardcover.bookinfo.pro
+BOOKSHELF_HARDCOVER_NATIVE=true
+BOOKSHELF_HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
+COMPOSE_PROFILES=
+HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
+RREADING_GLASSES_POSTGRES_PASSWORD=replace-with-a-long-random-password
+```
+
+For Goodreads/softcover compatibility mode, use:
 
 ```env
 BOOKSHELF_BACKEND=softcover
 BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:softcover
+BOOKSHELF_METADATA_MODE=compatibility
+BOOKSHELF_METADATA_URL=http://127.0.0.1:8790
+BOOKSHELF_HARDCOVER_NATIVE=false
+COMPOSE_PROFILES=rreading-glasses
 RREADING_GLASSES_IMAGE=blampe/rreading-glasses:latest
 RREADING_GLASSES_UPSTREAM=www.goodreads.com
 COOKIE=your-goodreads-cookie-here
+RREADING_GLASSES_POSTGRES_PASSWORD=replace-with-a-long-random-password
 ```
 
 Start the stack:
@@ -844,8 +888,12 @@ settings and backend containers.
 
 `lookup_empty`:
 
-- confirm rreading-glasses is running,
-- confirm Bookshelf `metadataSource` is `http://127.0.0.1:8790`,
+- check `BOOKSHELF_METADATA_MODE` in the generated `.env`;
+- in native mode, confirm the Bookshelf image contains the native provider and
+  `BOOKSHELF_HARDCOVER_AUTH` is present;
+- in hosted mode, confirm `BOOKSHELF_METADATA_URL` is reachable;
+- in compatibility mode, confirm rreading-glasses is running and Bookshelf
+  `metadataSource` is `http://127.0.0.1:8790`;
 - try an ISBN lookup such as `isbn:9780547928227`.
 
 `lookup_incomplete`:

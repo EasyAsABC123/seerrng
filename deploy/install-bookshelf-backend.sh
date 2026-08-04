@@ -7,6 +7,8 @@ DEFAULT_BOOKSHELF_HARDCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:hardcover@sha25
 DEFAULT_BOOKSHELF_SOFTCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97"
 DEFAULT_RREADING_GLASSES_HARDCOVER_IMAGE="blampe/rreading-glasses:hardcover@sha256:3489e722a73c9cbab5b9ba530cf8a60c2280367fb03db1fb649261dfb064b52f"
 DEFAULT_RREADING_GLASSES_SOFTCOVER_IMAGE="blampe/rreading-glasses:latest@sha256:dd996a1db19ac4ef18df47f1671f608c0f097ed43c4776ebde94dee20c6b43c8"
+DEFAULT_HARDCOVER_METADATA_URL="https://hardcover.bookinfo.pro"
+DEFAULT_SOFTCOVER_METADATA_URL="https://api.bookinfo.pro"
 
 DRY_RUN=false
 VALIDATE_ONLY=false
@@ -39,10 +41,16 @@ BOOKSHELF_AUDIOBOOKS_PORT="${BOOKSHELF_AUDIOBOOKS_PORT:-8788}"
 RREADING_GLASSES_PORT="${RREADING_GLASSES_PORT:-8790}"
 RREADING_GLASSES_POSTGRES_PORT="${RREADING_GLASSES_POSTGRES_PORT:-15433}"
 BOOKSHELF_BACKEND="${BOOKSHELF_BACKEND:-auto}"
+BOOKSHELF_METADATA_MODE="${BOOKSHELF_METADATA_MODE:-}"
 BOOKSHELF_METADATA_URL="${BOOKSHELF_METADATA_URL:-}"
 BOOKSHELF_IMAGE="${BOOKSHELF_IMAGE:-}"
+BOOKSHELF_HARDCOVER="${BOOKSHELF_HARDCOVER:-}"
+BOOKSHELF_HARDCOVER_NATIVE="${BOOKSHELF_HARDCOVER_NATIVE:-}"
+BOOKSHELF_HARDCOVER_AUTH="${BOOKSHELF_HARDCOVER_AUTH:-}"
+BOOKSHELF_HARDCOVER_API_URL="${BOOKSHELF_HARDCOVER_API_URL:-}"
 RREADING_GLASSES_IMAGE="${RREADING_GLASSES_IMAGE:-}"
-HARDCOVER_AUTH="${HARDCOVER_AUTH:-${RREADING_GLASSES_HARDCOVER_AUTH:-}}"
+COMPOSE_PROFILES="${COMPOSE_PROFILES:-}"
+HARDCOVER_AUTH="${HARDCOVER_AUTH:-${BOOKSHELF_HARDCOVER_AUTH:-${RREADING_GLASSES_HARDCOVER_AUTH:-}}}"
 COOKIE="${COOKIE:-${RREADING_GLASSES_COOKIE:-}}"
 
 STOP_OLD_READARR_CONTAINER="${STOP_OLD_READARR_CONTAINER:-}"
@@ -78,9 +86,13 @@ Common environment overrides:
   BACKUP_DIR
   BOOKSHELF_IMAGE
   BOOKSHELF_BACKEND=auto|hardcover|softcover
+  BOOKSHELF_METADATA_MODE=native|hosted|compatibility
   BOOKSHELF_METADATA_URL
+  BOOKSHELF_HARDCOVER_NATIVE=true|false
+  BOOKSHELF_HARDCOVER_AUTH (native mode only; include Bearer prefix)
+  BOOKSHELF_HARDCOVER_API_URL
   RREADING_GLASSES_IMAGE
-  HARDCOVER_AUTH (required for hardcover mode; include Bearer prefix)
+  HARDCOVER_AUTH (required for native and compatibility Hardcover modes; include Bearer prefix)
   COOKIE (optional for softcover mode)
   BOOKSHELF_EBOOKS_CONFIG_DIR
   BOOKSHELF_AUDIOBOOKS_CONFIG_DIR
@@ -275,6 +287,16 @@ validate_boolean() {
 validate_configuration() {
   local name
 
+  case "$BOOKSHELF_METADATA_MODE" in
+    native | hosted | compatibility)
+      ;;
+    *)
+      echo "Invalid BOOKSHELF_METADATA_MODE: $BOOKSHELF_METADATA_MODE" >&2
+      echo "Expected native, hosted, or compatibility." >&2
+      exit 2
+      ;;
+  esac
+
   validate_port BOOKSHELF_EBOOKS_PORT "$BOOKSHELF_EBOOKS_PORT"
   validate_port BOOKSHELF_AUDIOBOOKS_PORT "$BOOKSHELF_AUDIOBOOKS_PORT"
   validate_port RREADING_GLASSES_PORT "$RREADING_GLASSES_PORT"
@@ -286,12 +308,17 @@ validate_configuration() {
   validate_boolean APPLY_HARDCOVER_REBUILD "$APPLY_HARDCOVER_REBUILD"
   validate_boolean CLONE_EBOOKS_CONFIG_TO_AUDIOBOOKS "$CLONE_EBOOKS_CONFIG_TO_AUDIOBOOKS"
   validate_boolean HARDCOVER_LOCAL_DB_IMPORT "$HARDCOVER_LOCAL_DB_IMPORT"
+  validate_boolean BOOKSHELF_HARDCOVER "$BOOKSHELF_HARDCOVER"
+  validate_boolean BOOKSHELF_HARDCOVER_NATIVE "$BOOKSHELF_HARDCOVER_NATIVE"
 
   for name in \
     INSTALL_DIR BACKUP_DIR BOOKSHELF_EBOOKS_CONFIG_DIR \
     BOOKSHELF_AUDIOBOOKS_CONFIG_DIR RREADING_GLASSES_POSTGRES_DIR \
     MEDIA_ROOT DOWNLOAD_ROOT PLEX_ROOT TZ BOOKSHELF_IMAGE \
-    BOOKSHELF_METADATA_URL STOP_OLD_READARR_CONTAINER \
+    BOOKSHELF_METADATA_MODE BOOKSHELF_METADATA_URL BOOKSHELF_HARDCOVER \
+    BOOKSHELF_HARDCOVER_NATIVE BOOKSHELF_HARDCOVER_AUTH \
+    BOOKSHELF_HARDCOVER_API_URL \
+    COMPOSE_PROFILES STOP_OLD_READARR_CONTAINER \
     RREADING_GLASSES_IMAGE RREADING_GLASSES_POSTGRES_PASSWORD \
     HARDCOVER_AUTH COOKIE; do
     validate_no_control_characters "$name" "${!name:-}"
@@ -313,6 +340,10 @@ has_existing_bookshelf_config() {
 
 resolve_backend() {
   local existing_hardcover_auth
+  local existing_metadata_mode
+  local existing_metadata_url
+  local existing_native
+  local existing_profiles
 
   case "$BOOKSHELF_BACKEND" in
     auto)
@@ -341,38 +372,139 @@ resolve_backend() {
     fi
   fi
 
-  if [ -z "$RREADING_GLASSES_IMAGE" ]; then
-    if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
-      RREADING_GLASSES_IMAGE="$DEFAULT_RREADING_GLASSES_SOFTCOVER_IMAGE"
+  if [ -z "$BOOKSHELF_METADATA_MODE" ]; then
+    existing_metadata_mode="$(env_file_value "${INSTALL_DIR}/.env" "BOOKSHELF_METADATA_MODE")"
+    if [ -n "$existing_metadata_mode" ]; then
+      BOOKSHELF_METADATA_MODE="$existing_metadata_mode"
     else
-      RREADING_GLASSES_IMAGE="$DEFAULT_RREADING_GLASSES_HARDCOVER_IMAGE"
+      existing_metadata_url="$(env_file_value "${INSTALL_DIR}/.env" "BOOKSHELF_METADATA_URL")"
+      existing_native="$(env_file_value "${INSTALL_DIR}/.env" "BOOKSHELF_HARDCOVER_NATIVE")"
+      existing_profiles="$(env_file_value "${INSTALL_DIR}/.env" "COMPOSE_PROFILES")"
+      if [ -z "$BOOKSHELF_METADATA_URL" ] && [ -n "$existing_metadata_url" ]; then
+        BOOKSHELF_METADATA_URL="$existing_metadata_url"
+      fi
+      if [ -z "$COMPOSE_PROFILES" ] && [ -n "$existing_profiles" ]; then
+        COMPOSE_PROFILES="$existing_profiles"
+      fi
+      if [ "$existing_native" = "true" ] && [ "$BOOKSHELF_BACKEND_RESOLVED" = "hardcover" ]; then
+        BOOKSHELF_METADATA_MODE="native"
+      elif [ "$existing_profiles" = "rreading-glasses" ] ||
+        [[ "$existing_metadata_url" == http://127.0.0.1:* ]] ||
+        [[ "$existing_metadata_url" == http://localhost:* ]]; then
+        # Preserve the pre-native installer behavior for an existing local
+        # proxy deployment unless the operator explicitly selects a mode.
+        BOOKSHELF_METADATA_MODE="compatibility"
+      else
+        # Keep the proxy as the default boundary for fresh Hardcover installs.
+        # Existing native deployments are detected above and remain native.
+        BOOKSHELF_METADATA_MODE="compatibility"
+      fi
     fi
   fi
 
-  # Always use local rreading-glasses instance
-  if [ -z "$BOOKSHELF_METADATA_URL" ]; then
-    BOOKSHELF_METADATA_URL="http://127.0.0.1:${RREADING_GLASSES_PORT}"
+  case "$BOOKSHELF_METADATA_MODE" in
+    native | hosted | compatibility)
+      ;;
+    *)
+      echo "Invalid BOOKSHELF_METADATA_MODE: $BOOKSHELF_METADATA_MODE" >&2
+      echo "Expected native, hosted, or compatibility." >&2
+      exit 2
+      ;;
+  esac
+
+  if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ] &&
+    [ "$BOOKSHELF_METADATA_MODE" = "native" ]; then
+    echo "BOOKSHELF_METADATA_MODE=native requires BOOKSHELF_BACKEND=hardcover." >&2
+    echo "Use compatibility mode for Goodreads/softcover metadata." >&2
+    exit 2
   fi
 
-  # Set rreading-glasses configuration based on backend mode
   if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
+    BOOKSHELF_HARDCOVER="false"
     RREADING_GLASSES_UPSTREAM="www.goodreads.com"
   else
+    BOOKSHELF_HARDCOVER="true"
     RREADING_GLASSES_UPSTREAM="api.hardcover.app"
+  fi
+
+  case "$BOOKSHELF_METADATA_MODE" in
+    compatibility)
+      if [ -z "$RREADING_GLASSES_IMAGE" ]; then
+        if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
+          RREADING_GLASSES_IMAGE="$DEFAULT_RREADING_GLASSES_SOFTCOVER_IMAGE"
+        else
+          RREADING_GLASSES_IMAGE="$DEFAULT_RREADING_GLASSES_HARDCOVER_IMAGE"
+        fi
+      fi
+      if [ -z "$BOOKSHELF_METADATA_URL" ]; then
+        BOOKSHELF_METADATA_URL="http://127.0.0.1:${RREADING_GLASSES_PORT}"
+      fi
+      if [ "$BOOKSHELF_METADATA_URL" = "http://127.0.0.1:${RREADING_GLASSES_PORT}" ] ||
+        [ "$BOOKSHELF_METADATA_URL" = "http://localhost:${RREADING_GLASSES_PORT}" ]; then
+        COMPOSE_PROFILES="rreading-glasses"
+      else
+        # An explicitly supplied compatibility URL may point at a separately
+        # managed proxy. Do not start or wait for a second local proxy.
+        COMPOSE_PROFILES=""
+      fi
+      ;;
+    hosted)
+      COMPOSE_PROFILES=""
+      if [ -z "$BOOKSHELF_METADATA_URL" ]; then
+        if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
+          BOOKSHELF_METADATA_URL="$DEFAULT_SOFTCOVER_METADATA_URL"
+        else
+          BOOKSHELF_METADATA_URL="$DEFAULT_HARDCOVER_METADATA_URL"
+        fi
+      fi
+      ;;
+    native)
+      COMPOSE_PROFILES=""
+      if [ -z "$BOOKSHELF_METADATA_URL" ]; then
+        if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
+          BOOKSHELF_METADATA_URL="$DEFAULT_SOFTCOVER_METADATA_URL"
+        else
+          # This is the compatibility URL used only when native mode is
+          # disabled at runtime or explicitly replaced by hosted mode.
+          BOOKSHELF_METADATA_URL="$DEFAULT_HARDCOVER_METADATA_URL"
+        fi
+      fi
+      ;;
+  esac
+
+  if [ "$BOOKSHELF_BACKEND_RESOLVED" = "hardcover" ] && [ "$BOOKSHELF_METADATA_MODE" = "native" ]; then
+    BOOKSHELF_HARDCOVER_NATIVE="true"
+    BOOKSHELF_HARDCOVER_AUTH="${HARDCOVER_AUTH:-}"
+  else
+    BOOKSHELF_HARDCOVER_NATIVE="false"
+    BOOKSHELF_HARDCOVER_AUTH=""
+  fi
+
+  # Native mode sends the token to BookshelfNG. Local compatibility mode sends
+  # it only to rreading-glasses. Hosted mode has its own upstream credentials.
+  if [ "$BOOKSHELF_BACKEND_RESOLVED" = "hardcover" ] &&
+    { [ "$BOOKSHELF_METADATA_MODE" = "native" ] ||
+      { [ "$BOOKSHELF_METADATA_MODE" = "compatibility" ] &&
+        [ "$COMPOSE_PROFILES" = "rreading-glasses" ]; }; }; then
     existing_hardcover_auth="$(env_file_value "${INSTALL_DIR}/.env" "HARDCOVER_AUTH")"
     if [ -z "$existing_hardcover_auth" ]; then
       existing_hardcover_auth="$(env_file_value "${INSTALL_DIR}/.env" "RREADING_GLASSES_HARDCOVER_AUTH")"
     fi
     HARDCOVER_AUTH="${HARDCOVER_AUTH:-$existing_hardcover_auth}"
     if [ "$RESTORE_BACKUP" != "true" ] && [ -z "$HARDCOVER_AUTH" ]; then
-      echo "HARDCOVER_AUTH is required for hardcover mode." >&2
+      echo "HARDCOVER_AUTH is required for native or local compatibility Hardcover mode." >&2
       echo "Get a token from https://hardcover.app/settings and include the Bearer prefix." >&2
       exit 2
     fi
-    if [ -n "$HARDCOVER_AUTH" ] && [[ "$HARDCOVER_AUTH" != Bearer\ * ]]; then
-      echo "HARDCOVER_AUTH must start with 'Bearer '." >&2
-      exit 2
-    fi
+  fi
+
+  if [ -n "$HARDCOVER_AUTH" ] && [[ "$HARDCOVER_AUTH" != Bearer\ * ]]; then
+    echo "HARDCOVER_AUTH must start with 'Bearer '." >&2
+    exit 2
+  fi
+
+  if [ "$BOOKSHELF_METADATA_MODE" = "native" ]; then
+    BOOKSHELF_HARDCOVER_AUTH="$HARDCOVER_AUTH"
   fi
 }
 
@@ -662,8 +794,11 @@ write_backup_manifest() {
   "installDir": "$(json_escape "$INSTALL_DIR")",
   "backendMode": "$(json_escape "$BOOKSHELF_BACKEND")",
   "resolvedBackendMode": "$(json_escape "$BOOKSHELF_BACKEND_RESOLVED")",
+  "metadataMode": "$(json_escape "$BOOKSHELF_METADATA_MODE")",
   "bookshelfImage": "$(json_escape "$BOOKSHELF_IMAGE")",
   "metadataUrl": "$(json_escape "$BOOKSHELF_METADATA_URL")",
+  "nativeHardcover": $([ "$BOOKSHELF_HARDCOVER_NATIVE" = "true" ] && printf 'true' || printf 'false'),
+  "composeProfiles": "$(json_escape "$COMPOSE_PROFILES")",
   "paths": {
     "ebookConfig": "$(json_escape "$BOOKSHELF_EBOOKS_CONFIG_DIR")",
     "audiobookConfig": "$(json_escape "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR")",
@@ -766,8 +901,13 @@ PGID=${PGID}
 TZ=${TZ}
 
 BOOKSHELF_BACKEND=${BOOKSHELF_BACKEND_RESOLVED}
+BOOKSHELF_METADATA_MODE=${BOOKSHELF_METADATA_MODE}
 BOOKSHELF_IMAGE=${BOOKSHELF_IMAGE}
 BOOKSHELF_METADATA_URL=${BOOKSHELF_METADATA_URL}
+BOOKSHELF_HARDCOVER=${BOOKSHELF_HARDCOVER}
+BOOKSHELF_HARDCOVER_NATIVE=${BOOKSHELF_HARDCOVER_NATIVE}
+BOOKSHELF_HARDCOVER_AUTH=${BOOKSHELF_HARDCOVER_AUTH:-}
+BOOKSHELF_HARDCOVER_API_URL=${BOOKSHELF_HARDCOVER_API_URL:-}
 BOOKSHELF_EBOOKS_CONFIG_DIR=${BOOKSHELF_EBOOKS_CONFIG_DIR}
 BOOKSHELF_AUDIOBOOKS_CONFIG_DIR=${BOOKSHELF_AUDIOBOOKS_CONFIG_DIR}
 BOOKSHELF_EBOOKS_CONTAINER_NAME=bookshelf-ebooks
@@ -776,6 +916,7 @@ BOOKSHELF_AUDIOBOOKS_CONTAINER_NAME=bookshelf-audiobooks
 MEDIA_ROOT=${MEDIA_ROOT}
 DOWNLOAD_ROOT=${DOWNLOAD_ROOT}
 PLEX_ROOT=${PLEX_ROOT}
+COMPOSE_PROFILES=${COMPOSE_PROFILES}
 
 RREADING_GLASSES_CONTAINER_NAME=rreading-glasses
 RREADING_GLASSES_IMAGE=${RREADING_GLASSES_IMAGE}
@@ -1021,6 +1162,15 @@ preflight() {
       echo "Warning: cannot inspect Bookshelf image: $BOOKSHELF_IMAGE" >&2
       echo "If this is a private GHCR package, authenticate Docker or make the package public." >&2
     fi
+
+    if [ "$COMPOSE_PROFILES" = "rreading-glasses" ]; then
+      if docker manifest inspect "$RREADING_GLASSES_IMAGE" >/dev/null 2>&1; then
+        echo "rreading-glasses image is reachable: $RREADING_GLASSES_IMAGE"
+      else
+        echo "Warning: cannot inspect rreading-glasses image: $RREADING_GLASSES_IMAGE" >&2
+        echo "Authenticate Docker if the image registry requires credentials." >&2
+      fi
+    fi
   fi
 
   if [ "$VALIDATE_ONLY" != "true" ] && [ "$RESTORE_BACKUP" != "true" ]; then
@@ -1050,6 +1200,10 @@ validate_compose() {
       TZ="$TZ" \
       BOOKSHELF_IMAGE="$BOOKSHELF_IMAGE" \
       BOOKSHELF_METADATA_URL="$BOOKSHELF_METADATA_URL" \
+      BOOKSHELF_HARDCOVER="$BOOKSHELF_HARDCOVER" \
+      BOOKSHELF_HARDCOVER_NATIVE="$BOOKSHELF_HARDCOVER_NATIVE" \
+      BOOKSHELF_HARDCOVER_AUTH="$BOOKSHELF_HARDCOVER_AUTH" \
+      BOOKSHELF_HARDCOVER_API_URL="$BOOKSHELF_HARDCOVER_API_URL" \
       BOOKSHELF_EBOOKS_CONFIG_DIR="$BOOKSHELF_EBOOKS_CONFIG_DIR" \
       BOOKSHELF_AUDIOBOOKS_CONFIG_DIR="$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR" \
       MEDIA_ROOT="$MEDIA_ROOT" \
@@ -1062,6 +1216,7 @@ validate_compose() {
       RREADING_GLASSES_UPSTREAM="$RREADING_GLASSES_UPSTREAM" \
       HARDCOVER_AUTH="$HARDCOVER_AUTH" \
       COOKIE="$COOKIE" \
+      COMPOSE_PROFILES="$COMPOSE_PROFILES" \
       docker compose -f "$SOURCE_COMPOSE" config >/dev/null
     echo "Compose template is valid."
     return
@@ -1125,6 +1280,14 @@ wait_for_metadata_proxy() {
 }
 
 print_summary() {
+  local proxy_status
+
+  if [ "$COMPOSE_PROFILES" = "rreading-glasses" ]; then
+    proxy_status="enabled via Compose profile rreading-glasses"
+  else
+    proxy_status="not started by this deployment"
+  fi
+
   cat <<EOF
 
 Bookshelf backend deployment summary:
@@ -1134,6 +1297,9 @@ Bookshelf backend deployment summary:
   Backups:                  ${BACKUP_DIR}
   Bookshelf image:          ${BOOKSHELF_IMAGE}
   Backend mode:             ${BOOKSHELF_BACKEND} -> ${BOOKSHELF_BACKEND_RESOLVED}
+  Metadata mode:            ${BOOKSHELF_METADATA_MODE}
+  Native Hardcover:         ${BOOKSHELF_HARDCOVER_NATIVE}
+  rreading-glasses:         ${proxy_status}
   rreading-glasses image:   ${RREADING_GLASSES_IMAGE}
   rreading-glasses upstream: ${RREADING_GLASSES_UPSTREAM}
   Ebook config:             ${BOOKSHELF_EBOOKS_CONFIG_DIR}
@@ -1203,7 +1369,9 @@ backup_path "$RREADING_GLASSES_POSTGRES_DIR" "rreading-glasses-postgres"
 write_backup_manifest
 
 run mkdir -p "$BOOKSHELF_EBOOKS_CONFIG_DIR" "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR"
-run mkdir -p "$RREADING_GLASSES_POSTGRES_DIR"
+if [ "$COMPOSE_PROFILES" = "rreading-glasses" ]; then
+  run mkdir -p "$RREADING_GLASSES_POSTGRES_DIR"
+fi
 
 if [ "$CLONE_EBOOKS_CONFIG_TO_AUDIOBOOKS" = "true" ] && [ -d "$BOOKSHELF_EBOOKS_CONFIG_DIR" ] && [ -z "$(find "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
   run cp -a "${BOOKSHELF_EBOOKS_CONFIG_DIR}/." "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR/"
@@ -1225,7 +1393,9 @@ if [ "$DRY_RUN" != "true" ]; then
       compose_cmd pull
     fi
     compose_cmd up -d
-    wait_for_metadata_proxy
+    if [ "$COMPOSE_PROFILES" = "rreading-glasses" ]; then
+      wait_for_metadata_proxy
+    fi
   )
 else
   echo "Dry run complete; containers were not changed."

@@ -12,6 +12,7 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/lint-helm-charts.yml'
       - 'charts/**'
 
 permissions:
@@ -44,6 +45,7 @@ jobs:
 
       - name: Run chart-testing (list-changed)
         id: list-changed
+        if: github.event_name == 'pull_request'
         env:
           TARGET_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
@@ -53,8 +55,12 @@ jobs:
             echo "$changed"
           fi
 
-      - name: Run chart-testing
-        if: steps.list-changed.outputs.changed == 'true'
+      - name: Run chart-testing (pull request)
+        if: github.event_name == 'pull_request' && steps.list-changed.outputs.changed == 'true'
         env:
           TARGET_BRANCH: ${{ github.event.repository.default_branch }}
         run: ct lint --target-branch "$TARGET_BRANCH" --validate-maintainers=false
+
+      - name: Run chart-testing (push)
+        if: github.event_name == 'push'
+        run: ct lint --all --validate-maintainers=false
