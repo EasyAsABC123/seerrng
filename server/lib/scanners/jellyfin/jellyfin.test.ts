@@ -4,6 +4,7 @@ import type {
   JellyfinLibraryItemExtended,
 } from '@server/api/jellyfin';
 import JellyfinAPI from '@server/api/jellyfin';
+import MusicBrainz from '@server/api/musicbrainz';
 import TheMovieDb from '@server/api/themoviedb';
 import type {
   TmdbTvDetails,
@@ -42,6 +43,9 @@ let getEpisodesImpl: (
   seriesID: string,
   seasonID: string
 ) => Promise<JellyfinLibraryItem[]> = async () => [];
+let getReleaseGroupImpl: (
+  releaseId: string
+) => Promise<string | null> = async () => null;
 
 Object.defineProperty(JellyfinAPI.prototype, 'getLibraryContents', {
   get() {
@@ -71,6 +75,15 @@ Object.defineProperty(JellyfinAPI.prototype, 'getEpisodes', {
   get() {
     return async (seriesID: string, seasonID: string) =>
       getEpisodesImpl(seriesID, seasonID);
+  },
+  set() {},
+  configurable: true,
+});
+
+Object.defineProperty(MusicBrainz.prototype, 'getReleaseGroup', {
+  get() {
+    return async ({ releaseId }: { releaseId: string }) =>
+      getReleaseGroupImpl(releaseId);
   },
   set() {},
   configurable: true,
@@ -165,6 +178,17 @@ function fakeJellyfinSeriesItem(id: string): JellyfinLibraryItem {
   };
 }
 
+function fakeJellyfinMusicAlbumItem(id: string): JellyfinLibraryItem {
+  return {
+    Name: 'Test Album',
+    Id: id,
+    Type: 'MusicAlbum',
+    HasSubtitles: false,
+    LocationType: 'FileSystem',
+    MediaType: 'Audio',
+  };
+}
+
 function fakeJellyfinShowMetadata(
   id: string,
   tmdbId: string
@@ -230,12 +254,61 @@ describe('Jellyfin Scanner', () => {
     getItemDataImpl = async () => undefined;
     getSeasonsImpl = async () => [];
     getEpisodesImpl = async () => [];
+    getReleaseGroupImpl = async () => null;
     getTvShowImpl = async () => fakeTmdbShow(1);
 
     await getRepository(User).update(1, {
       jellyfinUserId: 'admin-user-id',
       jellyfinDeviceId: 'admin-device-id',
     });
+  });
+
+  it('marks Jellyfin music albums available using their release-group ID', async () => {
+    const releaseGroupId = 'jellyfin-music-release-group';
+    configureJellyfinWithLibrary([
+      { id: 'music', name: 'Music', enabled: true, type: 'music' },
+    ]);
+    getLibraryContentsImpl = async () => [
+      fakeJellyfinMusicAlbumItem('jellyfin-album-id'),
+    ];
+    getItemDataImpl = async () => ({
+      ...fakeJellyfinMusicAlbumItem('jellyfin-album-id'),
+      ProviderIds: { MusicBrainzReleaseGroup: releaseGroupId },
+      DateCreated: '2026-08-04T00:00:00.000Z',
+    });
+
+    await jellyfinFullScanner.run();
+
+    const media = await getRepository(Media).findOneOrFail({
+      where: { mbId: releaseGroupId, mediaType: MediaType.MUSIC },
+    });
+    assert.strictEqual(media.status, MediaStatus.AVAILABLE);
+    assert.strictEqual(media.jellyfinMediaId, 'jellyfin-album-id');
+  });
+
+  it('resolves Jellyfin album IDs to release-group IDs', async () => {
+    const releaseGroupId = 'resolved-jellyfin-release-group';
+    configureJellyfinWithLibrary([
+      { id: 'music', name: 'Music', enabled: true, type: 'music' },
+    ]);
+    getLibraryContentsImpl = async () => [
+      fakeJellyfinMusicAlbumItem('jellyfin-release-id'),
+    ];
+    getItemDataImpl = async () => ({
+      ...fakeJellyfinMusicAlbumItem('jellyfin-release-id'),
+      ProviderIds: { MusicBrainzAlbum: 'jellyfin-release-id' },
+    });
+    getReleaseGroupImpl = async (releaseId) => {
+      assert.strictEqual(releaseId, 'jellyfin-release-id');
+      return releaseGroupId;
+    };
+
+    await jellyfinFullScanner.run();
+
+    const media = await getRepository(Media).findOneOrFail({
+      where: { mbId: releaseGroupId, mediaType: MediaType.MUSIC },
+    });
+    assert.strictEqual(media.status, MediaStatus.AVAILABLE);
   });
 
   describe('empty TMDB season handling', () => {

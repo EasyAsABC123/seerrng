@@ -350,6 +350,7 @@ class BaseScanner<T> {
       serviceId,
       externalServiceId,
       externalServiceSlug,
+      jellyfinMediaId,
       processing = false,
       title = 'Unknown Album',
       hasFile = true,
@@ -423,6 +424,14 @@ class BaseScanner<T> {
                   changedExisting = true;
                 }
 
+                if (
+                  jellyfinMediaId !== undefined &&
+                  existing.jellyfinMediaId !== jellyfinMediaId
+                ) {
+                  existing.jellyfinMediaId = jellyfinMediaId;
+                  changedExisting = true;
+                }
+
                 if (changedExisting) {
                   await mediaRepository.save(existing);
                   this.log(`Updating existing album: ${title}`, 'info');
@@ -437,6 +446,7 @@ class BaseScanner<T> {
                     serviceId,
                     externalServiceId,
                     externalServiceSlug,
+                    jellyfinMediaId,
                     status:
                       !processing && hasFile
                         ? MediaStatus.AVAILABLE

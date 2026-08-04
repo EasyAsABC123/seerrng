@@ -150,6 +150,9 @@ describe('Jellyfin response normalization', () => {
       Imdb: undefined,
       Tvdb: undefined,
       AniDB: undefined,
+      MusicBrainzAlbum: undefined,
+      MusicBrainzReleaseGroup: undefined,
+      MusicBrainzArtist: undefined,
     });
     assert.strictEqual(item.MediaSources?.length, 1);
     assert.strictEqual(item.MediaSources?.[0].MediaStreams.length, 1);
@@ -159,6 +162,65 @@ describe('Jellyfin response normalization', () => {
     assert.ok(
       !('providerOnly' in (item.MediaSources?.[0].MediaStreams[0] ?? {}))
     );
+  });
+
+  it('exposes music libraries and requests album items for music scans', async () => {
+    const api = new JellyfinAPI('http://localhost');
+    const requests: { url: string; params?: Record<string, unknown> }[] = [];
+
+    Object.defineProperty(api, 'get', {
+      configurable: true,
+      value: async (
+        url: string,
+        options?: { params?: Record<string, unknown> }
+      ) => {
+        requests.push({ url, params: options?.params });
+        if (url === '/Library/MediaFolders') {
+          return {
+            Items: [
+              {
+                Type: 'CollectionFolder',
+                Id: 'music-library',
+                Name: 'Music',
+                CollectionType: 'Music',
+              },
+              {
+                Type: 'CollectionFolder',
+                Id: 'books-library',
+                Name: 'Books',
+                CollectionType: 'books',
+              },
+            ],
+          };
+        }
+
+        return {
+          Items: [
+            {
+              Id: 'album',
+              Name: 'Album',
+              Type: 'MusicAlbum',
+              ProviderIds: {
+                MusicBrainzReleaseGroup: 'release-group-id',
+              },
+            },
+          ],
+        };
+      },
+    });
+
+    assert.deepStrictEqual(await api.getLibraries(), [
+      {
+        key: 'music-library',
+        title: 'Music',
+        type: 'music',
+        agent: 'jellyfin',
+      },
+    ]);
+
+    const albums = await api.getLibraryContents('music-library', 'music');
+    assert.strictEqual(albums[0].Type, 'MusicAlbum');
+    assert.strictEqual(requests[1].params?.IncludeItemTypes, 'MusicAlbum');
   });
 
   it('bounds season collections and encodes provider path identifiers', async () => {

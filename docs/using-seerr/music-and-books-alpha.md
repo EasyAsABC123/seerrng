@@ -14,7 +14,9 @@ system. This page is the validation checklist for alpha builds.
   Readarr-compatible API surface. See the
   [Bookshelf Backend](/using-seerr/bookshelf-backend) guide for the recommended
   two-instance ebook/audiobook deployment.
-- Jellyfin, Plex, or Emby for the inherited media-server integration.
+- Jellyfin, Plex, or Emby for the inherited media-server integration. Jellyfin
+  music libraries are supported when albums expose MusicBrainz metadata; Lidarr
+  remains the automation and fallback availability source.
 
 ## Configuration Checklist
 
@@ -29,6 +31,8 @@ system. This page is the validation checklist for alpha builds.
 7. Enable sync on the Lidarr and Bookshelf services being tested.
 8. Confirm the root folder, quality profile, metadata profile, and tags returned
    by each test connection are the values expected by the backend.
+9. If testing Jellyfin music availability, sync the Jellyfin libraries and
+   confirm the albums expose a MusicBrainz release-group or album ID.
 
 ## Music Validation
 
@@ -49,6 +53,11 @@ Run these against a real Lidarr instance:
 When testing **Request Discography**, include an environment where the default
 Lidarr service ID is `0`. The bulk request backend must accept `serverId: 0`;
 otherwise SeerrNG rejects the request before it reaches Lidarr.
+
+Jellyfin music scans use the MusicBrainz release-group ID as the canonical album
+identity. If Jellyfin exposes only a MusicBrainz album/release ID, SeerrNG
+resolves it through MusicBrainz. Albums without either ID are skipped; run a
+Lidarr scan when Lidarr is the authoritative availability source.
 
 ## Book Validation
 

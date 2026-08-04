@@ -119,6 +119,9 @@ Music:
 - Lidarr server configured in **Settings > Services**.
 - Root folder, quality profile, metadata profile, and tags configured from the Lidarr service settings.
 - A default Lidarr server if users should be able to request music without choosing a service each time.
+- Jellyfin music libraries can also be enabled in **Settings > Media Server**;
+  albums must expose MusicBrainz metadata for SeerrNG to match existing media.
+  Lidarr remains the automation and fallback availability source.
 
 Books:
 
@@ -137,6 +140,23 @@ metadata:
 ```text
 ghcr.io/snapetech/bookshelfng:hardcover
 ```
+
+### BookshelfNG and rreading-glasses
+
+These components solve different problems:
+
+- **BookshelfNG** is the maintained Readarr-style application. It manages the
+  library, download clients, imports, file organization, and the
+  Readarr-compatible API that SeerrNG uses.
+- **rreading-glasses** is a metadata compatibility/proxy layer. It exposes the
+  metadata API BookshelfNG expects, translates requests to the configured
+  upstream (Hardcover in the default mode, or Goodreads in legacy softcover
+  mode), caches results in PostgreSQL, and coalesces/rate-limits upstream work.
+- The proxy sits between BookshelfNG and the upstream metadata service. This
+  keeps BookshelfNG decoupled from Hardcover's GraphQL API and avoids making
+  every BookshelfNG instance independently handle Hardcover authentication,
+  caching, and upstream throttling. One local proxy can serve both the ebook
+  and audiobook BookshelfNG instances.
 
 Legacy softcover/Goodreads deployments remain supported for existing users:
 
@@ -277,6 +297,8 @@ than the SeerrNG runtime container. Common ones include:
 | --- | --- |
 | `BOOKSHELF_BACKEND` | `auto`, `hardcover`, or `softcover`. |
 | `BOOKSHELF_IMAGE` | Override the Bookshelf image. Defaults to `ghcr.io/snapetech/bookshelfng:hardcover` for Hardcover mode. |
+| `HARDCOVER_AUTH` | Hardcover API token for the local rreading-glasses proxy; include the `Bearer ` prefix. |
+| `COOKIE` | Optional Goodreads cookie for softcover mode. |
 | `BOOKSHELF_EBOOKS_CONFIG_DIR` | Ebook Bookshelf/Readarr config directory. |
 | `BOOKSHELF_AUDIOBOOKS_CONFIG_DIR` | Audiobook Bookshelf/Readarr config directory. |
 | `HARDCOVER_EBOOK_API_KEY` / `HARDCOVER_AUDIOBOOK_API_KEY` | API keys for target Hardcover Bookshelf instances. |

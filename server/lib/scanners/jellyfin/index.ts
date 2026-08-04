@@ -5,6 +5,7 @@ import type {
 } from '@server/api/jellyfin';
 import JellyfinAPI from '@server/api/jellyfin';
 import { getMetadataProvider } from '@server/api/metadata';
+import MusicBrainz from '@server/api/musicbrainz';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import type {
@@ -19,6 +20,10 @@ import {
   runWithConfigurationSnapshot,
   type ConfigurationAuthoritySnapshot,
 } from '@server/lib/configurationAdmission';
+import {
+  isValidMusicBrainzResourceId,
+  normalizeMusicBrainzId,
+} from '@server/lib/externalIds';
 import {
   MediaServerUserAuthorityChangedError,
   captureMediaServerUserAuthority,
@@ -49,6 +54,7 @@ export class JellyfinScanner
   private libraries: Library[];
   private currentLibrary: Library;
   private isRecentOnly = false;
+  private musicbrainz = new MusicBrainz();
   private processedAnidbSeason: Map<number, Map<number, number>>;
   private configurationSnapshot: ConfigurationAuthoritySnapshot;
   private jellyfinSettingsSnapshot: JellyfinSettings;
@@ -476,11 +482,83 @@ export class JellyfinScanner
     }
   }
 
+  private async getMusicBrainzReleaseGroupId(
+    metadata: JellyfinLibraryItemExtended
+  ): Promise<string | undefined> {
+    const releaseGroupId = normalizeMusicBrainzId(
+      metadata.ProviderIds.MusicBrainzReleaseGroup ?? ''
+    );
+    if (isValidMusicBrainzResourceId(releaseGroupId)) {
+      return releaseGroupId;
+    }
+
+    const releaseId = normalizeMusicBrainzId(
+      metadata.ProviderIds.MusicBrainzAlbum ?? ''
+    );
+    if (!isValidMusicBrainzResourceId(releaseId)) {
+      return undefined;
+    }
+
+    const resolvedReleaseGroupId = normalizeMusicBrainzId(
+      (await this.musicbrainz.getReleaseGroup({ releaseId })) ?? ''
+    );
+    return isValidMusicBrainzResourceId(resolvedReleaseGroupId)
+      ? resolvedReleaseGroupId
+      : undefined;
+  }
+
+  private async processJellyfinMusic(jellyfinitem: JellyfinLibraryItem) {
+    try {
+      const metadata = await this.jfClient.getItemData(jellyfinitem.Id);
+
+      if (!metadata?.Id) {
+        this.log('No Id metadata for this album. Skipping', 'debug', {
+          jellyfinItemId: jellyfinitem.Id,
+        });
+        return;
+      }
+
+      const mbId = await this.getMusicBrainzReleaseGroupId(metadata);
+      if (!mbId) {
+        this.log(
+          'No MusicBrainz release group ID found for this album. Skipping',
+          'debug',
+          { jellyfinItemId: jellyfinitem.Id, title: metadata.Name }
+        );
+        return;
+      }
+
+      await this.processMusic(mbId, {
+        mediaAddedAt: metadata.DateCreated
+          ? new Date(metadata.DateCreated)
+          : undefined,
+        jellyfinMediaId: metadata.Id,
+        title: metadata.Name,
+        mutationGuard: (callback) => this.withConfigurationSnapshot(callback),
+        outerMutationGuard: (callback) => this.withOwnerAuthority(callback),
+      });
+    } catch (e) {
+      if (
+        e instanceof ConfigurationAuthorityChangedError ||
+        e instanceof MediaServerUserAuthorityChangedError
+      ) {
+        throw e;
+      }
+      this.log(
+        `Failed to process Jellyfin music item. Id: ${jellyfinitem.Id}`,
+        'error',
+        { errorMessage: e.message, jellyfinitem }
+      );
+    }
+  }
+
   private async processItem(item: JellyfinLibraryItem): Promise<void> {
     if (item.Type === 'Movie') {
       await this.processJellyfinMovie(item);
     } else if (item.Type === 'Series') {
       await this.processJellyfinShow(item);
+    } else if (item.Type === 'MusicAlbum') {
+      await this.processJellyfinMusic(item);
     }
   }
 
@@ -545,7 +623,7 @@ export class JellyfinScanner
             'info'
           );
           const libraryItems = await this.withConfigurationSnapshot(() =>
-            this.jfClient.getRecentlyAdded(library.id)
+            this.jfClient.getRecentlyAdded(library.id, library.type)
           );
 
           // Bundle items up by rating keys
@@ -570,7 +648,7 @@ export class JellyfinScanner
           this.processedAnidbSeason = new Map();
           this.log(`Beginning to process library: ${library.name}`, 'info');
           this.items = await this.withConfigurationSnapshot(() =>
-            this.jfClient.getLibraryContents(library.id)
+            this.jfClient.getLibraryContents(library.id, library.type)
           );
           await this.loop(this.processItem.bind(this), { sessionId });
         }

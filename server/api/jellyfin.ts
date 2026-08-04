@@ -67,7 +67,7 @@ export interface JellyfinUserListResponse {
 }
 
 export interface JellyfinLibrary {
-  type: 'show' | 'movie';
+  type: 'show' | 'movie' | 'music';
   key: string;
   title: string;
   agent: string;
@@ -77,7 +77,7 @@ export interface JellyfinLibraryItem {
   Name: string;
   Id: string;
   HasSubtitles: boolean;
-  Type: 'Movie' | 'Episode' | 'Season' | 'Series';
+  Type: 'Movie' | 'Episode' | 'Season' | 'Series' | 'MusicAlbum';
   LocationType: 'FileSystem' | 'Offline' | 'Remote' | 'Virtual';
   SeriesName?: string;
   SeriesId?: string;
@@ -116,6 +116,9 @@ export interface JellyfinLibraryItemExtended extends JellyfinLibraryItem {
     Imdb?: string;
     Tvdb?: string;
     AniDB?: string;
+    MusicBrainzAlbum?: string;
+    MusicBrainzReleaseGroup?: string;
+    MusicBrainzArtist?: string;
   };
   MediaSources?: JellyfinMediaSource[];
   Width?: number;
@@ -160,7 +163,13 @@ const optionalJellyfinInteger = (value: unknown): number | undefined =>
     ? value
     : undefined;
 
-const jellyfinItemTypes = ['Movie', 'Episode', 'Season', 'Series'] as const;
+const jellyfinItemTypes = [
+  'Movie',
+  'Episode',
+  'Season',
+  'Series',
+  'MusicAlbum',
+] as const;
 const jellyfinLocationTypes = [
   'FileSystem',
   'Offline',
@@ -272,6 +281,22 @@ export const sanitizeJellyfinLibraryItem = (
       Imdb: boundedJellyfinText(providerIds.Imdb, 128) || undefined,
       Tvdb: boundedJellyfinText(providerIds.Tvdb, 128) || undefined,
       AniDB: boundedJellyfinText(providerIds.AniDB, 128) || undefined,
+      MusicBrainzAlbum:
+        boundedJellyfinText(
+          providerIds.MusicBrainzAlbum ?? providerIds.MusicBrainzAlbumId,
+          128
+        ) || undefined,
+      MusicBrainzReleaseGroup:
+        boundedJellyfinText(
+          providerIds.MusicBrainzReleaseGroup ??
+            providerIds.MusicBrainzReleaseGroupId,
+          128
+        ) || undefined,
+      MusicBrainzArtist:
+        boundedJellyfinText(
+          providerIds.MusicBrainzArtist ?? providerIds.MusicBrainzArtistId,
+          128
+        ) || undefined,
     },
     MediaSources: (Array.isArray(value.MediaSources) ? value.MediaSources : [])
       .slice(0, MAX_JELLYFIN_MEDIA_SOURCES)
@@ -638,19 +663,16 @@ class JellyfinAPI extends ExternalAPI {
   }
 
   private mapLibraries(mediaFolders: unknown): JellyfinLibrary[] {
-    const excludedTypes = [
-      'music',
-      'books',
-      'musicvideos',
-      'homevideos',
-      'boxsets',
-    ];
+    const excludedTypes = ['books', 'musicvideos', 'homevideos', 'boxsets'];
 
     return (Array.isArray(mediaFolders) ? mediaFolders : [])
       .slice(0, MAX_JELLYFIN_LIBRARIES)
       .flatMap((item) => {
         if (!isRecord(item)) return [];
-        const collectionType = boundedJellyfinText(item.CollectionType, 128);
+        const collectionType = boundedJellyfinText(
+          item.CollectionType,
+          128
+        ).toLowerCase();
         const key = boundedJellyfinText(item.Id, 128);
         const title = boundedJellyfinText(item.Name, 512);
         if (
@@ -661,27 +683,28 @@ class JellyfinAPI extends ExternalAPI {
         ) {
           return [];
         }
-        return [
-          {
-            key,
-            title,
-            type:
-              collectionType === 'movies'
-                ? ('movie' as const)
-                : ('show' as const),
-            agent: 'jellyfin',
-          },
-        ];
+        const type =
+          collectionType === 'movies'
+            ? ('movie' as const)
+            : collectionType === 'music'
+              ? ('music' as const)
+              : ('show' as const);
+
+        return [{ key, title, type, agent: 'jellyfin' }];
       });
   }
 
-  public async getLibraryContents(id: string): Promise<JellyfinLibraryItem[]> {
+  public async getLibraryContents(
+    id: string,
+    libraryType?: JellyfinLibrary['type']
+  ): Promise<JellyfinLibraryItem[]> {
     try {
       const libraryItemsResponse = await this.get<any>('/Items', {
         params: {
           SortBy: 'SortName',
           SortOrder: 'Ascending',
-          IncludeItemTypes: 'Series,Movie,Others',
+          IncludeItemTypes:
+            libraryType === 'music' ? 'MusicAlbum' : 'Series,Movie,Others',
           Recursive: true,
           StartIndex: 0,
           ParentId: boundedJellyfinText(id, 128),
@@ -704,7 +727,10 @@ class JellyfinAPI extends ExternalAPI {
     }
   }
 
-  public async getRecentlyAdded(id: string): Promise<JellyfinLibraryItem[]> {
+  public async getRecentlyAdded(
+    id: string,
+    libraryType?: JellyfinLibrary['type']
+  ): Promise<JellyfinLibraryItem[]> {
     try {
       const endpoint =
         this.mediaServerType === MediaServerType.JELLYFIN
@@ -714,6 +740,8 @@ class JellyfinAPI extends ExternalAPI {
         params: {
           Limit: 12,
           ParentId: boundedJellyfinText(id, 128),
+          IncludeItemTypes:
+            libraryType === 'music' ? 'MusicAlbum' : 'Series,Movie,Others',
           ...(this.mediaServerType === MediaServerType.JELLYFIN
             ? { userId: this.userId ?? 'Me' }
             : {}),

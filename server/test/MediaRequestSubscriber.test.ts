@@ -312,7 +312,7 @@ describe('MediaRequestSubscriber service dispatch', () => {
         syncEnabled: true,
         preventSearch: false,
         tagRequests: false,
-        seriesType: 'standard',
+        seriesType: 'daily',
         animeSeriesType: 'anime',
         enableSeasonFolders: true,
         monitorNewItems: 'all',
@@ -422,7 +422,7 @@ describe('MediaRequestSubscriber service dispatch', () => {
     assert.equal(addPayload?.languageProfileId, 1);
     assert.equal(addPayload?.rootFolderPath, '/tv');
     assert.equal(addPayload?.seasonFolder, true);
-    assert.equal(addPayload?.seriesType, 'standard');
+    assert.equal(addPayload?.seriesType, 'daily');
     assert.equal(addPayload?.monitorNewItems, 'all');
     assert.deepStrictEqual(addPayload?.addOptions, {
       ignoreEpisodesWithFiles: true,

@@ -9,6 +9,7 @@
 .gitconfig
 .github
 .gitignore
+.pnpm-store
 .husky
 .npmrc
 .next

@@ -275,9 +275,24 @@ Run separate Bookshelf instances for ebooks and audiobooks:
 - `rreading-glasses` on port `8790` (metadata proxy, always deployed)
 - `rreading-glasses-postgres` on localhost-only port `15433`
 
-rreading-glasses is a metadata proxy that sits between BookshelfNG and the
-upstream metadata source (Hardcover or Goodreads). It is always deployed locally
-to avoid rate limiting issues with shared public instances.
+BookshelfNG and rreading-glasses solve different problems:
+
+- **BookshelfNG** is the maintained Readarr-style application. It owns library
+  management, download clients, importing, file organization, and the
+  Readarr-compatible API that SeerrNG calls.
+- **rreading-glasses** is the metadata compatibility/proxy layer. It exposes
+  the metadata API BookshelfNG expects, translates those requests to Hardcover
+  (or Goodreads in legacy softcover mode), caches responses in PostgreSQL, and
+  coalesces/rate-limits upstream work.
+- The proxy sits between the application and the upstream provider. This keeps
+  BookshelfNG decoupled from Hardcover's GraphQL API and avoids making every
+  BookshelfNG instance handle Hardcover authentication, caching, and upstream
+  throttling independently. One local proxy can serve both the ebook and
+  audiobook instances.
+
+The proxy is deployed locally to avoid rate-limiting issues with shared public
+instances. Both BookshelfNG instances use the same proxy and cache; they do not
+need separate Hardcover integrations.
 
 For Hardcover mode (default), you must provide your own Hardcover API token via
 `HARDCOVER_AUTH`. Get a free token from
@@ -285,6 +300,12 @@ https://hardcover.app/settings → Hardcover API.
 
 For Goodreads/softcover mode, provide a Goodreads cookie via `COOKIE` if your
 upstream requires one.
+
+If Bookshelf is reachable but searches return no books, run the installer's
+`--validate-api` check and inspect the lookup response, not just the TCP
+connection test. Hardcover mode requires `HARDCOVER_AUTH` with the `Bearer `
+prefix; softcover mode requires the Goodreads `COOKIE` when the upstream asks
+for it.
 
 Bookshelf supports only one type of a given book in a single instance. SeerrNG
 therefore expects one default Bookshelf service for ebooks and a separate default
@@ -307,7 +328,9 @@ ghcr.io/snapetech/bookshelfng:hardcover
 That image is built from the public `bookshelfng` fork and uses the Hardcover
 metadata backend. To force the legacy softcover path, set
 `BOOKSHELF_BACKEND=softcover`; this switches the image to
-`ghcr.io/snapetech/bookshelfng:softcover` and enables `rreading-glasses`.
+`ghcr.io/snapetech/bookshelfng:softcover`. The local `rreading-glasses` proxy
+is used in both modes: Hardcover uses `HARDCOVER_AUTH`, while softcover uses
+`COOKIE`.
 
 The image is published from GitHub Actions in the `snapetech/bookshelfng`
 repository:

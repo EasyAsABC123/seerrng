@@ -33,7 +33,7 @@ export interface Library {
   id: string;
   name: string;
   enabled: boolean;
-  type: 'show' | 'movie';
+  type: 'show' | 'movie' | 'music';
   lastScan?: number;
 }
 
