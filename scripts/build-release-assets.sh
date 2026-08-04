@@ -48,6 +48,10 @@ fi
 CI=true CYPRESS_INSTALL_BINARY=0 pnpm install --frozen-lockfile
 pnpm build
 
+# Next's build cache and development output are not runtime content. Removing
+# them before staging avoids copying gigabytes of transient files, which is
+# especially slow under Git Bash on Windows runners.
+rm -rf -- .next/cache .next/dev
 cp -R .next dist public "$stage"/
 cp package.json pnpm-lock.yaml pnpm-workspace.yaml next.config.ts seerr-api.yml LICENSE "$stage"/
 mkdir -p "$stage/bin"

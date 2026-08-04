@@ -40,11 +40,30 @@ test('release assets support trusted reuse and main-only manual dispatch', () =>
 
   assert.equal(workflowCall.inputs.tag.required, true);
   assert.equal(workflowCall.inputs.tag.type, 'string');
+  assert.equal(assets.jobs.build['timeout-minutes'], 45);
   assert.match(resolve.if, /github\.event_name != 'workflow_dispatch'/u);
   assert.match(resolve.if, /github\.ref == 'refs\/heads\/main'/u);
   assert.match(
     resolve.steps.find((step) => step.name === 'Resolve version').env
       .RELEASE_TAG,
     /inputs\.tag/u
+  );
+});
+
+test('tag preparation keeps Helm metadata aligned with the application release', () => {
+  const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
+  const syncStep = createTag.steps.find(
+    (step) => step.name === 'Sync Helm chart release metadata'
+  );
+
+  assert.ok(syncStep);
+  assert.match(syncStep.run, /charts\/seerr-chart\/Chart\.yaml/u);
+  assert.match(syncStep.run, /appVersion:/u);
+  assert.match(syncStep.run, /chart_patch=\$\(\(10#\$chart_patch \+ 1\)\)/u);
+  assert.match(syncStep.run, /charts\/seerr-chart\/README\.md/u);
+  assert.match(syncStep.run, /next_chart_version/u);
+  assert.match(
+    createTag.steps.find((step) => step.name === 'Commit updated files').run,
+    /git add package\.json charts\/seerr-chart\/Chart\.yaml charts\/seerr-chart\/README\.md/u
   );
 });

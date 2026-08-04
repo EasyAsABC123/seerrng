@@ -16,7 +16,13 @@ const createFixture = async () => {
     ...['.next', 'bin', 'dist', 'public'].map((directory) =>
       fs.mkdir(path.join(root, directory), { recursive: true })
     ),
+    fs.mkdir(path.join(root, '.next', 'cache'), { recursive: true }),
+    fs.mkdir(path.join(root, '.next', 'dev'), { recursive: true }),
     fs.mkdir(executableDirectory, { recursive: true }),
+  ]);
+  await Promise.all([
+    fs.writeFile(path.join(root, '.next', 'cache', 'transient.txt'), 'cache\n'),
+    fs.writeFile(path.join(root, '.next', 'dev', 'transient.txt'), 'dev\n'),
   ]);
   await fs.writeFile(path.join(root, 'dist', 'index.js'), 'fixture\n');
   await fs.writeFile(path.join(root, 'bin', 'prepare.mjs'), 'fixture\n');
@@ -112,6 +118,12 @@ describe('release asset construction', () => {
       code: 'ENOENT',
     });
     await assert.rejects(fs.stat(path.join(root, 'bin')), { code: 'ENOENT' });
+    await assert.rejects(fs.stat(path.join(root, '.next', 'cache')), {
+      code: 'ENOENT',
+    });
+    await assert.rejects(fs.stat(path.join(root, '.next', 'dev')), {
+      code: 'ENOENT',
+    });
 
     const invocation = path.join(fixture.root, 'node-invocation');
     await fs.writeFile(
