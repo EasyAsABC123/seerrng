@@ -5,9 +5,9 @@ overrides:
   'ajv-keywords@3.5.2>ajv': 6.14.0
   'schema-utils@3.3.0>ajv': 6.14.0
   body-parser: 1.20.6
-  brace-expansion: 5.0.8
+  brace-expansion: 5.0.9
   copy-webpack-plugin: 14.0.0
-  fast-uri: 3.1.4
+  fast-uri: 3.1.5
   follow-redirects: 1.16.0
   http-proxy-middleware: 2.0.10
   immutable: 5.1.8
@@ -18,13 +18,13 @@ overrides:
   mdast-util-to-hast: 13.2.1
   node-forge: 1.4.0
   path-to-regexp: 0.1.13
-  postcss: 8.5.18
+  postcss: 8.5.23
   qs: 6.15.2
   serialize-javascript: 7.0.5
   shell-quote: 1.9.0
   svgo: 3.3.4
   terser-webpack-plugin: 5.6.1
-  undici: 7.28.0
+  undici: 7.29.0
   uuid: 11.1.1
   webpack: 5.104.1
   websocket-driver: 0.7.5

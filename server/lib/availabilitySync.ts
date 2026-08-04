@@ -1093,7 +1093,6 @@ class AvailabilitySync {
 
         if (plexMedia) {
           if (
-            plexMedia &&
             media.mediaType === 'movie' &&
             plexMedia.Media?.length &&
             !plexMedia.Media.some((mediaItem) => (mediaItem.width ?? 0) >= 2000)

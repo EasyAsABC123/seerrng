@@ -91,7 +91,7 @@ jobs:
           cat > release-notes.md <<EOF
           Release ${GITHUB_REF_NAME}.
 
-          Container images and package-channel workflows are published by this release pipeline.
+          Container images are published by this release pipeline; binary assets and package channels follow after asset generation.
           EOF
           gh release create "${GITHUB_REF_NAME}" \
             -t "Release ${GITHUB_REF_NAME}" \
@@ -423,9 +423,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  build-release-assets:
+    name: Build release assets
+    needs: publish-release
+    uses: ./.github/workflows/release-assets.yml
+    with:
+      tag: ${{ github.ref_name }}
+    permissions:
+      contents: write
+
   dispatch-package-channels:
     name: Dispatch package channels
-    needs: publish-release
+    needs: [publish-release, build-release-assets]
     timeout-minutes: 10
     runs-on: [self-hosted, Linux, X64, seerrng]
     permissions:
@@ -440,7 +449,6 @@ jobs:
         run: |
           set -euo pipefail
           for workflow in \
-            release-assets.yml \
             release-linux-packages.yml \
             release-flatpak.yml \
             release-aur.yml \
@@ -469,7 +477,7 @@ jobs:
         run: |
           release_url="${{ github.server_url }}/${{ github.repository }}/releases/tag/${VERSION}"
           image_ref="ghcr.io/${{ github.repository }}:${VERSION}"
-          body="Container images and package-channel workflows are published by this release pipeline."
+          body="Container images are published by this release pipeline; binary assets and package channels follow after asset generation."
 
           jq -n \
             --arg username "SeerrNG Releases" \
