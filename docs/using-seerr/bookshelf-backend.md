@@ -280,11 +280,11 @@ upstream metadata source (Hardcover or Goodreads). It is always deployed locally
 to avoid rate limiting issues with shared public instances.
 
 For Hardcover mode (default), you must provide your own Hardcover API token via
-`RREADING_GLASSES_HARDCOVER_AUTH`. Get a free token from
+`HARDCOVER_AUTH`. Get a free token from
 https://hardcover.app/settings → Hardcover API.
 
-For Goodreads/softcover mode, provide a Goodreads cookie via
-`RREADING_GLASSES_COOKIE`.
+For Goodreads/softcover mode, provide a Goodreads cookie via `COOKIE` if your
+upstream requires one.
 
 Bookshelf supports only one type of a given book in a single instance. SeerrNG
 therefore expects one default Bookshelf service for ebooks and a separate default
@@ -482,7 +482,8 @@ DOWNLOAD_ROOT=/mnt/datapool_lvm_media/download
 PLEX_ROOT=/mnt/datapool_lvm_media/plex
 
 RREADING_GLASSES_UPSTREAM=api.hardcover.app
-RREADING_GLASSES_HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
+RREADING_GLASSES_IMAGE=blampe/rreading-glasses:hardcover
+HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
 RREADING_GLASSES_POSTGRES_DIR=/mnt/datapool_lvm_media/rreading-glasses-postgres/data
 RREADING_GLASSES_POSTGRES_PASSWORD=replace-with-a-long-random-password
 ```
@@ -492,8 +493,9 @@ For Goodreads/softcover mode, use:
 ```env
 BOOKSHELF_BACKEND=softcover
 BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:softcover
+RREADING_GLASSES_IMAGE=blampe/rreading-glasses:latest
 RREADING_GLASSES_UPSTREAM=www.goodreads.com
-RREADING_GLASSES_COOKIE=your-goodreads-cookie-here
+COOKIE=your-goodreads-cookie-here
 ```
 
 Start the stack:

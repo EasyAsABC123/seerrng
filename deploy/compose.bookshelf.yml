@@ -7,18 +7,29 @@ services:
       POSTGRES_DB: ${RREADING_GLASSES_POSTGRES_DB:-rreading-glasses}
       POSTGRES_USER: ${RREADING_GLASSES_POSTGRES_USER:-rreading}
       POSTGRES_PASSWORD: ${RREADING_GLASSES_POSTGRES_PASSWORD:?set RREADING_GLASSES_POSTGRES_PASSWORD}
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${RREADING_GLASSES_POSTGRES_USER:-rreading} -d ${RREADING_GLASSES_POSTGRES_DB:-rreading-glasses}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     ports:
       - '127.0.0.1:${RREADING_GLASSES_POSTGRES_PORT:-15433}:5432'
     volumes:
       - ${RREADING_GLASSES_POSTGRES_DIR:-/mnt/datapool_lvm_media/rreading-glasses-postgres/data}:/var/lib/postgresql/data
 
   rreading-glasses:
-    image: ${RREADING_GLASSES_IMAGE:-blampe/rreading-glasses:latest@sha256:dd996a1db19ac4ef18df47f1671f608c0f097ed43c4776ebde94dee20c6b43c8}
+    image: ${RREADING_GLASSES_IMAGE:-blampe/rreading-glasses:hardcover@sha256:3489e722a73c9cbab5b9ba530cf8a60c2280367fb03db1fb649261dfb064b52f}
     container_name: ${RREADING_GLASSES_CONTAINER_NAME:-rreading-glasses}
+    entrypoint: ['/main', 'serve']
     network_mode: host
     restart: unless-stopped
     depends_on:
-      - rreading-glasses-postgres
+      rreading-glasses-postgres:
+        condition: service_healthy
     environment:
       POSTGRES_HOST: ${RREADING_GLASSES_POSTGRES_HOST:-127.0.0.1}
       POSTGRES_PORT: ${RREADING_GLASSES_POSTGRES_PORT:-15433}
@@ -26,20 +37,10 @@ services:
       POSTGRES_USER: ${RREADING_GLASSES_POSTGRES_USER:-rreading}
       POSTGRES_PASSWORD: ${RREADING_GLASSES_POSTGRES_PASSWORD:?set RREADING_GLASSES_POSTGRES_PASSWORD}
       PORT: ${RREADING_GLASSES_PORT:-8790}
-      RREADING_GLASSES_UPSTREAM: ${RREADING_GLASSES_UPSTREAM:-api.hardcover.app}
-      RREADING_GLASSES_HARDCOVER_AUTH: ${RREADING_GLASSES_HARDCOVER_AUTH:-}
-      RREADING_GLASSES_COOKIE: ${RREADING_GLASSES_COOKIE:-}
-    command: >
-      /bin/sh -c "
-        ARGS='serve --upstream=$${RREADING_GLASSES_UPSTREAM} --port=$${PORT:-8790}'
-        if [ -n \"$$RREADING_GLASSES_HARDCOVER_AUTH\" ]; then
-          ARGS=\"$$ARGS --hardcover-auth=$$RREADING_GLASSES_HARDCOVER_AUTH\"
-        fi
-        if [ -n \"$$RREADING_GLASSES_COOKIE\" ]; then
-          ARGS=\"$$ARGS --cookie=$$RREADING_GLASSES_COOKIE\"
-        fi
-        exec /main $$ARGS
-      "
+      HARDCOVER_AUTH: ${HARDCOVER_AUTH:-}
+      COOKIE: ${COOKIE:-}
+      UPSTREAM: ${RREADING_GLASSES_UPSTREAM:-api.hardcover.app}
+    command: ['--verbose']
 
   bookshelf-ebooks:
     image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2}

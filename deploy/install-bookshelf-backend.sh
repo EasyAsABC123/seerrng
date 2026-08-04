@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_COMPOSE="${SCRIPT_DIR}/compose.bookshelf.yml"
 DEFAULT_BOOKSHELF_HARDCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2"
 DEFAULT_BOOKSHELF_SOFTCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97"
+DEFAULT_RREADING_GLASSES_HARDCOVER_IMAGE="blampe/rreading-glasses:hardcover@sha256:3489e722a73c9cbab5b9ba530cf8a60c2280367fb03db1fb649261dfb064b52f"
+DEFAULT_RREADING_GLASSES_SOFTCOVER_IMAGE="blampe/rreading-glasses:latest@sha256:dd996a1db19ac4ef18df47f1671f608c0f097ed43c4776ebde94dee20c6b43c8"
 
 DRY_RUN=false
 VALIDATE_ONLY=false
@@ -39,8 +41,9 @@ RREADING_GLASSES_POSTGRES_PORT="${RREADING_GLASSES_POSTGRES_PORT:-15433}"
 BOOKSHELF_BACKEND="${BOOKSHELF_BACKEND:-auto}"
 BOOKSHELF_METADATA_URL="${BOOKSHELF_METADATA_URL:-}"
 BOOKSHELF_IMAGE="${BOOKSHELF_IMAGE:-}"
-RREADING_GLASSES_HARDCOVER_AUTH="${RREADING_GLASSES_HARDCOVER_AUTH:-}"
-RREADING_GLASSES_COOKIE="${RREADING_GLASSES_COOKIE:-}"
+RREADING_GLASSES_IMAGE="${RREADING_GLASSES_IMAGE:-}"
+HARDCOVER_AUTH="${HARDCOVER_AUTH:-${RREADING_GLASSES_HARDCOVER_AUTH:-}}"
+COOKIE="${COOKIE:-${RREADING_GLASSES_COOKIE:-}}"
 
 STOP_OLD_READARR_CONTAINER="${STOP_OLD_READARR_CONTAINER:-}"
 CLONE_EBOOKS_CONFIG_TO_AUDIOBOOKS="${CLONE_EBOOKS_CONFIG_TO_AUDIOBOOKS:-false}"
@@ -76,8 +79,9 @@ Common environment overrides:
   BOOKSHELF_IMAGE
   BOOKSHELF_BACKEND=auto|hardcover|softcover
   BOOKSHELF_METADATA_URL
-  RREADING_GLASSES_HARDCOVER_AUTH
-  RREADING_GLASSES_COOKIE
+  RREADING_GLASSES_IMAGE
+  HARDCOVER_AUTH (required for hardcover mode; include Bearer prefix)
+  COOKIE (optional for softcover mode)
   BOOKSHELF_EBOOKS_CONFIG_DIR
   BOOKSHELF_AUDIOBOOKS_CONFIG_DIR
   RREADING_GLASSES_POSTGRES_DIR
@@ -288,8 +292,8 @@ validate_configuration() {
     BOOKSHELF_AUDIOBOOKS_CONFIG_DIR RREADING_GLASSES_POSTGRES_DIR \
     MEDIA_ROOT DOWNLOAD_ROOT PLEX_ROOT TZ BOOKSHELF_IMAGE \
     BOOKSHELF_METADATA_URL STOP_OLD_READARR_CONTAINER \
-    RREADING_GLASSES_POSTGRES_PASSWORD RREADING_GLASSES_HARDCOVER_AUTH \
-    RREADING_GLASSES_COOKIE; do
+    RREADING_GLASSES_IMAGE RREADING_GLASSES_POSTGRES_PASSWORD \
+    HARDCOVER_AUTH COOKIE; do
     validate_no_control_characters "$name" "${!name:-}"
   done
 }
@@ -308,6 +312,8 @@ has_existing_bookshelf_config() {
 }
 
 resolve_backend() {
+  local existing_hardcover_auth
+
   case "$BOOKSHELF_BACKEND" in
     auto)
       if has_existing_bookshelf_config; then
@@ -335,6 +341,14 @@ resolve_backend() {
     fi
   fi
 
+  if [ -z "$RREADING_GLASSES_IMAGE" ]; then
+    if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
+      RREADING_GLASSES_IMAGE="$DEFAULT_RREADING_GLASSES_SOFTCOVER_IMAGE"
+    else
+      RREADING_GLASSES_IMAGE="$DEFAULT_RREADING_GLASSES_HARDCOVER_IMAGE"
+    fi
+  fi
+
   # Always use local rreading-glasses instance
   if [ -z "$BOOKSHELF_METADATA_URL" ]; then
     BOOKSHELF_METADATA_URL="http://127.0.0.1:${RREADING_GLASSES_PORT}"
@@ -345,6 +359,20 @@ resolve_backend() {
     RREADING_GLASSES_UPSTREAM="www.goodreads.com"
   else
     RREADING_GLASSES_UPSTREAM="api.hardcover.app"
+    existing_hardcover_auth="$(env_file_value "${INSTALL_DIR}/.env" "HARDCOVER_AUTH")"
+    if [ -z "$existing_hardcover_auth" ]; then
+      existing_hardcover_auth="$(env_file_value "${INSTALL_DIR}/.env" "RREADING_GLASSES_HARDCOVER_AUTH")"
+    fi
+    HARDCOVER_AUTH="${HARDCOVER_AUTH:-$existing_hardcover_auth}"
+    if [ "$RESTORE_BACKUP" != "true" ] && [ -z "$HARDCOVER_AUTH" ]; then
+      echo "HARDCOVER_AUTH is required for hardcover mode." >&2
+      echo "Get a token from https://hardcover.app/settings and include the Bearer prefix." >&2
+      exit 2
+    fi
+    if [ -n "$HARDCOVER_AUTH" ] && [[ "$HARDCOVER_AUTH" != Bearer\ * ]]; then
+      echo "HARDCOVER_AUTH must start with 'Bearer '." >&2
+      exit 2
+    fi
   fi
 }
 
@@ -750,10 +778,11 @@ DOWNLOAD_ROOT=${DOWNLOAD_ROOT}
 PLEX_ROOT=${PLEX_ROOT}
 
 RREADING_GLASSES_CONTAINER_NAME=rreading-glasses
+RREADING_GLASSES_IMAGE=${RREADING_GLASSES_IMAGE}
 RREADING_GLASSES_PORT=${RREADING_GLASSES_PORT}
 RREADING_GLASSES_UPSTREAM=${RREADING_GLASSES_UPSTREAM}
-RREADING_GLASSES_HARDCOVER_AUTH=${RREADING_GLASSES_HARDCOVER_AUTH:-}
-RREADING_GLASSES_COOKIE=${RREADING_GLASSES_COOKIE:-}
+HARDCOVER_AUTH=${HARDCOVER_AUTH:-}
+COOKIE=${COOKIE:-}
 RREADING_GLASSES_POSTGRES_CONTAINER_NAME=rreading-glasses-postgres
 RREADING_GLASSES_POSTGRES_DIR=${RREADING_GLASSES_POSTGRES_DIR}
 RREADING_GLASSES_POSTGRES_HOST=127.0.0.1
@@ -1029,6 +1058,10 @@ validate_compose() {
       RREADING_GLASSES_POSTGRES_DIR="$RREADING_GLASSES_POSTGRES_DIR" \
       RREADING_GLASSES_POSTGRES_PORT="$RREADING_GLASSES_POSTGRES_PORT" \
       RREADING_GLASSES_PORT="$RREADING_GLASSES_PORT" \
+      RREADING_GLASSES_IMAGE="$RREADING_GLASSES_IMAGE" \
+      RREADING_GLASSES_UPSTREAM="$RREADING_GLASSES_UPSTREAM" \
+      HARDCOVER_AUTH="$HARDCOVER_AUTH" \
+      COOKIE="$COOKIE" \
       docker compose -f "$SOURCE_COMPOSE" config >/dev/null
     echo "Compose template is valid."
     return
@@ -1070,6 +1103,27 @@ validate_bookshelf_api() {
   echo "Bookshelf API validation passed."
 }
 
+wait_for_metadata_proxy() {
+  local _attempt
+
+  require_command curl
+  for _attempt in $(seq 1 60); do
+    if curl -fsS --max-time 2 \
+      "http://127.0.0.1:${RREADING_GLASSES_PORT}/swagger.json" >/dev/null 2>&1; then
+      echo "rreading-glasses is ready on port ${RREADING_GLASSES_PORT}."
+      return
+    fi
+    sleep 2
+  done
+
+  echo "rreading-glasses did not become ready on port ${RREADING_GLASSES_PORT}." >&2
+  (
+    cd "$INSTALL_DIR"
+    compose_cmd logs --tail=120 rreading-glasses rreading-glasses-postgres >&2 || true
+  )
+  exit 1
+}
+
 print_summary() {
   cat <<EOF
 
@@ -1080,7 +1134,8 @@ Bookshelf backend deployment summary:
   Backups:                  ${BACKUP_DIR}
   Bookshelf image:          ${BOOKSHELF_IMAGE}
   Backend mode:             ${BOOKSHELF_BACKEND} -> ${BOOKSHELF_BACKEND_RESOLVED}
-  Compose profiles:         (always deployed)
+  rreading-glasses image:   ${RREADING_GLASSES_IMAGE}
+  rreading-glasses upstream: ${RREADING_GLASSES_UPSTREAM}
   Ebook config:             ${BOOKSHELF_EBOOKS_CONFIG_DIR}
   Audiobook config:         ${BOOKSHELF_AUDIOBOOKS_CONFIG_DIR}
   rreading-glasses data:    ${RREADING_GLASSES_POSTGRES_DIR}
@@ -1144,15 +1199,11 @@ fi
 
 backup_path "$BOOKSHELF_EBOOKS_CONFIG_DIR" "bookshelf-ebooks-config"
 backup_path "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR" "bookshelf-audiobooks-config"
-if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
-  backup_path "$RREADING_GLASSES_POSTGRES_DIR" "rreading-glasses-postgres"
-fi
+backup_path "$RREADING_GLASSES_POSTGRES_DIR" "rreading-glasses-postgres"
 write_backup_manifest
 
 run mkdir -p "$BOOKSHELF_EBOOKS_CONFIG_DIR" "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR"
-if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
-  run mkdir -p "$RREADING_GLASSES_POSTGRES_DIR"
-fi
+run mkdir -p "$RREADING_GLASSES_POSTGRES_DIR"
 
 if [ "$CLONE_EBOOKS_CONFIG_TO_AUDIOBOOKS" = "true" ] && [ -d "$BOOKSHELF_EBOOKS_CONFIG_DIR" ] && [ -z "$(find "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
   run cp -a "${BOOKSHELF_EBOOKS_CONFIG_DIR}/." "$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR/"
@@ -1174,6 +1225,7 @@ if [ "$DRY_RUN" != "true" ]; then
       compose_cmd pull
     fi
     compose_cmd up -d
+    wait_for_metadata_proxy
   )
 else
   echo "Dry run complete; containers were not changed."

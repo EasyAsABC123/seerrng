@@ -81,6 +81,7 @@ describe('Bookshelf migration lab paths', () => {
     const result = await runLab(
       {
         BUILD_LOCAL_IMAGE: 'false',
+        HARDCOVER_AUTH: 'Bearer test-token',
         LAB_DIR: labDirectory,
         PATH: `${executableDirectory}:${process.env.PATH}`,
         SKIP_PULL: 'true',
@@ -92,5 +93,27 @@ describe('Bookshelf migration lab paths', () => {
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /Unsafe source root folder path/);
     await assert.rejects(fs.stat(escapedDirectory), { code: 'ENOENT' });
+  });
+
+  it('requires a Bearer-prefixed Hardcover token for the lab', async () => {
+    const root = await createTemporaryDirectory();
+    const labDirectory = path.join(root, 'lab');
+    const sourceDirectory = path.join(root, 'source');
+    await fs.mkdir(sourceDirectory);
+    await fs.writeFile(path.join(sourceDirectory, 'readarr.db'), 'fixture');
+
+    const result = await runLab(
+      {
+        BUILD_LOCAL_IMAGE: 'false',
+        HARDCOVER_AUTH: 'invalid-token',
+        LAB_DIR: labDirectory,
+        SKIP_PULL: 'true',
+        SOURCE_EBOOK_CONFIG_DIR: sourceDirectory,
+      },
+      'prepare'
+    );
+
+    assert.notEqual(result.code, 0);
+    assert.match(result.stderr, /HARDCOVER_AUTH must start with 'Bearer '/);
   });
 });

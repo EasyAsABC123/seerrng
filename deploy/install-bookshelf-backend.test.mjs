@@ -73,9 +73,12 @@ const createDeploymentEnvironment = async (root) => {
   );
   const dockerPath = path.join(executableDirectory, 'docker');
   await writeFile(dockerPath, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const curlPath = path.join(executableDirectory, 'curl');
+  await writeFile(curlPath, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   return {
     ...environment,
     BOOKSHELF_BACKEND: 'hardcover',
+    HARDCOVER_AUTH: 'Bearer test-token',
     MEDIA_ROOT: root,
     DOWNLOAD_ROOT: root,
     PLEX_ROOT: root,
@@ -190,6 +193,61 @@ describe('Bookshelf backup restoration', () => {
 });
 
 describe('Bookshelf backup permissions', () => {
+  it('requires Hardcover authentication for Hardcover deployments', async () => {
+    const root = await createTemporaryDirectory();
+    const environment = await createDeploymentEnvironment(root);
+    delete environment.HARDCOVER_AUTH;
+
+    const result = await runInstaller(environment, '--skip-pull');
+
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /HARDCOVER_AUTH is required/);
+    await assert.rejects(readFile(path.join(environment.INSTALL_DIR, '.env')), {
+      code: 'ENOENT',
+    });
+  });
+
+  it('renders the official Hardcover image and auth contract', async () => {
+    const root = await createTemporaryDirectory();
+    const environment = await createDeploymentEnvironment(root);
+
+    const result = await runInstaller(environment, '--skip-pull');
+
+    assert.equal(result.code, 0, result.stderr);
+    const compose = await readFile(
+      path.join(environment.INSTALL_DIR, 'compose.yml'),
+      'utf8'
+    );
+    const env = await readFile(
+      path.join(environment.INSTALL_DIR, '.env'),
+      'utf8'
+    );
+    assert.match(compose, /rreading-glasses:hardcover@sha256:/);
+    assert.match(compose, /entrypoint: \['\/main', 'serve'\]/);
+    assert.doesNotMatch(compose, /\/bin\/sh/);
+    assert.match(env, /HARDCOVER_AUTH=Bearer test-token/);
+  });
+
+  it('selects the Goodreads image and upstream in softcover mode', async () => {
+    const root = await createTemporaryDirectory();
+    const environment = await createDeploymentEnvironment(root);
+    environment.BOOKSHELF_BACKEND = 'softcover';
+    delete environment.HARDCOVER_AUTH;
+
+    const result = await runInstaller(environment, '--skip-pull');
+
+    assert.equal(result.code, 0, result.stderr);
+    const env = await readFile(
+      path.join(environment.INSTALL_DIR, '.env'),
+      'utf8'
+    );
+    assert.match(
+      env,
+      /RREADING_GLASSES_IMAGE=blampe\/rreading-glasses:latest@sha256:/
+    );
+    assert.match(env, /RREADING_GLASSES_UPSTREAM=www\.goodreads\.com/);
+  });
+
   it('creates private backup directories, archives, and manifests', async () => {
     const root = await createTemporaryDirectory();
     const environment = await createDeploymentEnvironment(root);
