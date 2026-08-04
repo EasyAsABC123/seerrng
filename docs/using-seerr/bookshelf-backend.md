@@ -49,8 +49,8 @@ Core policy:
     migration flow.
 - For fresh Hardcover installs:
   - use `ghcr.io/snapetech/bookshelfng:hardcover`;
-  - use `https://hardcover.bookinfo.pro`;
-  - do not deploy `rreading-glasses` unless `BOOKSHELF_BACKEND=softcover`.
+  - deploy local `rreading-glasses` with user's own Hardcover API token;
+  - BookshelfNG points to local rreading-glasses instance.
 - Installer reruns rewrite the generated `.env` to match the resolved backend
   mode. Existing `.env` files are kept as timestamped `.env.bak-*` files, and
   the existing `RREADING_GLASSES_POSTGRES_PASSWORD` is preserved when present.
@@ -207,7 +207,7 @@ Cutover:
 Fresh install:
 
 - no existing config path creates Hardcover instances by default;
-- compose does not include `rreading-glasses` in Hardcover mode;
+- compose always includes `rreading-glasses` with user's own Hardcover API token;
 - Seerr can add ebook, audiobook, and both-format requests.
 
 Legacy softcover install:
@@ -272,10 +272,19 @@ Run separate Bookshelf instances for ebooks and audiobooks:
 
 - `bookshelf-ebooks` on port `8787`
 - `bookshelf-audiobooks` on port `8788`
-- `rreading-glasses` on port `8790`, only when
-  `BOOKSHELF_BACKEND=softcover`
-- `rreading-glasses-postgres` on localhost-only port `15433`, only when
-  `BOOKSHELF_BACKEND=softcover`
+- `rreading-glasses` on port `8790` (metadata proxy, always deployed)
+- `rreading-glasses-postgres` on localhost-only port `15433`
+
+rreading-glasses is a metadata proxy that sits between BookshelfNG and the
+upstream metadata source (Hardcover or Goodreads). It is always deployed locally
+to avoid rate limiting issues with shared public instances.
+
+For Hardcover mode (default), you must provide your own Hardcover API token via
+`RREADING_GLASSES_HARDCOVER_AUTH`. Get a free token from
+https://hardcover.app/settings → Hardcover API.
+
+For Goodreads/softcover mode, provide a Goodreads cookie via
+`RREADING_GLASSES_COOKIE`.
 
 Bookshelf supports only one type of a given book in a single instance. SeerrNG
 therefore expects one default Bookshelf service for ebooks and a separate default
@@ -462,7 +471,8 @@ PUID=1000
 PGID=953
 TZ=America/Regina
 
-BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:softcover
+BOOKSHELF_BACKEND=hardcover
+BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:hardcover
 BOOKSHELF_METADATA_URL=http://127.0.0.1:8790
 BOOKSHELF_EBOOKS_CONFIG_DIR=/mnt/datapool_lvm_media/readarr-config
 BOOKSHELF_AUDIOBOOKS_CONFIG_DIR=/mnt/datapool_lvm_media/bookshelf-audiobooks-config
@@ -471,8 +481,19 @@ MEDIA_ROOT=/mnt/datapool_lvm_media
 DOWNLOAD_ROOT=/mnt/datapool_lvm_media/download
 PLEX_ROOT=/mnt/datapool_lvm_media/plex
 
+RREADING_GLASSES_UPSTREAM=api.hardcover.app
+RREADING_GLASSES_HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
 RREADING_GLASSES_POSTGRES_DIR=/mnt/datapool_lvm_media/rreading-glasses-postgres/data
 RREADING_GLASSES_POSTGRES_PASSWORD=replace-with-a-long-random-password
+```
+
+For Goodreads/softcover mode, use:
+
+```env
+BOOKSHELF_BACKEND=softcover
+BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:softcover
+RREADING_GLASSES_UPSTREAM=www.goodreads.com
+RREADING_GLASSES_COOKIE=your-goodreads-cookie-here
 ```
 
 Start the stack:

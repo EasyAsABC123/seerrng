@@ -2,8 +2,6 @@ services:
   rreading-glasses-postgres:
     image: ${RREADING_GLASSES_POSTGRES_IMAGE:-postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777}
     container_name: ${RREADING_GLASSES_POSTGRES_CONTAINER_NAME:-rreading-glasses-postgres}
-    profiles:
-      - softcover
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${RREADING_GLASSES_POSTGRES_DB:-rreading-glasses}
@@ -17,8 +15,6 @@ services:
   rreading-glasses:
     image: ${RREADING_GLASSES_IMAGE:-blampe/rreading-glasses:latest@sha256:dd996a1db19ac4ef18df47f1671f608c0f097ed43c4776ebde94dee20c6b43c8}
     container_name: ${RREADING_GLASSES_CONTAINER_NAME:-rreading-glasses}
-    profiles:
-      - softcover
     network_mode: host
     restart: unless-stopped
     depends_on:
@@ -30,24 +26,33 @@ services:
       POSTGRES_USER: ${RREADING_GLASSES_POSTGRES_USER:-rreading}
       POSTGRES_PASSWORD: ${RREADING_GLASSES_POSTGRES_PASSWORD:?set RREADING_GLASSES_POSTGRES_PASSWORD}
       PORT: ${RREADING_GLASSES_PORT:-8790}
-    command:
-      [
-        '/main',
-        'serve',
-        '--upstream=${RREADING_GLASSES_UPSTREAM:-www.goodreads.com}',
-        '--port=${RREADING_GLASSES_PORT:-8790}',
-      ]
+      RREADING_GLASSES_UPSTREAM: ${RREADING_GLASSES_UPSTREAM:-api.hardcover.app}
+      RREADING_GLASSES_HARDCOVER_AUTH: ${RREADING_GLASSES_HARDCOVER_AUTH:-}
+      RREADING_GLASSES_COOKIE: ${RREADING_GLASSES_COOKIE:-}
+    command: >
+      /bin/sh -c "
+        ARGS='serve --upstream=$${RREADING_GLASSES_UPSTREAM} --port=$${PORT:-8790}'
+        if [ -n \"$$RREADING_GLASSES_HARDCOVER_AUTH\" ]; then
+          ARGS=\"$$ARGS --hardcover-auth=$$RREADING_GLASSES_HARDCOVER_AUTH\"
+        fi
+        if [ -n \"$$RREADING_GLASSES_COOKIE\" ]; then
+          ARGS=\"$$ARGS --cookie=$$RREADING_GLASSES_COOKIE\"
+        fi
+        exec /main $$ARGS
+      "
 
   bookshelf-ebooks:
     image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2}
     container_name: ${BOOKSHELF_EBOOKS_CONTAINER_NAME:-bookshelf-ebooks}
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      - rreading-glasses
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-953}
       TZ: ${TZ:-America/Regina}
-      METADATA_URL: ${BOOKSHELF_METADATA_URL:-https://hardcover.bookinfo.pro}
+      METADATA_URL: ${BOOKSHELF_METADATA_URL:-http://127.0.0.1:${RREADING_GLASSES_PORT:-8790}}
       HARDCOVER: ${BOOKSHELF_HARDCOVER:-}
     volumes:
       - ${BOOKSHELF_EBOOKS_CONFIG_DIR:-/mnt/datapool_lvm_media/readarr-config}:/config
@@ -62,11 +67,13 @@ services:
     container_name: ${BOOKSHELF_AUDIOBOOKS_CONTAINER_NAME:-bookshelf-audiobooks}
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      - rreading-glasses
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-953}
       TZ: ${TZ:-America/Regina}
-      METADATA_URL: ${BOOKSHELF_METADATA_URL:-https://hardcover.bookinfo.pro}
+      METADATA_URL: ${BOOKSHELF_METADATA_URL:-http://127.0.0.1:${RREADING_GLASSES_PORT:-8790}}
       HARDCOVER: ${BOOKSHELF_HARDCOVER:-}
     volumes:
       - ${BOOKSHELF_AUDIOBOOKS_CONFIG_DIR:-/mnt/datapool_lvm_media/bookshelf-audiobooks-config}:/config
