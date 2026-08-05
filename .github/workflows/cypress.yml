@@ -4,10 +4,14 @@ name: Cypress Tests
 # Keep the E2E workflow path-sensitive while allowing explicit test-transport fixes to rerun it.
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: ['*']
     paths:
-      - '{src,server,config,cypress}/**'
+      - 'src/**'
+      - 'server/**'
+      - 'config/**'
+      - 'cypress/**'
       - 'scripts/export-external-config.mjs'
       - 'cypress.config.ts'
       - 'package.json'
@@ -18,7 +22,10 @@ on:
   push:
     branches: [main]
     paths:
-      - '{src,server,config,cypress}/**'
+      - 'src/**'
+      - 'server/**'
+      - 'config/**'
+      - 'cypress/**'
       - 'scripts/export-external-config.mjs'
       - 'cypress.config.ts'
       - 'package.json'
