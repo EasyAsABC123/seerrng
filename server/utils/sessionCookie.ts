@@ -5,22 +5,15 @@ const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
 export const getSessionTransportOptions = (
   development: boolean,
   csrfProtection: boolean
-): { cookie: CookieOptions; proxy: boolean } => {
-  const cookie: CookieOptions = {
+): { cookie: CookieOptions; proxy: boolean } => ({
+  cookie: {
     maxAge: SESSION_MAX_AGE_MS,
     httpOnly: true,
     sameSite: csrfProtection ? 'strict' : 'lax',
-  };
-
-  if (!development) {
-    cookie.secure = true;
-  }
-
-  return {
-    cookie,
-    // This option is scoped to express-session's transport check. It lets a
-    // TLS terminator's X-Forwarded-Proto=https authorize a Secure cookie
-    // without enabling Express client-IP proxy trust.
-    proxy: !development,
-  };
-};
+    secure: true,
+  },
+  // This option is scoped to express-session's transport check. It lets a
+  // TLS terminator's X-Forwarded-Proto=https authorize a Secure cookie
+  // without enabling Express client-IP proxy trust.
+  proxy: !development,
+});
