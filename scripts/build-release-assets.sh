@@ -122,8 +122,17 @@ if [[ "$os" == "windows" ]]; then
   archive_name="${asset}.zip"
   archive_temporary="$(mktemp "${dist_abs}/.${archive_name}.tmp.XXXXXX.zip")"
   rm -f -- "$archive_temporary"
-  if command -v zip >/dev/null 2>&1; then
+  if command -v 7z >/dev/null 2>&1; then
+    # PowerShell Compress-Archive is prohibitively slow for the staged
+    # Next.js runtime on GitHub's Windows runners. Prefer the runner's
+    # 7-Zip installation, which handles the same tree in seconds.
+    (cd "$work_dir" && 7z a -tzip -mx=5 -bd "$archive_temporary" "$asset" >/dev/null)
+  elif command -v zip >/dev/null 2>&1; then
     (cd "$work_dir" && zip -qr "$archive_temporary" "$asset")
+  elif command -v tar >/dev/null 2>&1; then
+    # Windows' built-in tar is bsdtar and supports ZIP output via -a. Keep
+    # this before the PowerShell fallback for installations without 7-Zip.
+    (cd "$work_dir" && tar -a -cf "$archive_temporary" "$asset")
   elif command -v powershell.exe >/dev/null 2>&1; then
     if command -v cygpath >/dev/null 2>&1; then
       powershell_source="$(cygpath -w "${work_dir}/${asset}")"

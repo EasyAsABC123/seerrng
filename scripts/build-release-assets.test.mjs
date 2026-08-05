@@ -55,12 +55,13 @@ const createFixture = async () => {
   return { executableDirectory, root, script };
 };
 
-const run = (fixture, arguments_) =>
+const run = (fixture, arguments_, environment = {}) =>
   new Promise((resolve) => {
     const child = spawn(fixture.script, arguments_, {
       cwd: fixture.root,
       env: {
         ...process.env,
+        ...environment,
         PATH: `${fixture.executableDirectory}:${process.env.PATH}`,
         TMPDIR: fixture.root,
       },
@@ -193,5 +194,45 @@ describe('release asset construction', () => {
     const link = path.join(extracted, asset, 'public', 'internal-link');
     assert.equal(path.isAbsolute(await fs.readlink(link)), false);
     assert.equal(await fs.readFile(link, 'utf8'), 'public\n');
+  });
+
+  it('uses the fast Windows archiver before PowerShell fallback', async () => {
+    const fixture = await createFixture();
+    const distribution = path.join(fixture.root, 'dist-release');
+    const archive = path.join(distribution, 'seerrng-v1.2.3-windows-x64.zip');
+    const archiverLog = path.join(fixture.root, 'archiver.log');
+    await fs.mkdir(distribution);
+    await fs.writeFile(
+      path.join(fixture.executableDirectory, 'uname'),
+      '#!/bin/sh\nif [ "$1" = "-s" ]; then echo MINGW64_NT; else echo x86_64; fi\n',
+      { mode: 0o755 }
+    );
+    await fs.writeFile(
+      path.join(fixture.executableDirectory, '7z'),
+      '#!/bin/sh\nprintf \'%s\\n\' "$*" >"$ARCHIVER_LOG"\nzip -qr "$5" "$6"\n',
+      { mode: 0o755 }
+    );
+
+    const result = await run(fixture, ['v1.2.3', distribution], {
+      ARCHIVER_LOG: archiverLog,
+    });
+
+    assert.equal(result.code, 0, result.output);
+    assert.match(await fs.readFile(archiverLog, 'utf8'), /-tzip/);
+    assert.equal((await fs.stat(archive)).mode & 0o777, 0o644);
+    const listing = await new Promise((resolve, reject) => {
+      const child = spawn('unzip', ['-l', archive]);
+      let output = '';
+      child.stdout.setEncoding('utf8').on('data', (chunk) => {
+        output += chunk;
+      });
+      child.on('error', reject);
+      child.on('close', (code) =>
+        code === 0
+          ? resolve(output)
+          : reject(new Error(`unzip exited with ${code}`))
+      );
+    });
+    assert.match(listing, /start\.cmd/);
   });
 });
