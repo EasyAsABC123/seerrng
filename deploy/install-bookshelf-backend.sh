@@ -82,6 +82,10 @@ Options:
   -h, --help         Show this help text.
 
 Common environment overrides:
+  Fresh Hardcover installs default to compatibility metadata through the local
+  rreading-glasses and PostgreSQL profile. Set BOOKSHELF_METADATA_MODE=native
+  for direct Hardcover GraphQL; existing local-proxy installs are preserved on
+  rerun.
   INSTALL_DIR
   BACKUP_DIR
   BOOKSHELF_IMAGE
