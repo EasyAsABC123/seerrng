@@ -45,7 +45,7 @@ services:
     command: ['--verbose']
 
   bookshelf-ebooks:
-    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2}
+    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover}
     container_name: ${BOOKSHELF_EBOOKS_CONTAINER_NAME:-bookshelf-ebooks}
     network_mode: host
     restart: unless-stopped
@@ -53,9 +53,9 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-953}
       TZ: ${TZ:-America/Regina}
-      METADATA_URL: ${BOOKSHELF_METADATA_URL:-http://127.0.0.1:${RREADING_GLASSES_PORT:-8790}}
+      METADATA_URL: ${BOOKSHELF_METADATA_URL:-https://hardcover.bookinfo.pro}
       HARDCOVER: ${BOOKSHELF_HARDCOVER:-true}
-      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-false}
+      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-true}
       HARDCOVER_AUTH: ${BOOKSHELF_HARDCOVER_AUTH:-}
       HARDCOVER_API_URL: ${BOOKSHELF_HARDCOVER_API_URL:-}
     volumes:
@@ -67,7 +67,7 @@ services:
       - ${PLEX_ROOT:-/mnt/datapool_lvm_media/plex}:/media/plex
 
   bookshelf-audiobooks:
-    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2}
+    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover}
     container_name: ${BOOKSHELF_AUDIOBOOKS_CONTAINER_NAME:-bookshelf-audiobooks}
     network_mode: host
     restart: unless-stopped
@@ -75,9 +75,9 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-953}
       TZ: ${TZ:-America/Regina}
-      METADATA_URL: ${BOOKSHELF_METADATA_URL:-http://127.0.0.1:${RREADING_GLASSES_PORT:-8790}}
+      METADATA_URL: ${BOOKSHELF_METADATA_URL:-https://hardcover.bookinfo.pro}
       HARDCOVER: ${BOOKSHELF_HARDCOVER:-true}
-      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-false}
+      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-true}
       HARDCOVER_AUTH: ${BOOKSHELF_HARDCOVER_AUTH:-}
       HARDCOVER_API_URL: ${BOOKSHELF_HARDCOVER_API_URL:-}
     volumes:

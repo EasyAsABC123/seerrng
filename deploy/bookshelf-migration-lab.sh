@@ -40,7 +40,7 @@ EXISTING_LAB_EBOOK_API_KEY="$(sed -n 's/^LAB_EBOOK_API_KEY=//p' "${LAB_DIR}/.env
 EXISTING_LAB_AUDIOBOOK_API_KEY="$(sed -n 's/^LAB_AUDIOBOOK_API_KEY=//p' "${LAB_DIR}/.env" 2>/dev/null | tail -n 1 || true)"
 LAB_EBOOK_API_KEY="${LAB_EBOOK_API_KEY:-${EXISTING_LAB_EBOOK_API_KEY:-$(date +%s%N | sha256sum | awk '{print substr($1,1,32)}')}}"
 LAB_AUDIOBOOK_API_KEY="${LAB_AUDIOBOOK_API_KEY:-${EXISTING_LAB_AUDIOBOOK_API_KEY:-$(date +%s%N | sha256sum | awk '{print substr($1,1,32)}')}}"
-BOOKSHELF_IMAGE="${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2}"
+BOOKSHELF_IMAGE="${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover}"
 BOOKSHELF_METADATA_MODE="${BOOKSHELF_METADATA_MODE:-compatibility}"
 BOOKSHELF_METADATA_URL="${BOOKSHELF_METADATA_URL:-http://127.0.0.1:8790}"
 BOOKSHELF_HARDCOVER="${BOOKSHELF_HARDCOVER:-true}"
@@ -381,9 +381,9 @@ ensure_bookshelf_image() {
         if [ "$SKIP_PULL" != "true" ]; then
           compose_lab pull bookshelf-ebooks bookshelf-audiobooks
         fi
-      elif docker image inspect ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97 >/dev/null 2>&1; then
+      elif docker image inspect ghcr.io/snapetech/bookshelfng:softcover >/dev/null 2>&1; then
         echo "Cannot pull ${BOOKSHELF_IMAGE}; using local softcover image with HARDCOVER=true for the lab."
-        BOOKSHELF_IMAGE="ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97"
+        BOOKSHELF_IMAGE="ghcr.io/snapetech/bookshelfng:softcover"
       else
         echo "Cannot pull ${BOOKSHELF_IMAGE}; falling back to local build."
         build_local_image

@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_COMPOSE="${SCRIPT_DIR}/compose.bookshelf.yml"
-DEFAULT_BOOKSHELF_HARDCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:hardcover@sha256:1b9496174622fcc14700ee8f95108f9e82fa0ccac2e444791025ee342ac87ae2"
-DEFAULT_BOOKSHELF_SOFTCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97"
+DEFAULT_BOOKSHELF_HARDCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:hardcover"
+DEFAULT_BOOKSHELF_SOFTCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:softcover"
 DEFAULT_RREADING_GLASSES_HARDCOVER_IMAGE="blampe/rreading-glasses:hardcover@sha256:3489e722a73c9cbab5b9ba530cf8a60c2280367fb03db1fb649261dfb064b52f"
 DEFAULT_RREADING_GLASSES_SOFTCOVER_IMAGE="blampe/rreading-glasses:latest@sha256:dd996a1db19ac4ef18df47f1671f608c0f097ed43c4776ebde94dee20c6b43c8"
 DEFAULT_HARDCOVER_METADATA_URL="https://hardcover.bookinfo.pro"
@@ -82,10 +82,10 @@ Options:
   -h, --help         Show this help text.
 
 Common environment overrides:
-  Fresh Hardcover installs default to compatibility metadata through the local
-  rreading-glasses and PostgreSQL profile. Set BOOKSHELF_METADATA_MODE=native
-  for direct Hardcover GraphQL; existing local-proxy installs are preserved on
-  rerun.
+  Fresh Hardcover installs default to BookshelfNG's native Hardcover GraphQL
+  provider without rreading-glasses. Set BOOKSHELF_METADATA_MODE=compatibility
+  to use the local rreading-glasses and PostgreSQL fallback; existing local-
+  proxy installs are preserved on rerun.
   INSTALL_DIR
   BACKUP_DIR
   BOOKSHELF_IMAGE
@@ -93,7 +93,7 @@ Common environment overrides:
   BOOKSHELF_METADATA_MODE=native|hosted|compatibility
   BOOKSHELF_METADATA_URL
   BOOKSHELF_HARDCOVER_NATIVE=true|false
-  BOOKSHELF_HARDCOVER_AUTH (native mode only; include Bearer prefix)
+  BOOKSHELF_HARDCOVER_AUTH (rendered native token; include Bearer prefix)
   BOOKSHELF_HARDCOVER_API_URL
   RREADING_GLASSES_IMAGE
   HARDCOVER_AUTH (required for native and compatibility Hardcover modes; include Bearer prefix)
@@ -399,9 +399,13 @@ resolve_backend() {
         # proxy deployment unless the operator explicitly selects a mode.
         BOOKSHELF_METADATA_MODE="compatibility"
       else
-        # Keep the proxy as the default boundary for fresh Hardcover installs.
-        # Existing native deployments are detected above and remain native.
-        BOOKSHELF_METADATA_MODE="compatibility"
+        # Native Hardcover is the default for fresh installs. Existing local
+        # proxy deployments were handled above and remain compatibility mode.
+        if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
+          BOOKSHELF_METADATA_MODE="compatibility"
+        else
+          BOOKSHELF_METADATA_MODE="native"
+        fi
       fi
     fi
   fi

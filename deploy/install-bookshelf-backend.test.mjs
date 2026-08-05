@@ -207,7 +207,7 @@ describe('Bookshelf backup permissions', () => {
     });
   });
 
-  it('defaults fresh Hardcover deployments to the local compatibility proxy', async () => {
+  it('defaults fresh Hardcover deployments to native metadata without the proxy', async () => {
     const root = await createTemporaryDirectory();
     const environment = await createDeploymentEnvironment(root);
 
@@ -224,17 +224,17 @@ describe('Bookshelf backup permissions', () => {
     );
     assert.match(
       compose,
-      /image: \$\{BOOKSHELF_IMAGE:-ghcr\.io\/snapetech\/bookshelfng:hardcover@sha256:/
+      /image: \$\{BOOKSHELF_IMAGE:-ghcr\.io\/snapetech\/bookshelfng:hardcover\}/
     );
     assert.match(compose, /profiles: \['rreading-glasses'\]/);
     assert.match(compose, /entrypoint: \['\/main', 'serve'\]/);
     assert.doesNotMatch(compose, /\/bin\/sh/);
-    assert.match(env, /BOOKSHELF_METADATA_MODE=compatibility/);
-    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=false/);
-    assert.match(env, /COMPOSE_PROFILES=rreading-glasses/);
-    assert.match(env, /BOOKSHELF_METADATA_URL=http:\/\/127\.0\.0\.1:8790/);
+    assert.match(env, /BOOKSHELF_METADATA_MODE=native/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=true/);
+    assert.match(env, /COMPOSE_PROFILES=\n/);
+    assert.match(env, /BOOKSHELF_METADATA_URL=https:\/\/hardcover\.bookinfo\.pro/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_AUTH=Bearer test-token/);
     assert.match(env, /HARDCOVER_AUTH=Bearer test-token/);
-    assert.match(env, /BOOKSHELF_HARDCOVER_AUTH=\n/);
   });
 
   it('supports explicit native Hardcover mode without starting the proxy', async () => {
@@ -327,7 +327,7 @@ describe('Bookshelf backup permissions', () => {
     });
   });
 
-  it('uses the pinned Goodreads proxy image for softcover compatibility mode', async () => {
+  it('uses the Goodreads proxy image for softcover compatibility mode', async () => {
     const root = await createTemporaryDirectory();
     const environment = await createDeploymentEnvironment(root);
     environment.BOOKSHELF_BACKEND = 'softcover';
