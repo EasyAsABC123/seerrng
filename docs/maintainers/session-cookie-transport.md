@@ -1,43 +1,32 @@
 # Session Cookie Transport Decision
 
-**Date:** 2026-08-01  
-**Status:** Compatibility decision; HTTPS migration remains follow-up work.
+**Date:** 2026-08-05
+**Status:** Production cookies require HTTPS.
 
 SeerrNG uses an `express-session` cookie to carry the authenticated browser
 session, including the session created by Plex sign-in. The current
-configuration uses `secure: 'auto'`:
+configuration uses a secure session cookie in production:
 
-- When SeerrNG is reached through HTTPS, or a trusted TLS terminator forwards
-  `X-Forwarded-Proto: https`, the session cookie receives the `Secure`
-  attribute.
-- When SeerrNG is reached directly over HTTP, the browser can store and send
-  the cookie over HTTP.
+- Production sets the `Secure` attribute unconditionally. When SeerrNG is
+  behind a trusted TLS terminator, `express-session` uses
+  `X-Forwarded-Proto: https` to validate the request transport.
+- Development keeps the framework default so local HTTP testing remains
+  possible.
 
-## Why `secure: true` is not being enabled unconditionally
+## Why production requires HTTPS
 
-The direct deployment at `http://kspls0:5055` depends on the HTTP session
-cookie. Making the cookie unconditionally secure causes the browser to reject
-that cookie on the HTTP origin. The Plex OAuth result then cannot be resumed
-in the SeerrNG browser session, so Plex sign-in to the app fails. The same
-change would break other direct-HTTP and LAN deployments.
+The production deployment uses `https://request.snape.tech` and has proxy
+trust enabled for its TLS terminator. A browser must use that HTTPS endpoint
+for production sign-in. Direct `http://kspls0:5055` access is a diagnostic or
+development path, not a supported production authentication origin.
 
-This is a compatibility/security tradeoff, not a CodeQL false positive. The
-`js/clear-text-cookie` finding at `server/index.ts:323` is accurate for direct
-HTTP deployments. It must remain visible; it must not be dismissed, ignored,
-or hidden with a CodeQL model or query configuration.
+This prevents an authenticated session from being sent over clear-text HTTP.
+The `js/clear-text-cookie` finding that motivated this change should resolve in
+the next CodeQL scan; it must not be dismissed or hidden with a query
+configuration.
 
 ## Chosen behavior
 
-Preserve `secure: 'auto'` so Plex sign-in and existing HTTP deployments keep
-working, while ensuring HTTPS deployments receive secure session cookies. The
-remaining risk is that an HTTP deployment exposes the authenticated session to
-anyone able to observe or modify that network traffic.
-
-## Resolution path
-
-To remove the finding without breaking Plex sign-in, deploy SeerrNG behind a
-working HTTPS endpoint and redirect HTTP to HTTPS. After that deployment is
-verified, change the session cookie to `secure: true`, update the transport
-tests, and remove the HTTP compatibility path. The TLS termination and
-redirect must be deployed and tested first; changing the cookie setting alone
-breaks authentication.
+Production session cookies are secure, `httpOnly`, and use the existing
+CSRF-dependent `SameSite` policy. Development does not receive the production
+transport restriction.

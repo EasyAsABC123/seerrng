@@ -29,16 +29,16 @@ const createApp = () => {
 
 describe('getSessionTransportOptions', () => {
   it('selects cookie security from the request transport', () => {
-    assert.equal(getSessionTransportOptions(false, true).cookie.secure, 'auto');
-    assert.equal(
-      getSessionTransportOptions(false, false).cookie.secure,
-      'auto'
-    );
+    assert.equal(getSessionTransportOptions(false, true).cookie.secure, true);
+    assert.equal(getSessionTransportOptions(false, false).cookie.secure, true);
     assert.equal(getSessionTransportOptions(false, true).proxy, true);
   });
 
   it('keeps the remaining cookie protections in development and production', () => {
-    assert.equal(getSessionTransportOptions(true, true).cookie.secure, 'auto');
+    assert.equal(
+      getSessionTransportOptions(true, true).cookie.secure,
+      undefined
+    );
     assert.equal(
       getSessionTransportOptions(true, true).cookie.sameSite,
       'strict'

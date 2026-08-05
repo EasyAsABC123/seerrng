@@ -34,8 +34,11 @@ Core policy:
 
 ### Installer and Compose
 
-- Change the default image from `ghcr.io/snapetech/bookshelfng:softcover` to
-  `ghcr.io/snapetech/bookshelfng:hardcover`.
+- Change the default image from the pinned
+  `ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97`
+  image to the pinned
+  `ghcr.io/snapetech/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186`
+  image.
 - Add an installer backend mode:
 
   ```env
@@ -48,18 +51,20 @@ Core policy:
   - if an existing Readarr or softcover config/database exists, run the
     migration flow.
 - For fresh Hardcover installs:
-  - use `ghcr.io/snapetech/bookshelfng:hardcover`;
-  - use BookshelfNG's native Hardcover GraphQL provider by default;
-  - pass `HARDCOVER_AUTH` directly to both BookshelfNG instances;
-  - leave the rreading-glasses and PostgreSQL Compose profile disabled;
-  - keep compatibility mode available as an explicit fallback.
+  - use the pinned
+    `ghcr.io/snapetech/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186`
+    image;
+  - use the local rreading-glasses compatibility boundary by default;
+  - pass `HARDCOVER_AUTH` to rreading-glasses;
+  - enable the rreading-glasses and PostgreSQL Compose profile;
+  - keep native Hardcover available as an explicit opt-in.
 - Installer reruns rewrite the generated `.env` to match the resolved backend
   mode. Existing `.env` files are kept as timestamped `.env.bak-*` files, and
   the existing `RREADING_GLASSES_POSTGRES_PASSWORD` is preserved when present.
 - `BOOKSHELF_METADATA_MODE` controls the metadata path:
-  - `native` (default for fresh Hardcover): direct GraphQL from BookshelfNG,
-    with no local proxy;
-  - `compatibility`: local rreading-glasses and its PostgreSQL cache;
+  - `compatibility` (default for fresh Hardcover): local rreading-glasses and
+    its PostgreSQL cache;
+  - `native`: direct GraphQL from BookshelfNG, with no local proxy;
   - `hosted`: disable native mode and use the hosted `METADATA_URL` without a
     local proxy;
   - compatibility mode activates the rreading-glasses and PostgreSQL Compose
@@ -221,10 +226,10 @@ Cutover:
 Fresh install:
 
 - no existing config path creates Hardcover instances by default;
-- native metadata is enabled by default and the rreading-glasses profile is
-  disabled;
-- explicit `BOOKSHELF_METADATA_MODE=compatibility` enables the proxy and its
-  PostgreSQL cache;
+- compatibility metadata is enabled by default and the rreading-glasses
+  profile provides the shared PostgreSQL cache;
+- explicit `BOOKSHELF_METADATA_MODE=native` disables the proxy and uses
+  BookshelfNG's direct Hardcover provider;
 - Seerr can add ebook, audiobook, and both-format requests.
 
 Legacy softcover install:
@@ -300,19 +305,19 @@ modes:
 
 | Mode | Bookshelf metadata path | rreading-glasses | Use it when |
 | --- | --- | --- | --- |
-| `native` (default for fresh Hardcover) | BookshelfNG → Hardcover GraphQL | Off | The shortest direct Hardcover path |
-| `compatibility` (explicit fallback) | BookshelfNG → local rreading-glasses → upstream | On, with PostgreSQL | A shared durable cache, centralized throttling, or a compatibility boundary |
+| `compatibility` (default for fresh Hardcover) | BookshelfNG → local rreading-glasses → upstream | On, with PostgreSQL | A shared durable cache, centralized throttling, or a compatibility boundary |
+| `native` (explicit opt-in) | BookshelfNG → Hardcover GraphQL | Off | The shortest direct Hardcover path |
 | `hosted` | BookshelfNG → `METADATA_URL` such as `https://hardcover.bookinfo.pro` | Off | Native credentials are unavailable or a hosted compatibility endpoint is preferred |
 
-Native is the installer default because it removes an unnecessary service and
-database from the normal request path. BookshelfNG maps Hardcover metadata
-directly and keeps only a process-local cache per instance. Existing local
-proxy installs are detected and preserved on rerun.
+Compatibility is the installer default because it keeps BookshelfNG decoupled
+from Hardcover's GraphQL API and centralizes Hardcover authentication, caching,
+request coalescing, and upstream throttling. One proxy and PostgreSQL cache can
+serve both the ebook and audiobook instances. Existing local proxy installs are
+detected and preserved on rerun.
 
-Compatibility remains an explicit alternative when a durable shared cache,
-centralized throttling, or a compatibility boundary is more valuable than the
-shortest direct path. Select it with
-`BOOKSHELF_METADATA_MODE=compatibility`.
+Native remains an explicit alternative when the shortest direct path is more
+valuable than the shared proxy boundary. Select it with
+`BOOKSHELF_METADATA_MODE=native`.
 
 ### Native Hardcover failure behavior
 
@@ -388,29 +393,27 @@ https://github.com/snapetech/bookshelfng
 The deployment compose defaults to the Snapetech image:
 
 ```text
-ghcr.io/snapetech/bookshelfng:hardcover
+ghcr.io/snapetech/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186
 ```
 
-The installer and deployment Compose file intentionally use the floating
-`hardcover` tag for the default image. BookshelfNG publishes that tag as part
-of its release workflow, so fresh installs and explicit pulls follow the most
-recent published BookshelfNG build. Do not replace it with a digest pin in
-this repository.
+The installer and deployment Compose file use an immutable BookshelfNG digest.
+Update the digest deliberately when adopting a newer BookshelfNG build so
+deployments are reproducible and rollbackable.
 
 That image is built from the public `bookshelfng` fork and provides the native
 Hardcover metadata backend. Fresh installs use the local rreading-glasses
-native metadata path by default; set
-`BOOKSHELF_METADATA_MODE=compatibility` to enable the local proxy. To force the
-legacy softcover path,
-set `BOOKSHELF_BACKEND=softcover`; this switches the image to
-`ghcr.io/snapetech/bookshelfng:softcover` and keeps compatibility mode. Softcover
-deployments use `COOKIE` when the Goodreads upstream requires it.
+compatibility path by default; set `BOOKSHELF_METADATA_MODE=native` to pass
+`HARDCOVER_AUTH` directly to BookshelfNG. To force the legacy softcover path,
+set `BOOKSHELF_BACKEND=softcover`; this switches the image to the pinned
+`ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97`
+and keeps compatibility mode.
+Softcover deployments use `COOKIE` when the Goodreads upstream requires it.
 
 The image is published from GitHub Actions in the `snapetech/bookshelfng`
 repository:
 
 ```bash
-docker pull ghcr.io/snapetech/bookshelfng:softcover
+docker pull ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97
 ```
 
 If a pull returns `denied`, the package exists but is not anonymously readable.
@@ -437,9 +440,10 @@ c416ad1af Add image publish workflow
 d7dc505f8 Skip CI for documentation-only changes
 ```
 
-Use the floating `ghcr.io/snapetech/bookshelfng:softcover` tag for softcover once
-the GHCR package is public or the Docker host is authenticated. If you need a
-fully anonymous pull before that package visibility is corrected, use
+Use the pinned `ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97`
+image for softcover once the GHCR package is public or the Docker host is
+authenticated. If you need a fully anonymous pull before that package
+visibility is corrected, use
 `ghcr.io/pennydreadful/bookshelf:softcover` and rely on SeerrNG's softcover
 hydration fallback.
 
@@ -571,12 +575,12 @@ PGID=953
 TZ=America/Regina
 
 BOOKSHELF_BACKEND=hardcover
-BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:hardcover
-BOOKSHELF_METADATA_MODE=native
-BOOKSHELF_METADATA_URL=https://hardcover.bookinfo.pro
+BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186
+BOOKSHELF_METADATA_MODE=compatibility
+BOOKSHELF_METADATA_URL=http://127.0.0.1:8790
 BOOKSHELF_HARDCOVER=true
-BOOKSHELF_HARDCOVER_NATIVE=true
-BOOKSHELF_HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
+BOOKSHELF_HARDCOVER_NATIVE=false
+BOOKSHELF_HARDCOVER_AUTH=
 BOOKSHELF_EBOOKS_CONFIG_DIR=/mnt/datapool_lvm_media/readarr-config
 BOOKSHELF_AUDIOBOOKS_CONFIG_DIR=/mnt/datapool_lvm_media/bookshelf-audiobooks-config
 
@@ -584,36 +588,36 @@ MEDIA_ROOT=/mnt/datapool_lvm_media
 DOWNLOAD_ROOT=/mnt/datapool_lvm_media/download
 PLEX_ROOT=/mnt/datapool_lvm_media/plex
 
-HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
-COMPOSE_PROFILES=
-```
-
-For the explicit compatibility fallback, use the same file with these metadata
-settings and the local proxy:
-
-```env
-BOOKSHELF_METADATA_MODE=compatibility
-BOOKSHELF_METADATA_URL=http://127.0.0.1:8790
-BOOKSHELF_HARDCOVER_NATIVE=false
-BOOKSHELF_HARDCOVER_AUTH=
 COMPOSE_PROFILES=rreading-glasses
 HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
 RREADING_GLASSES_UPSTREAM=api.hardcover.app
-RREADING_GLASSES_IMAGE=blampe/rreading-glasses:hardcover
+RREADING_GLASSES_IMAGE=blampe/rreading-glasses:hardcover@sha256:3489e722a73c9cbab5b9ba530cf8a60c2280367fb03db1fb649261dfb064b52f
 RREADING_GLASSES_POSTGRES_DIR=/mnt/datapool_lvm_media/rreading-glasses-postgres/data
 RREADING_GLASSES_POSTGRES_PASSWORD=replace-with-a-long-random-password
+```
+
+For explicit native mode, use the same file with these metadata settings and a
+token passed directly to BookshelfNG:
+
+```env
+BOOKSHELF_METADATA_MODE=native
+BOOKSHELF_METADATA_URL=https://hardcover.bookinfo.pro
+BOOKSHELF_HARDCOVER_NATIVE=true
+BOOKSHELF_HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
+COMPOSE_PROFILES=
+HARDCOVER_AUTH=Bearer your-hardcover-api-token-here
 ```
 
 For Goodreads/softcover compatibility mode, use:
 
 ```env
 BOOKSHELF_BACKEND=softcover
-BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:softcover
+BOOKSHELF_IMAGE=ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97
 BOOKSHELF_METADATA_MODE=compatibility
 BOOKSHELF_METADATA_URL=http://127.0.0.1:8790
 BOOKSHELF_HARDCOVER_NATIVE=false
 COMPOSE_PROFILES=rreading-glasses
-RREADING_GLASSES_IMAGE=blampe/rreading-glasses:latest
+RREADING_GLASSES_IMAGE=blampe/rreading-glasses:latest@sha256:dd996a1db19ac4ef18df47f1671f608c0f097ed43c4776ebde94dee20c6b43c8
 RREADING_GLASSES_UPSTREAM=www.goodreads.com
 COOKIE=your-goodreads-cookie-here
 RREADING_GLASSES_POSTGRES_PASSWORD=replace-with-a-long-random-password
@@ -734,7 +738,9 @@ curl -H "X-Api-Key: EBOOK_API_KEY" \
   "http://127.0.0.1:8787/api/v1/author/lookup?term=J.R.R.%20Tolkien"
 ```
 
-With `ghcr.io/snapetech/bookshelfng:softcover`, lookup results should include
+With the pinned
+`ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97`
+image, lookup results should include
 nested `author` metadata and at least one `editions` entry. If you use upstream
 Bookshelf and see `editions: []`, SeerrNG can still hydrate results that include
 `foreignEditionId` and resolvable author metadata, but the Snapetech image is

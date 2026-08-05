@@ -85,7 +85,7 @@ high.
 | --- | --- |
 | Published image | `ghcr.io/snapetech/seerrng`, `docker.io/snapetech/seerrng` |
 | Local Postgres compose | `postgres:18` |
-| Bookshelf compose | Digest-pinned PostgreSQL and backend-specific `blampe/rreading-glasses` image; BookshelfNG deliberately tracks floating `hardcover`/`softcover` tags |
+| Bookshelf compose | Digest-pinned BookshelfNG, PostgreSQL, and backend-specific `blampe/rreading-glasses` images |
 | Helm chart | `charts/seerr-chart`, image `ghcr.io/snapetech/seerrng`, chart version/appVersion in `Chart.yaml` |
 | Snap | `packaging/snap/snapcraft.yaml`, base `core24` |
 | Flatpak | `org.freedesktop.Platform` runtime `24.08`, local `flatpak-src/node` and `flatpak-src/seerrng` sources |

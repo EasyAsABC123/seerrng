@@ -207,7 +207,7 @@ describe('Bookshelf backup permissions', () => {
     });
   });
 
-  it('defaults fresh Hardcover deployments to native metadata without the proxy', async () => {
+  it('defaults fresh Hardcover deployments to compatibility metadata', async () => {
     const root = await createTemporaryDirectory();
     const environment = await createDeploymentEnvironment(root);
 
@@ -224,16 +224,21 @@ describe('Bookshelf backup permissions', () => {
     );
     assert.match(
       compose,
-      /image: \$\{BOOKSHELF_IMAGE:-ghcr\.io\/snapetech\/bookshelfng:hardcover\}/
+      /image: \$\{BOOKSHELF_IMAGE:-ghcr\.io\/snapetech\/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186\}/
     );
     assert.match(compose, /profiles: \['rreading-glasses'\]/);
     assert.match(compose, /entrypoint: \['\/main', 'serve'\]/);
     assert.doesNotMatch(compose, /\/bin\/sh/);
-    assert.match(env, /BOOKSHELF_METADATA_MODE=native/);
-    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=true/);
-    assert.match(env, /COMPOSE_PROFILES=\n/);
-    assert.match(env, /BOOKSHELF_METADATA_URL=https:\/\/hardcover\.bookinfo\.pro/);
-    assert.match(env, /BOOKSHELF_HARDCOVER_AUTH=Bearer test-token/);
+    assert.match(env, /BOOKSHELF_METADATA_MODE=compatibility/);
+    assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=false/);
+    assert.match(env, /COMPOSE_PROFILES=rreading-glasses/);
+    assert.match(env, /BOOKSHELF_METADATA_URL=http:\/\/127\.0\.0\.1:8790/);
+    assert.match(env, /BOOKSHELF_EBOOKS_PORT=8787/);
+    assert.match(env, /BOOKSHELF_AUDIOBOOKS_PORT=8788/);
+    assert.match(
+      env,
+      /RREADING_GLASSES_IMAGE=blampe\/rreading-glasses:hardcover@sha256:/
+    );
     assert.match(env, /HARDCOVER_AUTH=Bearer test-token/);
   });
 
@@ -259,6 +264,49 @@ describe('Bookshelf backup permissions', () => {
     assert.match(env, /BOOKSHELF_HARDCOVER_NATIVE=true/);
     assert.match(env, /COMPOSE_PROFILES=\n/);
     assert.match(env, /BOOKSHELF_HARDCOVER_AUTH=Bearer test-token/);
+  });
+
+  it('persists custom Bookshelf ports for both config and health checks', async () => {
+    const root = await createTemporaryDirectory();
+    const environment = await createDeploymentEnvironment(root);
+    environment.BOOKSHELF_EBOOKS_PORT = '9787';
+    environment.BOOKSHELF_AUDIOBOOKS_PORT = '9788';
+
+    const result = await runInstaller(environment, '--skip-pull');
+
+    assert.equal(result.code, 0, result.stderr);
+    const compose = await readFile(
+      path.join(environment.INSTALL_DIR, 'compose.yml'),
+      'utf8'
+    );
+    const env = await readFile(
+      path.join(environment.INSTALL_DIR, '.env'),
+      'utf8'
+    );
+    assert.match(env, /BOOKSHELF_EBOOKS_PORT=9787/);
+    assert.match(env, /BOOKSHELF_AUDIOBOOKS_PORT=9788/);
+    assert.match(
+      compose,
+      /BOOKSHELF_EBOOKS_PORT:-8787.*\/ping/s
+    );
+    assert.match(
+      compose,
+      /BOOKSHELF_AUDIOBOOKS_PORT:-8788.*\/ping/s
+    );
+    assert.match(
+      await readFile(
+        path.join(environment.BOOKSHELF_EBOOKS_CONFIG_DIR, 'config.xml'),
+        'utf8'
+      ),
+      /<Port>9787<\/Port>/
+    );
+    assert.match(
+      await readFile(
+        path.join(environment.BOOKSHELF_AUDIOBOOKS_CONFIG_DIR, 'config.xml'),
+        'utf8'
+      ),
+      /<Port>9788<\/Port>/
+    );
   });
 
   it('preserves an existing local proxy deployment on rerun', async () => {

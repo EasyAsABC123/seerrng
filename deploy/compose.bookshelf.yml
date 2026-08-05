@@ -7,7 +7,10 @@ services:
     environment:
       POSTGRES_DB: ${RREADING_GLASSES_POSTGRES_DB:-rreading-glasses}
       POSTGRES_USER: ${RREADING_GLASSES_POSTGRES_USER:-rreading}
-      POSTGRES_PASSWORD: ${RREADING_GLASSES_POSTGRES_PASSWORD:?set RREADING_GLASSES_POSTGRES_PASSWORD}
+      # Compose interpolates profile-gated services before filtering the
+      # profile. Native/hosted mode therefore needs an empty dormant value;
+      # the installer supplies a generated password for compatibility mode.
+      POSTGRES_PASSWORD: ${RREADING_GLASSES_POSTGRES_PASSWORD:-}
     healthcheck:
       test:
         [
@@ -37,7 +40,7 @@ services:
       POSTGRES_PORT: ${RREADING_GLASSES_POSTGRES_PORT:-15433}
       POSTGRES_DATABASE: ${RREADING_GLASSES_POSTGRES_DB:-rreading-glasses}
       POSTGRES_USER: ${RREADING_GLASSES_POSTGRES_USER:-rreading}
-      POSTGRES_PASSWORD: ${RREADING_GLASSES_POSTGRES_PASSWORD:?set RREADING_GLASSES_POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${RREADING_GLASSES_POSTGRES_PASSWORD:-}
       PORT: ${RREADING_GLASSES_PORT:-8790}
       HARDCOVER_AUTH: ${HARDCOVER_AUTH:-}
       COOKIE: ${COOKIE:-}
@@ -45,17 +48,27 @@ services:
     command: ['--verbose']
 
   bookshelf-ebooks:
-    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover}
+    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186}
     container_name: ${BOOKSHELF_EBOOKS_CONTAINER_NAME:-bookshelf-ebooks}
     network_mode: host
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fsS http://127.0.0.1:${BOOKSHELF_EBOOKS_PORT:-8787}/ping >/dev/null',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-953}
       TZ: ${TZ:-America/Regina}
-      METADATA_URL: ${BOOKSHELF_METADATA_URL:-https://hardcover.bookinfo.pro}
+      METADATA_URL: ${BOOKSHELF_METADATA_URL:-http://127.0.0.1:${RREADING_GLASSES_PORT:-8790}}
       HARDCOVER: ${BOOKSHELF_HARDCOVER:-true}
-      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-true}
+      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-false}
       HARDCOVER_AUTH: ${BOOKSHELF_HARDCOVER_AUTH:-}
       HARDCOVER_API_URL: ${BOOKSHELF_HARDCOVER_API_URL:-}
     volumes:
@@ -67,17 +80,27 @@ services:
       - ${PLEX_ROOT:-/mnt/datapool_lvm_media/plex}:/media/plex
 
   bookshelf-audiobooks:
-    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover}
+    image: ${BOOKSHELF_IMAGE:-ghcr.io/snapetech/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186}
     container_name: ${BOOKSHELF_AUDIOBOOKS_CONTAINER_NAME:-bookshelf-audiobooks}
     network_mode: host
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fsS http://127.0.0.1:${BOOKSHELF_AUDIOBOOKS_PORT:-8788}/ping >/dev/null',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-953}
       TZ: ${TZ:-America/Regina}
-      METADATA_URL: ${BOOKSHELF_METADATA_URL:-https://hardcover.bookinfo.pro}
+      METADATA_URL: ${BOOKSHELF_METADATA_URL:-http://127.0.0.1:${RREADING_GLASSES_PORT:-8790}}
       HARDCOVER: ${BOOKSHELF_HARDCOVER:-true}
-      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-true}
+      HARDCOVER_NATIVE: ${BOOKSHELF_HARDCOVER_NATIVE:-false}
       HARDCOVER_AUTH: ${BOOKSHELF_HARDCOVER_AUTH:-}
       HARDCOVER_API_URL: ${BOOKSHELF_HARDCOVER_API_URL:-}
     volumes:

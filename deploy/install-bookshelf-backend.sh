@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_COMPOSE="${SCRIPT_DIR}/compose.bookshelf.yml"
-DEFAULT_BOOKSHELF_HARDCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:hardcover"
-DEFAULT_BOOKSHELF_SOFTCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:softcover"
+DEFAULT_BOOKSHELF_HARDCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186"
+DEFAULT_BOOKSHELF_SOFTCOVER_IMAGE="ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97"
 DEFAULT_RREADING_GLASSES_HARDCOVER_IMAGE="blampe/rreading-glasses:hardcover@sha256:3489e722a73c9cbab5b9ba530cf8a60c2280367fb03db1fb649261dfb064b52f"
 DEFAULT_RREADING_GLASSES_SOFTCOVER_IMAGE="blampe/rreading-glasses:latest@sha256:dd996a1db19ac4ef18df47f1671f608c0f097ed43c4776ebde94dee20c6b43c8"
 DEFAULT_HARDCOVER_METADATA_URL="https://hardcover.bookinfo.pro"
@@ -82,10 +82,9 @@ Options:
   -h, --help         Show this help text.
 
 Common environment overrides:
-  Fresh Hardcover installs default to BookshelfNG's native Hardcover GraphQL
-  provider without rreading-glasses. Set BOOKSHELF_METADATA_MODE=compatibility
-  to use the local rreading-glasses and PostgreSQL fallback; existing local-
-  proxy installs are preserved on rerun.
+  Fresh Hardcover installs default to the local rreading-glasses and PostgreSQL
+  compatibility layer. Set BOOKSHELF_METADATA_MODE=native for direct Hardcover
+  GraphQL; existing local-proxy installs are preserved on rerun.
   INSTALL_DIR
   BACKUP_DIR
   BOOKSHELF_IMAGE
@@ -399,13 +398,10 @@ resolve_backend() {
         # proxy deployment unless the operator explicitly selects a mode.
         BOOKSHELF_METADATA_MODE="compatibility"
       else
-        # Native Hardcover is the default for fresh installs. Existing local
-        # proxy deployments were handled above and remain compatibility mode.
-        if [ "$BOOKSHELF_BACKEND_RESOLVED" = "softcover" ]; then
-          BOOKSHELF_METADATA_MODE="compatibility"
-        else
-          BOOKSHELF_METADATA_MODE="native"
-        fi
+        # Keep the compatibility boundary as the default for fresh installs.
+        # It centralizes upstream credentials, caching, and throttling for both
+        # Bookshelf instances. Native mode remains an explicit opt-in.
+        BOOKSHELF_METADATA_MODE="compatibility"
       fi
     fi
   fi
@@ -916,6 +912,8 @@ BOOKSHELF_HARDCOVER=${BOOKSHELF_HARDCOVER}
 BOOKSHELF_HARDCOVER_NATIVE=${BOOKSHELF_HARDCOVER_NATIVE}
 BOOKSHELF_HARDCOVER_AUTH=${BOOKSHELF_HARDCOVER_AUTH:-}
 BOOKSHELF_HARDCOVER_API_URL=${BOOKSHELF_HARDCOVER_API_URL:-}
+BOOKSHELF_EBOOKS_PORT=${BOOKSHELF_EBOOKS_PORT}
+BOOKSHELF_AUDIOBOOKS_PORT=${BOOKSHELF_AUDIOBOOKS_PORT}
 BOOKSHELF_EBOOKS_CONFIG_DIR=${BOOKSHELF_EBOOKS_CONFIG_DIR}
 BOOKSHELF_AUDIOBOOKS_CONFIG_DIR=${BOOKSHELF_AUDIOBOOKS_CONFIG_DIR}
 BOOKSHELF_EBOOKS_CONTAINER_NAME=bookshelf-ebooks
@@ -1212,6 +1210,8 @@ validate_compose() {
       BOOKSHELF_HARDCOVER_NATIVE="$BOOKSHELF_HARDCOVER_NATIVE" \
       BOOKSHELF_HARDCOVER_AUTH="$BOOKSHELF_HARDCOVER_AUTH" \
       BOOKSHELF_HARDCOVER_API_URL="$BOOKSHELF_HARDCOVER_API_URL" \
+      BOOKSHELF_EBOOKS_PORT="$BOOKSHELF_EBOOKS_PORT" \
+      BOOKSHELF_AUDIOBOOKS_PORT="$BOOKSHELF_AUDIOBOOKS_PORT" \
       BOOKSHELF_EBOOKS_CONFIG_DIR="$BOOKSHELF_EBOOKS_CONFIG_DIR" \
       BOOKSHELF_AUDIOBOOKS_CONFIG_DIR="$BOOKSHELF_AUDIOBOOKS_CONFIG_DIR" \
       MEDIA_ROOT="$MEDIA_ROOT" \
@@ -1264,6 +1264,28 @@ validate_bookshelf_api() {
     "${audiobook_base}/book/lookup" >/dev/null
 
   echo "Bookshelf API validation passed."
+}
+
+wait_for_bookshelf() {
+  local service_name="$1"
+  local port="$2"
+  local _attempt
+
+  require_command curl
+  for _attempt in $(seq 1 60); do
+    if curl -fsS --max-time 2 "http://127.0.0.1:${port}/ping" >/dev/null 2>&1; then
+      echo "${service_name} Bookshelf is ready on port ${port}."
+      return
+    fi
+    sleep 2
+  done
+
+  echo "${service_name} Bookshelf did not become ready on port ${port}." >&2
+  (
+    cd "$INSTALL_DIR"
+    compose_cmd logs --tail=120 "$service_name" >&2 || true
+  )
+  exit 1
 }
 
 wait_for_metadata_proxy() {
@@ -1401,6 +1423,8 @@ if [ "$DRY_RUN" != "true" ]; then
       compose_cmd pull
     fi
     compose_cmd up -d
+    wait_for_bookshelf bookshelf-ebooks "$BOOKSHELF_EBOOKS_PORT"
+    wait_for_bookshelf bookshelf-audiobooks "$BOOKSHELF_AUDIOBOOKS_PORT"
     if [ "$COMPOSE_PROFILES" = "rreading-glasses" ]; then
       wait_for_metadata_proxy
     fi

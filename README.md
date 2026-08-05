@@ -138,19 +138,18 @@ default deployment path uses the Snapetech BookshelfNG fork with Hardcover
 metadata:
 
 ```text
-ghcr.io/snapetech/bookshelfng:hardcover
+ghcr.io/snapetech/bookshelfng:hardcover@sha256:c51f6bd14b2c0b76d83b4652e55607b7e9e7b32392e2f7554e0d838177bb5186
 ```
 
-The installer and Compose file intentionally follow the floating `hardcover`
-tag. BookshelfNG publishes that tag as part of its release workflow, so fresh
-installs and explicit pulls follow the most recent published BookshelfNG build.
-Do not add a BookshelfNG digest pin here.
+The installer and Compose file use an immutable BookshelfNG digest. Update the
+digest deliberately when adopting a newer BookshelfNG build so deployments are
+reproducible and rollbackable.
 
 ### BookshelfNG and rreading-glasses
 
-These components solve different problems. Fresh Hardcover installs use
-BookshelfNG's native provider by default; rreading-glasses remains an explicit
-compatibility fallback:
+These components solve different problems. Fresh Hardcover installs use the
+rreading-glasses compatibility boundary by default; native Hardcover remains an
+explicit opt-in:
 
 - **BookshelfNG** is the maintained Readarr-style application. It manages the
   library, download clients, imports, file organization, and the
@@ -164,25 +163,24 @@ Hardcover metadata modes are:
 
 | Mode | Path | Local proxy | Best for |
 | --- | --- | --- | --- |
-| `native` (default for fresh Hardcover installs) | BookshelfNG → Hardcover GraphQL | Off | The simplest direct Hardcover deployment |
-| `compatibility` (explicit fallback) | BookshelfNG → rreading-glasses → upstream | On, with PostgreSQL | A durable shared cache, centralized throttling, or a compatibility boundary |
+| `compatibility` (default for fresh Hardcover installs) | BookshelfNG → rreading-glasses → upstream | On, with PostgreSQL | A durable shared cache, centralized throttling, or a compatibility boundary |
+| `native` (explicit opt-in) | BookshelfNG → Hardcover GraphQL | Off | The simplest direct Hardcover deployment |
 | `hosted` | BookshelfNG → `METADATA_URL` | Off | A hosted compatibility endpoint without local state |
 
-Native mode is the installer default because it removes an unnecessary service
-and database from the normal request path. Its cache is process-local and each
-BookshelfNG instance talks to Hardcover independently. Existing installs that
-already use the local proxy are preserved as compatibility mode on installer
-reruns.
+Compatibility mode is the installer default because it keeps BookshelfNG
+decoupled from Hardcover's GraphQL API and centralizes authentication, caching,
+request coalescing, and upstream throttling. One proxy and PostgreSQL cache can
+serve both BookshelfNG instances. Existing installs that already use the local
+proxy are preserved as compatibility mode on installer reruns.
 
-Compatibility mode remains useful when a durable shared cache, centralized
-throttling, or a compatibility boundary is more valuable than the shortest
-request path. Select it explicitly with
-`BOOKSHELF_METADATA_MODE=compatibility`.
+Native mode remains useful when the shortest direct request path is more
+valuable than the shared proxy boundary. Select it explicitly with
+`BOOKSHELF_METADATA_MODE=native`.
 
-There is no automatic runtime failover between modes. If native metadata is
-unavailable, explicitly select `hosted` or `compatibility` and restart the
-stack. Compatibility mode's proxy and database are additional services and
-failure points, but its PostgreSQL cache survives proxy restarts.
+There is no automatic runtime failover between modes. Compatibility mode is
+not an unlimited offline mirror: cache misses, expired entries, searches, and
+new metadata still need Hardcover. Its proxy and database are additional local
+failure points, but the PostgreSQL cache survives proxy restarts.
 
 For compatibility mode, provide `HARDCOVER_AUTH` with the `Bearer ` prefix; the
 token is consumed by rreading-glasses rather than BookshelfNG. Native mode
@@ -221,7 +219,7 @@ caching, so a fresh search or uncached refresh still needs Hardcover.
 Legacy softcover/Goodreads deployments remain supported for existing users:
 
 ```text
-ghcr.io/snapetech/bookshelfng:softcover
+ghcr.io/snapetech/bookshelfng:softcover@sha256:f20b8a49c6b639083240d98ae0cdb960b637c0092b684055ee496fedbe552d97
 ```
 
 Do not convert an existing Readarr or softcover database to Hardcover by only
@@ -357,10 +355,10 @@ than the SeerrNG runtime container. Common ones include:
 | --- | --- |
 | `BOOKSHELF_BACKEND` | `auto`, `hardcover`, or `softcover`. |
 | `BOOKSHELF_IMAGE` | Override the Bookshelf image. Hardcover mode uses the digest-pinned Snapetech image by default. |
-| `BOOKSHELF_METADATA_MODE` | `native` (default for fresh Hardcover), `compatibility`, or `hosted`. |
+| `BOOKSHELF_METADATA_MODE` | `compatibility` (default for fresh Hardcover), `native`, or `hosted`. |
 | `BOOKSHELF_METADATA_URL` | Compatibility or hosted metadata URL. Native Hardcover uses it only when native mode is disabled. |
 | `BOOKSHELF_HARDCOVER_NATIVE` | Rendered Bookshelf flag; the installer sets it from `BOOKSHELF_METADATA_MODE`. |
-| `BOOKSHELF_HARDCOVER_AUTH` | Native-only token passed to BookshelfNG; the installer derives it from `HARDCOVER_AUTH`. |
+| `BOOKSHELF_HARDCOVER_AUTH` | Native-mode token passed to BookshelfNG; compatibility mode passes `HARDCOVER_AUTH` to rreading-glasses instead. |
 | `BOOKSHELF_HARDCOVER_API_URL` | Optional native Hardcover GraphQL base URL. Defaults to `https://api.hardcover.app`. |
 | `HARDCOVER_AUTH` | Hardcover API token. The installer passes it to native BookshelfNG by default, or to rreading-glasses in compatibility mode; include the `Bearer ` prefix. |
 | `COOKIE` | Optional Goodreads cookie for softcover mode. |
