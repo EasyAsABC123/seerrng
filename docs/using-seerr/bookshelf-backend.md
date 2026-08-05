@@ -392,6 +392,10 @@ The deployment compose defaults to the Snapetech image:
 ghcr.io/snapetech/bookshelfng:hardcover
 ```
 
+The installer and deployment Compose file use an immutable digest for the
+default Hardcover image. Set `BOOKSHELF_IMAGE` explicitly when adopting a
+different BookshelfNG build.
+
 That image is built from the public `bookshelfng` fork and provides the native
 Hardcover metadata backend. Fresh installs use the local rreading-glasses
 compatibility path by default; set `BOOKSHELF_METADATA_MODE=native` to pass

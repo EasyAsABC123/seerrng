@@ -141,6 +141,10 @@ metadata:
 ghcr.io/snapetech/bookshelfng:hardcover
 ```
 
+The installer and Compose file resolve the default Hardcover image to an
+immutable digest. Set `BOOKSHELF_IMAGE` explicitly when adopting a different
+BookshelfNG build.
+
 ### BookshelfNG and rreading-glasses
 
 These components solve different problems. Fresh Hardcover installs put
@@ -352,7 +356,7 @@ than the SeerrNG runtime container. Common ones include:
 | Variable | Purpose |
 | --- | --- |
 | `BOOKSHELF_BACKEND` | `auto`, `hardcover`, or `softcover`. |
-| `BOOKSHELF_IMAGE` | Override the Bookshelf image. Defaults to `ghcr.io/snapetech/bookshelfng:hardcover` for Hardcover mode. |
+| `BOOKSHELF_IMAGE` | Override the Bookshelf image. Hardcover mode uses the digest-pinned Snapetech image by default. |
 | `BOOKSHELF_METADATA_MODE` | `compatibility` (default for fresh Hardcover), `native`, or `hosted`. |
 | `BOOKSHELF_METADATA_URL` | Compatibility or hosted metadata URL. Native Hardcover uses it only when native mode is disabled. |
 | `BOOKSHELF_HARDCOVER_NATIVE` | Rendered Bookshelf flag; the installer sets it from `BOOKSHELF_METADATA_MODE`. |
