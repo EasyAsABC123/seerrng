@@ -54,13 +54,19 @@ jobs:
     permissions:
       contents: read
     outputs:
-      release_body: ${{ steps.git-cliff.outputs.content }}
+      release_body: ${{ steps.release-body.outputs.release_body }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: 'package.json'
+          package-manager-cache: false
 
       - name: Generate changelog
         id: git-cliff
@@ -71,6 +77,34 @@ jobs:
         env:
           OUTPUT: CHANGELOG.md
           GITHUB_REPO: ${{ github.repository }}
+
+      - name: Add curated release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_tag="$(git describe --tags --match 'v[0-9]*' --abbrev=0 "${GITHUB_SHA}^")"
+          node scripts/assemble-release-notes.mjs \
+            --previous-tag "$previous_tag" \
+            --head "$GITHUB_SHA" \
+            --changelog CHANGELOG.md \
+            --output CHANGELOG.md
+
+          if ! grep -Eq '^[[:space:]]*-[[:space:]]+' CHANGELOG.md; then
+            echo 'Generated release notes contain no changelog entries.' >&2
+            exit 1
+          fi
+
+      - name: Export release body
+        id: release-body
+        shell: bash
+        run: |
+          set -euo pipefail
+          delimiter="release_body_${GITHUB_RUN_ID}"
+          {
+            echo "release_body<<${delimiter}"
+            cat CHANGELOG.md
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
 
   create-draft-release:
     name: Create draft release
@@ -88,11 +122,13 @@ jobs:
       - name: Draft Release
         shell: bash
         run: |
-          cat > release-notes.md <<EOF
-          Release ${GITHUB_REF_NAME}.
-
-          Container images are published by this release pipeline; binary assets and package channels follow after asset generation.
-          EOF
+          set -euo pipefail
+          {
+            printf 'Release %s.\n\n' "$GITHUB_REF_NAME"
+            printf '%s\n\n' "$RELEASE_BODY"
+            printf '%s\n' 'Container images are published by this release pipeline; binary assets and package channels follow after asset generation.'
+          } > release-notes.md
+          test -s release-notes.md
           gh release create "${GITHUB_REF_NAME}" \
             -t "Release ${GITHUB_REF_NAME}" \
             -F release-notes.md \
@@ -102,6 +138,7 @@ jobs:
             --draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ needs.changelog.outputs.release_body }}
 
   build:
     name: Build (${{ matrix.arch }})
@@ -470,6 +507,7 @@ jobs:
       VERSION: ${{ github.ref_name }}
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
       IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
+      RELEASE_BODY: ${{ needs.changelog.outputs.release_body }}
     steps:
       - name: Send Discord announcement
         if: env.DISCORD_WEBHOOK != ''
@@ -477,7 +515,10 @@ jobs:
         run: |
           release_url="${{ github.server_url }}/${{ github.repository }}/releases/tag/${VERSION}"
           image_ref="ghcr.io/${{ github.repository }}:${VERSION}"
-          body="Container images are published by this release pipeline; binary assets and package channels follow after asset generation."
+          body="${RELEASE_BODY}"$'\n\n'"Images are published by the release pipeline."
+          if (( ${#body} > 3800 )); then
+            body="${body:0:3797}"$'…'
+          fi
 
           jq -n \
             --arg username "SeerrNG Releases" \

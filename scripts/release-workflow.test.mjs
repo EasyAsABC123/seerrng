@@ -64,6 +64,57 @@ test('tag preparation keeps Helm metadata aligned with the application release',
   assert.match(syncStep.run, /next_chart_version/u);
   assert.match(
     createTag.steps.find((step) => step.name === 'Commit updated files').run,
-    /git add package\.json charts\/seerr-chart\/Chart\.yaml charts\/seerr-chart\/README\.md/u
+    /git add CHANGELOG\.md package\.json charts\/seerr-chart\/Chart\.yaml charts\/seerr-chart\/README\.md/u
   );
+});
+
+test('release notes flow into the draft release and Discord announcement', () => {
+  const release = readWorkflow('release.yml');
+  const changelog = release.jobs.changelog;
+  const draft = release.jobs['create-draft-release'];
+  const discord = release.jobs['announce-discord'];
+
+  assert.equal(
+    changelog.outputs.release_body,
+    '${{ steps.release-body.outputs.release_body }}'
+  );
+  assert.match(
+    changelog.steps.find((step) => step.name === 'Add curated release notes')
+      .run,
+    /assemble-release-notes\.mjs/u
+  );
+  assert.equal(draft.needs, 'changelog');
+  assert.equal(
+    draft.steps.find((step) => step.name === 'Draft Release').env.RELEASE_BODY,
+    '${{ needs.changelog.outputs.release_body }}'
+  );
+  assert.deepEqual(discord.needs, ['changelog', 'publish', 'publish-release']);
+  assert.equal(
+    discord.env.RELEASE_BODY,
+    '${{ needs.changelog.outputs.release_body }}'
+  );
+});
+
+test('tag preparation regenerates and commits the checked-in changelog', () => {
+  const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
+  const changelogStep = createTag.steps.find(
+    (step) => step.name === 'Generate checked-in changelog'
+  );
+  const commitStep = createTag.steps.find(
+    (step) => step.name === 'Commit updated files'
+  );
+
+  assert.ok(changelogStep);
+  assert.match(changelogStep.run, /git-cliff[\s\S]*--output CHANGELOG\.md/u);
+  assert.match(changelogStep.run, /assemble-release-notes\.mjs/u);
+  assert.match(commitStep.run, /git add CHANGELOG\.md/u);
+});
+
+test('git-cliff skips all release-preparation commits', () => {
+  const cliff = fs.readFileSync(
+    path.join(rootDirectory, '.github', 'cliff.toml'),
+    'utf8'
+  );
+
+  assert.match(cliff, /message = '\^chore\\\(release\\\):'/u);
 });

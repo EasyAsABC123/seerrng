@@ -19,6 +19,17 @@
 
 ## Screenshots / Logs (if applicable)
 
+## Release Notes
+
+<!--
+  Add one validated fragment under release-notes/ for every user-facing
+  change. Select the internal-only option only when there is no user-visible
+  behavior, documentation, security, or operational change.
+-->
+
+- [ ] I added a release-note fragment under `release-notes/`.
+- [ ] This change is internal-only and does not need a user-facing release note.
+
 ## Checklist:
 
 <!--- Go over all the following points, and put an `x` in all the boxes that apply. -->

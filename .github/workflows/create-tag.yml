@@ -59,6 +59,11 @@ jobs:
     env:
       TAG_VERSION: ${{ needs.determine-tag-version.outputs.tag_version }}
     steps:
+      - name: Install git-cliff
+        uses: taiki-e/install-action@ed67fa35ac944f3a9b33f12c4dd43b6f31a47e20 # v2.83.3
+        with:
+          tool: git-cliff
+
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -108,9 +113,28 @@ jobs:
           grep -Fq "AppVersion: ${TAG_VERSION}" "$chart_readme"
           grep -Fq "Version: ${next_chart_version}" "$chart_readme"
 
+      - name: Generate checked-in changelog
+        shell: bash
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          previous_tag="$(git describe --tags --match 'v[0-9]*' --abbrev=0)"
+          git-cliff \
+            -c .github/cliff.toml \
+            --tag "$TAG_VERSION" \
+            --output CHANGELOG.md
+          node scripts/assemble-release-notes.mjs \
+            --previous-tag "$previous_tag" \
+            --head HEAD \
+            --changelog CHANGELOG.md \
+            --output CHANGELOG.md
+          grep -Eq '^## ' CHANGELOG.md
+
       - name: Commit updated files
         run: |
-          git add package.json charts/seerr-chart/Chart.yaml charts/seerr-chart/README.md
+          git add CHANGELOG.md package.json charts/seerr-chart/Chart.yaml charts/seerr-chart/README.md
           git commit -m "chore(release): prepare ${TAG_VERSION}"
           git push
 

@@ -4,6 +4,30 @@ Release publishing is coordinated by `.github/workflows/release.yml` after a `v*
 tag is published. Package workflows are dispatch-only so a tag release does not
 double-publish.
 
+## Release Notes
+
+Release notes have two layers:
+
+- `release-notes/*.md` contains curated, user-facing descriptions. Every
+  user-facing pull request must add a new fragment with a category and a
+  description of the user impact. Internal-only pull requests must explicitly
+  select the no-release-note option in the PR template.
+- `.github/cliff.toml` supplies the conventional-commit history for technical
+  traceability.
+
+CI validates the fragment contract. The tag workflow regenerates the checked-in
+`CHANGELOG.md`; the release workflow assembles the current fragments into the
+GitHub release body, and the Discord announcement uses the same content. This
+prevents a generated changelog from being silently replaced by generic release
+text.
+
+When reviewing a release, check all three surfaces:
+
+1. `CHANGELOG.md` contains a section for the new version.
+2. The GitHub release body starts with the curated user-facing changes.
+3. The Discord announcement contains the same useful summary and links to the
+   release.
+
 ## Package Scope
 
 Linux packages install SeerrNG as a standalone Node service with its own system

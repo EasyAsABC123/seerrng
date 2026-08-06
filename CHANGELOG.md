@@ -1,3 +1,60 @@
+# Changelog
+
+SeerrNG release notes describe user-visible behavior and operational changes.
+The release workflow adds curated notes from `release-notes/` before the
+conventional-commit history.
+
+## [3.11.2] - 2026-08-05
+
+### Fixed
+
+- Session cookies are now enforced as secure at both configuration and response-writing paths, while browser test sessions remain compatible with HTTPS-only cookies.
+
+### Changed
+
+- Cypress reruns now select their intended spec list explicitly, making failed-release diagnostics reproducible.
+
+## [3.11.1] - 2026-08-05
+
+### Fixed
+
+- Bookshelf deployment defaults now preserve compatibility-first metadata behavior and validate the expected image, health checks, and session-cookie transport.
+
+## [3.11.0] - 2026-08-05
+
+### Changed
+
+- BookshelfNG Hardcover deployments now document native and compatibility metadata modes clearly, with reproducible image guidance and an explicit native-mode opt-in.
+
+## [3.10.3] - 2026-08-04
+
+### Fixed
+
+- Cross-platform release archive generation now avoids the slow fallback path that could stall Windows assets.
+
+## [3.9.2] - 2026-08-04
+
+### Fixed
+
+- Concurrent download-recovery attempts are coalesced so one failed download does not create duplicate retry work.
+
+## [3.9.1] - 2026-08-04
+
+### Fixed
+
+- Bookshelf and rreading-glasses deployment wiring now works consistently for ebook and audiobook services.
+
+## [3.9.0] - 2026-08-04
+
+### Added
+
+- Added the optional rreading-glasses metadata compatibility proxy for both Bookshelf modes, keeping Hardcover translation and upstream coordination outside SeerrNG.
+
+## Historical upstream history
+
+The entries below are inherited Jellyseerr/Overseerr history. New SeerrNG
+releases use the SeerrNG repository and release-note process above.
+
 ## [2.7.3](https://github.com/fallenbagel/jellyseerr/compare/v2.7.2...v2.7.3) (2025-08-14)
 
 

@@ -47,6 +47,11 @@ Current focus:
 - Replacing upstream branding and docs with SeerrNG-owned assets and guidance.
 - Hardening request validation, notification settings, permission bounds, and service inputs.
 
+Release notes are maintained in [`CHANGELOG.md`](./CHANGELOG.md). User-facing
+pull requests add a concise release-note fragment under
+[`release-notes/`](./release-notes/README.md); the release workflow publishes
+those notes to GitHub Releases and the Discord release announcement.
+
 ## Screenshots
 
 ### Discover

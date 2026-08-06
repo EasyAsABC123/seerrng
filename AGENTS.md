@@ -15,3 +15,22 @@ These interaction rules are standard for all model interfaces used with this rep
 - Surface negative conclusions and bad news directly.
 - Optimize for accuracy, not approval.
 - If you do not know, say so. Never fabricate.
+
+## Release-note contract
+
+Do not let user-facing changes reach a release without a user-facing note.
+For every feature, bug fix, security change, operational behavior change, or
+user-facing documentation change, add one new validated fragment under
+`release-notes/` using the format documented in
+[`release-notes/README.md`](./release-notes/README.md). Write what changes for
+the person running or using SeerrNG, not only the implementation detail.
+
+If the work is genuinely internal-only, explicitly mark the pull request
+`release-note: none`. The pull-request template and CI enforce this choice;
+never silently omit it. Release-note fragments are append-only, so add a new
+file rather than changing a fragment that has already shipped.
+
+Before declaring a release complete, verify that the generated notes appear in
+the GitHub release body and the Discord announcement. The release workflow
+assembles curated fragments first and includes the git-cliff technical history
+afterward.

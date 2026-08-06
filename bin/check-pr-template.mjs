@@ -55,6 +55,29 @@ if (!testingContent) {
   issues.push('**How Has This Been Tested?** section is empty.');
 }
 
+const releaseNotesMatch = body.match(
+  /## Release Notes\s*\n([\s\S]*?)(?=\n## |$)/
+);
+const releaseNotesContent = releaseNotesMatch
+  ? stripComments(releaseNotesMatch[1]).trim()
+  : '';
+const releaseNoteOptions =
+  releaseNotesContent.match(/- \[[ x]\][^\n]*/gi) || [];
+const checkedReleaseNoteOptions =
+  releaseNotesContent.match(/- \[x\][^\n]*/gi) || [];
+
+if (!releaseNotesContent) {
+  issues.push('**Release Notes** section is missing or empty.');
+} else if (releaseNoteOptions.length === 0) {
+  issues.push(
+    '**Release Notes** must select a release-note fragment or the internal-only opt-out.'
+  );
+} else if (checkedReleaseNoteOptions.length !== 1) {
+  issues.push(
+    '**Release Notes** must select exactly one of the two release-note options.'
+  );
+}
+
 const checklistMatch = body.match(/## Checklist:\s*\n([\s\S]*?)$/);
 const checklistContent = checklistMatch ? checklistMatch[1] : '';
 

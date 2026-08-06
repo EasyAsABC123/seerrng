@@ -2,7 +2,7 @@
 # https://git-cliff.org/docs/configuration
 
 [changelog]
-header = ""
+header = "# Changelog\n\n"
 body = """
 {%- macro remote_url() -%}
   https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}
@@ -11,7 +11,7 @@ body = """
 {%- set excluded_users = ["github-actions[bot]", "dependabot[bot]", "renovate[bot]"] -%}
 
 {% macro print_commit(commit) -%}
-    - {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
         {% if commit.breaking %}[**breaking**] {% endif %}\
         {{ commit.message | upper_first }} - \
         ([{{ commit.id | truncate(length=7, end="") }}]({{ self::remote_url() }}/commit/{{ commit.id }}))\
@@ -36,10 +36,9 @@ body = """
         {%- if not commit.scope %}
             {{ self::print_commit(commit=commit) }}
         {%- endif %}
-    {%- endfor -%}
-{%- endfor -%}
-
-{%- set valid_contributors = [] -%}
+    {%- endfor %}
+{% endfor %}
+{% set valid_contributors = [] %}
 {%- for c in github.contributors | filter(attribute="is_first_time", value=true) %}
   {%- if c.username and c.username not in excluded_users and c.username not in valid_contributors %}
     {%- set_global valid_contributors = valid_contributors | concat(with=c.username) %}
@@ -68,7 +67,7 @@ commit_preprocessors = [
 ]
 commit_parsers = [
   { message = '.*\(helm\).*', skip = true },
-  { message = '^chore\(release\): prepare for', skip = true },
+  { message = '^chore\(release\):', skip = true },
   { message = '^chore\(deps.*\)', skip = true },
   { body = ".*security", group = "<!-- 0 -->🛡️ Security" },
   { message = "^feat", group = "<!-- 1 -->🚀 Features" },

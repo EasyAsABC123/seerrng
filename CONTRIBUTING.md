@@ -191,6 +191,7 @@ Steps:
 - Pull requests with titles not following [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) will **not** be merged. PR titles are automatically checked for compliance.
 - Please make meaningful commits, or squash them prior to opening a pull request.
   - Do not squash commits once people have begun reviewing your changes.
+- Every user-facing feature, fix, security change, operational behavior change, or documentation change must add a release-note fragment under [`release-notes/`](./release-notes/README.md). Internal-only work must explicitly select the release-note opt-out in the PR template.
 - Always rebase your branch to the latest `main` branch.
 - It is your responsibility to keep your branch up-to-date. Your work will **not** be merged unless it is rebased off the latest `main` branch.
 - You can create a "draft" pull request early to get feedback on your work.
