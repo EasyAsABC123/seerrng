@@ -5,6 +5,8 @@ import process from 'node:process';
 
 import {
   changedReleaseNoteFiles,
+  formatCaptureMetadata,
+  formatCuratedNotes,
   hasExplicitNoReleaseNote,
   readReleaseNotes,
 } from './release-notes.mjs';
@@ -22,10 +24,11 @@ for (let index = 2; index < process.argv.length; index += 1) {
 const base = args.get('--base');
 const head = args.get('--head');
 const bodyFile = args.get('--pr-body');
+const summaryFile = args.get('--summary-file');
 
 if (!base || !head || !bodyFile) {
   console.error(
-    'Usage: check-release-notes.mjs --base <sha> --head <sha> --pr-body <file>'
+    'Usage: check-release-notes.mjs --base <sha> --head <sha> --pr-body <file> [--summary-file <file>]'
   );
   process.exit(2);
 }
@@ -63,6 +66,20 @@ if (issues.length > 0) {
     console.error(`- ${issue}`);
   }
   process.exit(1);
+}
+
+if (summaryFile) {
+  const summary =
+    notes.length > 0
+      ? [
+          '## Release-note preview',
+          '',
+          formatCuratedNotes(notes),
+          '',
+          formatCaptureMetadata(notes),
+        ].join('\n')
+      : '## Release-note preview\n\nInternal-only change; no release note will be published.';
+  fs.appendFileSync(summaryFile, `${summary}\n`);
 }
 
 console.log(

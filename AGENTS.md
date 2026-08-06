@@ -24,6 +24,10 @@ user-facing documentation change, add one new validated fragment under
 `release-notes/` using the format documented in
 [`release-notes/README.md`](./release-notes/README.md). Write what changes for
 the person running or using SeerrNG, not only the implementation detail.
+Every fragment must capture its audience, product area, required action (or
+`none`), and breaking-change status so the release can be understood without
+reading the commit history. Preview the resulting text with
+`pnpm release-notes:preview --base <base> --head <head>` before finalizing work.
 
 If the work is genuinely internal-only, explicitly mark the pull request
 `release-note: none`. The pull-request template and CI enforce this choice;

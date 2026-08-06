@@ -25,10 +25,16 @@
   Add one validated fragment under release-notes/ for every user-facing
   change. Select the internal-only option only when there is no user-visible
   behavior, documentation, security, or operational change.
+
+  A release note must say what changed, who is affected, which product area it
+  belongs to, and what action is required (or explicitly say `action: none`).
+  See `release-notes/README.md` for the complete schema and preview command.
 -->
 
 - [ ] I added a release-note fragment under `release-notes/`.
 - [ ] This change is internal-only and does not need a user-facing release note.
+- [ ] The fragment includes audience, area, action, and breaking-change status.
+- [ ] I previewed the release text with `pnpm release-notes:preview`.
 
 ## Checklist:
 

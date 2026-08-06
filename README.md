@@ -51,6 +51,9 @@ Release notes are maintained in [`CHANGELOG.md`](./CHANGELOG.md). User-facing
 pull requests add a concise release-note fragment under
 [`release-notes/`](./release-notes/README.md); the release workflow publishes
 those notes to GitHub Releases and the Discord release announcement.
+Fragments capture the affected audience, product area, required action, and
+breaking-change status, and CI shows the exact release-note preview during
+review.
 The historical tag coverage and audit method are documented in
 [`docs/maintainers/release-history-audit.md`](./docs/maintainers/release-history-audit.md).
 

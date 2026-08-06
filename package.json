@@ -12,6 +12,7 @@
     "build": "pnpm build:next && pnpm build:server",
     "lint": "eslint \"./server/**/*.{ts,tsx}\" \"./src/**/*.{ts,tsx}\" --cache",
     "security:council": "node scripts/check-workflow-boundaries.mjs && pnpm test:tooling && bash scripts/check-council-browser-boundaries.sh && bash scripts/check-council-server-boundaries.sh",
+    "release-notes:preview": "node scripts/preview-release-notes.mjs",
     "attribution:check": "bash scripts/check-attribution.sh",
     "lintfix": "eslint \"./server/**/*.{ts,tsx}\" \"./src/**/*.{ts,tsx}\" --fix",
     "test": "node server/test/index.mts",

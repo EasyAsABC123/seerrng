@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   changedReleaseNoteFiles,
+  formatCaptureMetadata,
   formatCuratedNotes,
   hasExplicitNoReleaseNote,
   injectCuratedNotes,
@@ -17,6 +18,10 @@ import {
 
 const validContent = `---
 category: fixed
+audience: users, operators
+area: metadata
+action: none
+breaking: false
 ---
 Hardcover-backed book searches now keep working from cached metadata during a short upstream outage.`;
 
@@ -25,6 +30,10 @@ test('release-note fragments require a valid category and meaningful body', () =
 
   assert.deepEqual(note.errors, []);
   assert.equal(note.category, 'fixed');
+  assert.deepEqual(note.audience, ['users', 'operators']);
+  assert.equal(note.area, 'metadata');
+  assert.equal(note.action, 'none');
+  assert.equal(note.breaking, false);
   assert.match(note.body, /cached metadata/u);
 });
 
@@ -34,7 +43,8 @@ test('release-note fragments reject placeholders and short text', () => {
     '---\ncategory: changed\n---\nTODO'
   );
 
-  assert.match(note.errors.join('\n'), /at least 20 characters/u);
+  assert.match(note.errors.join('\n'), /audience must list/u);
+  assert.match(note.errors.join('\n'), /30-400 characters/u);
   assert.match(note.errors.join('\n'), /placeholder/u);
 });
 
@@ -47,6 +57,25 @@ test('release-note fragments reject unsupported metadata', () => {
   assert.match(note.errors.join('\n'), /not supported/u);
 });
 
+test('breaking notes require an explicit upgrade action', () => {
+  const note = parseReleaseNote(
+    'release-notes/breaking.md',
+    `---
+category: changed
+audience: users
+area: deployment
+action: none
+breaking: true
+---
+This change requires a documented upgrade step for existing deployments.`
+  );
+
+  assert.match(
+    note.errors.join('\n'),
+    /breaking changes must describe an upgrade/u
+  );
+});
+
 test('curated notes are grouped and inserted into the current release', () => {
   const note = parseReleaseNote('release-notes/books.md', validContent);
   const curated = formatCuratedNotes([note]);
@@ -56,7 +85,20 @@ test('curated notes are grouped and inserted into the current release', () => {
   );
 
   assert.match(changelog, /## \[3\.12\.0\][\s\S]*### User-facing changes/u);
-  assert.match(changelog, /#### Fixed[\s\S]*cached metadata/u);
+  assert.match(
+    changelog,
+    /#### Fixed[\s\S]*\*\*Metadata:\*\*[\s\S]*cached metadata/u
+  );
+});
+
+test('capture metadata is visible in the pull-request preview', () => {
+  const note = parseReleaseNote('release-notes/books.md', validContent);
+  const metadata = formatCaptureMetadata([note]);
+
+  assert.match(metadata, /Audience/u);
+  assert.match(metadata, /users, operators/u);
+  assert.match(metadata, /metadata/u);
+  assert.match(metadata, /none/u);
 });
 
 test('internal-only work has an explicit opt-out marker', () => {
@@ -101,6 +143,44 @@ test('release-note range discovery distinguishes additions from edits', () => {
       { status: 'A', file: 'release-notes/books.md' },
     ]);
     assert.deepEqual(readReleaseNotes(additions, repository).errors, []);
+
+    const previewScript = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      'preview-release-notes.mjs'
+    );
+    const preview = execFileSync(
+      process.execPath,
+      [previewScript, '--base', base, '--head', firstHead],
+      { cwd: repository, encoding: 'utf8' }
+    );
+    assert.match(preview, /\*\*Metadata:\*\*/u);
+
+    const checkScript = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      'check-release-notes.mjs'
+    );
+    const bodyFile = path.join(repository, 'pr-body.md');
+    const summaryFile = path.join(repository, 'summary.md');
+    fs.writeFileSync(bodyFile, 'This pull request includes a release note.');
+    execFileSync(
+      process.execPath,
+      [
+        checkScript,
+        '--base',
+        base,
+        '--head',
+        firstHead,
+        '--pr-body',
+        bodyFile,
+        '--summary-file',
+        summaryFile,
+      ],
+      { cwd: repository, encoding: 'utf8' }
+    );
+    assert.match(
+      fs.readFileSync(summaryFile, 'utf8'),
+      /## Release-note preview[\s\S]*### Capture metadata/u
+    );
 
     fs.writeFileSync(fragment, `${validContent}\n`);
     runGit('add', '.');

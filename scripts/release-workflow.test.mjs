@@ -95,6 +95,16 @@ test('release notes flow into the draft release and Discord announcement', () =>
   );
 });
 
+test('pull-request CI publishes the exact release-note preview', () => {
+  const ci = readWorkflow('ci.yml');
+  const validation = ci.jobs['release-notes'].steps.find(
+    (step) => step.name === 'Validate release-note fragment or explicit opt-out'
+  );
+
+  assert.ok(validation);
+  assert.match(validation.run, /--summary-file "\$GITHUB_STEP_SUMMARY"/u);
+});
+
 test('tag preparation prepends the current changelog without replacing history', () => {
   const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
   const changelogStep = createTag.steps.find(

@@ -15,6 +15,10 @@ Release notes have two layers:
 - `.github/cliff.toml` supplies the conventional-commit history for technical
   traceability.
 
+Each curated fragment also records its audience, product area, required action,
+and breaking-change status. The fragment body is the release-ready summary;
+implementation details stay in the technical history.
+
 CI validates the fragment contract. The tag workflow builds only the current
 release section and prepends it to the checked-in `CHANGELOG.md`, preserving all
 audited historical sections. The release workflow assembles the current

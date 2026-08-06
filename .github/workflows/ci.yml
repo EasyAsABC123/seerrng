@@ -53,7 +53,8 @@ jobs:
           node scripts/check-release-notes.mjs \
             --base "$BASE_SHA" \
             --head "$HEAD_SHA" \
-            --pr-body "$body_file"
+            --pr-body "$body_file" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
           node scripts/check-changelog-tags.mjs
 
   i18n:

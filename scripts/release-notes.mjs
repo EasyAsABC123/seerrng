@@ -14,6 +14,14 @@ const CATEGORIES = new Map([
   ['removed', 'Removed'],
   ['deprecated', 'Deprecated'],
 ]);
+const AUDIENCES = new Set(['users', 'operators']);
+const FRONTMATTER_KEYS = new Set([
+  'category',
+  'audience',
+  'area',
+  'action',
+  'breaking',
+]);
 
 const isReleaseNotePath = (file) =>
   file.startsWith(`${RELEASE_NOTE_DIRECTORY}/`) &&
@@ -54,7 +62,7 @@ export function parseReleaseNote(file, content) {
   }
 
   for (const key of metadata.keys()) {
-    if (key !== 'category') {
+    if (!FRONTMATTER_KEYS.has(key)) {
       errors.push(`frontmatter key "${key}" is not supported`);
     }
   }
@@ -66,20 +74,73 @@ export function parseReleaseNote(file, content) {
     );
   }
 
-  const body = frontmatter[2].trim().replace(/\s+/gu, ' ');
-  if (body.length < 20) {
+  const audienceParts = (metadata.get('audience') ?? '')
+    .toLowerCase()
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const invalidAudiences = audienceParts.filter(
+    (audience) => !AUDIENCES.has(audience)
+  );
+  if (
+    audienceParts.length === 0 ||
+    invalidAudiences.length > 0 ||
+    new Set(audienceParts).size !== audienceParts.length
+  ) {
+    errors.push('audience must list users, operators, or both exactly once');
+  }
+
+  const area = metadata.get('area')?.toLowerCase();
+  if (!area || !/^[a-z][a-z0-9-]{1,31}$/u.test(area)) {
     errors.push(
-      'body must be at least 20 characters and describe the user impact'
+      'area must be a 2-32 character lowercase slug such as `bookshelf` or `release-pipeline`'
     );
+  }
+
+  const action = metadata.get('action')?.trim().replace(/\s+/gu, ' ');
+  if (!action) {
+    errors.push(
+      'action is required; use `none` when no user or operator action is needed'
+    );
+  } else if (action.toLowerCase() !== 'none') {
+    if (action.length < 5 || action.length > 200) {
+      errors.push('action must be 5-200 characters or exactly `none`');
+    }
+    if (/<!--|-->|\b(?:todo|tbd|fill in)\b/iu.test(action)) {
+      errors.push('action contains a placeholder or HTML comment');
+    }
+  }
+
+  const breaking = metadata.get('breaking')?.toLowerCase();
+  if (breaking !== 'true' && breaking !== 'false') {
+    errors.push('breaking must be either `true` or `false`');
+  }
+  if (breaking === 'true' && action?.toLowerCase() === 'none') {
+    errors.push('breaking changes must describe an upgrade or operator action');
+  }
+
+  const body = frontmatter[2].trim().replace(/\s+/gu, ' ');
+  if (body.length < 30 || body.length > 400) {
+    errors.push('body must be 30-400 characters and describe the user impact');
   }
   if (/<!--|-->|\b(?:todo|tbd|fill in)\b/iu.test(body)) {
     errors.push('body contains a placeholder or HTML comment');
+  }
+  if (body && !/^[A-Z0-9`*_]/u.test(body)) {
+    errors.push('body must start with a capitalized sentence');
+  }
+  if (body && !/[.!?)]$/u.test(body)) {
+    errors.push('body must end with sentence punctuation');
   }
 
   return {
     file,
     category,
     categoryTitle: CATEGORIES.get(category),
+    audience: audienceParts,
+    area,
+    action: action?.toLowerCase() === 'none' ? 'none' : action,
+    breaking: breaking === 'true',
     body,
     errors,
   };
@@ -151,12 +212,42 @@ export function formatCuratedNotes(notes) {
 
     lines.push(`#### ${title}`, '');
     for (const note of categoryNotes) {
-      lines.push(`- ${note.body}`);
+      const areaTitle = note.area
+        .split('-')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+      const breakingPrefix = note.breaking ? '**Breaking:** ' : '';
+      lines.push(`- **${areaTitle}:** ${breakingPrefix}${note.body}`);
+      if (note.action && note.action !== 'none') {
+        lines.push(`  - **Action required:** ${note.action}`);
+      }
     }
     lines.push('');
   }
 
   return lines.join('\n').trim();
+}
+
+export function formatCaptureMetadata(notes) {
+  if (notes.length === 0) {
+    return '';
+  }
+
+  const escapeCell = (value) => String(value).replaceAll('|', '\\|');
+  const lines = [
+    '### Capture metadata',
+    '',
+    '| Fragment | Audience | Area | Action | Breaking |',
+    '| --- | --- | --- | --- | --- |',
+  ];
+
+  for (const note of notes) {
+    lines.push(
+      `| ${escapeCell(note.file)} | ${escapeCell(note.audience.join(', '))} | ${escapeCell(note.area)} | ${escapeCell(note.action)} | ${note.breaking ? 'yes' : 'no'} |`
+    );
+  }
+
+  return lines.join('\n');
 }
 
 export function injectCuratedNotes(changelog, curatedNotes) {
