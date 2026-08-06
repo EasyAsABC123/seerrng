@@ -34,3 +34,10 @@ Before declaring a release complete, verify that the generated notes appear in
 the GitHub release body and the Discord announcement. The release workflow
 assembles curated fragments first and includes the git-cliff technical history
 afterward.
+
+Keep `CHANGELOG.md` append-only at the release-section level: the tag workflow
+prepends the new section without replacing audited history. When changing
+release history or tag preparation, run
+`node scripts/check-changelog-tags.mjs`; it must cover every existing `v3.*`
+tag. The historical audit and the deliberate absence of `v3.2.6` are documented
+in [`docs/maintainers/release-history-audit.md`](./docs/maintainers/release-history-audit.md).

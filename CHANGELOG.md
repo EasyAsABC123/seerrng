@@ -4,7 +4,12 @@ SeerrNG release notes describe user-visible behavior and operational changes.
 The release workflow adds curated notes from `release-notes/` before the
 conventional-commit history.
 
-## [3.11.2] - 2026-08-05
+The audit below covers every SeerrNG tag currently in this repository. There is
+no `v3.2.6` tag; it is intentionally not represented as a release. Commit-level
+links in the generated history remain the technical source of truth for changes
+that are not called out here.
+
+## [3.11.2](https://github.com/snapetech/seerrng/compare/v3.11.1...v3.11.2) - 2026-08-05
 
 ### Fixed
 
@@ -14,41 +19,379 @@ conventional-commit history.
 
 - Cypress reruns now select their intended spec list explicitly, making failed-release diagnostics reproducible.
 
-## [3.11.1] - 2026-08-05
+## [3.11.1](https://github.com/snapetech/seerrng/compare/v3.11.0...v3.11.1) - 2026-08-05
 
 ### Fixed
 
 - Bookshelf deployment defaults now preserve compatibility-first metadata behavior and validate the expected image, health checks, and session-cookie transport.
 
-## [3.11.0] - 2026-08-05
+## [3.11.0](https://github.com/snapetech/seerrng/compare/v3.10.3...v3.11.0) - 2026-08-05
 
 ### Changed
 
 - BookshelfNG Hardcover deployments now document native and compatibility metadata modes clearly, with reproducible image guidance and an explicit native-mode opt-in.
 
-## [3.10.3] - 2026-08-04
+### Added
+
+- Bookshelf deployment tracking now follows the native BookshelfNG latest image by default while keeping the compatibility-first behavior explicit for existing installations.
+
+## [3.10.3](https://github.com/snapetech/seerrng/compare/v3.10.2...v3.10.3) - 2026-08-04
 
 ### Fixed
 
 - Cross-platform release archive generation now avoids the slow fallback path that could stall Windows assets.
 
-## [3.9.2] - 2026-08-04
+## [3.10.2](https://github.com/snapetech/seerrng/compare/v3.10.1...v3.10.2) - 2026-08-04
+
+### Fixed
+
+- Bookshelf metadata mode defaults and Helm chart validation now fail clearly instead of silently producing an invalid deployment.
+
+## [3.10.1](https://github.com/snapetech/seerrng/compare/v3.10.0...v3.10.1) - 2026-08-04
+
+### Fixed
+
+- Cross-platform release assets and chart metadata now stay aligned with the application version.
+
+## [3.10.0](https://github.com/snapetech/seerrng/compare/v3.9.2...v3.10.0) - 2026-08-04
+
+### Added
+
+- Plex scanners can use a custom metadata-provider GUID scheme.
+- Jellyfin music availability now participates in library and request synchronization.
+
+### Fixed
+
+- Sonarr requests now route anime and non-anime series to the correct configured root folders and series types.
+- Anime request notices render reliably without invalid nested markup.
+
+### Changed
+
+- Hardcover outage behavior and Bookshelf metadata boundaries are documented for operators.
+- Release verification and dependency floors were hardened for more reliable published artifacts.
+
+## [3.9.2](https://github.com/snapetech/seerrng/compare/v3.9.1...v3.9.2) - 2026-08-04
 
 ### Fixed
 
 - Concurrent download-recovery attempts are coalesced so one failed download does not create duplicate retry work.
 
-## [3.9.1] - 2026-08-04
+## [3.9.1](https://github.com/snapetech/seerrng/compare/v3.9.0...v3.9.1) - 2026-08-04
 
 ### Fixed
 
 - Bookshelf and rreading-glasses deployment wiring now works consistently for ebook and audiobook services.
 
-## [3.9.0] - 2026-08-04
+## [3.9.0](https://github.com/snapetech/seerrng/compare/v3.8.6...v3.9.0) - 2026-08-04
 
 ### Added
 
 - Added the optional rreading-glasses metadata compatibility proxy for both Bookshelf modes, keeping Hardcover translation and upstream coordination outside SeerrNG.
+
+## [3.8.6](https://github.com/snapetech/seerrng/compare/v3.8.5...v3.8.6) - 2026-08-04
+
+### Fixed
+
+- `SEERR_EXTERNAL_CONFIG` is now optional; deployments can fall back to `settings.json` instead of failing when external runtime configuration is not supplied.
+
+## [3.8.5](https://github.com/snapetech/seerrng/compare/v3.8.4...v3.8.5) - 2026-08-02
+
+### Fixed
+
+- Cover Art Archive requests now follow the required cross-origin redirect chain, restoring music and artist artwork lookups.
+
+## [3.8.4](https://github.com/snapetech/seerrng/compare/v3.8.3...v3.8.4) - 2026-08-02
+
+### Fixed
+
+- Music and artist routes now call Cover Art Archive correctly.
+- Transient cover and image failures are no longer cached permanently, allowing later retries after an upstream recovery.
+
+## [3.8.3](https://github.com/snapetech/seerrng/compare/v3.8.2...v3.8.3) - 2026-08-02
+
+### Fixed
+
+- SQLite media-request routing fields are restored for installations that use the fork's request routing behavior.
+- Qualified status cache keys are revalidated before use, and Helm chart appVersion metadata is kept aligned.
+
+## [3.8.2](https://github.com/snapetech/seerrng/compare/v3.8.1...v3.8.2) - 2026-08-02
+
+### Fixed
+
+- External API endpoints now preserve a configured base-URL path prefix instead of dropping it while joining request paths.
+
+## [3.8.1](https://github.com/snapetech/seerrng/compare/v3.8.0...v3.8.1) - 2026-08-02
+
+### Fixed
+
+- SQLite migrations no longer rebuild tables out of order and drop fork-specific columns during an upgrade.
+
+## [3.8.0](https://github.com/snapetech/seerrng/compare/v3.7.16...v3.8.0) - 2026-08-02
+
+### Added
+
+- Added public Seerr branding for notification emails, multiple Discord notification IDs, Discord thread IDs, admin quota bypass, Jellyfin/Emby Quick Connect authentication, Plex-import user-detail synchronization, Simkl links, failed-download queue recovery, and local service cover support.
+
+### Fixed
+
+- Request, watchlist, availability-sync, scanner, notification, search, and UI state handling now recover correctly across deletion, approval, orphaning, and merged-version edge cases.
+- Book dispatch retries, orphaned book identifiers, and PWA pull-to-refresh behavior were repaired.
+
+### Security
+
+- External API target validation and SSRF/origin checks were tightened, CodeQL findings were resolved, and OIDC/session fixture handling was hardened.
+
+## [3.7.16](https://github.com/snapetech/seerrng/compare/v3.7.15...v3.7.16) - 2026-08-01
+
+### Security
+
+- Authorization checks for user reads, media access, override rules, quotas, watchlists, and settings now use the correct actor-aware read paths.
+
+### Fixed
+
+- Advanced request selection now filters servers by the requested 4K/non-4K mode before deciding whether service selection is needed.
+
+## [3.7.15](https://github.com/snapetech/seerrng/compare/v3.7.14...v3.7.15) - 2026-08-01
+
+### Fixed
+
+- BSD release packaging now uses a portable `chmod` path.
+
+## [3.7.14](https://github.com/snapetech/seerrng/compare/v3.7.13...v3.7.14) - 2026-08-01
+
+### Changed
+
+- End-to-end jobs now isolate their server instances and rate-limit state, preventing parallel CI runs from interfering with one another.
+
+## [3.7.13](https://github.com/snapetech/seerrng/compare/v3.7.12...v3.7.13) - 2026-08-01
+
+### Fixed
+
+- BSD release staging now resolves paths portably, and Cypress starts with the test environment and its rate-limit bypass explicitly exported.
+
+## [3.7.12](https://github.com/snapetech/seerrng/compare/v3.7.11...v3.7.12) - 2026-08-01
+
+### Fixed
+
+- Release archive staging now works on BSD systems without relying on GNU-only path behavior.
+
+## [3.7.11](https://github.com/snapetech/seerrng/compare/v3.7.10...v3.7.11) - 2026-08-01
+
+### Notes
+
+- No user-facing changes; this tag repaired end-to-end association-modal coverage.
+
+## [3.7.10](https://github.com/snapetech/seerrng/compare/v3.7.9...v3.7.10) - 2026-08-01
+
+### Fixed
+
+- Association cards now use a non-locking popover interaction, preventing the association UI from becoming stuck open.
+
+## [3.7.9](https://github.com/snapetech/seerrng/compare/v3.7.8...v3.7.9) - 2026-07-27
+
+### Fixed
+
+- Empty music-provider responses are retried, and empty cached homepage rows are revalidated instead of remaining blank indefinitely.
+
+## [3.7.8](https://github.com/snapetech/seerrng/compare/v3.7.7...v3.7.8) - 2026-07-27
+
+### Fixed
+
+- Plex OAuth now stays on the supported polling flow, proxies PIN polling correctly, returns the PIN to the client, and preserves sessions on direct HTTP deployments.
+
+## [3.7.7](https://github.com/snapetech/seerrng/compare/v3.7.6...v3.7.7) - 2026-07-26
+
+### Fixed
+
+- Plex OAuth identity registration and compatibility were restored.
+- Issues can now be sorted by added date.
+
+## [3.7.6](https://github.com/snapetech/seerrng/compare/v3.7.5...v3.7.6) - 2026-07-25
+
+### Fixed
+
+- Plex OAuth now uses the correct Plex Web OAuth context.
+
+## [3.7.5](https://github.com/snapetech/seerrng/compare/v3.7.4...v3.7.5) - 2026-07-25
+
+### Fixed
+
+- Plex login now targets the current OAuth route.
+
+## [3.7.4](https://github.com/snapetech/seerrng/compare/v3.7.3...v3.7.4) - 2026-07-25
+
+### Fixed
+
+- Plex OAuth connections can be established again.
+
+## [3.7.3](https://github.com/snapetech/seerrng/compare/v3.7.2...v3.7.3) - 2026-07-24
+
+### Fixed
+
+- Deployments now inject external runtime configuration into the running service.
+
+## [3.7.2](https://github.com/snapetech/seerrng/compare/v3.7.1...v3.7.2) - 2026-07-24
+
+### Notes
+
+- No user-facing changes; this tag contained release and deployment preparation only.
+
+## [3.7.1](https://github.com/snapetech/seerrng/compare/v3.7.0...v3.7.1) - 2026-07-24
+
+### Fixed
+
+- External configuration is now exported consistently to Cypress, including legacy settings and optional service configuration.
+- Cypress sessions remain usable on local HTTP test servers while production session-cookie security remains enforced.
+
+## [3.7.0](https://github.com/snapetech/seerrng/compare/v3.6.3...v3.7.0) - 2026-07-24
+
+### Security
+
+- Authentication, protected API, and image-cache routes now have explicit rate limits.
+- Session cookies are required to be secure in every environment.
+- Notification URLs, image-proxy targets, and external API request targets are validated before outbound use.
+- API-key comparisons, external image handling, and persisted request configuration were tightened to avoid authorization, SSRF, and cache-trust failures.
+
+## [3.6.3](https://github.com/snapetech/seerrng/compare/v3.6.2...v3.6.3) - 2026-07-24
+
+### Security
+
+- Coordination keys are separated from password-hashing material, API requests are rate-limited, and protected files are opened through checked file handles.
+
+## [3.6.2](https://github.com/snapetech/seerrng/compare/v3.6.1...v3.6.2) - 2026-07-24
+
+### Security
+
+- Vulnerable dependency overrides were updated, and credential handling plus notification formatting were hardened.
+
+## [3.6.1](https://github.com/snapetech/seerrng/compare/v3.6.0...v3.6.1) - 2026-07-24
+
+### Notes
+
+- No user-facing changes; this tag contained release preparation only.
+
+## [3.6.0](https://github.com/snapetech/seerrng/compare/v3.5.1...v3.6.0) - 2026-07-24
+
+### Added
+
+- Background jobs now log observed completion durations to make slow or stalled work diagnosable.
+
+### Fixed
+
+- Search result navigation and service-availability states are preserved during refreshes.
+- Touch scrolling, book request cards, and Servarr connection tests now behave correctly.
+
+## [3.5.1](https://github.com/snapetech/seerrng/compare/v3.5.0...v3.5.1) - 2026-07-17
+
+### Fixed
+
+- PostgreSQL startup is restored for fresh and upgraded deployments.
+
+## [3.5.0](https://github.com/snapetech/seerrng/compare/v3.4.0...v3.5.0) - 2026-07-17
+
+### Added
+
+- Added project donation links.
+
+### Changed
+
+- Reliability and release infrastructure were hardened, and the vulnerable WebSocket driver was pinned to a safe override.
+
+## [3.4.0](https://github.com/snapetech/seerrng/compare/v3.3.2...v3.4.0) - 2026-07-14
+
+### Added
+
+- Added OpenID Connect login with account linking and secure callback handling.
+
+### Fixed
+
+- Discover pagination preloads thumbnails earlier and fills cached media sliders reliably.
+- Image cache limits and avatar fallbacks are more resilient, and request lists support the default added sort.
+- Transient Plex and image-proxy failures are retried with clearer diagnostics.
+
+## [3.3.2](https://github.com/snapetech/seerrng/compare/v3.3.1...v3.3.2) - 2026-07-14
+
+### Fixed
+
+- Live API failures were repaired and covered by a smoke audit; live search navigation was stabilized.
+
+## [3.3.1](https://github.com/snapetech/seerrng/compare/v3.3.0...v3.3.1) - 2026-07-14
+
+### Security
+
+- Remaining CodeQL alerts were closed.
+
+### Changed
+
+- Cypress recording is skipped cleanly when no dashboard key is configured.
+
+## [3.3.0](https://github.com/snapetech/seerrng/compare/v3.2.7...v3.3.0) - 2026-07-14
+
+### Added
+
+- Discover homepage rows are cached and revalidated, improving repeat visits without permanently serving stale state.
+
+### Fixed
+
+- The Bookshelf add-service form and repeated search-query navigation now work correctly.
+- Discovery performance and transient API reliability were improved.
+
+### Changed
+
+- Debian, Fedora/COPR, PPA, and deployment publishing now validate credentials, package assets, host keys, and target state more explicitly.
+
+## [3.2.7](https://github.com/snapetech/seerrng/compare/v3.2.5...v3.2.7) - 2026-06-16
+
+### Security
+
+- Container image scanning now authenticates to the registry before scanning.
+
+### Fixed
+
+- Release archives include the pnpm workspace configuration, application builds run on the build platform, and deployment avoids recursive ownership walks.
+
+## [3.2.5](https://github.com/snapetech/seerrng/compare/v3.2.4...v3.2.5) - 2026-06-16
+
+### Security
+
+- Runtime OpenSSL packages were upgraded in the container image.
+
+## [3.2.4](https://github.com/snapetech/seerrng/compare/v3.2.3...v3.2.4) - 2026-06-16
+
+### Security
+
+- Dependency and code-scanning alerts were resolved, and the container no longer carries a vulnerable npm runtime tree.
+
+## [3.2.3](https://github.com/snapetech/seerrng/compare/v3.2.2...v3.2.3) - 2026-05-22
+
+### Fixed
+
+- Windows release assets and PPA signing now publish through the intended paths.
+
+## [3.2.2](https://github.com/snapetech/seerrng/compare/v3.2.1...v3.2.2) - 2026-05-22
+
+### Fixed
+
+- Package channel publishing now selects and promotes the correct release artifacts.
+
+## [3.2.1](https://github.com/snapetech/seerrng/releases/tag/v3.2.1) - 2026-05-22
+
+This was the initial SeerrNG release and fork baseline.
+
+### Added
+
+- Added Readarr-style third-party client compatibility and BookshelfNG integration, including service diagnostics, metadata handling, book/music request flows, library matching, and request retry/recovery behavior.
+- Added a first-class Hardcover migration workflow with resumable recovery, OpenLibrary fallback handling, and deployment documentation for Bookshelf backends.
+- Added persistent media associations, Plex relink support, discover caching, and public SeerrNG branding/deployment packaging.
+
+### Fixed
+
+- Improved edition and identifier matching for Bookshelf, MusicBrainz, and related media, including softcover lookup and translated book terms.
+- Hardened request dispatch, failed-request recovery, bulk-request pagination, and scanner writes when backends are unavailable or locked.
+
+### Security
+
+- Added broad validation and bounds for route identifiers, pagination, external URLs, image proxies, cache keys, webhook and notification requests, session handling, and outbound HTTP waits.
 
 ## Historical upstream history
 

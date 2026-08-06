@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   changedReleaseNoteFiles,
@@ -112,4 +113,76 @@ test('release-note range discovery distinguishes additions from edits', () => {
   } finally {
     fs.rmSync(repository, { recursive: true, force: true });
   }
+});
+
+test('changelog assembly prepends a release without replacing prior history', () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'seerrng-changelog-')
+  );
+  const currentPath = path.join(directory, 'current.md');
+  const existingPath = path.join(directory, 'CHANGELOG.md');
+  const outputPath = path.join(directory, 'output.md');
+  const scriptPath = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'prepend-changelog-section.mjs'
+  );
+  const existing = `# Changelog\n\nIntroductory text.\n\n## [3.11.2]\n\n- Previous release.\n\n## Historical upstream history\n\n- Legacy release.\n`;
+  const current = `# Changelog\n\n## [3.12.0]\n\n### Fixed\n\n- Current release.\n`;
+
+  try {
+    fs.writeFileSync(currentPath, current);
+    fs.writeFileSync(existingPath, existing);
+    execFileSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--current',
+        currentPath,
+        '--existing',
+        existingPath,
+        '--output',
+        outputPath,
+      ],
+      { encoding: 'utf8' }
+    );
+
+    const assembled = fs.readFileSync(outputPath, 'utf8');
+    assert.match(assembled, /^# Changelog[\s\S]*^## \[3\.12\.0\]/mu);
+    assert.match(
+      assembled,
+      /3\.12\.0[\s\S]*3\.11\.2[\s\S]*Historical upstream history/u
+    );
+
+    fs.writeFileSync(existingPath, assembled);
+    execFileSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--current',
+        currentPath,
+        '--existing',
+        existingPath,
+        '--output',
+        outputPath,
+      ],
+      { encoding: 'utf8' }
+    );
+    const rerun = fs.readFileSync(outputPath, 'utf8');
+    assert.equal((rerun.match(/^## \[3\.12\.0\]/gmu) ?? []).length, 1);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('checked-in changelog covers every SeerrNG tag', () => {
+  const scriptPath = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'check-changelog-tags.mjs'
+  );
+  const output = execFileSync(process.execPath, [scriptPath], {
+    cwd: path.dirname(path.dirname(fileURLToPath(import.meta.url))),
+    encoding: 'utf8',
+  });
+
+  assert.match(output, /Changelog covers all \d+ SeerrNG tag\(s\)/u);
 });

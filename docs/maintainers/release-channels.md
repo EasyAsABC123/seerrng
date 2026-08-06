@@ -15,11 +15,20 @@ Release notes have two layers:
 - `.github/cliff.toml` supplies the conventional-commit history for technical
   traceability.
 
-CI validates the fragment contract. The tag workflow regenerates the checked-in
-`CHANGELOG.md`; the release workflow assembles the current fragments into the
-GitHub release body, and the Discord announcement uses the same content. This
-prevents a generated changelog from being silently replaced by generic release
-text.
+CI validates the fragment contract. The tag workflow builds only the current
+release section and prepends it to the checked-in `CHANGELOG.md`, preserving all
+audited historical sections. The release workflow assembles the current
+fragments into the GitHub release body, and the Discord announcement uses the
+same content. This prevents a generated changelog from being silently replaced
+by generic release text or from erasing older curated history.
+
+The checked-in changelog is audited against every `v3.*` tag. The coverage check
+runs in pull-request CI and during tag preparation, so deleting or forgetting a
+historical release section fails before publication. A missing version is not
+inferred: `v3.2.6` was never tagged and is intentionally absent.
+
+See the [release history audit](./release-history-audit.md) for the scope and
+method used to backfill the historical sections.
 
 When reviewing a release, check all three surfaces:
 

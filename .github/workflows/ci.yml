@@ -54,6 +54,7 @@ jobs:
             --base "$BASE_SHA" \
             --head "$HEAD_SHA" \
             --pr-body "$body_file"
+          node scripts/check-changelog-tags.mjs
 
   i18n:
     name: i18n Check

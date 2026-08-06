@@ -95,7 +95,7 @@ test('release notes flow into the draft release and Discord announcement', () =>
   );
 });
 
-test('tag preparation regenerates and commits the checked-in changelog', () => {
+test('tag preparation prepends the current changelog without replacing history', () => {
   const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
   const changelogStep = createTag.steps.find(
     (step) => step.name === 'Generate checked-in changelog'
@@ -105,8 +105,13 @@ test('tag preparation regenerates and commits the checked-in changelog', () => {
   );
 
   assert.ok(changelogStep);
-  assert.match(changelogStep.run, /git-cliff[\s\S]*--output CHANGELOG\.md/u);
+  assert.match(
+    changelogStep.run,
+    /git-cliff[\s\S]*--unreleased[\s\S]*--output "\$current_changelog"/u
+  );
   assert.match(changelogStep.run, /assemble-release-notes\.mjs/u);
+  assert.match(changelogStep.run, /prepend-changelog-section\.mjs/u);
+  assert.match(changelogStep.run, /--existing CHANGELOG\.md/u);
   assert.match(commitStep.run, /git add CHANGELOG\.md/u);
 });
 

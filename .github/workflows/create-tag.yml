@@ -121,15 +121,22 @@ jobs:
         run: |
           set -euo pipefail
           previous_tag="$(git describe --tags --match 'v[0-9]*' --abbrev=0)"
+          current_changelog="${RUNNER_TEMP}/seerrng-current-changelog.md"
           git-cliff \
             -c .github/cliff.toml \
+            --unreleased \
             --tag "$TAG_VERSION" \
-            --output CHANGELOG.md
+            --output "$current_changelog"
           node scripts/assemble-release-notes.mjs \
             --previous-tag "$previous_tag" \
             --head HEAD \
-            --changelog CHANGELOG.md \
+            --changelog "$current_changelog" \
+            --output "$current_changelog"
+          node scripts/prepend-changelog-section.mjs \
+            --current "$current_changelog" \
+            --existing CHANGELOG.md \
             --output CHANGELOG.md
+          node scripts/check-changelog-tags.mjs
           grep -Eq '^## ' CHANGELOG.md
 
       - name: Commit updated files
