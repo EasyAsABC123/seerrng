@@ -57,12 +57,16 @@ const messages = defineMessages('components.RequestModal.BulkRequestModal', {
   requested: 'Requested',
   blocklisted: 'Blocklisted',
   notrequested: 'Not Requested',
+  unmatched: 'No confident match',
+  ambiguous: 'Ambiguous match',
+  sourceTrack: 'Source: {title}',
+  openSource: 'Open original playlist',
 });
 
 type BulkBookFormat = 'ebook' | 'audiobook' | 'both';
 type BulkMediaType = 'music' | 'book';
 
-type BulkItem = {
+export type BulkItem = {
   id: string;
   title: string;
   year?: string | number;
@@ -73,6 +77,8 @@ type BulkItem = {
   authorId?: string;
   mediaInfo?: Media;
   releaseType?: string;
+  sourceTitle?: string;
+  matchStatus?: 'matched' | 'unmatched' | 'ambiguous';
 };
 
 type ArtistResponse = {
@@ -122,7 +128,7 @@ const getBulkRequestErrorMessage = (error: unknown): string | undefined => {
   return error instanceof Error ? error.message : undefined;
 };
 
-interface BulkRequestModalProps {
+export interface BulkRequestModalProps {
   show: boolean;
   mediaType: BulkMediaType;
   title: string;
@@ -130,6 +136,7 @@ interface BulkRequestModalProps {
   authorId?: string;
   initialItems?: BulkItem[];
   initialTotalItems?: number;
+  sourceUrl?: string;
   onCancel: () => void;
   onComplete?: () => void;
 }
@@ -286,6 +293,14 @@ const getBookIneligibleReason = (
 };
 
 const getMusicIneligibleReason = (item: BulkItem): string | undefined => {
+  if (item.matchStatus === 'unmatched') {
+    return messages.unmatched.defaultMessage;
+  }
+
+  if (item.matchStatus === 'ambiguous') {
+    return messages.ambiguous.defaultMessage;
+  }
+
   if (item.mediaInfo?.status === MediaStatus.BLOCKLISTED) {
     return messages.blocklisted.defaultMessage;
   }
@@ -313,6 +328,7 @@ const BulkRequestModal = ({
   authorId,
   initialItems = EMPTY_BULK_ITEMS,
   initialTotalItems,
+  sourceUrl,
   onCancel,
   onComplete,
 }: BulkRequestModalProps) => {
@@ -868,6 +884,18 @@ const BulkRequestModal = ({
                 {intl.formatMessage(messages.selectitems)}
               </Button>
             </div>
+            {sourceUrl && (
+              <div className="mt-4 text-sm text-gray-300">
+                <a
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-300 hover:text-indigo-200"
+                >
+                  {intl.formatMessage(messages.openSource)}
+                </a>
+              </div>
+            )}
             <div className="mt-4 overflow-hidden border border-gray-700 sm:rounded-lg">
               <table className="min-w-full">
                 <tbody className="divide-y divide-gray-700">
@@ -923,6 +951,14 @@ const BulkRequestModal = ({
                                 .filter(Boolean)
                                 .join(' - ')}
                             </div>
+                            {item.sourceTitle &&
+                              item.sourceTitle !== item.title && (
+                                <div className="truncate text-xs text-gray-400">
+                                  {intl.formatMessage(messages.sourceTrack, {
+                                    title: item.sourceTitle,
+                                  })}
+                                </div>
+                              )}
                           </div>
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">

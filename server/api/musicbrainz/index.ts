@@ -8,7 +8,12 @@ import { createSafeHttpRequestOptions } from '@server/utils/security';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
-import type { MbAlbumDetails, MbArtistDetails, MbLink } from './interfaces';
+import type {
+  MbAlbumDetails,
+  MbArtistDetails,
+  MbLink,
+  MbRecordingDetails,
+} from './interfaces';
 
 const window = new JSDOM('').window;
 const purify = DOMPurify(window);
@@ -20,7 +25,7 @@ export const WIKIPEDIA_EXTRACT_HTTP_OPTIONS = {
   maxBodyLength: 1024,
 };
 
-const escapeLucene = (value: string): string =>
+export const escapeMusicBrainzQuery = (value: string): string =>
   value.replace(/([+\-&|!(){}[\]^"~*?:\\/])/g, '\\$1');
 
 export const MAX_MUSICBRAINZ_PAGE_SIZE = 100;
@@ -28,6 +33,7 @@ export const MAX_MUSICBRAINZ_ARTIST_CREDITS = 20;
 export const MAX_MUSICBRAINZ_RELEASES = 500;
 export const MAX_MUSICBRAINZ_TAGS = 200;
 export const MAX_MUSICBRAINZ_LINKS = 100;
+export const MAX_MUSICBRAINZ_RECORDING_RELEASES = 100;
 export const MAX_MUSICBRAINZ_TEXT_LENGTH = 1_000;
 export const MAX_MUSICBRAINZ_WIKIPEDIA_LENGTH = 20_000;
 
@@ -236,6 +242,98 @@ export const sanitizeMusicBrainzArtist = (
   };
 };
 
+export const sanitizeMusicBrainzRecording = (
+  value: unknown
+): MbRecordingDetails | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const id = boundText(value.id, 128);
+  const title = boundText(value.title);
+  if (!id || !title) {
+    return undefined;
+  }
+
+  const artistCredit = Array.isArray(value['artist-credit'])
+    ? value['artist-credit']
+        .slice(0, MAX_MUSICBRAINZ_ARTIST_CREDITS)
+        .map((credit) => {
+          if (!isRecord(credit) || !isRecord(credit.artist)) {
+            return undefined;
+          }
+          const artistId = boundText(credit.artist.id, 128);
+          const artistName = boundText(credit.artist.name);
+          if (!artistId || !artistName) {
+            return undefined;
+          }
+          return {
+            name: boundText(credit.name) || artistName,
+            artist: {
+              id: artistId,
+              name: artistName,
+              'sort-name': boundText(credit.artist['sort-name']) || artistName,
+            },
+          };
+        })
+        .filter(
+          (credit): credit is NonNullable<typeof credit> => credit !== undefined
+        )
+    : [];
+
+  const releases = Array.isArray(value.releases)
+    ? value.releases
+        .slice(0, MAX_MUSICBRAINZ_RECORDING_RELEASES)
+        .map((release) => {
+          if (!isRecord(release) || !isRecord(release['release-group'])) {
+            return undefined;
+          }
+          const releaseId = boundText(release.id, 128);
+          const releaseGroup = release['release-group'];
+          const releaseGroupId = boundText(releaseGroup.id, 128);
+          const releaseGroupTitle = boundText(releaseGroup.title);
+          if (!releaseId || !releaseGroupId || !releaseGroupTitle) {
+            return undefined;
+          }
+          return {
+            id: releaseId,
+            title: boundText(release.title),
+            status: boundText(release.status, 128),
+            'first-release-date': boundText(
+              release['first-release-date'] ?? value['first-release-date'],
+              128
+            ),
+            'release-group': {
+              id: releaseGroupId,
+              title: releaseGroupTitle,
+              'primary-type': boundText(releaseGroup['primary-type'], 128),
+              'secondary-types': boundStringArray(
+                releaseGroup['secondary-types'],
+                20
+              ),
+            },
+          };
+        })
+        .filter(
+          (release): release is MbRecordingDetails['releases'][number] =>
+            !!release
+        )
+    : [];
+
+  return {
+    id,
+    title,
+    score:
+      typeof value.score === 'number' && Number.isFinite(value.score)
+        ? value.score
+        : 0,
+    media_type: 'recording',
+    'artist-credit': artistCredit,
+    'first-release-date': boundText(value['first-release-date'], 128),
+    releases,
+  };
+};
+
 class MusicBrainz extends ExternalAPI {
   constructor() {
     super(
@@ -299,6 +397,51 @@ class MusicBrainz extends ExternalAPI {
     }
   }
 
+  public async searchRecording({
+    query,
+    limit = 30,
+    offset = 0,
+  }: {
+    query: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<MbRecordingDetails[]> {
+    try {
+      const boundedLimit = clampPageSize(limit, 30);
+      const data = await this.get<{
+        created: string;
+        count: number;
+        offset: number;
+        recordings: MbRecordingDetails[];
+      }>(
+        '/recording',
+        {
+          params: {
+            query,
+            inc: 'releases',
+            fmt: 'json',
+            limit: boundedLimit.toString(),
+            offset: offset.toString(),
+          },
+        },
+        43200
+      );
+
+      return Array.isArray(data?.recordings)
+        ? data.recordings
+            .slice(0, boundedLimit)
+            .map(sanitizeMusicBrainzRecording)
+            .filter((recording): recording is MbRecordingDetails => !!recording)
+        : [];
+    } catch (e) {
+      throw new Error(
+        `[MusicBrainz] Failed to search recordings: ${
+          e instanceof Error ? e.message : 'Unknown error'
+        }`
+      );
+    }
+  }
+
   public async searchReleaseGroupsByTag({
     tags,
     primaryTypes,
@@ -320,7 +463,7 @@ class MusicBrainz extends ExternalAPI {
         .filter((tag): tag is string => typeof tag === 'string')
         .slice(0, 20)
         .map((tag) => tag.slice(0, 128))
-        .map((tag) => `tag:"${escapeLucene(tag)}"`)
+        .map((tag) => `tag:"${escapeMusicBrainzQuery(tag)}"`)
         .join(' OR ');
       if (!tagQuery) {
         return { releaseGroups: [], totalCount: 0 };
@@ -332,7 +475,7 @@ class MusicBrainz extends ExternalAPI {
           .filter((type): type is string => typeof type === 'string')
           .slice(0, 20)
           .map((type) => type.slice(0, 128))
-          .map((type) => `primarytype:"${escapeLucene(type)}"`)
+          .map((type) => `primarytype:"${escapeMusicBrainzQuery(type)}"`)
           .join(' OR ');
         query += ` AND (${typeQuery})`;
       }

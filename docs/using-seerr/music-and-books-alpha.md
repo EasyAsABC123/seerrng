@@ -36,6 +36,9 @@ system. This page is the validation checklist for alpha builds.
 
 ## Music Validation
 
+For playlist-to-music request setup and provider limitations, see the
+[Playlist Requests](/using-seerr/playlist-requests) guide.
+
 Run these against a real Lidarr instance:
 
 1. Search globally for an album.

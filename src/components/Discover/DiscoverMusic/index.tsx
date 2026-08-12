@@ -8,10 +8,17 @@ import {
   countLibraryFilters,
   musicSortOptions,
 } from '@app/components/Discover/LibraryFilterSlideover/filterUtils';
+import BulkRequestModal from '@app/components/RequestModal/BulkRequestModal';
+import PlaylistImportModal from '@app/components/RequestModal/PlaylistImportModal';
 import useDiscover from '@app/hooks/useDiscover';
 import { useBatchUpdateQueryParams } from '@app/hooks/useUpdateQueryParams';
 import defineMessages from '@app/utils/defineMessages';
-import { BarsArrowDownIcon, FunnelIcon } from '@heroicons/react/24/solid';
+import {
+  BarsArrowDownIcon,
+  FunnelIcon,
+  QueueListIcon,
+} from '@heroicons/react/24/solid';
+import type { PlaylistResolutionResponse } from '@server/interfaces/api/playlistInterfaces';
 import type { AlbumResult } from '@server/models/Search';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
@@ -30,6 +37,7 @@ const messages = defineMessages('components.Discover.DiscoverMusic', {
   popularYear: 'Popular This Year',
   listenCount: 'Most Listened',
   loadError: 'Music discovery could not be loaded right now.',
+  importPlaylist: 'Import Playlist',
 });
 
 const LibraryFilterSlideover = dynamic(
@@ -45,6 +53,9 @@ const DiscoverMusic = () => {
   const query =
     typeof router.query.query === 'string' ? router.query.query : '';
   const [showFilters, setShowFilters] = useState(false);
+  const [showPlaylistImport, setShowPlaylistImport] = useState(false);
+  const [showPlaylistRequests, setShowPlaylistRequests] = useState(false);
+  const [playlist, setPlaylist] = useState<PlaylistResolutionResponse>();
   const days = typeof router.query.days === 'string' ? router.query.days : '14';
   const genre =
     typeof router.query.genre === 'string' ? router.query.genre : '';
@@ -77,6 +88,16 @@ const DiscoverMusic = () => {
       <div className="mb-4 flex flex-col justify-between lg:flex-row lg:items-end">
         <Header>{title}</Header>
         <div className="mt-2 flex flex-grow flex-col gap-2 sm:flex-row lg:flex-grow-0">
+          <div className="mb-2 flex flex-grow sm:mb-0 lg:flex-grow-0">
+            <Button
+              buttonType="primary"
+              onClick={() => setShowPlaylistImport(true)}
+              className="w-full"
+            >
+              <QueueListIcon />
+              <span>{intl.formatMessage(messages.importPlaylist)}</span>
+            </Button>
+          </div>
           <div className="mb-2 flex flex-grow sm:mb-0 sm:flex-grow-0">
             <CardTextVisibilityToggle mediaType="album" />
           </div>
@@ -163,6 +184,28 @@ const DiscoverMusic = () => {
         isReachingEnd={isReachingEnd}
         onScrollBottom={fetchMore}
       />
+      {showPlaylistImport && (
+        <PlaylistImportModal
+          show
+          onCancel={() => setShowPlaylistImport(false)}
+          onResolved={(response) => {
+            setPlaylist(response);
+            setShowPlaylistImport(false);
+            setShowPlaylistRequests(true);
+          }}
+        />
+      )}
+      {playlist && (
+        <BulkRequestModal
+          show={showPlaylistRequests}
+          mediaType="music"
+          title={playlist.name}
+          initialItems={playlist.items}
+          initialTotalItems={playlist.items.length}
+          sourceUrl={playlist.url}
+          onCancel={() => setShowPlaylistRequests(false)}
+        />
+      )}
     </>
   );
 };

@@ -78,6 +78,18 @@ const messages = defineMessages('components.Settings.SettingsMain', {
   versionCheckTip: 'Automatically check for new versions on GitHub.',
   validationUrl: 'You must provide a valid URL',
   validationUrlTrailingSlash: 'URL must not end in a trailing slash',
+  playlistIntegrations: 'Playlist Integrations',
+  playlistIntegrationsDescription:
+    'Configure the provider credentials used when users import playlists into SeerrNG.',
+  spotifyClientId: 'Spotify Client ID',
+  spotifyClientIdTip:
+    'Create an application in the Spotify Developer Dashboard and copy its client ID.',
+  spotifyClientSecret: 'Spotify Client Secret',
+  spotifyClientSecretTip:
+    'The Spotify client secret is stored in SeerrNG and never shown in full after saving.',
+  youtubeApiKey: 'YouTube Data API Key',
+  youtubeApiKeyTip:
+    'A Google YouTube Data API v3 key is required for public YouTube playlists.',
 });
 
 const SettingsMain = () => {
@@ -186,6 +198,9 @@ const SettingsMain = () => {
             cacheImages: data?.cacheImages,
             youtubeUrl: data?.youtubeUrl,
             versionCheck: data?.versionCheck,
+            spotifyClientId: data?.spotifyClientId ?? '',
+            spotifyClientSecret: data?.spotifyClientSecret ?? '',
+            youtubeApiKey: data?.youtubeApiKey ?? '',
           }}
           enableReinitialize
           validationSchema={MainSettingsSchema}
@@ -209,6 +224,9 @@ const SettingsMain = () => {
                 cacheImages: values.cacheImages,
                 youtubeUrl: values.youtubeUrl,
                 versionCheck: values?.versionCheck,
+                spotifyClientId: values.spotifyClientId,
+                spotifyClientSecret: values.spotifyClientSecret,
+                youtubeApiKey: values.youtubeApiKey,
               });
               mutate('/api/v1/settings/public');
               mutate('/api/v1/status?checkUpdateAvailable=false');
@@ -627,6 +645,84 @@ const SettingsMain = () => {
                         setFieldValue('versionCheck', !values.versionCheck);
                       }}
                     />
+                  </div>
+                </div>
+                <div className="mb-2 mt-8 border-t border-gray-700 pt-6">
+                  <h4 className="heading text-lg">
+                    {intl.formatMessage(messages.playlistIntegrations)}
+                  </h4>
+                  <p className="description">
+                    {intl.formatMessage(
+                      messages.playlistIntegrationsDescription
+                    )}
+                  </p>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="spotifyClientId" className="text-label">
+                    <span>{intl.formatMessage(messages.spotifyClientId)}</span>
+                    <span className="label-tip">
+                      {intl.formatMessage(messages.spotifyClientIdTip)}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <div className="form-input-field">
+                      <Field
+                        id="spotifyClientId"
+                        name="spotifyClientId"
+                        type="text"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="spotifyClientSecret" className="text-label">
+                    <span>
+                      {intl.formatMessage(messages.spotifyClientSecret)}
+                    </span>
+                    <span className="label-tip">
+                      {intl.formatMessage(messages.spotifyClientSecretTip)}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <div className="form-input-field">
+                      <SensitiveInput
+                        as="field"
+                        id="spotifyClientSecret"
+                        name="spotifyClientSecret"
+                        type="text"
+                        value={values.spotifyClientSecret}
+                        onChange={(
+                          event: React.ChangeEvent<HTMLInputElement>
+                        ) =>
+                          setFieldValue(
+                            'spotifyClientSecret',
+                            event.target.value
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="youtubeApiKey" className="text-label">
+                    <span>{intl.formatMessage(messages.youtubeApiKey)}</span>
+                    <span className="label-tip">
+                      {intl.formatMessage(messages.youtubeApiKeyTip)}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <div className="form-input-field">
+                      <SensitiveInput
+                        as="field"
+                        id="youtubeApiKey"
+                        name="youtubeApiKey"
+                        type="text"
+                        value={values.youtubeApiKey}
+                        onChange={(
+                          event: React.ChangeEvent<HTMLInputElement>
+                        ) => setFieldValue('youtubeApiKey', event.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="actions">

@@ -51,6 +51,34 @@ export interface MbAlbumDetails extends MbAlbumResult {
   poster_path?: string;
 }
 
+export interface MbRecordingRelease {
+  id: string;
+  title: string;
+  status: string;
+  'first-release-date': string;
+  'release-group': {
+    id: string;
+    title: string;
+    'primary-type': string;
+    'secondary-types': string[];
+  };
+}
+
+export interface MbRecordingDetails extends MbResult {
+  media_type: 'recording';
+  title: string;
+  'artist-credit': {
+    name: string;
+    artist: {
+      id: string;
+      name: string;
+      'sort-name': string;
+    };
+  }[];
+  'first-release-date': string;
+  releases: MbRecordingRelease[];
+}
+
 export interface MbArtistResult extends MbResult {
   media_type: 'artist';
   name: string;

@@ -6,5 +6,7 @@ declare module 'express-session' {
   interface SessionData {
     userId: number;
     credentialVersion?: number;
+    spotifyOAuthState?: string;
+    spotifyOAuthStateCreatedAt?: number;
   }
 }

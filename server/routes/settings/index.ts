@@ -1004,6 +1004,24 @@ const parseMainSettingsBody = (
     value[key] = parsed.value ?? '';
   }
 
+  for (const [key, fieldName] of [
+    ['spotifyClientId', 'spotifyClientId'],
+    ['spotifyClientSecret', 'spotifyClientSecret'],
+    ['youtubeApiKey', 'youtubeApiKey'],
+  ] as const) {
+    const parsed = parsePatchBoundedString(body, key, {
+      fieldName,
+      maxLength: MAX_MAIN_STRING_LENGTH,
+      allowEmpty: true,
+    });
+    if ('error' in parsed) {
+      return parsed;
+    }
+    if (parsed.value !== undefined) {
+      value[key] = parsed.value;
+    }
+  }
+
   return { value };
 };
 

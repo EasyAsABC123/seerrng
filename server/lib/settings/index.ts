@@ -205,6 +205,9 @@ export interface MainSettings {
   locale: string;
   youtubeUrl: string;
   versionCheck: boolean;
+  spotifyClientId?: string;
+  spotifyClientSecret?: string;
+  youtubeApiKey?: string;
 }
 
 export interface ProxySettings {
@@ -503,6 +506,9 @@ class Settings {
         locale: 'en',
         youtubeUrl: '',
         versionCheck: true,
+        spotifyClientId: '',
+        spotifyClientSecret: '',
+        youtubeApiKey: '',
       },
       plex: {
         name: '',

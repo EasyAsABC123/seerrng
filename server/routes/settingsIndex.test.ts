@@ -548,6 +548,38 @@ describe('Settings route input validation', () => {
     }
   });
 
+  it('persists playlist provider credentials without returning secrets', async () => {
+    const settings = getSettings();
+    const original = {
+      spotifyClientId: settings.main.spotifyClientId,
+      spotifyClientSecret: settings.main.spotifyClientSecret,
+      youtubeApiKey: settings.main.youtubeApiKey,
+    };
+
+    try {
+      const res = await request(app).post('/settings/main').send({
+        spotifyClientId: 'spotify-client-id',
+        spotifyClientSecret: 'spotify-client-secret',
+        youtubeApiKey: 'youtube-api-key',
+      });
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(settings.main.spotifyClientId, 'spotify-client-id');
+      assert.strictEqual(
+        settings.main.spotifyClientSecret,
+        'spotify-client-secret'
+      );
+      assert.strictEqual(settings.main.youtubeApiKey, 'youtube-api-key');
+      assert.strictEqual(res.body.spotifyClientId, 'spotify-client-id');
+      assert.strictEqual(res.body.spotifyClientSecret, '[REDACTED]');
+      assert.strictEqual(res.body.youtubeApiKey, '[REDACTED]');
+    } finally {
+      settings.main.spotifyClientId = original.spotifyClientId;
+      settings.main.spotifyClientSecret = original.spotifyClientSecret;
+      settings.main.youtubeApiKey = original.youtubeApiKey;
+    }
+  });
+
   it('does not mass-assign hidden or unknown settings fields', async () => {
     const settings = getSettings();
     const originalApiKey = settings.main.apiKey;

@@ -460,6 +460,8 @@ For music and book changes, test against real services when possible:
 
 See [docs/using-seerr/music-and-books-alpha.md](./docs/using-seerr/music-and-books-alpha.md) for the current hands-on test checklist.
 
+See [docs/using-seerr/playlist-requests.md](./docs/using-seerr/playlist-requests.md) for playlist provider setup and the user import workflow.
+
 ## Legal Use
 
 SeerrNG is intended for lawful personal media management. The project does not provide media, does not bypass DRM, and does not condone piracy or copyright infringement. Users are responsible for complying with the laws, licenses, and service terms that apply in their region.

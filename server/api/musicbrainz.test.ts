@@ -5,6 +5,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 import MusicBrainz, {
   MAX_MUSICBRAINZ_ARTIST_CREDITS,
   MAX_MUSICBRAINZ_PAGE_SIZE,
+  MAX_MUSICBRAINZ_RECORDING_RELEASES,
   MAX_MUSICBRAINZ_RELEASES,
   MAX_MUSICBRAINZ_TAGS,
   MAX_MUSICBRAINZ_TEXT_LENGTH,
@@ -12,6 +13,7 @@ import MusicBrainz, {
   WIKIPEDIA_EXTRACT_HTTP_OPTIONS,
   sanitizeMusicBrainzAlbum,
   sanitizeMusicBrainzArtist,
+  sanitizeMusicBrainzRecording,
 } from './musicbrainz';
 
 afterEach(() => mock.restoreAll());
@@ -107,6 +109,44 @@ describe('MusicBrainz response boundaries', () => {
     assert.strictEqual(artist.type, 'Person');
     assert.strictEqual(artist.aliases?.length, 100);
     assert.ok(!('raw' in artist));
+  });
+
+  it('sanitizes recording releases used by playlist matching', () => {
+    const recording = sanitizeMusicBrainzRecording({
+      id: 'recording-id',
+      title: 'Track',
+      score: 100,
+      'artist-credit': [
+        {
+          name: 'Artist',
+          artist: { id: 'artist-id', name: 'Artist', 'sort-name': 'Artist' },
+        },
+      ],
+      releases: Array.from(
+        { length: MAX_MUSICBRAINZ_RECORDING_RELEASES + 10 },
+        (_, index) => ({
+          id: `release-${index}`,
+          title: `Release ${index}`,
+          status: 'Official',
+          'first-release-date': '2001',
+          'release-group': {
+            id: `release-group-${index}`,
+            title: `Release Group ${index}`,
+            'primary-type': 'Album',
+            'secondary-types': [],
+          },
+        })
+      ),
+      raw: 'not-public',
+    });
+
+    assert.ok(recording);
+    assert.equal(recording.releases.length, MAX_MUSICBRAINZ_RECORDING_RELEASES);
+    assert.ok(!('raw' in recording));
+    assert.equal(
+      sanitizeMusicBrainzRecording({ id: 'missing-title' }),
+      undefined
+    );
   });
 
   it('sanitizes and bounds Wikipedia extracts and rejects provider URLs', async () => {

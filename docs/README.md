@@ -21,6 +21,7 @@ Bookshelf through its Readarr-compatible API.
 - **Syncs to your Jellyfin/Emby/Plex library** to show what titles you already have.
 - Supports Movies, Shows, Music, Books and Mixed Libraries.
 - **Integrates with Sonarr, Radarr, Lidarr, and Bookshelf**.
+- **Imports Spotify and YouTube playlists into reviewable music requests**.
 - Optionally set **Override rules** for requests to match with your defined conditions.
 - **Easy to use request system** allowing users to request individual seasons or movies in a friendly, clean UI.
 - **Simple request management UI**. Don't dig through the app to approve recent requests.

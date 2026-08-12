@@ -4,6 +4,7 @@ import type {
 } from '@server/interfaces/api/userSettingsInterfaces';
 import { Notification, hasNotificationType } from '@server/lib/notifications';
 import { NotificationAgentKey } from '@server/lib/settings';
+import { DbAwareColumn } from '@server/utils/DbColumnHelper';
 import {
   Column,
   Entity,
@@ -146,6 +147,21 @@ export class UserSettings {
 
   @Column({ nullable: true })
   public pushoverSound?: string;
+
+  @Column({ type: 'text', nullable: true })
+  public spotifyAccessToken?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  public spotifyRefreshToken?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  public spotifyUserId?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  public spotifyDisplayName?: string | null;
+
+  @DbAwareColumn({ type: 'datetime', nullable: true })
+  public spotifyTokenExpiresAt?: Date | null;
 
   @Column({ nullable: true })
   public telegramChatId?: string;
