@@ -15,10 +15,11 @@ RUN apk add --no-cache python3 py3-setuptools make g++ gcc libc6-compat bash && 
   npm config set fetch-retry-maxtimeout 120000 && \
   npm install --global node-gyp@13.0.1 pnpm@10.24.0
 
-COPY . ./app
-WORKDIR /app
-
 FROM target-base AS prod-deps
+
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY bin/prepare.mjs ./bin/prepare.mjs
 
 RUN --mount=type=cache,id=pnpm-prod,target=/pnpm/store CI=true pnpm install --prod --frozen-lockfile
 
@@ -54,9 +55,6 @@ RUN apk add --no-cache python3 py3-setuptools make g++ gcc libc6-compat bash && 
   npm config set fetch-retry-maxtimeout 120000 && \
   npm install --global node-gyp@13.0.1 pnpm@10.24.0
 
-COPY . ./app
-WORKDIR /app
-
 FROM build-base AS build
 
 ARG COMMIT_TAG
@@ -64,7 +62,13 @@ ARG BUILD_VERSION=main
 ENV COMMIT_TAG=${COMMIT_TAG}
 ENV BUILD_VERSION=${BUILD_VERSION}
 
-RUN --mount=type=cache,id=pnpm-build,target=/pnpm/store CYPRESS_INSTALL_BINARY=0 pnpm install --frozen-lockfile
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY bin/prepare.mjs ./bin/prepare.mjs
+
+RUN --mount=type=cache,id=pnpm-build,target=/pnpm/store CI=true CYPRESS_INSTALL_BINARY=0 pnpm install --frozen-lockfile
+
+COPY . .
 
 RUN pnpm build
 
