@@ -9,6 +9,34 @@ no `v3.2.6` tag; it is intentionally not represented as a release. Commit-level
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+# Changelog
+
+## [3.12.0](https://github.com/snapetech/seerrng/compare/v3.11.2..v3.12.0) - 2026-08-12
+
+### User-facing changes
+
+#### Added
+
+- **Playlist Requests:** SeerrNG can now import Spotify and YouTube playlists, match tracks to MusicBrainz albums, let users review the results, and submit selected albums through the existing Lidarr request workflow.
+  - **Action required:** Configure the provider credentials described in the playlist request guide before use.
+
+#### Fixed
+
+- **Authentication:** Plex sign-in now completes on direct HTTP/LAN deployments again, while HTTPS deployments continue to receive Secure session cookies; failed session handoffs now show an error instead of spinning indefinitely.
+- **Release Pipeline:** Release tag preparation now retains historical tag metadata, so operators can create new releases without the workflow losing the previous release boundary.
+
+### 🚀 Features
+- Add music and playlist request support - ([e6c8346](https://github.com/snapetech/seerrng/commit/e6c834666007514aa43fd80f41357273186e5667))
+
+### 🐛 Bug Fixes
+- *(auth)* Preserve Plex sessions on HTTP - ([5f9c948](https://github.com/snapetech/seerrng/commit/5f9c948157fb5517106add6adcd26e62d3dd797b))
+- *(release)* Preserve tag history during preparation - ([84187f7](https://github.com/snapetech/seerrng/commit/84187f74bc4dbde31c9c5a0b3c9a1507d268e818))
+
+### 📖 Documentation
+- *(release)* Improve release note capture - ([fefc9da](https://github.com/snapetech/seerrng/commit/fefc9dac3b32a0bad07a2fd9d0cc7e2561d319c2))
+- *(release)* Audit historical release notes - ([fad41e4](https://github.com/snapetech/seerrng/commit/fad41e405162586dbf9eeb3cfc65d75ea503d752))
+- *(release)* Enforce meaningful release notes - ([a00c9f0](https://github.com/snapetech/seerrng/commit/a00c9f0dd2a2fcef8d57921a8767501181046b0b))
+
 ## [3.11.2](https://github.com/snapetech/seerrng/compare/v3.11.1...v3.11.2) - 2026-08-05
 
 ### Fixed
