@@ -61,12 +61,29 @@ const Login = ({ initialBackdrops }: { initialBackdrops?: string[] }) => {
           { signal: controller.signal }
         );
 
-        if (active && response.data?.id) {
-          void revalidate();
+        if (active) {
+          if (!response.data?.id) {
+            throw new Error('Unable to complete Plex sign-in.');
+          }
+
+          const authenticatedUser = await revalidate();
+          if (!authenticatedUser) {
+            throw new Error(
+              'Plex sign-in succeeded, but Seerr could not establish a browser session. Check that you are using the HTTPS URL or that direct HTTP session cookies are enabled.'
+            );
+          }
         }
       } catch (e) {
         if (active && !axios.isCancel(e)) {
-          setError(axios.isAxiosError(e) ? e.response?.data?.message : '');
+          const message = axios.isAxiosError(e)
+            ? e.response?.data?.message
+            : e instanceof Error
+              ? e.message
+              : undefined;
+          setError(message || 'Unable to complete Plex sign-in.');
+        }
+      } finally {
+        if (active) {
           setAuthToken(undefined);
           setProcessing(false);
         }

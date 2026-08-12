@@ -5,19 +5,14 @@ import { describe, it } from 'node:test';
 import request from 'supertest';
 import { getSessionTransportOptions } from './sessionCookie';
 
-const createApp = () => {
+const createApp = (development = false) => {
   const app = express();
   app.use(
     session({
       secret: '01234567890123456789012345678901',
       resave: false,
       saveUninitialized: false,
-      cookie: {
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: true,
-      },
-      proxy: true,
+      ...getSessionTransportOptions(development, true),
     })
   );
   app.get('/', (req, res) => {
@@ -28,14 +23,17 @@ const createApp = () => {
 };
 
 describe('getSessionTransportOptions', () => {
-  it('requires secure session cookies in every runtime', () => {
-    assert.equal(getSessionTransportOptions(false, true).cookie.secure, true);
-    assert.equal(getSessionTransportOptions(false, false).cookie.secure, true);
+  it('uses automatic transport-aware security for session cookies', () => {
+    assert.equal(getSessionTransportOptions(false, true).cookie.secure, 'auto');
+    assert.equal(
+      getSessionTransportOptions(false, false).cookie.secure,
+      'auto'
+    );
     assert.equal(getSessionTransportOptions(false, true).proxy, true);
   });
 
   it('keeps the remaining cookie protections in development and production', () => {
-    assert.equal(getSessionTransportOptions(true, true).cookie.secure, true);
+    assert.equal(getSessionTransportOptions(true, true).cookie.secure, 'auto');
     assert.equal(
       getSessionTransportOptions(true, true).cookie.sameSite,
       'strict'
@@ -52,7 +50,13 @@ describe('getSessionTransportOptions', () => {
     assert.equal(getSessionTransportOptions(true, true).proxy, false);
   });
 
-  it('emits a secure production cookie from a TLS terminator without global proxy trust', async () => {
+  it('matches the cookie security to the forwarded request transport', async () => {
+    const directResponse = await request(createApp()).get('/');
+    assert.doesNotMatch(
+      directResponse.get('Set-Cookie')?.[0] ?? '',
+      /; Secure(?:;|$)/
+    );
+
     const response = await request(createApp())
       .get('/')
       .set('X-Forwarded-Proto', 'https');

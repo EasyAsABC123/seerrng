@@ -321,11 +321,7 @@ app
         secret: settings.sessionSecret,
         resave: false,
         saveUninitialized: false,
-        cookie: {
-          ...sessionTransportOptions.cookie,
-          // Keep the clear-text transport guard explicit at the session sink.
-          secure: true,
-        },
+        cookie: sessionTransportOptions.cookie,
         proxy: sessionTransportOptions.proxy,
         ...(sessionStore ? { store: sessionStore } : {}),
       })
