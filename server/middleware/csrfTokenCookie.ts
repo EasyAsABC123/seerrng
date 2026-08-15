@@ -1,6 +1,8 @@
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler } from 'express';
 
-export const csrfTokenCookie = (secure: boolean): RequestHandler =>
+type SecureCookiePolicy = boolean | ((req: Request) => boolean);
+
+export const csrfTokenCookie = (secure: SecureCookiePolicy): RequestHandler =>
   function setCsrfTokenCookie(req, res, next) {
     // The browser client reads this cookie to populate X-XSRF-TOKEN. Without
     // an explicit root path, a token issued while rendering a nested page is
@@ -8,7 +10,7 @@ export const csrfTokenCookie = (secure: boolean): RequestHandler =>
     res.cookie('XSRF-TOKEN', req.csrfToken(), {
       path: '/',
       sameSite: true,
-      secure,
+      secure: typeof secure === 'function' ? secure(req) : secure,
     });
     next();
   };

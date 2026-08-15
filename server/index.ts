@@ -1,4 +1,3 @@
-import csurf from '@dr.pogodin/csurf';
 import PlexAPI from '@server/api/plexapi';
 import dataSource, {
   enforceSqliteDatabasePermissions,
@@ -34,6 +33,9 @@ import {
   normalizeApiErrorStatus,
 } from '@server/middleware/apiError';
 import clearCookies from '@server/middleware/clearcookies';
+import csrfProtection, {
+  requestUsesSecureTransport,
+} from '@server/middleware/csrfProtection';
 import csrfTokenCookie from '@server/middleware/csrfTokenCookie';
 import securityHeaders from '@server/middleware/securityHeaders';
 import routes from '@server/routes';
@@ -286,18 +288,8 @@ app
       })
     );
     if (settings.network.csrfProtection) {
-      server.use(
-        csurf({
-          cookie: {
-            httpOnly: true,
-            sameSite: true,
-            secure: true,
-            key: '_csrf',
-            path: '/',
-          },
-        })
-      );
-      server.use(csrfTokenCookie(true));
+      server.use(csrfProtection());
+      server.use(csrfTokenCookie(requestUsesSecureTransport));
     }
 
     // Set up sessions
