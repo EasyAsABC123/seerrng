@@ -11,6 +11,27 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.12.1](https://github.com/snapetech/seerrng/compare/v3.12.0..v3.12.1) - 2026-08-15
+
+### User-facing changes
+
+#### Fixed
+
+- **Release Pipeline:** Container builds now cache dependency installation separately from application source changes, reducing repeated native-module compilation for routine image builds.
+- **Authentication:** Plex sign-in now starts correctly on direct HTTP/LAN deployments while CSRF cookies remain restricted to secure transport on HTTPS deployments.
+
+### 🐛 Bug Fixes
+- *(auth)* Allow Plex login over direct HTTP - ([f20b28d](https://github.com/snapetech/seerrng/commit/f20b28da346bda64823aa8127e812811ab5c74ec))
+
+### ⚡ Performance
+- *(build)* Cache dependencies independently of source - ([ee096f4](https://github.com/snapetech/seerrng/commit/ee096f4937d2677db9b14b1de576ca393eb02b11))
+
+
+## New Contributors ❤️
+* @JohnCronk79 made their first contribution
+
 ## [3.12.0](https://github.com/snapetech/seerrng/compare/v3.11.2..v3.12.0) - 2026-08-12
 
 ### User-facing changes
