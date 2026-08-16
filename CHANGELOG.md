@@ -13,6 +13,19 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.12.2](https://github.com/snapetech/seerrng/compare/v3.12.1..v3.12.2) - 2026-08-16
+
+### User-facing changes
+
+#### Fixed
+
+- **Book Discovery:** Book discovery now shows available recommendations when Open Library is slow, so the Books tab no longer waits on the entire recommendation blend before displaying results.
+
+### 🐛 Bug Fixes
+- *(discover)* Keep book recommendations responsive - ([eec93ff](https://github.com/snapetech/seerrng/commit/eec93ffe47cc3ff9caf3d589f08bf0c4f3f47e96))
+
 ## [3.12.1](https://github.com/snapetech/seerrng/compare/v3.12.0..v3.12.1) - 2026-08-15
 
 ### User-facing changes
