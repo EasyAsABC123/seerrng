@@ -30,6 +30,7 @@ import discoverRoutes, {
   EXTERNAL_DISCOVER_RATE_LIMIT,
   GENRE_SLIDER_CONCURRENCY,
   MAX_GENRE_SLIDER_ITEMS,
+  settleBookDiscoverySearches,
 } from './discover';
 
 let app: Express;
@@ -2158,6 +2159,20 @@ describe('GET /discover/music', () => {
 });
 
 describe('GET /discover/books', () => {
+  it('keeps completed book subject results when another subject stalls', async () => {
+    const result = await settleBookDiscoverySearches(
+      [
+        Promise.resolve({ numFound: 1, start: 0, docs: [] }),
+        new Promise(() => {}),
+      ],
+      5
+    );
+
+    assert.strictEqual(result.timedOut, true);
+    assert.strictEqual(result.results.length, 1);
+    assert.strictEqual(result.results[0]?.status, 'fulfilled');
+  });
+
   it('rejects oversized book discovery queries before provider lookup', async () => {
     const searchBooks = mock.method(OpenLibraryAPI.prototype, 'searchBooks');
 
@@ -2386,8 +2401,8 @@ describe('GET /discover/books', () => {
     const res = await agent.get('/discover/books?sortBy=ranked');
 
     assert.strictEqual(res.status, 200);
-    assert.strictEqual(seenQueries.length, 12);
-    assert.strictEqual(new Set(seenQueries).size, 12);
+    assert.strictEqual(seenQueries.length, 5);
+    assert.strictEqual(new Set(seenQueries).size, 5);
     assert.strictEqual(
       seenQueries.every((query) => query.startsWith('subject:')),
       true

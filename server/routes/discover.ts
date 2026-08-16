@@ -607,6 +607,57 @@ const defaultBookDiscoverySubjects = [
   'poetry',
 ];
 
+const DEFAULT_BOOK_DISCOVERY_SUBJECT_LIMIT = 5;
+const BOOK_DISCOVERY_BLEND_TIMEOUT_MS = 5_000;
+
+type BookDiscoveryResponse = Awaited<ReturnType<OpenLibraryAPI['searchBooks']>>;
+
+export const settleBookDiscoverySearches = async (
+  searches: Promise<BookDiscoveryResponse>[],
+  timeoutMs: number
+): Promise<{
+  results: PromiseSettledResult<BookDiscoveryResponse>[];
+  timedOut: boolean;
+}> => {
+  const completed: PromiseSettledResult<BookDiscoveryResponse>[] = [];
+  const trackedSearches = searches.map(async (search) => {
+    try {
+      const result = {
+        status: 'fulfilled' as const,
+        value: await search,
+      };
+      completed.push(result);
+      return result;
+    } catch (reason) {
+      const result = {
+        status: 'rejected' as const,
+        reason,
+      };
+      completed.push(result);
+      return result;
+    }
+  });
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const timeout = new Promise<void>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, timeoutMs);
+  });
+
+  try {
+    await Promise.race([Promise.all(trackedSearches), timeout]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+
+  return { results: [...completed], timedOut };
+};
+
 const defaultMusicDiscoveryTags = [
   'pop',
   'rock',
@@ -2360,23 +2411,32 @@ discoverRoutes.get('/books', async (req, res) => {
     const shouldBlendDefaultSubjects =
       !hasSearchQuery && !hasSubjectFilter && sortByValue === 'ranked';
     const books = shouldBlendDefaultSubjects
-      ? await Promise.allSettled(
+      ? await settleBookDiscoverySearches(
           rotateItems(
             defaultBookDiscoverySubjects,
             getDailyRotationOffset(defaultBookDiscoverySubjects.length)
           )
-            .slice(0, 12)
+            .slice(0, DEFAULT_BOOK_DISCOVERY_SUBJECT_LIMIT)
             .map((defaultSubject) =>
               openLibrary.searchBooks({
                 query: `subject:${defaultSubject}`,
                 page,
                 limit: itemsPerPage,
               })
-            )
-        ).then((results) => {
+            ),
+          BOOK_DISCOVERY_BLEND_TIMEOUT_MS
+        ).then(({ results, timedOut }) => {
           const responses = results.flatMap((result) =>
             result.status === 'fulfilled' ? [result.value] : []
           );
+
+          if (timedOut) {
+            logger.warn('Book discovery blend timed out', {
+              label: 'Discover Books',
+              completedSubjects: responses.length,
+              requestQuery: getDiscoverLogQuery(req.query),
+            });
+          }
 
           if (!responses.length) {
             throw new Error('No book discovery subjects were available');
