@@ -23,6 +23,50 @@ export const mapWithConcurrency = async <Input, Output>(
   return results;
 };
 
+export const settlePromisesWithin = async <Result>(
+  promises: readonly Promise<Result>[],
+  timeoutMs: number
+): Promise<{
+  results: PromiseSettledResult<Result>[];
+  timedOut: boolean;
+}> => {
+  const completed = new Map<number, PromiseSettledResult<Result>>();
+  const trackedPromises = promises.map((promise, index) =>
+    promise.then(
+      (value) => {
+        completed.set(index, { status: 'fulfilled', value });
+      },
+      (reason: unknown) => {
+        completed.set(index, { status: 'rejected', reason });
+      }
+    )
+  );
+
+  let timedOut = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, timeoutMs);
+  });
+
+  try {
+    await Promise.race([Promise.all(trackedPromises), timeout]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+
+  return {
+    results: [...completed.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, result]) => result),
+    timedOut,
+  };
+};
+
 export class BoundedTaskQueueFullError extends Error {
   constructor() {
     super('Task queue capacity has been reached.');

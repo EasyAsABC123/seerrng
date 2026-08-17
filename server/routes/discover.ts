@@ -1,7 +1,9 @@
 import ListenBrainzAPI from '@server/api/listenbrainz';
 import type {
+  LbFreshReleasesResponse,
   LbRelease,
   LbReleaseGroup,
+  LbTopAlbumsResponse,
 } from '@server/api/listenbrainz/interfaces';
 import MusicBrainz from '@server/api/musicbrainz';
 import type { MbAlbumResult } from '@server/api/musicbrainz/interfaces';
@@ -60,7 +62,10 @@ import {
   mapTvResult,
 } from '@server/models/Search';
 import { mapNetwork } from '@server/models/Tv';
-import { mapWithConcurrency } from '@server/utils/concurrency';
+import {
+  mapWithConcurrency,
+  settlePromisesWithin,
+} from '@server/utils/concurrency';
 import { parsePositiveInt } from '@server/utils/pagination';
 import { parsePositiveRouteId } from '@server/utils/routeId';
 import { isCollection, isMovie, isPerson } from '@server/utils/typeHelpers';
@@ -609,54 +614,8 @@ const defaultBookDiscoverySubjects = [
 
 const DEFAULT_BOOK_DISCOVERY_SUBJECT_LIMIT = 5;
 const BOOK_DISCOVERY_BLEND_TIMEOUT_MS = 5_000;
-
-type BookDiscoveryResponse = Awaited<ReturnType<OpenLibraryAPI['searchBooks']>>;
-
-export const settleBookDiscoverySearches = async (
-  searches: Promise<BookDiscoveryResponse>[],
-  timeoutMs: number
-): Promise<{
-  results: PromiseSettledResult<BookDiscoveryResponse>[];
-  timedOut: boolean;
-}> => {
-  const completed: PromiseSettledResult<BookDiscoveryResponse>[] = [];
-  const trackedSearches = searches.map(async (search) => {
-    try {
-      const result = {
-        status: 'fulfilled' as const,
-        value: await search,
-      };
-      completed.push(result);
-      return result;
-    } catch (reason) {
-      const result = {
-        status: 'rejected' as const,
-        reason,
-      };
-      completed.push(result);
-      return result;
-    }
-  });
-
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
-  const timeout = new Promise<void>((resolve) => {
-    timeoutHandle = setTimeout(() => {
-      timedOut = true;
-      resolve();
-    }, timeoutMs);
-  });
-
-  try {
-    await Promise.race([Promise.all(trackedSearches), timeout]);
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
-
-  return { results: [...completed], timedOut };
-};
+const MUSIC_DISCOVERY_BLEND_TIMEOUT_MS = 5_000;
+const OPENLIBRARY_SINGLE_REQUEST_TIMEOUT_MS = 5_000;
 
 const defaultMusicDiscoveryTags = [
   'pop',
@@ -2059,27 +2018,46 @@ discoverRoutes.get('/music', async (req, res) => {
       !hasReleaseDateFilter &&
       !hasCustomDays
     ) {
-      const [topAlbumsResult, freshReleasesResult] = await Promise.allSettled([
-        listenBrainz.getTopAlbums({
-          range: 'week',
-          offset: providerWindow.offset,
-          count: providerWindow.limit,
-        }),
-        listenBrainz.getFreshReleases({
-          days,
-          sort: 'release_date',
-          offset: providerWindow.offset,
-          count: providerWindow.limit,
-        }),
-      ]);
+      const primaryResults = await settlePromisesWithin<
+        LbTopAlbumsResponse | LbFreshReleasesResponse
+      >(
+        [
+          listenBrainz.getTopAlbums({
+            range: 'week',
+            offset: providerWindow.offset,
+            count: providerWindow.limit,
+          }),
+          listenBrainz.getFreshReleases({
+            days,
+            sort: 'release_date',
+            offset: providerWindow.offset,
+            count: providerWindow.limit,
+          }),
+        ],
+        MUSIC_DISCOVERY_BLEND_TIMEOUT_MS
+      );
+      const topAlbumsResult = primaryResults.results[0] as
+        | PromiseSettledResult<LbTopAlbumsResponse>
+        | undefined;
+      const freshReleasesResult = primaryResults.results[1] as
+        | PromiseSettledResult<LbFreshReleasesResponse>
+        | undefined;
       const topAlbums =
-        topAlbumsResult.status === 'fulfilled'
+        topAlbumsResult?.status === 'fulfilled'
           ? topAlbumsResult.value.payload.release_groups
           : [];
       const freshReleases =
-        freshReleasesResult.status === 'fulfilled'
+        freshReleasesResult?.status === 'fulfilled'
           ? freshReleasesResult.value.payload.releases
           : [];
+
+      if (primaryResults.timedOut) {
+        logger.warn('Ranked music discovery blend timed out', {
+          label: 'Discover Music',
+          completedSources: primaryResults.results.length,
+          requestQuery: getDiscoverLogQuery(req.query),
+        });
+      }
 
       if (!topAlbums.length && !freshReleases.length) {
         logger.warn(
@@ -2093,7 +2071,7 @@ discoverRoutes.get('/music', async (req, res) => {
           defaultMusicDiscoveryTags,
           getDailyRotationOffset(defaultMusicDiscoveryTags.length)
         ).slice(0, 4);
-        const fallbackResults = await Promise.allSettled(
+        const fallbackResults = await settlePromisesWithin(
           fallbackTags.map((tag) =>
             musicBrainz.searchReleaseGroupsByTag({
               tags: [tag],
@@ -2101,11 +2079,19 @@ discoverRoutes.get('/music', async (req, res) => {
               limit: Math.ceil(providerWindow.limit / 2),
               offset: providerWindow.offset,
             })
-          )
+          ),
+          MUSIC_DISCOVERY_BLEND_TIMEOUT_MS
         );
+        if (fallbackResults.timedOut) {
+          logger.warn('Music discovery fallback timed out', {
+            label: 'Discover Music',
+            completedSources: fallbackResults.results.length,
+            requestQuery: getDiscoverLogQuery(req.query),
+          });
+        }
         const fallbackAlbumsById = new Map<string, MbAlbumResult>();
 
-        fallbackResults
+        fallbackResults.results
           .flatMap((result) =>
             result.status === 'fulfilled' ? result.value.releaseGroups : []
           )
@@ -2168,7 +2154,7 @@ discoverRoutes.get('/music', async (req, res) => {
         });
       }
 
-      if (topAlbumsResult.status === 'rejected') {
+      if (topAlbumsResult?.status === 'rejected') {
         logger.warn('Music chart discovery failed during ranked blend', {
           label: 'Discover Music',
           ...getErrorLogFields(topAlbumsResult.reason),
@@ -2176,7 +2162,7 @@ discoverRoutes.get('/music', async (req, res) => {
         });
       }
 
-      if (freshReleasesResult.status === 'rejected') {
+      if (freshReleasesResult?.status === 'rejected') {
         logger.warn('Fresh music discovery failed during ranked blend', {
           label: 'Discover Music',
           ...getErrorLogFields(freshReleasesResult.reason),
@@ -2411,7 +2397,7 @@ discoverRoutes.get('/books', async (req, res) => {
     const shouldBlendDefaultSubjects =
       !hasSearchQuery && !hasSubjectFilter && sortByValue === 'ranked';
     const books = shouldBlendDefaultSubjects
-      ? await settleBookDiscoverySearches(
+      ? await settlePromisesWithin(
           rotateItems(
             defaultBookDiscoverySubjects,
             getDailyRotationOffset(defaultBookDiscoverySubjects.length)
@@ -2442,7 +2428,9 @@ discoverRoutes.get('/books', async (req, res) => {
             throw new Error('No book discovery subjects were available');
           }
 
-          const rejectedCount = results.length - responses.length;
+          const rejectedCount = results.filter(
+            (result) => result.status === 'rejected'
+          ).length;
 
           if (rejectedCount > 0) {
             logger.warn('Some book discovery subjects failed during blend', {
@@ -2490,11 +2478,33 @@ discoverRoutes.get('/books', async (req, res) => {
             ),
           };
         })
-      : await openLibrary.searchBooks({
-          query,
-          page,
-          limit: itemsPerPage,
-          sort: openLibrarySort,
+      : await settlePromisesWithin(
+          [
+            openLibrary.searchBooks({
+              query,
+              page,
+              limit: itemsPerPage,
+              sort: openLibrarySort,
+            }),
+          ],
+          OPENLIBRARY_SINGLE_REQUEST_TIMEOUT_MS
+        ).then(({ results, timedOut }) => {
+          if (timedOut) {
+            logger.warn('Book discovery request timed out', {
+              label: 'Discover Books',
+              requestQuery: getDiscoverLogQuery(req.query),
+            });
+          }
+
+          const result = results[0];
+          if (!result) {
+            throw new Error('Open Library book discovery request timed out.');
+          }
+          if (result.status === 'rejected') {
+            throw result.reason;
+          }
+
+          return result.value;
         });
     const dedupedDocs = dedupeBookDocs(books.docs);
     const sortedDocs =

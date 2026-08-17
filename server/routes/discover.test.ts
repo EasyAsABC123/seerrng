@@ -20,6 +20,7 @@ import { Watchlist } from '@server/entity/Watchlist';
 import { getSettings } from '@server/lib/settings';
 import { checkUser } from '@server/middleware/auth';
 import { setupTestDb } from '@server/test/db';
+import { settlePromisesWithin } from '@server/utils/concurrency';
 import type { Express } from 'express';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -30,7 +31,6 @@ import discoverRoutes, {
   EXTERNAL_DISCOVER_RATE_LIMIT,
   GENRE_SLIDER_CONCURRENCY,
   MAX_GENRE_SLIDER_ITEMS,
-  settleBookDiscoverySearches,
 } from './discover';
 
 let app: Express;
@@ -1604,6 +1604,38 @@ describe('GET /discover/music', () => {
     );
   });
 
+  it('keeps ranked music results when another source stalls', async () => {
+    mock.method(ListenBrainzAPI.prototype, 'getTopAlbums', async () => ({
+      payload: {
+        count: 1,
+        release_groups: [
+          {
+            artist_mbids: ['artist-charted'],
+            artist_name: 'Charted Artist',
+            caa_release_mbid: 'release-charted',
+            listen_count: 5000,
+            release_group_mbid: 'album-charted',
+            release_group_name: 'Charted Album',
+          },
+        ],
+      },
+    }));
+    mock.method(
+      ListenBrainzAPI.prototype,
+      'getFreshReleases',
+      async () => new Promise(() => {})
+    );
+
+    const agent = await login();
+    const res = await agent.get('/discover/music?sortBy=ranked');
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(
+      res.body.results.map((result: { title: string }) => result.title),
+      ['Charted Album']
+    );
+  });
+
   it('skips ListenBrainz chart albums without release group ids', async () => {
     mock.method(ListenBrainzAPI.prototype, 'getTopAlbums', async () => ({
       payload: {
@@ -2160,7 +2192,7 @@ describe('GET /discover/music', () => {
 
 describe('GET /discover/books', () => {
   it('keeps completed book subject results when another subject stalls', async () => {
-    const result = await settleBookDiscoverySearches(
+    const result = await settlePromisesWithin(
       [
         Promise.resolve({ numFound: 1, start: 0, docs: [] }),
         new Promise(() => {}),
@@ -2599,6 +2631,23 @@ describe('GET /discover/books', () => {
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.page, 3);
+    assert.strictEqual(res.body.totalPages, 1);
+    assert.strictEqual(res.body.totalResults, 0);
+    assert.deepStrictEqual(res.body.results, []);
+  });
+
+  it('returns an empty result set when a single Open Library request stalls', async () => {
+    mock.method(
+      OpenLibraryAPI.prototype,
+      'searchBooks',
+      async () => new Promise(() => {})
+    );
+
+    const agent = await login();
+    const res = await agent.get('/discover/books?subject=fiction');
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.page, 1);
     assert.strictEqual(res.body.totalPages, 1);
     assert.strictEqual(res.body.totalResults, 0);
     assert.deepStrictEqual(res.body.results, []);

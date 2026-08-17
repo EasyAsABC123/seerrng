@@ -14,6 +14,7 @@ import {
   mapOpenLibraryAuthorWork,
   type AuthorDetails,
 } from '@server/models/Book';
+import { settlePromisesWithin } from '@server/utils/concurrency';
 import {
   MAX_PAGINATION_OFFSET,
   parseNonNegativeInt,
@@ -34,6 +35,7 @@ const authorRateLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
 });
+const OPENLIBRARY_AUTHOR_REQUEST_TIMEOUT_MS = 5_000;
 
 authorRoutes.use(authorRateLimit);
 
@@ -179,6 +181,22 @@ const getAuthorWorksPayload = async (
   };
 };
 
+type AuthorWorksPayload = Awaited<ReturnType<typeof getAuthorWorksPayload>>;
+type AuthorResponse = Awaited<ReturnType<OpenLibraryAPI['getAuthor']>>;
+
+const emptyAuthorWorksPayload = (
+  limit: number,
+  offset: number
+): AuthorWorksPayload => ({
+  works: [],
+  pagination: {
+    limit,
+    offset,
+    totalItems: 0,
+    nextOffset: offset,
+  },
+});
+
 authorRoutes.get<
   { id: string },
   AuthorDetails | { status: number; message: string }
@@ -198,10 +216,45 @@ authorRoutes.get<
   const openLibrary = new OpenLibraryAPI();
 
   try {
-    const [author, worksPayload] = await Promise.all([
-      openLibrary.getAuthor(authorId),
-      getAuthorWorksPayload(authorId, limit, offset, req.user),
-    ]);
+    const authorRequests = await settlePromisesWithin<
+      AuthorResponse | AuthorWorksPayload
+    >(
+      [
+        openLibrary.getAuthor(authorId),
+        getAuthorWorksPayload(authorId, limit, offset, req.user),
+      ],
+      OPENLIBRARY_AUTHOR_REQUEST_TIMEOUT_MS
+    );
+    const authorResult = authorRequests.results[0] as
+      | PromiseSettledResult<AuthorResponse>
+      | undefined;
+    const worksResult = authorRequests.results[1] as
+      | PromiseSettledResult<AuthorWorksPayload>
+      | undefined;
+
+    if (authorRequests.timedOut) {
+      logger.warn('Author details request timed out', {
+        label: 'Author',
+        authorId,
+        completedRequests: authorRequests.results.length,
+      });
+    }
+
+    if (!authorResult) {
+      throw new Error('Open Library author request timed out.');
+    }
+    if (authorResult.status === 'rejected') {
+      throw authorResult.reason;
+    }
+
+    let worksPayload = emptyAuthorWorksPayload(limit, offset);
+    if (worksResult?.status === 'fulfilled') {
+      worksPayload = worksResult.value;
+    } else if (worksResult?.status === 'rejected') {
+      throw worksResult.reason;
+    }
+
+    const author = authorResult.value;
     const biography =
       typeof author.bio === 'string' ? author.bio : author.bio?.value;
     const normalizedAuthorId = author.key.replace('/authors/', '');
@@ -250,10 +303,47 @@ authorRoutes.get<{ id: string }>('/:id/works', async (req, res, next) => {
   );
 
   try {
-    const [author, worksPayload] = await Promise.all([
-      new OpenLibraryAPI().getAuthor(authorId).catch(() => undefined),
-      getAuthorWorksPayload(authorId, limit, offset, req.user),
-    ]);
+    const authorRequests = await settlePromisesWithin<
+      AuthorResponse | AuthorWorksPayload | undefined
+    >(
+      [
+        new OpenLibraryAPI().getAuthor(authorId).catch(() => undefined),
+        getAuthorWorksPayload(authorId, limit, offset, req.user),
+      ],
+      OPENLIBRARY_AUTHOR_REQUEST_TIMEOUT_MS
+    );
+    const authorResult = authorRequests.results[0] as
+      | PromiseSettledResult<AuthorResponse | undefined>
+      | undefined;
+    const worksResult = authorRequests.results[1] as
+      | PromiseSettledResult<AuthorWorksPayload>
+      | undefined;
+
+    if (authorRequests.timedOut) {
+      logger.warn('Author works request timed out', {
+        label: 'Author',
+        authorId,
+        completedRequests: authorRequests.results.length,
+      });
+    }
+
+    const author =
+      authorResult?.status === 'fulfilled' ? authorResult.value : undefined;
+    if (!worksResult) {
+      const worksPayload = emptyAuthorWorksPayload(limit, offset);
+      return res.status(200).json({
+        ...worksPayload,
+        works: worksPayload.works.map((work) => ({
+          ...work,
+          author: author?.name,
+          authorId: authorId.replace(/^\/?authors\//, ''),
+        })),
+      });
+    }
+    if (worksResult.status === 'rejected') {
+      throw worksResult.reason;
+    }
+    const worksPayload = worksResult.value;
 
     return res.status(200).json({
       ...worksPayload,

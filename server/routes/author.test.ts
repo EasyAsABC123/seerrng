@@ -260,6 +260,30 @@ describe('GET /author/:id/works', () => {
     assert.strictEqual(res.body.works[0].author, 'Test Author');
   });
 
+  it('returns an empty bibliography when Open Library works stalls', async () => {
+    mock.method(OpenLibraryAPI.prototype, 'getAuthor', async () => ({
+      key: '/authors/OL1A',
+      name: 'Test Author',
+    }));
+    mock.method(
+      OpenLibraryAPI.prototype,
+      'getAuthorWorks',
+      async () => new Promise(() => {})
+    );
+
+    const agent = await login();
+    const res = await agent.get('/author/OL1A/works');
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(res.body.works, []);
+    assert.deepStrictEqual(res.body.pagination, {
+      limit: 20,
+      offset: 0,
+      totalItems: 0,
+      nextOffset: 0,
+    });
+  });
+
   it('caps provider offsets before fetching author works', async () => {
     mock.method(OpenLibraryAPI.prototype, 'getAuthor', async () => ({
       key: '/authors/OL1A',

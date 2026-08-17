@@ -5,6 +5,7 @@ import {
   BoundedTaskQueue,
   BoundedTaskQueueFullError,
   mapWithConcurrency,
+  settlePromisesWithin,
 } from './concurrency';
 
 describe('mapWithConcurrency', () => {
@@ -38,6 +39,34 @@ describe('mapWithConcurrency', () => {
       mapWithConcurrency([], 0, async () => undefined),
       /positive integer/
     );
+  });
+});
+
+describe('settlePromisesWithin', () => {
+  it('returns completed results when another promise exceeds the deadline', async () => {
+    const result = await settlePromisesWithin(
+      [Promise.resolve('available'), new Promise<string>(() => {})],
+      5
+    );
+
+    assert.strictEqual(result.timedOut, true);
+    assert.deepStrictEqual(result.results, [
+      { status: 'fulfilled', value: 'available' },
+    ]);
+  });
+
+  it('preserves rejection results when all promises settle before the deadline', async () => {
+    const result = await settlePromisesWithin(
+      [
+        Promise.resolve('available'),
+        Promise.reject(new Error('provider unavailable')),
+      ],
+      100
+    );
+
+    assert.strictEqual(result.timedOut, false);
+    assert.strictEqual(result.results[0]?.status, 'fulfilled');
+    assert.strictEqual(result.results[1]?.status, 'rejected');
   });
 });
 
