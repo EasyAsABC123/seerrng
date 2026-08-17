@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { isAuthenticationError } from './utils/auth';
 import { getInternalApiBaseUrl } from './utils/internalApi';
 import {
   isLoginPath,
@@ -59,9 +60,17 @@ export async function proxy(req: NextRequest) {
       ...internalApiFetchOptions(),
       headers: cookie ? { cookie } : undefined,
     });
-    authed = res.ok;
+    if (res.ok) {
+      authed = true;
+    } else if (!isAuthenticationError({ status: res.status })) {
+      // A backend failure is not proof that the user's session is invalid.
+      // Keep the page request alive so the client can retry instead of
+      // turning a transient outage into a forced login.
+      return NextResponse.next();
+    }
   } catch {
-    authed = false;
+    // A timeout or connection failure is not an authentication decision.
+    return NextResponse.next();
   }
 
   if (authed) {

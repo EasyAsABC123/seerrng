@@ -1,5 +1,6 @@
 import type { User } from '@app/hooks/useUser';
 import { useUser } from '@app/hooks/useUser';
+import { isAuthenticationError } from '@app/utils/auth';
 import { isPublicAuthPath } from '@app/utils/routeAccess';
 import { useRouter } from 'next/dist/client/router';
 import { useEffect, useRef } from 'react';
@@ -15,7 +16,7 @@ interface UserContextProps {
  * the login page if their session ever becomes invalid.
  */
 export const UserContext = ({ initialUser, children }: UserContextProps) => {
-  const { user, loading, error, revalidate } = useUser({
+  const { loading, error, revalidate } = useUser({
     initialData: initialUser,
   });
   const router = useRouter();
@@ -35,13 +36,13 @@ export const UserContext = ({ initialUser, children }: UserContextProps) => {
     if (
       !isPublicAuthPath(router.pathname) &&
       !loading &&
-      (!user || error) &&
+      isAuthenticationError(error) &&
       !routing.current
     ) {
       routing.current = true;
       location.href = '/login';
     }
-  }, [router, user, loading, error]);
+  }, [router, loading, error]);
 
   return <>{children}</>;
 };

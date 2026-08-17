@@ -6,6 +6,7 @@ import TheMovieDb from '@server/api/themoviedb';
 import TmdbPersonMapper from '@server/api/themoviedb/personMapper';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
+import MetadataAlbum from '@server/entity/MetadataAlbum';
 import MetadataArtist from '@server/entity/MetadataArtist';
 import {
   findBookMediaForBookResults,
@@ -23,6 +24,8 @@ import {
 import logger from '@server/logger';
 import { mapOpenLibrarySearchDoc } from '@server/models/Book';
 import { mapSearchResults } from '@server/models/Search';
+import { trackBackgroundTask } from '@server/utils/backgroundTasks';
+import { settlePromisesWithin } from '@server/utils/concurrency';
 import { parsePositiveInt } from '@server/utils/pagination';
 import {
   parseBoundedString,
@@ -41,6 +44,7 @@ export const SEARCH_RATE_LIMIT = {
 } as const;
 export const MAX_SEARCH_RESULTS_PER_PROVIDER = 20;
 export const MAX_COMBINED_SEARCH_RESULTS = 100;
+export const SEARCH_PROVIDER_TIMEOUT_MS = 5_000;
 const searchRateLimit = rateLimit({
   ...SEARCH_RATE_LIMIT,
   standardHeaders: true,
@@ -198,39 +202,110 @@ searchRoutes.get('/', async (req, res, next) => {
       const personMapper = new TmdbPersonMapper();
       const musicOffset = (page - 1) * 20;
 
-      const responses = await Promise.allSettled([
-        tmdb.searchMulti({
-          query: queryString,
-          page,
-          language,
-        }),
-        musicEnabled
+      const shouldSearchVideo =
+        !typeFilter ||
+        typeFilter === 'movie' ||
+        typeFilter === 'tv' ||
+        typeFilter === 'person';
+      const shouldSearchMusic =
+        !typeFilter || typeFilter === 'album' || typeFilter === 'artist';
+      const shouldSearchBooks = !typeFilter || typeFilter === 'book';
+      const providerPromises: Promise<unknown>[] = [
+        shouldSearchVideo
+          ? tmdb.searchMulti({
+              query: queryString,
+              page,
+              language,
+            })
+          : Promise.resolve({
+              page,
+              results: [],
+              total_pages: 1,
+              total_results: 0,
+            }),
+        shouldSearchMusic && musicEnabled
           ? musicbrainz.searchAlbum({
               query: queryString,
               limit: 20,
               offset: musicOffset,
             })
           : Promise.resolve([]),
-        musicEnabled
+        shouldSearchMusic && musicEnabled
           ? musicbrainz.searchArtist({
               query: queryString,
               limit: 20,
               offset: musicOffset,
             })
           : Promise.resolve([]),
-        booksEnabled
+        shouldSearchBooks && booksEnabled
           ? openLibrary.searchBooks({
               query: queryString,
               page,
               limit: 20,
             })
           : Promise.resolve({ numFound: 0, start: 0, docs: [] }),
-      ]);
+      ];
+      type SearchProviderResult = {
+        index: number;
+        result: PromiseSettledResult<unknown>;
+      };
+      type TmdbSearchResults = Awaited<ReturnType<TheMovieDb['searchMulti']>>;
+      type AlbumSearchResults = Awaited<ReturnType<MusicBrainz['searchAlbum']>>;
+      type ArtistSearchResults = Awaited<
+        ReturnType<MusicBrainz['searchArtist']>
+      >;
+      type BookSearchResults = Awaited<
+        ReturnType<OpenLibraryAPI['searchBooks']>
+      >;
 
-      const rawTmdbResults =
-        responses[0].status === 'fulfilled'
-          ? responses[0].value
-          : { page: 1, results: [], total_pages: 1, total_results: 0 };
+      const providerResponses =
+        await settlePromisesWithin<SearchProviderResult>(
+          providerPromises.map((promise, index) =>
+            promise.then(
+              (value): SearchProviderResult => ({
+                index,
+                result: { status: 'fulfilled', value },
+              }),
+              (reason): SearchProviderResult => ({
+                index,
+                result: { status: 'rejected', reason },
+              })
+            )
+          ),
+          SEARCH_PROVIDER_TIMEOUT_MS
+        );
+      const providerResults = new Map(
+        providerResponses.results
+          .filter(
+            (
+              response
+            ): response is PromiseFulfilledResult<SearchProviderResult> =>
+              response.status === 'fulfilled'
+          )
+          .map(({ value }) => [value.index, value.result])
+      );
+      const getProviderValue = <T>(index: number, fallback: T): T => {
+        const response = providerResults.get(index);
+        return response?.status === 'fulfilled'
+          ? (response.value as T)
+          : fallback;
+      };
+
+      if (providerResponses.timedOut) {
+        logger.debug('Global search provider deadline exceeded', {
+          label: 'API',
+          query: queryString,
+          timeoutMs: SEARCH_PROVIDER_TIMEOUT_MS,
+          completedProviders: providerResults.size,
+        });
+      }
+
+      const rawTmdbResults = getProviderValue<TmdbSearchResults>(0, {
+        page,
+        results: [],
+        total_pages: 1,
+        total_results: 0,
+      });
       const tmdbResults = {
         ...rawTmdbResults,
         results: rawTmdbResults.results.slice(
@@ -238,21 +313,22 @@ searchRoutes.get('/', async (req, res, next) => {
           MAX_SEARCH_RESULTS_PER_PROVIDER
         ),
       };
-      const albumResults =
-        responses[1].status === 'fulfilled'
-          ? responses[1].value.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER)
-          : [];
-      const artistResults =
-        responses[2].status === 'fulfilled'
-          ? responses[2].value.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER)
-          : [];
-      const rawBookResults =
-        responses[3].status === 'fulfilled'
-          ? responses[3].value
-          : { numFound: 0, start: 0, docs: [] };
+      const albumResults = capSearchProviderResults<AlbumSearchResults[number]>(
+        getProviderValue<AlbumSearchResults>(1, [])
+      );
+      const artistResults = capSearchProviderResults<
+        ArtistSearchResults[number]
+      >(getProviderValue<ArtistSearchResults>(2, []));
+      const rawBookResults = getProviderValue<BookSearchResults>(3, {
+        numFound: 0,
+        start: 0,
+        docs: [],
+      });
       const bookResults = {
         ...rawBookResults,
-        docs: rawBookResults.docs.slice(0, MAX_SEARCH_RESULTS_PER_PROVIDER),
+        docs: capSearchProviderResults<BookSearchResults['docs'][number]>(
+          rawBookResults.docs
+        ),
       };
 
       const personIds = tmdbResults.results
@@ -274,35 +350,41 @@ searchRoutes.get('/', async (req, res, next) => {
         .filter((result) => result.media_type === 'person')
         .map((person) => person.id.toString());
 
-      const [
-        artistMetadata,
-        coverArtByAlbumId,
-        artistsMetadata,
-        existingMappings,
-      ] = await Promise.all([
-        personIds.length > 0
-          ? getRepository(MetadataArtist).find({
-              where: { tmdbPersonId: In(personIds) },
-              cache: true,
-              select: ['tmdbPersonId', 'tadbThumb', 'tadbCover'],
-            })
-          : [],
-        coverArtArchive.batchGetCoverArt(albumIds),
-        artistIds.length > 0
-          ? getRepository(MetadataArtist).find({
-              where: { mbArtistId: In(artistIds) },
-              cache: true,
-              select: ['mbArtistId', 'tmdbPersonId', 'tadbThumb', 'tadbCover'],
-            })
-          : [],
-        tmdbPersonIds.length > 0
-          ? getRepository(MetadataArtist).find({
-              where: { tmdbPersonId: In(tmdbPersonIds) },
-              cache: true,
-              select: ['mbArtistId', 'tmdbPersonId'],
-            })
-          : [],
-      ]);
+      const [artistMetadata, albumMetadata, artistsMetadata, existingMappings] =
+        await Promise.all([
+          personIds.length > 0
+            ? getRepository(MetadataArtist).find({
+                where: { tmdbPersonId: In(personIds) },
+                cache: true,
+                select: ['tmdbPersonId', 'tadbThumb', 'tadbCover'],
+              })
+            : [],
+          albumIds.length > 0
+            ? getRepository(MetadataAlbum).find({
+                where: { mbAlbumId: In(albumIds) },
+                select: ['mbAlbumId', 'caaUrl'],
+              })
+            : [],
+          artistIds.length > 0
+            ? getRepository(MetadataArtist).find({
+                where: { mbArtistId: In(artistIds) },
+                cache: true,
+                select: [
+                  'mbArtistId',
+                  'tmdbPersonId',
+                  'tadbThumb',
+                  'tadbCover',
+                ],
+              })
+            : [],
+          tmdbPersonIds.length > 0
+            ? getRepository(MetadataArtist).find({
+                where: { tmdbPersonId: In(tmdbPersonIds) },
+                cache: true,
+                select: ['mbArtistId', 'tmdbPersonId'],
+              })
+            : [],
+        ]);
 
       const artistMetadataMap = new Map(
         artistMetadata.map((m) => [m.tmdbPersonId, m])
@@ -316,6 +398,13 @@ searchRoutes.get('/', async (req, res, next) => {
         existingMappings.map((m) => [
           normalizeMusicBrainzId(m.mbArtistId),
           m.tmdbPersonId,
+        ])
+      );
+
+      const coverArtByAlbumId = Object.fromEntries(
+        albumMetadata.map((metadata) => [
+          normalizeMusicBrainzId(metadata.mbAlbumId),
+          metadata.caaUrl,
         ])
       );
 
@@ -350,52 +439,24 @@ searchRoutes.get('/', async (req, res, next) => {
         return !metadata?.tadbThumb && !metadata?.tadbCover;
       });
 
-      type PersonMappingResult = Record<
-        string,
-        { personId: number | null; profilePath: string | null }
-      >;
-      type ArtistImageResult = Record<
-        string,
-        { artistThumb: string | null; artistBackground: string | null }
-      >;
-
-      const externalApiResponses = await Promise.allSettled([
-        artistsNeedingMapping.length > 0
-          ? personMapper.batchGetMappings(artistsNeedingMapping)
-          : ({} as PersonMappingResult),
-        artistsNeedingImages.length > 0
-          ? theAudioDb.batchGetArtistImages(artistsNeedingImages)
-          : ({} as ArtistImageResult),
-      ]);
-
-      const personMappingResults =
-        externalApiResponses[0].status === 'fulfilled'
-          ? externalApiResponses[0].value
-          : ({} as PersonMappingResult);
-      const artistImageResults =
-        externalApiResponses[1].status === 'fulfilled'
-          ? externalApiResponses[1].value
-          : ({} as ArtistImageResult);
-
-      let updatedArtistsMetadataMap = artistsMetadataMap;
       if (
-        (artistsNeedingMapping.length > 0 || artistsNeedingImages.length > 0) &&
-        artistIds.length > 0
+        albumIds.length > 0 ||
+        artistsNeedingMapping.length > 0 ||
+        artistsNeedingImages.length > 0
       ) {
-        const updatedArtistsMetadata = await getRepository(MetadataArtist).find(
-          {
-            where: { mbArtistId: In(artistIds) },
-            cache: true,
-            select: ['mbArtistId', 'tmdbPersonId', 'tadbThumb', 'tadbCover'],
-          }
-        );
-
-        updatedArtistsMetadataMap = new Map(
-          updatedArtistsMetadata.map((m) => [
-            normalizeMusicBrainzId(m.mbArtistId),
-            m,
-          ])
-        );
+        trackBackgroundTask('search metadata enrichment', async () => {
+          await Promise.allSettled([
+            albumIds.length > 0
+              ? coverArtArchive.batchGetCoverArt(albumIds)
+              : Promise.resolve(),
+            artistsNeedingMapping.length > 0
+              ? personMapper.batchGetMappings(artistsNeedingMapping)
+              : Promise.resolve(),
+            artistsNeedingImages.length > 0
+              ? theAudioDb.batchGetArtistImages(artistsNeedingImages)
+              : Promise.resolve(),
+          ]);
+        });
       }
 
       const albumsWithArt = dedupedAlbumResults.map((album) => {
@@ -414,23 +475,16 @@ searchRoutes.get('/', async (req, res, next) => {
       const artistsWithArt = artistResults
         .map((artist) => {
           const artistId = normalizeMusicBrainzId(artist.id);
-          const metadata = updatedArtistsMetadataMap.get(artistId);
-          const personMapping = personMappingResults[artistId];
-          const hasTmdbPersonId =
-            !!metadata?.tmdbPersonId ||
-            (personMapping ? personMapping.personId !== null : false);
+          const metadata = artistsMetadataMap.get(artistId);
+          const hasTmdbPersonId = !!metadata?.tmdbPersonId;
 
           if (artist.type === 'Person' && hasTmdbPersonId) {
             return null;
           }
 
-          const artistThumb =
-            metadata?.tadbThumb ||
-            (artistImageResults[artistId]?.artistThumb ?? null);
+          const artistThumb = metadata?.tadbThumb ?? null;
 
-          const artistBackdrop =
-            metadata?.tadbCover ||
-            (artistImageResults[artistId]?.artistBackground ?? null);
+          const artistBackdrop = metadata?.tadbCover ?? null;
 
           return {
             ...artist,

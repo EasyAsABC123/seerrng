@@ -21,6 +21,7 @@ import {
 } from '@server/lib/settings';
 import { checkUser } from '@server/middleware/auth';
 import { setupTestDb } from '@server/test/db';
+import { waitForBackgroundTasks } from '@server/utils/backgroundTasks';
 import type { Express } from 'express';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -30,6 +31,7 @@ import authRoutes from './auth';
 import searchRoutes, {
   MAX_COMBINED_SEARCH_RESULTS,
   MAX_SEARCH_RESULTS_PER_PROVIDER,
+  SEARCH_PROVIDER_TIMEOUT_MS,
   SEARCH_RATE_LIMIT,
   capSearchProviderResults,
 } from './search';
@@ -101,7 +103,8 @@ beforeEach(() => {
   getSettings().readarr = [{} as ReadarrSettings];
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await waitForBackgroundTasks();
   mock.restoreAll();
   getSettings().lidarr = [];
   getSettings().readarr = [];
@@ -366,6 +369,62 @@ describe('GET /search', () => {
     assert.equal(book.isbn13, '9780000000002');
     assert.equal(book.mediaInfo.id, bookMedia.id);
     assert.equal(book.mediaInfo.status, MediaStatus.AVAILABLE);
+  });
+
+  it('returns completed provider results when another provider exceeds the deadline', async () => {
+    let delayedSearchTimer: ReturnType<typeof setTimeout> | undefined;
+    const delayedAlbumSearch = new Promise<never[]>((resolve) => {
+      delayedSearchTimer = setTimeout(
+        () => resolve([]),
+        SEARCH_PROVIDER_TIMEOUT_MS + 3_000
+      );
+    });
+
+    mock.method(MusicBrainz.prototype, 'searchAlbum', () => delayedAlbumSearch);
+    mock.method(MusicBrainz.prototype, 'searchArtist', async () => [
+      {
+        id: 'resident-alien-artist',
+        media_type: 'artist',
+        name: 'Resident Alien Artist',
+        type: 'Group',
+        'sort-name': 'Artist, Resident Alien',
+        score: 90,
+      },
+    ]);
+    mockPrivate(ExternalAPI.prototype, 'get', async (endpoint) => {
+      const endpointString = endpoint as string;
+      if (endpointString === '/search/multi') {
+        return { page: 1, total_pages: 1, total_results: 0, results: [] };
+      }
+      if (endpointString === '/search.json') {
+        return { numFound: 0, start: 0, docs: [] };
+      }
+      throw new Error(`Unexpected endpoint: ${endpointString}`);
+    });
+    mock.method(
+      TmdbPersonMapper.prototype,
+      'batchGetMappings',
+      async () => ({})
+    );
+    mock.method(TheAudioDb.prototype, 'batchGetArtistImages', async () => ({}));
+
+    try {
+      const startedAt = Date.now();
+      const agent = await loginAs('friend@seerr.dev', 'test1234');
+      const res = await agent.get('/search').query({ query: 'resident alien' });
+      const elapsedMs = Date.now() - startedAt;
+
+      assert.strictEqual(res.status, 200);
+      assert.equal(res.body.results[0].name, 'Resident Alien Artist');
+      assert.ok(
+        elapsedMs < SEARCH_PROVIDER_TIMEOUT_MS + 1_000,
+        `search took ${elapsedMs}ms despite the provider deadline`
+      );
+    } finally {
+      if (delayedSearchTimer) {
+        clearTimeout(delayedSearchTimer);
+      }
+    }
   });
 
   it('keeps global book and music search active after the first page', async () => {

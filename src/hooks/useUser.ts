@@ -1,3 +1,4 @@
+import { isAuthenticationError } from '@app/utils/auth';
 import { UserType } from '@server/constants/user';
 import type {
   CardTextVisibility,
@@ -83,8 +84,9 @@ export const useUser = ({
     revalidateOnFocus: false,
     revalidateOnMount: !initialData && !isAuthPage,
     revalidateOnReconnect: !isAuthPage,
-    errorRetryInterval: 60000,
-    shouldRetryOnError: false,
+    errorRetryCount: 3,
+    errorRetryInterval: 5000,
+    shouldRetryOnError: (error) => !isAuthPage && !isAuthenticationError(error),
   });
 
   const checkPermission = (
