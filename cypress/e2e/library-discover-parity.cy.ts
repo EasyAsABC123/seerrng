@@ -508,52 +508,60 @@ describe('Books and Music discover parity', () => {
         serviceType: 'audiobook',
       },
     });
+    const bulkAuthorWorks = [
+      {
+        id: 'OLBULK1W',
+        mediaType: 'book',
+        title: 'Requestable Work',
+        author: 'Bulk Author',
+        authorId: 'OLBULKA',
+        firstPublishYear: 2020,
+        posterPath: 'https://covers.openlibrary.org/b/id/12-L.jpg',
+        isbn13: '9780000000012',
+      },
+      {
+        id: 'OLBULK2W',
+        mediaType: 'book',
+        title: 'Already Requested Work',
+        author: 'Bulk Author',
+        authorId: 'OLBULKA',
+        firstPublishYear: 2021,
+        mediaInfo: {
+          id: 1202,
+          status: 2,
+          requests: [{ id: 1, status: 1, bookFormat: 'ebook' }],
+          watchlists: [],
+          downloadStatus: [],
+          audiobookDownloadStatus: [],
+        },
+      },
+      {
+        id: 'OLBULK3W',
+        mediaType: 'book',
+        title: 'Second Requestable Work',
+        author: 'Bulk Author',
+        authorId: 'OLBULKA',
+        firstPublishYear: 2022,
+      },
+    ];
+    const bulkAuthorPagination = {
+      limit: 20,
+      offset: 0,
+      totalItems: 3,
+      nextOffset: 3,
+    };
+
     cy.intercept('GET', '/api/v1/author/OLBULKA', {
       id: 'OLBULKA',
       name: 'Bulk Author',
       biography: 'Author biography',
-      works: [
-        {
-          id: 'OLBULK1W',
-          mediaType: 'book',
-          title: 'Requestable Work',
-          author: 'Bulk Author',
-          authorId: 'OLBULKA',
-          firstPublishYear: 2020,
-          posterPath: 'https://covers.openlibrary.org/b/id/12-L.jpg',
-          isbn13: '9780000000012',
-        },
-        {
-          id: 'OLBULK2W',
-          mediaType: 'book',
-          title: 'Already Requested Work',
-          author: 'Bulk Author',
-          authorId: 'OLBULKA',
-          firstPublishYear: 2021,
-          mediaInfo: {
-            id: 1202,
-            status: 2,
-            requests: [{ id: 1, status: 1, bookFormat: 'ebook' }],
-            watchlists: [],
-            downloadStatus: [],
-            audiobookDownloadStatus: [],
-          },
-        },
-        {
-          id: 'OLBULK3W',
-          mediaType: 'book',
-          title: 'Second Requestable Work',
-          author: 'Bulk Author',
-          authorId: 'OLBULKA',
-          firstPublishYear: 2022,
-        },
-      ],
-      pagination: {
-        limit: 20,
-        offset: 0,
-        totalItems: 3,
-      },
+      works: bulkAuthorWorks,
+      pagination: bulkAuthorPagination,
     }).as('getBulkAuthor');
+    cy.intercept('GET', '/api/v1/author/OLBULKA/works*', {
+      works: bulkAuthorWorks,
+      pagination: bulkAuthorPagination,
+    }).as('getBulkAuthorWorks');
     cy.intercept('POST', '/api/v1/request/bulk', {
       statusCode: 207,
       body: {
