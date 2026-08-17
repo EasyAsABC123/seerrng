@@ -17,6 +17,19 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.12.4](https://github.com/snapetech/seerrng/compare/v3.12.3..v3.12.4) - 2026-08-17
+
+### User-facing changes
+
+#### Fixed
+
+- **Search Reliability:** Temporary backend or proxy errors no longer send users back to the login page, and global searches return available results without waiting for uncached artwork and artist metadata.
+
+### 🐛 Bug Fixes
+- *(auth)* Prevent false logout and bound search latency - ([2a304bb](https://github.com/snapetech/seerrng/commit/2a304bb082cc69c5e828656fb7c0407f40acb54d))
+
 ## [3.12.3](https://github.com/snapetech/seerrng/compare/v3.12.2..v3.12.3) - 2026-08-17
 
 ### User-facing changes
