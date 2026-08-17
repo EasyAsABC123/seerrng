@@ -15,6 +15,22 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.12.3](https://github.com/snapetech/seerrng/compare/v3.12.2..v3.12.3) - 2026-08-17
+
+### User-facing changes
+
+#### Fixed
+
+- **Discovery:** Book and music discovery now keeps available results when an upstream provider is slow, and author bibliographies fail fast instead of waiting for a stalled Open Library request.
+
+### 🐛 Bug Fixes
+- *(discover)* Bound slow provider responses - ([2b6969c](https://github.com/snapetech/seerrng/commit/2b6969c87f9e037a27195c64c09edfe7066595a5))
+
+### 🧪 Testing
+- *(discover)* Mock author bibliography pagination - ([8388177](https://github.com/snapetech/seerrng/commit/83881778d4145b99ccee2e32b75bce7208178572))
+
 ## [3.12.2](https://github.com/snapetech/seerrng/compare/v3.12.1..v3.12.2) - 2026-08-16
 
 ### User-facing changes
