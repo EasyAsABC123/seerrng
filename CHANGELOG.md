@@ -19,6 +19,22 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.12.5](https://github.com/snapetech/seerrng/compare/v3.12.4..v3.12.5) - 2026-08-18
+
+### User-facing changes
+
+#### Fixed
+
+- **Discovery:** Book discovery and author bibliography pages no longer fail outright when Open Library responds slowly; the internal timeout that guards those requests now allows as long as the request itself is permitted to take.
+
+### 🐛 Bug Fixes
+- *(discover)* Stop book/author timeouts from cutting off good responses - ([ef8a558](https://github.com/snapetech/seerrng/commit/ef8a558565e86177bc94a1058c6846bdc04bda2e))
+
+### 📖 Documentation
+- *(release-notes)* Add fragment for book discovery timeout fix - ([c806bf4](https://github.com/snapetech/seerrng/commit/c806bf4f5637a78a91a2f03a64a2083923012d6b))
+
 ## [3.12.4](https://github.com/snapetech/seerrng/compare/v3.12.3..v3.12.4) - 2026-08-17
 
 ### User-facing changes
