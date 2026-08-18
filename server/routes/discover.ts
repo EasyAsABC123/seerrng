@@ -1,3 +1,4 @@
+import { DEFAULT_EXTERNAL_API_TIMEOUT_MS } from '@server/api/externalapi';
 import ListenBrainzAPI from '@server/api/listenbrainz';
 import type {
   LbFreshReleasesResponse,
@@ -613,9 +614,15 @@ const defaultBookDiscoverySubjects = [
 ];
 
 const DEFAULT_BOOK_DISCOVERY_SUBJECT_LIMIT = 5;
-const BOOK_DISCOVERY_BLEND_TIMEOUT_MS = 5_000;
+// Open Library requests can legitimately take up to
+// DEFAULT_EXTERNAL_API_TIMEOUT_MS to complete. These race timeouts must stay
+// above that, or they cut off in-flight requests before the HTTP client
+// itself would give up, turning a slow-but-working provider into a hard
+// failure (see: books discovery going empty under provider latency).
+const BOOK_DISCOVERY_BLEND_TIMEOUT_MS = DEFAULT_EXTERNAL_API_TIMEOUT_MS + 2_000;
 const MUSIC_DISCOVERY_BLEND_TIMEOUT_MS = 5_000;
-const OPENLIBRARY_SINGLE_REQUEST_TIMEOUT_MS = 5_000;
+const OPENLIBRARY_SINGLE_REQUEST_TIMEOUT_MS =
+  DEFAULT_EXTERNAL_API_TIMEOUT_MS + 2_000;
 
 const defaultMusicDiscoveryTags = [
   'pop',

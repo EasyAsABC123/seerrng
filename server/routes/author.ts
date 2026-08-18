@@ -1,3 +1,4 @@
+import { DEFAULT_EXTERNAL_API_TIMEOUT_MS } from '@server/api/externalapi';
 import OpenLibraryAPI, {
   type OpenLibraryAuthorWork,
 } from '@server/api/openlibrary';
@@ -35,7 +36,11 @@ const authorRateLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,
 });
-const OPENLIBRARY_AUTHOR_REQUEST_TIMEOUT_MS = 5_000;
+// Must stay above DEFAULT_EXTERNAL_API_TIMEOUT_MS, the underlying HTTP
+// client's own timeout for Open Library requests — otherwise this race
+// cuts off in-flight requests before the client itself would give up.
+const OPENLIBRARY_AUTHOR_REQUEST_TIMEOUT_MS =
+  DEFAULT_EXTERNAL_API_TIMEOUT_MS + 2_000;
 
 authorRoutes.use(authorRateLimit);
 
