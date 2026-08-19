@@ -47,7 +47,7 @@ CSRF stands for [cross-site request forgery](https://en.wikipedia.org/wiki/Cross
 
 If you do not use Seerr integrations with third-party applications to add/modify/delete requests or users, you can consider enabling this setting to protect against malicious attacks.
 
-One caveat, however, is that HTTPS is required, meaning that once this setting is enabled, you will no longer be able to access your Seerr instance over _HTTP_ (including using an IP address and port number).
+The CSRF cookie's transport policy follows the request: it is marked `Secure` on HTTPS (including behind a reverse proxy that forwards `X-Forwarded-Proto: https`) and left unmarked on direct HTTP/LAN access, so enabling this setting does not by itself require HTTPS.
 
 If you enable this setting and find yourself unable to access Seerr, you can disable the setting by modifying `settings.json` in `/app/config`.
 

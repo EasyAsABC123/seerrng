@@ -706,7 +706,7 @@ class Settings {
         },
       },
       network: {
-        csrfProtection: true,
+        csrfProtection: false,
         forceIpv4First: false,
         trustProxy: false,
         proxy: {
@@ -1427,7 +1427,7 @@ class Settings {
         },
       },
       network: {
-        csrfProtection: true,
+        csrfProtection: false,
         forceIpv4First: false,
         trustProxy: false,
         proxy: {

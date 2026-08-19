@@ -35,12 +35,12 @@ describe('assertSettingsFileSize', () => {
 });
 
 describe('Settings reset', () => {
-  it('keeps CSRF protection enabled like a fresh configuration', () => {
+  it('keeps CSRF protection disabled like a fresh configuration', () => {
     const settings = new Settings();
 
     settings.reset();
 
-    assert.equal(settings.network.csrfProtection, true);
+    assert.equal(settings.network.csrfProtection, false);
   });
 });
 
