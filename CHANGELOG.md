@@ -21,6 +21,19 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.12.6](https://github.com/snapetech/seerrng/compare/v3.12.5..v3.12.6) - 2026-08-19
+
+### User-facing changes
+
+#### Fixed
+
+- **Authentication:** CSRF protection is disabled by default again, matching the documented default and fixing "invalid csrf token" errors during initial Jellyfin/Emby sign-in. Existing installs are migrated back to this default once on upgrade; if you had intentionally turned CSRF protection on, re-enable it in Settings > Network afterward.
+
+### 🐛 Bug Fixes
+- *(auth)* Disable CSRF protection by default to fix Jellyfin/Emby sign-in - ([58b3fa1](https://github.com/snapetech/seerrng/commit/58b3fa1cbac8adcd9369357cb7f810799f25e6ab))
+
 ## [3.12.5](https://github.com/snapetech/seerrng/compare/v3.12.4..v3.12.5) - 2026-08-18
 
 ### User-facing changes
