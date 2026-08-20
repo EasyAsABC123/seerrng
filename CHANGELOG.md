@@ -23,6 +23,27 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.12.7](https://github.com/snapetech/seerrng/compare/v3.12.6..v3.12.7) - 2026-08-20
+
+### User-facing changes
+
+#### Fixed
+
+- **Availability:** Availability checks now recognize legacy standard Arr settings that omit the 4K flag, preventing available movies and series from being incorrectly shown as deleted.
+- **Reliability:** SeerrNG no longer crash-loops on startup when it cannot `chmod` its config, log, database, or image-cache directories (common when a container runs as a non-default user against a bind mount or network volume it doesn't own) — it now logs a warning and continues with the existing permissions.
+- **Documentation:** Discord notification embeds now use your configured `PORT` for the fallback application link, instead of always defaulting to 5055. Also backfilled documentation for five previously undiscoverable environment variables in the README and Network settings docs.
+- **Authentication:** The Jellyfin/Emby setup wizard now accepts private/LAN hostnames by default, matching how the vast majority of self-hosted media servers are actually reachable. Set `SEERR_REQUIRE_PUBLIC_SETUP_HOSTS=true` to restore the stricter public-hostname-only check.
+
+### 🐛 Bug Fixes
+- *(availability)* Preserve media status for legacy Arr settings; deploy over host network - ([7663319](https://github.com/snapetech/seerrng/commit/7663319ebd6c6bf96c5600bf509c9fced29016d3))
+- *(release-notes)* Shorten fragment body to pass release validation - ([99d6a11](https://github.com/snapetech/seerrng/commit/99d6a11f539db559631b433fa10447f6617c329e))
+- *(reliability)* Stop chmod crashes and unblock LAN Jellyfin setup - ([4c41c84](https://github.com/snapetech/seerrng/commit/4c41c845ec7298db4870b52c0aa40f008c2c38d0))
+
+### 📖 Documentation
+- *(env)* Document undocumented env vars; fix Discord embed port - ([3971ddb](https://github.com/snapetech/seerrng/commit/3971ddb452806202551dfb534d48b1f18ee1c499))
+
 ## [3.12.6](https://github.com/snapetech/seerrng/compare/v3.12.5..v3.12.6) - 2026-08-19
 
 ### User-facing changes
