@@ -12,15 +12,19 @@ const createCsrfProtection = (secure: boolean): RequestHandler =>
     },
   });
 
-export const requestUsesSecureTransport = (req: Request): boolean => {
-  const forwardedProtocol = req
-    .get('x-forwarded-proto')
-    ?.split(',', 1)[0]
-    .trim()
-    .toLowerCase();
-
-  return req.secure || forwardedProtocol === 'https';
-};
+// `req.secure` already incorporates X-Forwarded-Proto exactly when (and only
+// when) the operator has enabled "Enable Proxy Support" (settings.network.
+// trustProxy), which is what puts Express itself into `trust proxy` mode
+// (see server/index.ts). Reading the header directly here instead — as this
+// function used to — trusted it unconditionally, regardless of whether a
+// proxy is actually configured. A request that gets classified "secure"
+// while the browser's real connection isn't causes the browser to silently
+// refuse to store the resulting Secure-flagged _csrf/XSRF-TOKEN cookies,
+// which desyncs CSRF validation on the very next request ("invalid csrf
+// token"). Deferring entirely to req.secure keeps this decision consistent
+// with the operator's own trust-proxy setting instead of an easily-spoofed,
+// unconditionally-trusted header.
+export const requestUsesSecureTransport = (req: Request): boolean => req.secure;
 
 export const csrfProtection = (): RequestHandler => {
   const httpProtection = createCsrfProtection(false);

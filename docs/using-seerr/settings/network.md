@@ -35,6 +35,8 @@ In some places (like China), the ISP blocks not only the DNS resolution but also
 
 If you have Seerr behind a reverse proxy, enable this setting to allow Seerr to correctly register client IP addresses. For details, please see the [Express Documentation](https://expressjs.com/en/guide/behind-proxies.html).
 
+This setting also controls whether Seerr trusts your proxy's `X-Forwarded-Proto` header when deciding whether the CSRF cookies (below) should be marked `Secure`. If you run CSRF protection behind an HTTPS-terminating reverse proxy, enable this setting too — otherwise Seerr cannot tell the proxied connection is HTTPS.
+
 This setting is **disabled** by default.
 
 ## Enable CSRF Protection
@@ -47,7 +49,7 @@ CSRF stands for [cross-site request forgery](https://en.wikipedia.org/wiki/Cross
 
 If you do not use Seerr integrations with third-party applications to add/modify/delete requests or users, you can consider enabling this setting to protect against malicious attacks.
 
-The CSRF cookie's transport policy follows the request: it is marked `Secure` on HTTPS (including behind a reverse proxy that forwards `X-Forwarded-Proto: https`) and left unmarked on direct HTTP/LAN access, so enabling this setting does not by itself require HTTPS.
+The CSRF cookie's transport policy follows the request: it is marked `Secure` on direct HTTPS, or behind a reverse proxy that forwards `X-Forwarded-Proto: https` **and** has [Enable Proxy Support](#enable-proxy-support) turned on; it is left unmarked otherwise. Enabling this setting does not by itself require HTTPS, but if you're behind a reverse proxy you do need Enable Proxy Support turned on too — otherwise Seerr can't distinguish the proxy's header from an untrusted client sending the same header, so it ignores it, which keeps the cookies from being marked `Secure` on a connection that isn't actually HTTPS.
 
 If you enable this setting and find yourself unable to access Seerr, you can disable the setting by modifying `settings.json` in `/app/config`.
 
