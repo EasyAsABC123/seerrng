@@ -1,6 +1,10 @@
+/* eslint-disable no-console */
 import fs from 'fs';
 import path from 'path';
-import { assertNoSymlinkDirectoryComponents } from './pathSecurity';
+import {
+  assertNoSymlinkDirectoryComponents,
+  isTolerableChmodError,
+} from './pathSecurity';
 
 export const PRIVATE_LOG_DIRECTORY_MODE = 0o700;
 export const PRIVATE_LOG_FILE_MODE = 0o600;
@@ -63,7 +67,16 @@ export const secureLogDirectory = (directory: string): void => {
     throw new Error('Log directory must not be a symlink');
   }
   // mkdir's mode does not affect an existing directory.
-  fs.chmodSync(directory, PRIVATE_LOG_DIRECTORY_MODE);
+  try {
+    fs.chmodSync(directory, PRIVATE_LOG_DIRECTORY_MODE);
+  } catch (error) {
+    if (!isTolerableChmodError(error)) throw error;
+    console.warn(
+      'Unable to set restrictive permissions on the log directory; continuing with its existing permissions.',
+      directory,
+      (error as Error).message
+    );
+  }
 
   for (const file of fs.readdirSync(directory)) {
     const filePath = path.join(directory, file);
@@ -76,7 +89,16 @@ export const secureLogDirectory = (directory: string): void => {
         if (fileStat.nlink !== 1) {
           throw new Error(`Log file must not be hard-linked: ${file}`);
         }
-        fs.chmodSync(filePath, PRIVATE_LOG_FILE_MODE);
+        try {
+          fs.chmodSync(filePath, PRIVATE_LOG_FILE_MODE);
+        } catch (chmodError) {
+          if (!isTolerableChmodError(chmodError)) throw chmodError;
+          console.warn(
+            'Unable to set restrictive permissions on a log file; continuing with its existing permissions.',
+            filePath,
+            (chmodError as Error).message
+          );
+        }
       }
     } catch (error) {
       // Rotation can remove a file between readdir and lstat/chmod. Ignore

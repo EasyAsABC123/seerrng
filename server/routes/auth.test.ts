@@ -1072,14 +1072,39 @@ describe('POST /auth/jellyfin', () => {
     assert.strictEqual(res.body.error, 'serverType must be Jellyfin or Emby.');
   });
 
+  it('rejects private Jellyfin setup hostnames only when public hosts are required', async () => {
+    const settings = getSettings();
+    settings.main.mediaServerType = MediaServerType.NOT_CONFIGURED;
+    settings.jellyfin.ip = '';
+    const previousRequirePublic = process.env.SEERR_REQUIRE_PUBLIC_SETUP_HOSTS;
+    process.env.SEERR_REQUIRE_PUBLIC_SETUP_HOSTS = 'true';
+
+    try {
+      const res = await request(app).post('/auth/jellyfin').send({
+        username: 'admin',
+        hostname: '192.168.1.50',
+      });
+
+      assert.strictEqual(res.status, 400);
+      assert.strictEqual(
+        res.body.error,
+        'Jellyfin/Emby hostname must not resolve to a private address.'
+      );
+    } finally {
+      if (previousRequirePublic === undefined) {
+        delete process.env.SEERR_REQUIRE_PUBLIC_SETUP_HOSTS;
+      } else {
+        process.env.SEERR_REQUIRE_PUBLIC_SETUP_HOSTS = previousRequirePublic;
+      }
+    }
+  });
+
   it('creates the canonical owner during initial Jellyfin setup', async (t) => {
     const userRepository = getRepository(User);
     await userRepository.clear();
     const settings = getSettings();
     settings.main.mediaServerType = MediaServerType.NOT_CONFIGURED;
     settings.jellyfin.ip = '';
-    const previousPrivateSetup = process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-    process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = 'true';
     const loginMock = mock.method(JellyfinAPI.prototype, 'login', async () => ({
       User: {
         Id: '00112233445566778899aabbccddeeff',
@@ -1105,11 +1130,6 @@ describe('POST /auth/jellyfin', () => {
       loginMock.mock.restore();
       tokenMock.mock.restore();
       nameMock.mock.restore();
-      if (previousPrivateSetup === undefined) {
-        delete process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-      } else {
-        process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = previousPrivateSetup;
-      }
     });
 
     const response = await request(app).post('/auth/jellyfin').send({
@@ -1140,8 +1160,6 @@ describe('POST /auth/jellyfin', () => {
     const settings = getSettings();
     settings.main.mediaServerType = MediaServerType.NOT_CONFIGURED;
     settings.jellyfin.ip = '';
-    const previousPrivateSetup = process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-    process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = 'true';
     let loginCalls = 0;
     let releaseLogins!: () => void;
     const loginsStarted = new Promise<void>((resolve) => {
@@ -1184,11 +1202,6 @@ describe('POST /auth/jellyfin', () => {
       loginMock.mock.restore();
       tokenMock.mock.restore();
       nameMock.mock.restore();
-      if (previousPrivateSetup === undefined) {
-        delete process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-      } else {
-        process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = previousPrivateSetup;
-      }
     });
 
     const responses = await Promise.all(
@@ -1224,8 +1237,6 @@ describe('POST /auth/jellyfin', () => {
     const settings = getSettings();
     settings.main.mediaServerType = MediaServerType.NOT_CONFIGURED;
     settings.jellyfin.ip = '';
-    const previousPrivateSetup = process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-    process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = 'true';
     const loginMock = mock.method(JellyfinAPI.prototype, 'login', async () => ({
       User: {
         Id: '11223344556677889900aabbccddeeff',
@@ -1255,11 +1266,6 @@ describe('POST /auth/jellyfin', () => {
       tokenMock.mock.restore();
       nameMock.mock.restore();
       persistMock.mock.restore();
-      if (previousPrivateSetup === undefined) {
-        delete process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-      } else {
-        process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = previousPrivateSetup;
-      }
     });
     const payload = {
       username: 'recoverable-jellyfin-owner',
@@ -1290,8 +1296,6 @@ describe('POST /auth/jellyfin', () => {
     const settings = getSettings();
     settings.main.mediaServerType = MediaServerType.NOT_CONFIGURED;
     settings.jellyfin.ip = '';
-    const previousPrivateSetup = process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-    process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = 'true';
 
     const loginMock = mock.method(JellyfinAPI.prototype, 'login', async () => ({
       User: {
@@ -1306,11 +1310,6 @@ describe('POST /auth/jellyfin', () => {
     }));
     t.after(() => {
       loginMock.mock.restore();
-      if (previousPrivateSetup === undefined) {
-        delete process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-      } else {
-        process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = previousPrivateSetup;
-      }
     });
 
     const adminBefore = await getRepository(User).findOneByOrFail({ id: 1 });
@@ -1336,8 +1335,6 @@ describe('POST /auth/jellyfin', () => {
     const settings = getSettings();
     settings.main.mediaServerType = MediaServerType.NOT_CONFIGURED;
     settings.jellyfin.ip = '';
-    const previousPrivateSetup = process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-    process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = 'true';
     const userRepository = getRepository(User);
     let providerLoginStarted!: () => void;
     let revocationAdmitted!: () => void;
@@ -1363,11 +1360,6 @@ describe('POST /auth/jellyfin', () => {
     });
     t.after(() => {
       loginMock.mock.restore();
-      if (previousPrivateSetup === undefined) {
-        delete process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS;
-      } else {
-        process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS = previousPrivateSetup;
-      }
     });
 
     const revocation = runUserSecurityMutation(1, async () => {

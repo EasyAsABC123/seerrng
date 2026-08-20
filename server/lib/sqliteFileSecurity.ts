@@ -1,6 +1,10 @@
+import logger from '@server/logger';
 import fs from 'node:fs';
 import path from 'node:path';
-import { assertNoSymlinkDirectoryComponents } from './pathSecurity';
+import {
+  assertNoSymlinkDirectoryComponents,
+  isTolerableChmodError,
+} from './pathSecurity';
 
 export const PRIVATE_SQLITE_DIRECTORY_MODE = 0o700;
 export const PRIVATE_SQLITE_FILE_MODE = 0o600;
@@ -27,7 +31,19 @@ export const secureSqliteDatabaseFiles = (databasePath: string): void => {
     if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
       throw new Error('SQLite database directory must not be a symlink');
     }
-    fs.chmodSync(databaseDirectory, PRIVATE_SQLITE_DIRECTORY_MODE);
+    try {
+      fs.chmodSync(databaseDirectory, PRIVATE_SQLITE_DIRECTORY_MODE);
+    } catch (error) {
+      if (!isTolerableChmodError(error)) throw error;
+      logger.warn(
+        'Unable to set restrictive permissions on the SQLite database directory; continuing with its existing permissions.',
+        {
+          label: 'Database',
+          directory: databaseDirectory,
+          errorMessage: (error as Error).message,
+        }
+      );
+    }
   }
 
   for (const filePath of [
@@ -60,7 +76,19 @@ export const secureSqliteDatabaseFiles = (databasePath: string): void => {
           `SQLite database path must be a regular file: ${filePath}`
         );
       }
-      fs.fchmodSync(descriptor, PRIVATE_SQLITE_FILE_MODE);
+      try {
+        fs.fchmodSync(descriptor, PRIVATE_SQLITE_FILE_MODE);
+      } catch (error) {
+        if (!isTolerableChmodError(error)) throw error;
+        logger.warn(
+          'Unable to set restrictive permissions on a SQLite database file; continuing with its existing permissions.',
+          {
+            label: 'Database',
+            filePath,
+            errorMessage: (error as Error).message,
+          }
+        );
+      }
     } finally {
       fs.closeSync(descriptor);
     }

@@ -1,4 +1,7 @@
-import { assertNoSymlinkDirectoryComponents } from '@server/lib/pathSecurity';
+import {
+  assertNoSymlinkDirectoryComponents,
+  isTolerableChmodError,
+} from '@server/lib/pathSecurity';
 import logger from '@server/logger';
 import AsyncLock from '@server/utils/asyncLock';
 import { trackBackgroundTask } from '@server/utils/backgroundTasks';
@@ -482,6 +485,24 @@ export const coalesceImageCacheWrite = (
   return current;
 };
 
+const chmodImageCacheDirectoryBestEffort = async (
+  directory: string
+): Promise<void> => {
+  try {
+    await promises.chmod(directory, PRIVATE_IMAGE_CACHE_DIRECTORY_MODE);
+  } catch (error) {
+    if (!isTolerableChmodError(error)) throw error;
+    logger.warn(
+      'Unable to set restrictive permissions on the image cache directory; continuing with its existing permissions.',
+      {
+        label: 'Image Proxy',
+        directory,
+        errorMessage: (error as Error).message,
+      }
+    );
+  }
+};
+
 export const writePrivateImageCacheFile = async (
   directory: string,
   filename: string,
@@ -507,7 +528,7 @@ export const writePrivateImageCacheFile = async (
   if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) {
     throw new Error('Image cache parent path is not a directory');
   }
-  await promises.chmod(parentDirectory, PRIVATE_IMAGE_CACHE_DIRECTORY_MODE);
+  await chmodImageCacheDirectoryBestEffort(parentDirectory);
 
   const existing = await promises.lstat(directory).catch((error) => {
     if (error.code === 'ENOENT') {
@@ -529,7 +550,7 @@ export const writePrivateImageCacheFile = async (
   assertNoSymlinkDirectoryComponents(directory, {
     label: 'Image cache directory',
   });
-  await promises.chmod(directory, PRIVATE_IMAGE_CACHE_DIRECTORY_MODE);
+  await chmodImageCacheDirectoryBestEffort(directory);
 
   const filePath = path.join(directory, filename);
   await promises.writeFile(filePath, buffer, {

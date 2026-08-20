@@ -53,6 +53,14 @@ If you enable this setting and find yourself unable to access Seerr, you can dis
 
 This setting is **disabled** by default.
 
+## Private Jellyfin/Emby Setup Hostnames
+
+The first-run setup wizard accepts a Jellyfin/Emby hostname that resolves to a private or local address (a LAN IP, a `.local` hostname, or a Docker-internal hostname) by default, since that is how the overwhelming majority of self-hosted media servers are reachable.
+
+If your SeerrNG instance might be reachable on the public internet before you finish the setup wizard, an attacker could otherwise race you to it and point the Jellyfin/Emby hostname at an internal address to probe your network. Set the environment variable `SEERR_REQUIRE_PUBLIC_SETUP_HOSTS=true` to restore the stricter check and reject private-address hostnames during setup. This does not affect Jellyfin/Emby hostnames configured later from Settings.
+
+This setting is **disabled** by default (private hostnames are allowed).
+
 ## Session cookies and HTTP
 
 Plex sign-in creates a browser session cookie. SeerrNG keeps direct HTTP

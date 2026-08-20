@@ -1,4 +1,8 @@
-import { assertNoSymlinkDirectoryComponents } from '@server/lib/pathSecurity';
+import {
+  assertNoSymlinkDirectoryComponents,
+  isTolerableChmodError,
+} from '@server/lib/pathSecurity';
+import logger from '@server/logger';
 import fs from 'fs/promises';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
@@ -24,6 +28,21 @@ export const assertSettingsFileSize = (bytes: number) => {
   }
 };
 
+const chmodHandleBestEffort = async (
+  handle: { chmod: (mode: number) => Promise<void> },
+  filePath: string
+): Promise<void> => {
+  try {
+    await handle.chmod(PRIVATE_SETTINGS_FILE_MODE);
+  } catch (error) {
+    if (!isTolerableChmodError(error)) throw error;
+    logger.warn(
+      'Unable to set restrictive permissions on the settings file; continuing with its existing permissions.',
+      { label: 'Settings', filePath, errorMessage: (error as Error).message }
+    );
+  }
+};
+
 const enforcePrivateSettingsDirectory = async (
   directory: string
 ): Promise<void> => {
@@ -34,7 +53,15 @@ const enforcePrivateSettingsDirectory = async (
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error('Settings directory must not be a symlink.');
   }
-  await fs.chmod(directory, PRIVATE_SETTINGS_DIRECTORY_MODE);
+  try {
+    await fs.chmod(directory, PRIVATE_SETTINGS_DIRECTORY_MODE);
+  } catch (error) {
+    if (!isTolerableChmodError(error)) throw error;
+    logger.warn(
+      'Unable to set restrictive permissions on the settings directory; continuing with its existing permissions.',
+      { label: 'Settings', directory, errorMessage: (error as Error).message }
+    );
+  }
 };
 
 const isProcessAlive = (owner: SettingsLockOwner): boolean | undefined => {
@@ -183,7 +210,7 @@ export const enforcePrivateSettingsFile = async (
     if (!stat.isFile() || stat.nlink !== 1) {
       throw new Error('Settings path must be a regular file.');
     }
-    await handle.chmod(PRIVATE_SETTINGS_FILE_MODE);
+    await chmodHandleBestEffort(handle, filePath);
   } finally {
     await handle.close();
   }
@@ -204,7 +231,7 @@ export const readPrivateSettingsFile = async (
       throw new Error('Settings path must be a regular file.');
     }
     assertSettingsFileSize(stat.size);
-    await handle.chmod(PRIVATE_SETTINGS_FILE_MODE);
+    await chmodHandleBestEffort(handle, filePath);
     return await handle.readFile('utf8');
   } finally {
     await handle.close();
@@ -229,7 +256,7 @@ export const writePrivateSettingsFile = async (
     // and makes the final replacement atomic across process crashes.
     handle = await fs.open(temporaryPath, 'wx', PRIVATE_SETTINGS_FILE_MODE);
     await handle.writeFile(data, 'utf8');
-    await handle.chmod(PRIVATE_SETTINGS_FILE_MODE);
+    await chmodHandleBestEffort(handle, temporaryPath);
     await handle.sync();
     await handle.close();
     handle = undefined;

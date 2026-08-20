@@ -83,6 +83,13 @@ const MAX_RESET_GUID_LENGTH = 64;
 const MAX_PORT = 65_535;
 const MAX_PLEX_PIN_ID = 2_147_483_647;
 const MAX_PLEX_PIN_CODE_LENGTH = 128;
+// Most self-hosted Jellyfin/Emby servers live on a LAN or Docker-internal
+// address, so the initial setup wizard accepts private hostnames by default
+// (matching upstream Seerr). Set SEERR_REQUIRE_PUBLIC_SETUP_HOSTS=true to
+// restore the stricter SSRF-hardened check for instances that may be
+// publicly reachable before an admin completes setup.
+const requiresPublicJellyfinSetupHost = (): boolean =>
+  process.env.SEERR_REQUIRE_PUBLIC_SETUP_HOSTS === 'true';
 export const MAX_OIDC_CALLBACK_URL_LENGTH = 8_192;
 // A fixed, valid cost-12 hash keeps unknown-account and SSO-only failures on
 // the same bcrypt path as local-account failures without storing a usable
@@ -955,7 +962,7 @@ authRoutes.post('/jellyfin', authRateLimit, async (req, res, next) => {
       ).hostname;
 
       if (
-        process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS !== 'true' &&
+        requiresPublicJellyfinSetupHost() &&
         (await resolvesToLocalOrPrivateAddress(parsedHostname))
       ) {
         return res.status(400).json({
@@ -972,8 +979,7 @@ authRoutes.post('/jellyfin', authRateLimit, async (req, res, next) => {
 
   try {
     const allowPrivateAddresses =
-      settings.jellyfin.ip !== '' ||
-      process.env.SEERR_ALLOW_PRIVATE_SETUP_HOSTS === 'true';
+      settings.jellyfin.ip !== '' || !requiresPublicJellyfinSetupHost();
     const hostname =
       settings.jellyfin.ip !== ''
         ? getHostname()
