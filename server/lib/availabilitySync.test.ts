@@ -321,7 +321,7 @@ describe('AvailabilitySync', () => {
   });
 
   describe('TV season availability - Jellyfin', () => {
-    it('should mark deleted seasons as DELETED when only some seasons exist in Jellyfin and Sonarr', async () => {
+    it('preserves season status when only some seasons exist in Jellyfin and Sonarr', async () => {
       configureJellyfin();
       configureSonarr([{ syncEnabled: true }]);
 
@@ -404,24 +404,16 @@ describe('AvailabilitySync', () => {
         'Season 6 should remain AVAILABLE'
       );
 
-      for (const season of updated.seasons) {
-        if (season.seasonNumber !== 6) {
-          assert.strictEqual(
-            season.status,
-            MediaStatus.DELETED,
-            `Season ${season.seasonNumber} should be DELETED but was ${season.status}`
-          );
-        }
-      }
-
-      assert.strictEqual(
-        updated.status,
-        MediaStatus.PARTIALLY_AVAILABLE,
-        'Show should be PARTIALLY_AVAILABLE after season removal'
+      assert.ok(
+        updated.seasons.every(
+          (season) => season.status === MediaStatus.AVAILABLE
+        ),
+        'Availability sync must not mark missing seasons as DELETED'
       );
+      assert.strictEqual(updated.status, MediaStatus.AVAILABLE);
     });
 
-    it('should still mark deleted seasons when externalServiceId is null (no Sonarr link)', async () => {
+    it('preserves season status when externalServiceId is null (no Sonarr link)', async () => {
       configureJellyfin();
       configureSonarr([{ syncEnabled: true }]);
 
@@ -486,24 +478,16 @@ describe('AvailabilitySync', () => {
         'Season 6 should remain AVAILABLE'
       );
 
-      for (const season of updated.seasons) {
-        if (season.seasonNumber !== 6) {
-          assert.strictEqual(
-            season.status,
-            MediaStatus.DELETED,
-            `Season ${season.seasonNumber} should be DELETED but was ${season.status}`
-          );
-        }
-      }
-
-      assert.strictEqual(
-        updated.status,
-        MediaStatus.PARTIALLY_AVAILABLE,
-        'Show should be PARTIALLY_AVAILABLE after season removal'
+      assert.ok(
+        updated.seasons.every(
+          (season) => season.status === MediaStatus.AVAILABLE
+        ),
+        'Availability sync must not mark missing seasons as DELETED'
       );
+      assert.strictEqual(updated.status, MediaStatus.AVAILABLE);
     });
 
-    it('should mark deleted seasons even when Jellyfin returns empty season metadata entries (real-world behavior)', async () => {
+    it('preserves season status when Jellyfin returns empty season metadata entries', async () => {
       configureJellyfin();
       configureSonarr([{ syncEnabled: true }]);
 
@@ -591,21 +575,13 @@ describe('AvailabilitySync', () => {
         'Season 6 should remain AVAILABLE'
       );
 
-      for (const season of updated.seasons) {
-        if (season.seasonNumber !== 6) {
-          assert.strictEqual(
-            season.status,
-            MediaStatus.DELETED,
-            `Season ${season.seasonNumber} should be DELETED but was ${season.status}`
-          );
-        }
-      }
-
-      assert.strictEqual(
-        updated.status,
-        MediaStatus.PARTIALLY_AVAILABLE,
-        'Show should be PARTIALLY_AVAILABLE after season removal'
+      assert.ok(
+        updated.seasons.every(
+          (season) => season.status === MediaStatus.AVAILABLE
+        ),
+        'Availability sync must not mark missing seasons as DELETED'
       );
+      assert.strictEqual(updated.status, MediaStatus.AVAILABLE);
     });
 
     it('should assume season exists when getEpisodes fails (safe fallback)', async () => {
@@ -691,7 +667,62 @@ describe('AvailabilitySync', () => {
   });
 
   describe('TV season availability - Plex', () => {
-    it('should mark deleted seasons when Plex returns empty season metadata entries', async () => {
+    it('treats a legacy standard Sonarr setting without is4k as non-4K', async () => {
+      configurePlex();
+      configureSonarr([{ syncEnabled: true, is4k: undefined }]);
+
+      const mediaRepository = getRepository(Media);
+      const media = await mediaRepository.save(
+        new Media({
+          tmdbId: 2003,
+          tvdbId: 73255,
+          mediaType: MediaType.TV,
+          status: MediaStatus.AVAILABLE,
+          externalServiceId: 203,
+          seasons: [
+            new Season({
+              seasonNumber: 1,
+              status: MediaStatus.AVAILABLE,
+              status4k: MediaStatus.UNKNOWN,
+            }),
+          ],
+        })
+      );
+
+      getSeriesByIdImpl = async (id: number) => {
+        if (id === 203) {
+          return {
+            tvdbId: 73255,
+            id: 203,
+            title: 'House',
+            titleSlug: 'house',
+            monitored: true,
+            statistics: {
+              episodeFileCount: 22,
+              totalEpisodeCount: 22,
+              episodeCount: 22,
+              percentOfEpisodes: 100,
+              sizeOnDisk: 0,
+              seasonCount: 1,
+            },
+            seasons: fakeSonarrSeasons(1, { 1: 22 }),
+          } as unknown as SonarrSeries;
+        }
+        throw new Error('404');
+      };
+
+      await availabilitySync.run();
+
+      const updated = await mediaRepository.findOneOrFail({
+        where: { id: media.id },
+        relations: ['seasons'],
+      });
+
+      assert.strictEqual(updated.status, MediaStatus.AVAILABLE);
+      assert.strictEqual(updated.seasons[0].status, MediaStatus.AVAILABLE);
+    });
+
+    it('preserves season status when Plex returns empty season metadata entries', async () => {
       configurePlex();
       configureSonarr([{ syncEnabled: true }]);
 
@@ -775,21 +806,13 @@ describe('AvailabilitySync', () => {
         'Season 6 should remain AVAILABLE'
       );
 
-      for (const season of updated.seasons) {
-        if (season.seasonNumber !== 6) {
-          assert.strictEqual(
-            season.status,
-            MediaStatus.DELETED,
-            `Season ${season.seasonNumber} should be DELETED but was ${season.status}`
-          );
-        }
-      }
-
-      assert.strictEqual(
-        updated.status,
-        MediaStatus.PARTIALLY_AVAILABLE,
-        'Show should be PARTIALLY_AVAILABLE after season removal'
+      assert.ok(
+        updated.seasons.every(
+          (season) => season.status === MediaStatus.AVAILABLE
+        ),
+        'Availability sync must not mark missing seasons as DELETED'
       );
+      assert.strictEqual(updated.status, MediaStatus.AVAILABLE);
     });
 
     it('should assume season exists when getChildrenMetadata fails for episodes (safe fallback)', async () => {
@@ -869,7 +892,7 @@ describe('AvailabilitySync', () => {
       );
     });
 
-    it('should mark deleted seasons when only some seasons have episodes in Plex (no Sonarr link)', async () => {
+    it('preserves season status when only some seasons have episodes in Plex', async () => {
       configurePlex();
       configureSonarr([{ syncEnabled: true }]);
 
@@ -941,22 +964,9 @@ describe('AvailabilitySync', () => {
 
       const s1 = updated.seasons.find((s) => s.seasonNumber === 1);
       const s3 = updated.seasons.find((s) => s.seasonNumber === 3);
-      assert.strictEqual(
-        s1?.status,
-        MediaStatus.DELETED,
-        'Season 1 should be DELETED'
-      );
-      assert.strictEqual(
-        s3?.status,
-        MediaStatus.DELETED,
-        'Season 3 should be DELETED'
-      );
-
-      assert.strictEqual(
-        updated.status,
-        MediaStatus.PARTIALLY_AVAILABLE,
-        'Show should be PARTIALLY_AVAILABLE after season removal'
-      );
+      assert.strictEqual(s1?.status, MediaStatus.AVAILABLE);
+      assert.strictEqual(s3?.status, MediaStatus.AVAILABLE);
+      assert.strictEqual(updated.status, MediaStatus.AVAILABLE);
     });
   });
 
@@ -1003,7 +1013,7 @@ describe('AvailabilitySync', () => {
       assert.strictEqual(current.ratingKey, 'fresh-rating-key');
     });
 
-    it('treats only Jellyfin 404 responses as proof that media is absent', async () => {
+    it('preserves media status even when Jellyfin reports a missing item', async () => {
       configureJellyfin();
       configureSonarr([]);
       const mediaRepository = getRepository(Media);
@@ -1036,12 +1046,12 @@ describe('AvailabilitySync', () => {
 
       await availabilitySync.run();
 
-      const [preserved, deleted] = await Promise.all([
+      const [preserved, missing] = await Promise.all([
         mediaRepository.findOneByOrFail({ id: unavailableBackendMedia.id }),
         mediaRepository.findOneByOrFail({ id: missingMedia.id }),
       ]);
       assert.strictEqual(preserved.status, MediaStatus.AVAILABLE);
-      assert.strictEqual(deleted.status, MediaStatus.DELETED);
+      assert.strictEqual(missing.status, MediaStatus.AVAILABLE);
     });
 
     it('does not delete media using results from rotated Jellyfin credentials', async () => {
@@ -1129,8 +1139,8 @@ describe('AvailabilitySync', () => {
       });
       assert.strictEqual(updated.length, 55);
       assert.ok(
-        updated.every((item) => item.status === MediaStatus.DELETED),
-        'keyset pagination left available rows unprocessed'
+        updated.every((item) => item.status === MediaStatus.AVAILABLE),
+        'availability sync changed media status during pagination'
       );
     });
 

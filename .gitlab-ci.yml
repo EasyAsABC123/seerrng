@@ -92,10 +92,10 @@ deploy:seerr.home:
       docker rm -f "$SEERRNG_DEPLOY_CONTAINER" >/dev/null 2>&1 || true
       docker run -d \
         --name "$SEERRNG_DEPLOY_CONTAINER" \
-        --publish "$SEERRNG_DEPLOY_PORT:$SEERRNG_DEPLOY_PORT" \
         --restart unless-stopped \
         --security-opt no-new-privileges:true \
         --cap-drop ALL \
+        --network host \
         -e CONFIG_DIRECTORY=/app/config \
         -e LOG_LEVEL=info \
         -e TZ=America/Regina \
