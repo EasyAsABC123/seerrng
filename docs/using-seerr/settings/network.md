@@ -61,6 +61,14 @@ If your SeerrNG instance might be reachable on the public internet before you fi
 
 This setting is **disabled** by default (private hostnames are allowed).
 
+## Private Notification and Push URLs
+
+Notification agent URLs (Discord, Slack, generic webhook, ntfy, Gotify) and web push subscription endpoints are validated to reject private/internal addresses by default. This blocks a malicious or careless URL from making SeerrNG's server issue requests into your internal network (SSRF).
+
+If you run your own notification receiver on your LAN or Docker network (a self-hosted ntfy or Gotify instance, for example), that validation will reject its URL. Set `SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS=true` to allow private-address notification URLs. Web push subscription endpoints are separate and almost always a public browser push service; set `SEERR_ALLOW_PRIVATE_PUSH_ENDPOINTS=true` only if you know you need it.
+
+Both settings are **disabled** by default.
+
 ## Session cookies and HTTP
 
 Plex sign-in creates a browser session cookie. SeerrNG keeps direct HTTP

@@ -355,6 +355,11 @@ Common runtime variables:
 | `OIDC_ALLOW_INSECURE` | Allows non-HTTPS OIDC provider requests. |
 | `SEERR_EXTERNAL_READ_ONLY` | Blocks mutating requests to external automation APIs when enabled. Useful for test/lab environments. Production refuses to start with this enabled unless explicitly allowed. |
 | `SEERR_ALLOW_PRODUCTION_EXTERNAL_READ_ONLY` | Allows `SEERR_EXTERNAL_READ_ONLY` in production for an intentional read-only clone. Do not set this on the writable request.snape.tech deployment. |
+| `SEERR_REQUIRE_PUBLIC_SETUP_HOSTS` | Rejects private/LAN Jellyfin or Emby hostnames during the first-run setup wizard. Disabled by default because nearly all self-hosted media servers are on a LAN; see [Network settings](docs/using-seerr/settings/network.md). |
+| `SEERR_ALLOW_PRIVATE_NOTIFICATION_URLS` | Allows Discord/Slack/webhook/ntfy/Gotify notification URLs to target private/internal addresses. Needed only if your notification receiver also runs on your LAN. Disabled by default. |
+| `SEERR_ALLOW_PRIVATE_PUSH_ENDPOINTS` | Allows web push subscription endpoints to target private/internal addresses. Disabled by default; the browser push service is normally public. |
+| `SEERR_SKIP_DB_MIGRATIONS` | Skips automatically running database migrations at startup in production. Only relevant when migrations are run out-of-band (e.g. `pnpm migration:run`, or a prepared Cypress test database). |
+| `JELLYFIN_TYPE` | One-time settings-migration hint. Set to `emby` before the first start after upgrading if your existing configuration was saved as `Jellyfin` but the server is actually Emby; relabels the stored media server type and can be unset afterward. |
 
 Use deployment secrets, `.env` files, or container environment variables. Do not commit private TMDB, Plex, Jellyfin, Emby, Radarr, Sonarr, Lidarr, Bookshelf, SMTP, or notification credentials.
 
