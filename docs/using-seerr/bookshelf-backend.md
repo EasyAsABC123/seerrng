@@ -12,6 +12,12 @@ softcover deployments should be backed up and inventoried before cutover because
 Goodreads/softcover foreign IDs are provider-specific and cannot be safely
 reused as Hardcover IDs.
 
+Any Readarr-compatible server works here, not only BookshelfNG or Readarr
+itself — [Chaptarr](https://github.com/Chaptarr/chaptarr) is a supported
+alternative. Add it in **Settings > Services** exactly like a Bookshelf
+server: same host/port/API key fields, same root folder and quality profile
+lookups.
+
 ## Deployment Policy
 
 ### Readarr to Softcover to Hardcover Migration

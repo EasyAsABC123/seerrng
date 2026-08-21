@@ -57,7 +57,7 @@ const messages = defineMessages('components.Settings.ReadarrModal', {
   ebook: 'Ebook',
   audiobook: 'Audiobook',
   compatibilityNote:
-    'Bookshelf is the recommended book backend. Readarr-compatible servers can also be used.',
+    'Bookshelf is the recommended book backend. Readarr-compatible servers, including Chaptarr, can also be used.',
   migrationNote:
     'Existing Readarr or softcover libraries should be migrated before switching to Hardcover. The migration tool can preserve native Hardcover matches, recover metadata through softcover, and optionally create local Bookshelf records for books Hardcover cannot import.',
   migrationGuide: 'Bookshelf Hardcover migration guide',

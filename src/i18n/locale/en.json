@@ -1300,7 +1300,7 @@
   "components.Settings.ReadarrModal.audiobook": "Audiobook",
   "components.Settings.ReadarrModal.baseUrl": "URL Base",
   "components.Settings.ReadarrModal.baseUrlHelp": "If you set a URL Base in Bookshelf or Readarr (Settings > General > Host), enter it here (e.g. /bookshelf). Leave blank otherwise.",
-  "components.Settings.ReadarrModal.compatibilityNote": "Bookshelf is the recommended book backend. Readarr-compatible servers can also be used.",
+  "components.Settings.ReadarrModal.compatibilityNote": "Bookshelf is the recommended book backend. Readarr-compatible servers, including Chaptarr, can also be used.",
   "components.Settings.ReadarrModal.createreadarr": "Add New Bookshelf Server",
   "components.Settings.ReadarrModal.defaultserver": "Default Server",
   "components.Settings.ReadarrModal.diagnose": "Run Diagnostic",
