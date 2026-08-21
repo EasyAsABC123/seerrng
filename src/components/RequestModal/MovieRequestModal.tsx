@@ -105,18 +105,7 @@ const MovieRequestModal = ({
 
       if (response.data) {
         if (onComplete) {
-          onComplete(
-            hasPermission(
-              is4k ? Permission.AUTO_APPROVE_4K : Permission.AUTO_APPROVE
-            ) ||
-              hasPermission(
-                is4k
-                  ? Permission.AUTO_APPROVE_4K_MOVIE
-                  : Permission.AUTO_APPROVE_MOVIE
-              )
-              ? MediaStatus.PROCESSING
-              : MediaStatus.PENDING
-          );
+          onComplete(response.data.media.status);
         }
         addToast(
           <span>
@@ -144,7 +133,6 @@ const MovieRequestModal = ({
     onComplete,
     addToast,
     intl,
-    hasPermission,
   ]);
 
   const cancelRequest = async () => {

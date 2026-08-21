@@ -63,6 +63,7 @@ import {
   PrimaryGeneratedColumn,
   RelationCount,
   UpdateDateColumn,
+  type EntityManager,
 } from 'typeorm';
 import Media from './Media';
 import SeasonRequest from './SeasonRequest';
@@ -182,6 +183,24 @@ const isTvdbConstraintError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error);
 
   return message.includes('media.tvdbId');
+};
+
+// request.save() triggers MediaRequestSubscriber's afterInsert/afterUpdate
+// hooks, which (for an approved request) bump the *separately fetched*
+// parent Media row to PROCESSING. The `request` object passed into save()
+// still references the pre-update Media snapshot, so returning it directly
+// would report a stale status (e.g. PENDING) to the caller even though the
+// database — and the subscriber's own write, made through this same
+// transaction manager — already reflects PROCESSING. Re-fetching after save
+// picks up whatever the subscriber just committed.
+const saveRequestWithFreshMedia = async (
+  manager: EntityManager,
+  request: MediaRequest
+): Promise<MediaRequest> => {
+  const savedRequest = await manager.getRepository(MediaRequest).save(request);
+  return manager
+    .getRepository(MediaRequest)
+    .findOneOrFail({ where: { id: savedRequest.id } });
 };
 
 const resolveMusicReleaseGroupId = async (
@@ -848,7 +867,7 @@ export class MediaRequest {
       return dataSource.transaction(async (manager) => {
         const savedMedia = await manager.getRepository(Media).save(media!);
         request.media = savedMedia;
-        return manager.getRepository(MediaRequest).save(request);
+        return saveRequestWithFreshMedia(manager, request);
       });
     }
 
@@ -1073,7 +1092,7 @@ export class MediaRequest {
         }
 
         request.media = savedMedia;
-        return manager.getRepository(MediaRequest).save(request);
+        return saveRequestWithFreshMedia(manager, request);
       });
     }
 
@@ -1421,7 +1440,7 @@ export class MediaRequest {
       return dataSource.transaction(async (manager) => {
         const savedMedia = await manager.getRepository(Media).save(media!);
         request.media = savedMedia;
-        return manager.getRepository(MediaRequest).save(request);
+        return saveRequestWithFreshMedia(manager, request);
       });
     } else {
       const tmdbMediaShow = tmdbMedia as Awaited<
@@ -1547,7 +1566,7 @@ export class MediaRequest {
             .getRepository(Media)
             .save(requestMedia);
           request.media = savedMedia;
-          return manager.getRepository(MediaRequest).save(request);
+          return saveRequestWithFreshMedia(manager, request);
         });
       };
 

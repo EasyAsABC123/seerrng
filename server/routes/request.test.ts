@@ -1421,6 +1421,45 @@ describe('POST /request', () => {
     assert.notEqual(media.status4k, MediaStatus.UNKNOWN);
   });
 
+  it('returns the post-approval media status instead of the pre-subscriber snapshot', async (t) => {
+    // MediaRequestSubscriber.afterInsert bumps the parent Media row to
+    // PROCESSING for an auto-approved request, using its own freshly fetched
+    // copy of that row. The MediaRequest object returned by request() must
+    // reflect that update rather than the status it held before the
+    // subscriber ran, or every caller (the API response, the frontend) sees
+    // a stale PENDING status until something else happens to refetch it.
+    Object.defineProperty(TheMovieDb.prototype, 'getMovie', {
+      configurable: true,
+      get: () => async () =>
+        ({
+          id: 552,
+          external_ids: {},
+          keywords: { keywords: [] },
+          genres: [],
+          original_language: 'en',
+        }) as unknown as Awaited<ReturnType<TheMovieDb['getMovie']>>,
+      set: () => undefined,
+    });
+    t.after(() => {
+      delete (TheMovieDb.prototype as Partial<TheMovieDb>).getMovie;
+    });
+
+    const adminUser = await getRepository(User).findOneByOrFail({ id: 1 });
+
+    const mediaRequest = await MediaRequest.request(
+      { mediaType: MediaType.MOVIE, mediaId: 552, is4k: false },
+      adminUser
+    );
+
+    assert.equal(mediaRequest.status, MediaRequestStatus.APPROVED);
+    assert.equal(mediaRequest.media.status, MediaStatus.PROCESSING);
+
+    const persistedMedia = await getRepository(Media).findOneByOrFail({
+      tmdbId: 552,
+    });
+    assert.equal(persistedMedia.status, MediaStatus.PROCESSING);
+  });
+
   it('serializes different music releases resolving to one release group', async (t) => {
     const settings = getSettings();
     settings.lidarr = [createLidarrSettings(10)];
