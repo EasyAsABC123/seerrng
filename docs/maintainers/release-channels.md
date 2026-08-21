@@ -41,6 +41,21 @@ When reviewing a release, check all three surfaces:
 3. The Discord announcement contains the same useful summary and links to the
    release.
 
+## Retrying a Tagged Release
+
+The release workflow also supports a manual dispatch for an existing tag. Use
+this when a post-tag publishing step fails; it checks out the requested tag,
+reuses its changelog and image version, and does not move the tag:
+
+```bash
+gh workflow run release.yml --repo snapetech/seerrng --ref main -f tag=v3.12.8
+```
+
+The tag must already point to a commit contained in `main`. After dispatching,
+wait for image publication, signature/SBOM verification, GitHub release
+publication, release assets, package-channel dispatch, and Discord announcement
+to complete before calling the release finished.
+
 ## Package Scope
 
 Linux packages install SeerrNG as a standalone Node service with its own system
