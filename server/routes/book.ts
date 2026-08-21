@@ -258,6 +258,7 @@ bookRoutes.get('/:id/cover', async (req, res) => {
     const readarrApi = new ReadarrAPI({
       apiKey: coverService.server.apiKey,
       url: ReadarrAPI.buildUrl(coverService.server, '/api/v1'),
+      mediaType: coverService.format,
     });
     const cover = await readarrApi.getBookCover(coverService.bookId);
 

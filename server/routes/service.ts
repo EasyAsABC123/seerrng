@@ -414,6 +414,7 @@ serviceRoutes.get<{ readarrId: string }>(
             const readarr = new ReadarrAPI({
               apiKey: readarrSettings.apiKey,
               url: ReadarrAPI.buildUrl(readarrSettings, '/api/v1'),
+              mediaType: readarrSettings.serviceType ?? 'ebook',
             });
             const [profiles, metadataProfiles, rootFolders, tags, development] =
               await Promise.all([

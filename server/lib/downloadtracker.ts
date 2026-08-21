@@ -534,6 +534,7 @@ export class DownloadTracker {
           const readarr = new ReadarrAPI({
             apiKey: server.apiKey,
             url: ReadarrAPI.buildUrl(server, '/api/v1'),
+            mediaType: server.serviceType ?? 'ebook',
           });
 
           try {

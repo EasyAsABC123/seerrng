@@ -15,7 +15,8 @@ type MockableReadarr = {
   ) => Promise<unknown>;
   post: (
     endpoint: string,
-    data?: Record<string, unknown>
+    data?: Record<string, unknown>,
+    options?: { params?: Record<string, unknown> }
   ) => Promise<ReadarrBook>;
 };
 
@@ -263,6 +264,46 @@ describe('ReadarrAPI.lookupAuthor', () => {
     assert.strictEqual(getMock.mock.calls[0].arguments[0], '/author/lookup');
     assert.deepStrictEqual(getMock.mock.calls[0].arguments[1], {
       params: { term: 'J.R.R. Tolkien' },
+    });
+  });
+});
+
+describe('ReadarrAPI media type requests', () => {
+  afterEach(() => {
+    mock.restoreAll();
+  });
+
+  it('scopes lookups and adds to the configured book format', async () => {
+    const api = new ReadarrAPI({
+      url: 'http://localhost:8787/api/v1',
+      apiKey: 'key',
+      mediaType: 'audiobook',
+    });
+    const getMock = mock.method(
+      ReadarrAPI.prototype as unknown as MockableReadarr,
+      'get',
+      async () => []
+    );
+    const postMock = mock.method(
+      ReadarrAPI.prototype as unknown as MockableReadarr,
+      'post',
+      async () => existingBook({ id: 11 })
+    );
+
+    await api.lookupBook('isbn:9780000000001');
+    await api.addBook(bookOptions);
+
+    assert.deepStrictEqual(getMock.mock.calls[0].arguments[1], {
+      params: {
+        term: 'isbn:9780000000001',
+        mediaType: 'audiobook',
+      },
+    });
+    assert.deepStrictEqual(getMock.mock.calls[1].arguments[1], {
+      params: { mediaType: 'audiobook' },
+    });
+    assert.deepStrictEqual(postMock.mock.calls[0].arguments[2], {
+      params: { mediaType: 'audiobook' },
     });
   });
 });

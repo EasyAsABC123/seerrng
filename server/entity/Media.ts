@@ -443,9 +443,13 @@ class Media {
         );
 
         if (server) {
+          const mediaType = server.serviceType ?? 'ebook';
           this.serviceUrl = server.externalUrl
-            ? `${server.externalUrl}/book/${this.externalServiceSlug}`
-            : ReadarrAPI.buildUrl(server, `/book/${this.externalServiceSlug}`);
+            ? `${server.externalUrl}/book/${this.externalServiceSlug}?mediaType=${mediaType}`
+            : ReadarrAPI.buildUrl(
+                server,
+                `/book/${this.externalServiceSlug}?mediaType=${mediaType}`
+              );
         }
       }
 
@@ -459,11 +463,12 @@ class Media {
         );
 
         if (server) {
+          const mediaType = server.serviceType ?? 'audiobook';
           this.audiobookServiceUrl = server.externalUrl
-            ? `${server.externalUrl}/book/${this.audiobookExternalServiceSlug}`
+            ? `${server.externalUrl}/book/${this.audiobookExternalServiceSlug}?mediaType=${mediaType}`
             : ReadarrAPI.buildUrl(
                 server,
-                `/book/${this.audiobookExternalServiceSlug}`
+                `/book/${this.audiobookExternalServiceSlug}?mediaType=${mediaType}`
               );
         }
       }

@@ -12,11 +12,45 @@ softcover deployments should be backed up and inventoried before cutover because
 Goodreads/softcover foreign IDs are provider-specific and cannot be safely
 reused as Hardcover IDs.
 
-Any Readarr-compatible server works here, not only BookshelfNG or Readarr
-itself — [Chaptarr](https://github.com/Chaptarr/chaptarr) is a supported
-alternative. Add it in **Settings > Services** exactly like a Bookshelf
-server: same host/port/API key fields, same root folder and quality profile
-lookups.
+[Chaptarr](https://github.com/Chaptarr/chaptarr) is a supported Readarr-
+compatible alternative. SeerrNG sends the selected book format explicitly, so
+Chaptarr can serve ebooks and audiobooks from one instance without a
+provider-specific URL Base or API adapter.
+
+### Chaptarr
+
+Configure Chaptarr in **Settings > Services** as a Bookshelf server:
+
+1. Add one service entry for each format you want to request. Set **Book
+   Format** to **Ebook** or **Audiobook** to match the Chaptarr root folder and
+   profiles selected below it.
+2. Use Chaptarr's normal host, port, and API key. Leave **URL Base** blank
+   unless you deliberately configured a URL Base in Chaptarr.
+3. Select the format-specific root folder, quality profile, and metadata
+   profile returned by the connection test.
+4. Enable **Scan** after saving. Enable **Automatic Search** if approvals
+   should start a Chaptarr search.
+
+For a single Chaptarr instance that manages both formats, create two SeerrNG
+service entries with the same connection details and different **Book Format**
+values. Mark one entry of each format as the default. A **Both** request then
+dispatches once to each entry.
+
+SeerrNG sends Chaptarr the requested book identity and selected-book monitoring
+intent. Chaptarr may still create unmonitored catalogue rows for other books by
+the same author; only the requested format/book is marked for monitoring. This
+is normal Chaptarr behaviour, not evidence that SeerrNG approved those other
+books.
+
+Pin the Chaptarr image to a tested version instead of relying on `latest`.
+Compatibility was validated against the official Docker image reporting
+`0.9.911.0`; Chaptarr is actively developed and its Readarr-compatible surface
+can change between releases.
+
+If a Chaptarr lookup is empty, first verify that the selected **Book Format**
+has a writable root folder and matching quality/metadata profiles. If the
+connection test succeeds but diagnosis reports incomplete metadata, check the
+Chaptarr metadata provider and retry the lookup from its UI.
 
 ## Deployment Policy
 

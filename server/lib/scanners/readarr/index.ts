@@ -107,6 +107,7 @@ class ReadarrScanner
               this.readarrApi = new ReadarrAPI({
                 apiKey: current.apiKey,
                 url: ReadarrAPI.buildUrl(current, '/api/v1'),
+                mediaType: current.serviceType ?? 'ebook',
               });
               return this.readarrApi.getBooks();
             }

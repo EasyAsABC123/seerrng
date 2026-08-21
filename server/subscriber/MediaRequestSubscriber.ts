@@ -1643,6 +1643,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         const readarr = new ReadarrAPI({
           apiKey: readarrSettings.apiKey,
           url: ReadarrAPI.buildUrl(readarrSettings, '/api/v1'),
+          mediaType: serviceType,
         });
         let searchResults: ReadarrBookLookupResult[] = [];
         let lookupTerm: string | undefined;
@@ -1796,6 +1797,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
 
         const result = await readarr.addBook({
           ...bookInfo,
+          mediaType: serviceType,
           monitored: true,
           qualityProfileId: qualityProfile,
           metadataProfileId: metadataProfile,
@@ -1808,9 +1810,11 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
                 qualityProfileId: qualityProfile,
                 metadataProfileId: metadataProfile,
                 monitored: true,
+                monitorNewItems: 'none',
                 addOptions: {
                   monitor: 'none',
                   searchForMissingBooks: false,
+                  booksToMonitor: [bookInfo.foreignBookId],
                 },
                 manualAdd: true,
               }

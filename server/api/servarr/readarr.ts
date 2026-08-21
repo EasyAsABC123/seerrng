@@ -23,12 +23,15 @@ export interface ReadarrDevelopmentConfig {
   metadataSource?: string;
 }
 
+export type ReadarrMediaType = 'ebook' | 'audiobook';
+
 export interface ReadarrBookLookupResult {
   id?: number;
   title: string;
   titleSlug?: string;
   foreignBookId: string;
   foreignEditionId?: string;
+  mediaType?: ReadarrMediaType;
   authorId?: number;
   qualityProfileId?: number;
   metadataProfileId?: number;
@@ -48,6 +51,7 @@ export interface ReadarrBookLookupResult {
     addOptions?: {
       monitor?: string;
       searchForMissingBooks?: boolean;
+      booksToMonitor?: string[];
     };
     manualAdd?: boolean;
   };
@@ -137,12 +141,21 @@ const getReadarrErrorMessage = (error: unknown): string => {
 class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
   private coverBaseUrl: string;
 
-  constructor({ url, apiKey }: { url: string; apiKey: string }) {
+  constructor({
+    url,
+    apiKey,
+    mediaType,
+  }: {
+    url: string;
+    apiKey: string;
+    mediaType?: ReadarrMediaType;
+  }) {
     super({
       url,
       apiKey,
       cacheName: 'readarr',
       apiName: 'Readarr',
+      requestParams: mediaType ? { mediaType } : undefined,
     });
     this.coverBaseUrl = ReadarrAPI.buildCoverBaseUrl(url);
   }
@@ -181,7 +194,10 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
   public async getMetadataProfiles(): Promise<ReadarrMetadataProfile[]> {
     try {
       return sanitizeServarrProfiles(
-        await this.get<ReadarrMetadataProfile[]>('/metadataProfile')
+        await this.get<ReadarrMetadataProfile[]>(
+          '/metadataProfile',
+          this.getRequestConfig()
+        )
       );
     } catch (e) {
       throw new Error(
@@ -193,7 +209,10 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
 
   public async getDevelopmentConfig(): Promise<ReadarrDevelopmentConfig> {
     try {
-      const response = await this.get<unknown>('/config/development');
+      const response = await this.get<unknown>(
+        '/config/development',
+        this.getRequestConfig()
+      );
       if (
         !response ||
         typeof response !== 'object' ||
@@ -220,7 +239,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
   public async getBooks(): Promise<ReadarrBook[]> {
     try {
       return sanitizeServarrRecordArray<ReadarrBook>(
-        await this.get<ReadarrBook[]>('/book'),
+        await this.get<ReadarrBook[]>('/book', this.getRequestConfig()),
         MAX_SERVARR_LIBRARY_RESULTS
       );
     } catch (e) {
@@ -230,7 +249,10 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
 
   public async getBook(bookId: number): Promise<ReadarrBook> {
     try {
-      return await this.get<ReadarrBook>(`/book/${bookId}`);
+      return await this.get<ReadarrBook>(
+        `/book/${bookId}`,
+        this.getRequestConfig()
+      );
     } catch (e) {
       throw new Error(
         `[Readarr] Failed to retrieve book ${bookId}: ${e.message}`,
@@ -305,7 +327,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     try {
       return sanitizeServarrRecordArray<ReadarrEdition>(
         await this.get<ReadarrEdition[]>('/edition', {
-          params: { bookId },
+          ...this.getRequestConfig({ bookId }),
         }),
         MAX_SERVARR_CONFIGURATION_RESULTS
       );
@@ -321,7 +343,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     try {
       return sanitizeServarrRecordArray<ReadarrBookLookupResult>(
         await this.get<ReadarrBookLookupResult[]>('/book/lookup', {
-          params: { term },
+          ...this.getRequestConfig({ term }),
         }),
         MAX_SERVARR_LOOKUP_RESULTS
       );
@@ -338,7 +360,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     try {
       return sanitizeServarrRecordArray<ReadarrAuthorLookupResult>(
         await this.get<ReadarrAuthorLookupResult[]>('/author/lookup', {
-          params: { term },
+          ...this.getRequestConfig({ term }),
         }),
         MAX_SERVARR_LOOKUP_RESULTS
       );
@@ -354,7 +376,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
   ): Promise<ReadarrBookLookupResult> {
     try {
       const existingBooks = sanitizeServarrRecordArray<ReadarrBook>(
-        await this.get<ReadarrBook[]>('/book'),
+        await this.get<ReadarrBook[]>('/book', this.getRequestConfig()),
         MAX_SERVARR_LIBRARY_RESULTS
       );
       const normalizedForeignBookId = options.foreignBookId
@@ -433,20 +455,26 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
             rootFolderPath:
               options.rootFolderPath ?? existingBook.rootFolderPath,
             tags: options.tags ?? existingBook.tags,
-          }
+          },
+          this.getRequestConfig()
         );
 
-        await this.post('/command', {
-          name: 'BookSearch',
-          bookIds: [updatedBook.data.id],
-        });
+        await this.post(
+          '/command',
+          {
+            name: 'BookSearch',
+            bookIds: [updatedBook.data.id],
+          },
+          this.getRequestConfig()
+        );
 
         return updatedBook.data;
       }
 
       return await this.post<ReadarrBookLookupResult>(
         '/book',
-        options as unknown as Record<string, unknown>
+        options as unknown as Record<string, unknown>,
+        this.getRequestConfig()
       );
     } catch (e) {
       throw new Error(
@@ -463,12 +491,15 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     options: { deleteFiles?: boolean; addImportListExclusion?: boolean } = {}
   ): Promise<void> {
     try {
-      await this.request('DELETE', `/book/${bookId}`, undefined, {
-        params: {
+      await this.request(
+        'DELETE',
+        `/book/${bookId}`,
+        undefined,
+        this.getRequestConfig({
           deleteFiles: options.deleteFiles ?? true,
           addImportListExclusion: options.addImportListExclusion ?? false,
-        },
-      });
+        })
+      );
     } catch (e) {
       throw new Error(`[Readarr] Failed to remove book: ${e.message}`);
     }

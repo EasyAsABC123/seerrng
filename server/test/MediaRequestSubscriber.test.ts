@@ -775,9 +775,14 @@ describe('MediaRequestSubscriber service dispatch', () => {
     ]);
     assert.equal(addPayload?.qualityProfileId, 0);
     assert.equal(addPayload?.foreignBookId, 'readarr-work-id');
+    assert.equal(addPayload?.mediaType, 'ebook');
     assert.equal(addPayload?.metadataProfileId, 0);
     assert.equal(addPayload?.rootFolderPath, '/books');
     assert.deepStrictEqual(addPayload?.tags, [4]);
+    assert.equal(addPayload?.author?.monitorNewItems, 'none');
+    assert.deepStrictEqual(addPayload?.author?.addOptions?.booksToMonitor, [
+      'readarr-work-id',
+    ]);
 
     const savedMedia = await getRepository(Media).findOneByOrFail({
       id: media.id,
@@ -1945,9 +1950,14 @@ describe('MediaRequestSubscriber service dispatch', () => {
     await new MediaRequestSubscriber().sendToReadarr(request);
 
     assert.equal(addPayload?.rootFolderPath, '/audiobooks');
+    assert.equal(addPayload?.mediaType, 'audiobook');
     assert.equal(addPayload?.qualityProfileId, 31);
     assert.equal(addPayload?.metadataProfileId, 32);
     assert.deepEqual(addPayload?.tags, [9]);
+    assert.equal(addPayload?.author?.monitorNewItems, 'none');
+    assert.deepEqual(addPayload?.author?.addOptions?.booksToMonitor, [
+      'readarr-audio-id',
+    ]);
 
     const savedMedia = await getRepository(Media).findOneByOrFail({
       id: media.id,

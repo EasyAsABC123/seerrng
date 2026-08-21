@@ -57,14 +57,14 @@ const messages = defineMessages('components.Settings.ReadarrModal', {
   ebook: 'Ebook',
   audiobook: 'Audiobook',
   compatibilityNote:
-    'Bookshelf is the recommended book backend. Readarr-compatible servers, including Chaptarr, can also be used.',
+    'Bookshelf is the recommended book backend. Readarr-compatible servers, including Chaptarr, can also be used. For Chaptarr, set Book Format to match the configured root folder; Seerr sends that format explicitly on every request.',
   migrationNote:
     'Existing Readarr or softcover libraries should be migrated before switching to Hardcover. The migration tool can preserve native Hardcover matches, recover metadata through softcover, and optionally create local Bookshelf records for books Hardcover cannot import.',
   migrationGuide: 'Bookshelf Hardcover migration guide',
   apiKeyHelp:
     'Find it in Bookshelf or Readarr: Settings > General > Security > API Key.',
   baseUrlHelp:
-    'If you set a URL Base in Bookshelf or Readarr (Settings > General > Host), enter it here (e.g. /bookshelf). Leave blank otherwise.',
+    'If you set a URL Base in Bookshelf, Chaptarr, or Readarr (Settings > General > Host), enter it here (e.g. /bookshelf). Leave blank otherwise. Chaptarr users do not need a provider-specific URL Base.',
   externalUrlHelp:
     'For clickable links on media pages when the hostname is not reachable from outside your network.',
   syncEnabledHelp:
@@ -197,6 +197,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
       apiKey,
       baseUrl,
       useSsl = false,
+      serviceType = 'ebook',
     }: {
       id?: number;
       hostname: string;
@@ -204,6 +205,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
       apiKey: string;
       baseUrl?: string;
       useSsl?: boolean;
+      serviceType?: ReadarrSettings['serviceType'];
     }) => {
       setIsTesting(true);
       try {
@@ -216,6 +218,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
             port: Number(port),
             baseUrl,
             useSsl,
+            serviceType,
           }
         );
 
@@ -269,6 +272,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
         port: readarr.port,
         baseUrl: readarr.baseUrl,
         useSsl: readarr.useSsl,
+        serviceType: readarr.serviceType ?? 'ebook',
       });
     }
   }, [readarr, testConnection]);
@@ -387,6 +391,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
                   hostname: values.hostname,
                   port: values.port,
                   useSsl: values.ssl,
+                  serviceType: values.serviceType,
                 });
                 if (response && (!values.baseUrl || values.baseUrl === '/')) {
                   setFieldValue('baseUrl', response.urlBase || '');
@@ -451,6 +456,7 @@ const ReadarrModal = ({ onClose, readarr, onSave }: ReadarrModalProps) => {
                             port: Number(values.port),
                             baseUrl: values.baseUrl,
                             useSsl: values.ssl,
+                            serviceType: values.serviceType,
                             activeDirectory: values.rootFolder,
                             activeProfileId: Number(values.activeProfileId),
                             activeMetadataProfileId: Number(

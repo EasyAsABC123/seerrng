@@ -210,6 +210,7 @@ class DownloadRecovery {
       const readarr = new ReadarrAPI({
         apiKey: server.apiKey,
         url: ReadarrAPI.buildUrl(server, '/api/v1'),
+        mediaType: server.serviceType ?? 'ebook',
       });
       services.push({
         serviceType: 'readarr',

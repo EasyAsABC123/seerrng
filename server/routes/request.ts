@@ -1441,6 +1441,7 @@ requestRoutes.get<
                 new ReadarrAPI({
                   apiKey: current.apiKey,
                   url: ReadarrAPI.buildUrl(current, '/api/v1'),
+                  mediaType: current.serviceType ?? 'ebook',
                 }).getProfiles()
             ).catch((error) => {
               logRequestServiceProfileFailure(

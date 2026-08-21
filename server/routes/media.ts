@@ -748,6 +748,7 @@ mediaRoutes.delete(
                     const ebookService = new ReadarrAPI({
                       apiKey: ebookSettings.apiKey,
                       url: ReadarrAPI.buildUrl(ebookSettings, '/api/v1'),
+                      mediaType: 'ebook',
                     });
                     await ebookService.removeBook(media.externalServiceId);
                     removedBookFormat = true;
@@ -777,6 +778,7 @@ mediaRoutes.delete(
                     const audiobookService = new ReadarrAPI({
                       apiKey: audiobookSettings.apiKey,
                       url: ReadarrAPI.buildUrl(audiobookSettings, '/api/v1'),
+                      mediaType: 'audiobook',
                     });
                     await audiobookService.removeBook(
                       media.audiobookExternalServiceId

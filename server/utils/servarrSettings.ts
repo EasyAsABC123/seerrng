@@ -39,7 +39,7 @@ export const assertServarrInstanceCapacity = (
 export type ServarrConnectionSettings = Pick<
   DVRSettings,
   'hostname' | 'port' | 'apiKey' | 'useSsl' | 'baseUrl'
-> & { id?: number };
+> & { id?: number; serviceType?: ReadarrSettings['serviceType'] };
 
 export const preserveServarrApiKey = <T extends { apiKey: string }>(
   body: unknown,
@@ -186,7 +186,9 @@ export const parseServarrConnectionSettings = (
     return { error: 'settings must be an object.' };
   }
 
-  const settings = body as Partial<DVRSettings>;
+  const settings = body as Partial<DVRSettings> & {
+    serviceType?: ReadarrSettings['serviceType'];
+  };
   const hostname = parseRequiredServiceString(settings.hostname, 'hostname');
   if ('error' in hostname) return hostname;
   const normalizedHostname = normalizeServiceHostname(hostname.value);
@@ -207,6 +209,16 @@ export const parseServarrConnectionSettings = (
   const useSsl = parseServiceBoolean(settings.useSsl, 'useSsl');
   if ('error' in useSsl) return useSsl;
 
+  const serviceType =
+    settings.serviceType === undefined ||
+    settings.serviceType === 'ebook' ||
+    settings.serviceType === 'audiobook'
+      ? settings.serviceType
+      : undefined;
+  if (settings.serviceType !== undefined && serviceType === undefined) {
+    return { error: 'serviceType must be ebook or audiobook.' };
+  }
+
   return {
     value: {
       hostname: normalizedHostname,
@@ -214,6 +226,7 @@ export const parseServarrConnectionSettings = (
       apiKey: apiKey.value,
       useSsl: useSsl.value,
       baseUrl: baseUrl.value,
+      serviceType,
     },
   };
 };

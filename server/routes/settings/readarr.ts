@@ -230,6 +230,7 @@ readarrRoutes.post<
       const readarr = new ReadarrAPI({
         apiKey: parsedReadarr.value.apiKey,
         url: ReadarrAPI.buildUrl(parsedReadarr.value, '/api/v1'),
+        mediaType: parsedReadarr.value.serviceType ?? 'ebook',
       });
 
       const [urlBase, development] = await Promise.all([
@@ -341,6 +342,7 @@ readarrRoutes.post<
     const readarr = new ReadarrAPI({
       apiKey: parsedReadarr.value.apiKey,
       url: ReadarrAPI.buildUrl(parsedReadarr.value, '/api/v1'),
+      mediaType: parsedReadarr.value.serviceType ?? 'ebook',
     });
 
     try {

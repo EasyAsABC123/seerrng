@@ -5,6 +5,7 @@ import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import type { DVRSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { buildServiceUrl, trimTrailingSlashes } from '@server/utils/serviceUrl';
+import type { AxiosRequestConfig } from 'axios';
 
 export interface SystemStatus {
   appName?: string;
@@ -252,17 +253,20 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
   }
 
   protected apiName: string;
+  private readonly requestParams: Record<string, unknown>;
 
   constructor({
     url,
     apiKey,
     cacheName,
     apiName,
+    requestParams,
   }: {
     url: string;
     apiKey: string;
     cacheName: AvailableCacheIds;
     apiName: string;
+    requestParams?: Record<string, unknown>;
   }) {
     const timeout = getExternalRuntimeConfig().network.apiRequestTimeout;
     const normalizedUrl = normalizeConfiguredServiceUrl(url, apiName);
@@ -280,6 +284,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     );
 
     this.apiName = apiName;
+    this.requestParams = requestParams ?? {};
 
     if (EXTERNAL_READ_ONLY) {
       this.axios.interceptors.request.use((config) => {
@@ -302,11 +307,26 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     }
   }
 
+  protected getRequestConfig(
+    params?: Record<string, unknown>
+  ): AxiosRequestConfig | undefined {
+    const mergedParams = { ...this.requestParams, ...params };
+
+    return Object.keys(mergedParams).length
+      ? { params: mergedParams }
+      : undefined;
+  }
+
   public async getSystemStatus(): Promise<
     Pick<SystemStatus, 'appName' | 'version' | 'urlBase'>
   > {
     try {
-      const response = await this.request<unknown>('GET', '/system/status');
+      const response = await this.request<unknown>(
+        'GET',
+        '/system/status',
+        undefined,
+        this.getRequestConfig()
+      );
 
       return sanitizeServarrSystemStatus(response.data);
     } catch (e) {
@@ -321,7 +341,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     try {
       const data = await this.getRolling<QualityProfile[]>(
         `/qualityProfile`,
-        undefined,
+        this.getRequestConfig(),
         3600
       );
 
@@ -338,7 +358,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     try {
       const data = await this.getRolling<RootFolder[]>(
         `/rootfolder`,
-        undefined,
+        this.getRequestConfig(),
         3600
       );
 
@@ -357,11 +377,7 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
         'GET',
         `/queue`,
         undefined,
-        {
-          params: {
-            includeEpisode: true,
-          },
-        }
+        this.getRequestConfig({ includeEpisode: true })
       );
 
       return sanitizeServarrQueue<QueueItem & QueueItemAppendT>(
@@ -386,12 +402,12 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
   ): Promise<void> => {
     try {
       await this.request('DELETE', `/queue/${queueId}`, undefined, {
-        params: {
+        ...this.getRequestConfig({
           removeFromClient: options.removeFromClient ?? true,
           blocklist: options.blocklist ?? true,
           skipRedownload: options.skipRedownload ?? false,
           changeCategory: options.changeCategory ?? false,
-        },
+        }),
       });
     } catch (e) {
       throw new Error(
@@ -403,7 +419,12 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
 
   public getTags = async (): Promise<Tag[]> => {
     try {
-      const response = await this.request<Tag[]>('GET', `/tag`);
+      const response = await this.request<Tag[]>(
+        'GET',
+        `/tag`,
+        undefined,
+        this.getRequestConfig()
+      );
 
       return sanitizeServarrTags(response.data);
     } catch (e) {
@@ -416,7 +437,12 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
 
   public createTag = async ({ label }: { label: string }): Promise<Tag> => {
     try {
-      const response = await this.request<Tag>('POST', `/tag`, { label });
+      const response = await this.request<Tag>(
+        'POST',
+        `/tag`,
+        { label },
+        this.getRequestConfig()
+      );
 
       const tag = sanitizeServarrTags([response.data])[0];
       if (!tag) throw new Error('Servarr returned an invalid tag');
@@ -436,10 +462,15 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     label: string;
   }): Promise<Tag> => {
     try {
-      const response = await this.request<Tag>('PUT', `/tag/${id}`, {
-        id,
-        label,
-      });
+      const response = await this.request<Tag>(
+        'PUT',
+        `/tag/${id}`,
+        {
+          id,
+          label,
+        },
+        this.getRequestConfig()
+      );
 
       const tag = sanitizeServarrTags([response.data])[0];
       if (!tag) throw new Error('Servarr returned an invalid tag');
@@ -468,10 +499,15 @@ class ServarrBase<QueueItemAppendT> extends ExternalAPI {
     options: Record<string, unknown>
   ): Promise<void> {
     try {
-      await this.request('POST', `/command`, {
-        name: commandName,
-        ...options,
-      });
+      await this.request(
+        'POST',
+        `/command`,
+        {
+          name: commandName,
+          ...options,
+        },
+        this.getRequestConfig()
+      );
     } catch (e) {
       throw new Error(`[${this.apiName}] Failed to run command: ${e.message}`, {
         cause: e,
