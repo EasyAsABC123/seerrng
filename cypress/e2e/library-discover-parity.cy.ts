@@ -803,7 +803,7 @@ describe('Books and Music discover parity', () => {
       'be.visible'
     );
     cy.contains(
-      'Bookshelf is the recommended book backend. Readarr-compatible servers can also be used.'
+      'Bookshelf is the recommended book backend. Readarr-compatible servers, including Chaptarr, can also be used. For Chaptarr, set Book Format to match the configured root folder; Seerr sends that format explicitly on every request.'
     ).should('be.visible');
     cy.contains('label', 'Book Format').should('be.visible');
     cy.get('select[name=serviceType]').should('be.visible');
@@ -813,7 +813,7 @@ describe('Books and Music discover parity', () => {
       .should('be.visible');
     cy.contains('label', 'URL Base')
       .scrollIntoView()
-      .contains('If you set a URL Base in Bookshelf or Readarr')
+      .contains('If you set a URL Base in Bookshelf, Chaptarr, or Readarr')
       .should('be.visible');
     cy.contains('label', 'External URL')
       .scrollIntoView()
