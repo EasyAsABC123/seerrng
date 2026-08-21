@@ -25,6 +25,34 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.12.8](https://github.com/snapetech/seerrng/compare/v3.12.7..v3.12.8) - 2026-08-21
+
+### User-facing changes
+
+#### Added
+
+- **Bookshelf:** Documented Chaptarr as a supported Readarr-compatible book backend alongside BookshelfNG and Readarr — add it in Settings > Services the same way as any Bookshelf server.
+
+#### Fixed
+
+- **Bookshelf:** Chaptarr requests now carry the selected ebook or audiobook format and selected-book monitoring intent, so one Chaptarr instance can safely back separate SeerrNG format services.
+  - **Action required:** configure one service entry per requested format
+- **Authentication:** Fixed the root cause of CSRF protection's "invalid csrf token" errors: an untrusted forwarded-protocol header could mark the CSRF cookies `Secure` on a connection the browser saw as plain HTTP, causing it to silently drop them. That header is now only trusted when "Enable Proxy Support" is on.
+- **Requests:** Movie and TV requests now show their real status (e.g. Processing) right after submission instead of appearing stuck at Pending until a download starts — the request API was returning a stale status snapshot taken before auto-approval updated it.
+
+### 🐛 Bug Fixes
+- *(auth)* Stop CSRF cookies from being marked Secure without a trusted proxy - ([e3c1d37](https://github.com/snapetech/seerrng/commit/e3c1d3740dfce84eed80d9eb6e6565a2b2adb359))
+- *(bookshelf)* Make Chaptarr requests format-aware - ([d50fb0f](https://github.com/snapetech/seerrng/commit/d50fb0f4c3573556843799ad4e2d7dc9931405f3))
+- *(requests)* Return post-approval media status instead of a stale snapshot - ([1ff0693](https://github.com/snapetech/seerrng/commit/1ff069383ce75f8a15d0d54ac650b16982bdad4d))
+
+### 📖 Documentation
+- *(bookshelf)* Document Chaptarr as a supported Readarr-compatible backend - ([d5b2970](https://github.com/snapetech/seerrng/commit/d5b29700830c4528189dbf12da218004d0a9a6aa))
+
+### 🧪 Testing
+- *(settings)* Update Chaptarr guidance assertion - ([a5b8720](https://github.com/snapetech/seerrng/commit/a5b8720fb3730c38a4b2f71ef68167e6c45cc731))
+
 ## [3.12.7](https://github.com/snapetech/seerrng/compare/v3.12.6..v3.12.7) - 2026-08-20
 
 ### User-facing changes
