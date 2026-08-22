@@ -197,7 +197,7 @@ Steps:
 - You can create a "draft" pull request early to get feedback on your work.
 - Your code **must** be formatted correctly, or the tests will fail.
   - We use Prettier to format our code base. It should automatically run with a Git hook, but it is recommended to have the Prettier extension installed in your editor and format on save.
-- If you have questions or need help, you can reach out via [Discussions](/../../discussions) or our [Discord server](https://discord.gg/2N42G4RJCU).
+- If you have questions or need help, you can reach out via [Discussions](/../../discussions) or our [Discord server](https://discord.gg/5PyXBfvS6T).
 - Only open pull requests to `main`, never `master`! Any pull requests opened to `master` will be closed.
 
 ### UI Text Style

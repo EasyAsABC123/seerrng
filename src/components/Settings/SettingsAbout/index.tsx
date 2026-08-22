@@ -186,12 +186,12 @@ const SettingsAbout = () => {
           </List.Item>
           <List.Item title="Discord">
             <a
-              href="https://discord.gg/2N42G4RJCU"
+              href="https://discord.gg/5PyXBfvS6T"
               target="_blank"
               rel="noreferrer"
               className="text-indigo-500 transition duration-300 hover:underline"
             >
-              https://discord.gg/2N42G4RJCU
+              https://discord.gg/5PyXBfvS6T
             </a>
           </List.Item>
         </List>

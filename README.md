@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://github.com/snapetech/seerrng/actions/workflows/ci.yml/badge.svg" alt="SeerrNG CI" />
   <a href="https://github.com/snapetech/seerrng/blob/main/LICENSE"><img src="https://img.shields.io/github/license/snapetech/seerrng" alt="License" /></a>
-  <a href="https://discord.gg/2N42G4RJCU"><img src="https://img.shields.io/badge/support-Discord-5865F2?logo=discord&logoColor=white" alt="Support on Discord" /></a>
+  <a href="https://discord.gg/5PyXBfvS6T"><img src="https://img.shields.io/badge/support-Discord-5865F2?logo=discord&logoColor=white" alt="Support on Discord" /></a>
 </p>
 
 <p align="center">
@@ -473,7 +473,7 @@ SeerrNG is intended for lawful personal media management. The project does not p
 
 ## Support
 
-- Discord: https://discord.gg/2N42G4RJCU
+- Discord: https://discord.gg/5PyXBfvS6T
 - Issues: https://github.com/snapetech/seerrng/issues
 - Discussions: https://github.com/snapetech/seerrng/discussions
 
