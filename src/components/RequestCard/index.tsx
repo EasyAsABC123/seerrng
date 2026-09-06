@@ -1,5 +1,8 @@
 import Spinner from '@app/assets/spinner.svg';
 import Badge from '@app/components/Common/Badge';
+import BookFormatBadge, {
+  getRequestedBookFormat,
+} from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import Tooltip from '@app/components/Common/Tooltip';
@@ -101,7 +104,15 @@ const getRequestDetailHref = (
   request: NonFunctionProperties<MediaRequest>,
   manage = false
 ) => {
-  const suffix = manage ? '?manage=1' : '';
+  const query = [
+    manage ? 'manage=1' : null,
+    request.type === 'book' && request.bookFormat !== 'both'
+      ? `format=${getRequestedBookFormat(request.bookFormat)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join('&');
+  const suffix = query ? `?${query}` : '';
   const bookId = getNormalizedBookId(request);
   const musicId = getNormalizedMusicId(request);
 
@@ -632,20 +643,15 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
                 </div>
               </div>
             )}
-          {requestData.type === 'book' && requestData.bookFormat && (
+          {requestData.type === 'book' && (
             <div className="card-field">
               <span className="card-field-name">
                 {intl.formatMessage(messages.bookFormat)}
               </span>
-              <span className="flex truncate text-sm text-gray-300">
-                {intl.formatMessage(
-                  requestData.bookFormat === 'audiobook'
-                    ? messages.audiobook
-                    : requestData.bookFormat === 'both'
-                      ? messages.both
-                      : messages.ebook
-                )}
-              </span>
+              <BookFormatBadge
+                format={getRequestedBookFormat(requestData.bookFormat)}
+                variant="compact"
+              />
             </div>
           )}
           {hasPartialBookService && (

@@ -1,3 +1,8 @@
+import BookFormatBadge, {
+  getBookFormatMessage,
+  getRequestedBookFormat,
+  type RequestedBookFormat,
+} from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import Header from '@app/components/Common/Header';
@@ -102,8 +107,11 @@ const messages = defineMessages('components.RequestStatus', {
   allMedia: 'All media',
   movies: 'Movies',
   music: 'Music',
-  books: 'Books',
+  ebooks: 'Ebooks',
   audiobooks: 'Audiobooks',
+  mediaAndFormat: 'Media & format',
+  showingFormat: 'Showing requests for',
+  format: 'Format',
   sortBy: 'Sort by',
   sortAdded: 'Date',
   sortTitle: 'Title',
@@ -378,8 +386,9 @@ const getDetailHref = (item: RequestStatusItem): string | null => {
     return `/music/${encodeApiPathSegment(normalizeMusicBrainzId(request.media.mbId))}`;
   }
   const bookId = getBookId(item);
+  const bookFormat = getRequestedBookFormat(item.request.bookFormat);
   return bookId
-    ? `/book/${encodeApiPathSegment(normalizeOpenLibraryWorkId(bookId))}`
+    ? `/book/${encodeApiPathSegment(normalizeOpenLibraryWorkId(bookId))}${bookFormat === 'both' ? '' : `?format=${bookFormat}`}`
     : null;
 };
 
@@ -425,12 +434,6 @@ const getMediaBadge = (
   if (item.request.type === 'movie') return intl.formatMessage(messages.movie);
   if (item.request.type === 'tv') return intl.formatMessage(messages.series);
   if (item.request.type === 'music') return intl.formatMessage(messages.album);
-  if (item.request.bookFormat === 'audiobook') {
-    return intl.formatMessage(messages.audiobooks);
-  }
-  if (item.request.bookFormat === 'both') {
-    return intl.formatMessage(messages.bookAndAudiobook);
-  }
   return intl.formatMessage(messages.book);
 };
 
@@ -444,13 +447,9 @@ const getMediaFormat = (
   if (item.request.type === 'music') {
     return intl.formatMessage(messages.musicFormat);
   }
-  if (item.request.bookFormat === 'audiobook') {
-    return intl.formatMessage(messages.audiobooks);
-  }
-  if (item.request.bookFormat === 'both') {
-    return intl.formatMessage(messages.ebookAndAudiobook);
-  }
-  return intl.formatMessage(messages.ebook);
+  return intl.formatMessage(
+    getBookFormatMessage(getRequestedBookFormat(item.request.bookFormat))
+  );
 };
 
 const getReleaseDate = (
@@ -642,6 +641,10 @@ const RequestStatusCard = ({
             : intl.formatMessage(messages.notAvailable);
         })()
     : intl.formatMessage(messages.notAvailable);
+  const bookFormat: RequestedBookFormat | undefined =
+    item.request.type === 'book'
+      ? getRequestedBookFormat(item.request.bookFormat)
+      : undefined;
   const terminalWithoutProgress =
     current.isTerminal && currentStage !== 'available';
   const chronologicalHistory = [...history].reverse();
@@ -709,9 +712,13 @@ const RequestStatusCard = ({
           )}
           <div className="mt-1 grid min-w-0 grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_max-content]">
             <div className="min-w-0 text-xs leading-4 text-gray-400">
-              <span className="inline-flex min-h-4 items-center rounded-full bg-indigo-600 px-1.5 text-[11px] font-semibold uppercase leading-[1.3] tracking-wide text-indigo-50">
-                {getMediaBadge(intl, item)}
-              </span>
+              {bookFormat ? (
+                <BookFormatBadge format={bookFormat} variant="compact" />
+              ) : (
+                <span className="inline-flex min-h-4 items-center rounded-full bg-indigo-600 px-1.5 text-[11px] font-semibold leading-[1.3] text-indigo-50">
+                  {getMediaBadge(intl, item)}
+                </span>
+              )}
               <dl className="mt-0.5 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-0.5">
                 <dt className="font-medium text-gray-100">
                   {intl.formatMessage(messages.mediaTypeValue)}:
@@ -1006,6 +1013,13 @@ const RequestStatusCard = ({
                       {getStageLabel(intl, event.stage as StatusStage)}
                     </span>
                     <span className="min-w-0 text-gray-400">
+                      {event.format && item.request.type === 'book' && (
+                        <BookFormatBadge
+                          format={getRequestedBookFormat(event.format)}
+                          variant="compact"
+                          className="mr-1.5 align-middle"
+                        />
+                      )}
                       {event.message ??
                         getStageLabel(intl, event.stage as StatusStage)}
                       {event.percent !== null && ` · ${event.percent}%`}
@@ -1324,7 +1338,7 @@ const RequestStatus = () => {
     { value: 'movie', label: 'movies' },
     { value: 'tv', label: 'series' },
     { value: 'music', label: 'music' },
-    { value: 'book', label: 'books' },
+    { value: 'book', label: 'ebooks' },
     { value: 'audiobook', label: 'audiobooks' },
   ];
   const changePage = (nextPage: number) => {
@@ -1465,7 +1479,7 @@ const RequestStatus = () => {
       >
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
           <FilmIcon className="h-4 w-4" aria-hidden="true" />
-          {intl.formatMessage(messages.filter)}
+          {intl.formatMessage(messages.mediaAndFormat)}
         </div>
         <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
           {mediaFilters.map((option) => (
@@ -1500,6 +1514,15 @@ const RequestStatus = () => {
             <option value="all">{intl.formatMessage(messages.allTime)}</option>
           </select>
         </div>
+        {(mediaFilter === 'book' || mediaFilter === 'audiobook') && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
+            <span>{intl.formatMessage(messages.showingFormat)}</span>
+            <BookFormatBadge
+              format={mediaFilter === 'book' ? 'ebook' : 'audiobook'}
+              variant="inline"
+            />
+          </div>
+        )}
       </section>
 
       {timeFrame !== 'all' && data.olderCount > 0 && (
