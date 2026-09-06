@@ -15,6 +15,7 @@ const createApp = (development = false) => {
       saveUninitialized: false,
       cookie: {
         ...sessionTransportOptions.cookie,
+        secure: true,
       },
       proxy: sessionTransportOptions.proxy,
     })
