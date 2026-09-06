@@ -1,4 +1,8 @@
 import Alert from '@app/components/Common/Alert';
+import BookFormatBadge, {
+  getBookFormatMessage,
+  type BookFormat,
+} from '@app/components/Common/BookFormatBadge';
 import Modal from '@app/components/Common/Modal';
 import type { RequestOverrides } from '@app/components/RequestModal/AdvancedRequester';
 import AdvancedRequester from '@app/components/RequestModal/AdvancedRequester';
@@ -34,7 +38,9 @@ const messages = defineMessages('components.RequestModal.Book', {
   requestEdited: 'Request for <strong>{title}</strong> edited successfully!',
   requestApproved: 'Request for <strong>{title}</strong> approved!',
   requestbook: 'Request Book',
+  requestBookFormat: 'Request {format}',
   pendingrequest: 'Pending Book Request',
+  pendingRequestFormat: 'Pending {format} Request',
   edit: 'Edit Request',
   approve: 'Approve Request',
   cancel: 'Cancel Request',
@@ -64,6 +70,9 @@ const messages = defineMessages('components.RequestModal.Book', {
   audiobook: 'Audiobook',
   both: 'Both',
   ebookAndAudiobook: 'ebook and audiobook',
+  formatHint: 'Choose which format Seerr should request.',
+  formatUnavailable: 'Not configured',
+  formatAvailable: 'Configured',
 });
 
 interface BookRequestModalProps {
@@ -74,6 +83,69 @@ interface BookRequestModalProps {
   onUpdating?: (isUpdating: boolean) => void;
   editRequest?: NonFunctionProperties<MediaRequest>;
 }
+
+type RequestBookFormat = Exclude<BookFormat, 'book'>;
+
+interface BookFormatSelectorProps {
+  value: RequestBookFormat;
+  available: Record<RequestBookFormat, boolean>;
+  onChange: (value: RequestBookFormat) => void;
+}
+
+const BookFormatSelector = ({
+  value,
+  available,
+  onChange,
+}: BookFormatSelectorProps) => {
+  const intl = useIntl();
+  const options: RequestBookFormat[] = ['ebook', 'audiobook', 'both'];
+
+  return (
+    <fieldset className="mt-6">
+      <legend className="text-label">
+        {intl.formatMessage(messages.format)}
+      </legend>
+      <p className="mt-1 text-xs text-gray-400">
+        {intl.formatMessage(messages.formatHint)}
+      </p>
+      <div
+        className="mt-3 grid gap-2 sm:grid-cols-3"
+        role="radiogroup"
+        aria-label={intl.formatMessage(messages.format)}
+      >
+        {options.map((option) => {
+          const isSelected = value === option;
+          const isAvailable = available[option];
+
+          return (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              disabled={!isAvailable}
+              onClick={() => onChange(option)}
+              className={`flex min-h-16 min-w-0 flex-col justify-between rounded-lg border px-3 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
+                isSelected
+                  ? 'border-indigo-400 bg-indigo-500/20 shadow-sm shadow-indigo-950/40'
+                  : 'border-gray-700 bg-gray-900/60 hover:border-gray-500 hover:bg-gray-900'
+              }`}
+            >
+              <BookFormatBadge format={option} variant="selector" />
+              <span className="mt-1 text-[11px] text-gray-400">
+                {intl.formatMessage(
+                  isAvailable
+                    ? messages.formatAvailable
+                    : messages.formatUnavailable
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+};
 
 const BookRequestModal = ({
   bookId,
@@ -252,6 +324,10 @@ const BookRequestModal = ({
           (!hasEbookServer || !hasAudiobookServer)
         ? messages.noBothServers
         : null;
+  const formatLabel = intl.formatMessage(getBookFormatMessage(bookFormat));
+  const requestLabel = intl.formatMessage(messages.requestBookFormat, {
+    format: formatLabel,
+  });
 
   const sendRequest = useCallback(async () => {
     setIsUpdating(true);
@@ -411,7 +487,9 @@ const BookRequestModal = ({
         loading={!data && !error}
         backgroundClickable
         onCancel={onCancel}
-        title={intl.formatMessage(messages.pendingrequest)}
+        title={intl.formatMessage(messages.pendingRequestFormat, {
+          format: formatLabel,
+        })}
         subTitle={data?.title}
         onOk={() =>
           hasPermission(Permission.MANAGE_REQUESTS)
@@ -463,32 +541,11 @@ const BookRequestModal = ({
           : intl.formatMessage(messages.requestfrom, {
               username: editRequest.requestedBy.displayName,
             })}
-        <div className="mt-6">
-          <label htmlFor="bookFormat" className="text-label">
-            {intl.formatMessage(messages.format)}
-          </label>
-          <select
-            id="bookFormat"
-            name="bookFormat"
-            value={bookFormat}
-            onChange={(e) =>
-              handleBookFormatChange(
-                e.target.value as 'ebook' | 'audiobook' | 'both'
-              )
-            }
-            className="border-gray-700 bg-gray-800"
-          >
-            <option value="ebook" disabled={!hasEbookServer}>
-              {intl.formatMessage(messages.ebook)}
-            </option>
-            <option value="audiobook" disabled={!hasAudiobookServer}>
-              {intl.formatMessage(messages.audiobook)}
-            </option>
-            <option value="both" disabled={!formatAvailable.both}>
-              {intl.formatMessage(messages.both)}
-            </option>
-          </select>
-        </div>
+        <BookFormatSelector
+          value={bookFormat}
+          available={formatAvailable}
+          onChange={handleBookFormatChange}
+        />
         {formatWarning && (
           <div className="mt-4">
             <Alert title={intl.formatMessage(formatWarning)} type="warning" />
@@ -537,7 +594,7 @@ const BookRequestModal = ({
       okText={
         isUpdating
           ? intl.formatMessage(globalMessages.requesting)
-          : intl.formatMessage(globalMessages.request)
+          : requestLabel
       }
       okButtonType="primary"
       backdrop={data?.posterPath}
@@ -550,32 +607,11 @@ const BookRequestModal = ({
           />
         </div>
       )}
-      <div className="mt-6">
-        <label htmlFor="bookFormat" className="text-label">
-          {intl.formatMessage(messages.format)}
-        </label>
-        <select
-          id="bookFormat"
-          name="bookFormat"
-          value={bookFormat}
-          onChange={(e) =>
-            handleBookFormatChange(
-              e.target.value as 'ebook' | 'audiobook' | 'both'
-            )
-          }
-          className="border-gray-700 bg-gray-800"
-        >
-          <option value="ebook" disabled={!hasEbookServer}>
-            {intl.formatMessage(messages.ebook)}
-          </option>
-          <option value="audiobook" disabled={!hasAudiobookServer}>
-            {intl.formatMessage(messages.audiobook)}
-          </option>
-          <option value="both" disabled={!formatAvailable.both}>
-            {intl.formatMessage(messages.both)}
-          </option>
-        </select>
-      </div>
+      <BookFormatSelector
+        value={bookFormat}
+        available={formatAvailable}
+        onChange={handleBookFormatChange}
+      />
       {formatWarning && (
         <div className="mt-4">
           <Alert title={intl.formatMessage(formatWarning)} type="warning" />

@@ -1,3 +1,4 @@
+import BookFormatBadge from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CardTextVisibilityToggle from '@app/components/Common/CardTextVisibilityToggle';
 import Header from '@app/components/Common/Header';
@@ -31,7 +32,7 @@ const messages = defineMessages('components.Search', {
   all: 'All',
   movies: 'Movies',
   series: 'Series',
-  books: 'Books',
+  ebooks: 'Ebooks',
   audiobooks: 'Audiobooks',
   music: 'Music',
   filter: 'Filter',
@@ -46,6 +47,7 @@ const messages = defineMessages('components.Search', {
   director: 'Director',
   ascending: 'Ascending',
   descending: 'Descending',
+  showingFormat: 'Showing',
   noResultsFound: 'No Results Found',
   searchUnavailable: 'Search is unavailable right now.',
   searchUnavailableHint: 'The catalog could not be reached. Try again.',
@@ -61,7 +63,7 @@ const searchCategories = [
     key: 'book',
     type: 'book',
     format: 'ebook',
-    message: messages.books,
+    message: messages.ebooks,
   },
   {
     key: 'audiobook',
@@ -388,7 +390,21 @@ const Search = () => {
     <>
       <PageTitle title={intl.formatMessage(messages.search)} />
       <div className="mb-5 mt-1">
-        <Header>{intl.formatMessage(messages.searchresults)}</Header>
+        <Header
+          subtext={
+            preferredBookFormat ? (
+              <span className="inline-flex items-center gap-2">
+                <span>{intl.formatMessage(messages.showingFormat)}</span>
+                <BookFormatBadge
+                  format={preferredBookFormat}
+                  variant="inline"
+                />
+              </span>
+            ) : undefined
+          }
+        >
+          {intl.formatMessage(messages.searchresults)}
+        </Header>
       </div>
       <div className="mb-6">
         <div className="mb-1 text-sm text-gray-300">

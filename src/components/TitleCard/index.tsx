@@ -1,5 +1,8 @@
 import Spinner from '@app/assets/spinner.svg';
 import AssociationBadge from '@app/components/Association/AssociationBadge';
+import BookFormatBadge, {
+  getBookFormatMessage,
+} from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import StatusBadgeMini from '@app/components/Common/StatusBadgeMini';
@@ -76,6 +79,7 @@ const messages = defineMessages('components.TitleCard', {
     '<strong>{title}</strong> Removed from watchlist  successfully!',
   watchlistCancel: 'watchlist for <strong>{title}</strong> canceled.',
   watchlistError: 'Something went wrong. Please try again.',
+  requestBookFormat: 'Request {format}',
 });
 
 const TitleCard = ({
@@ -444,6 +448,12 @@ const TitleCard = ({
       canRequestAdditionalFormat);
   const showTextOverlay = showText || !image || showDetail || showRequestModal;
   const showFullDetailOverlay = !image || showDetail || showRequestModal;
+  const requestLabel =
+    isBook && preferredBookFormat
+      ? intl.formatMessage(messages.requestBookFormat, {
+          format: intl.formatMessage(getBookFormatMessage(preferredBookFormat)),
+        })
+      : intl.formatMessage(globalMessages.request);
 
   return (
     <div
@@ -545,31 +555,35 @@ const TitleCard = ({
           />
           <div className="absolute left-0 right-0 flex items-center justify-between p-2">
             <div className="flex items-center gap-1.5">
-              <div
-                className={`pointer-events-none z-40 self-start rounded-full border shadow-md ${
-                  mediaType === 'movie' || mediaType === 'collection'
-                    ? 'border-blue-500 bg-blue-600/80'
-                    : isAlbum
-                      ? 'border-emerald-500 bg-emerald-600/80'
-                      : isBook
-                        ? 'border-amber-500 bg-amber-600/80'
+              {isBook ? (
+                <BookFormatBadge
+                  format={preferredBookFormat}
+                  variant="card"
+                  className="pointer-events-none z-40 self-start"
+                />
+              ) : (
+                <div
+                  className={`pointer-events-none z-40 self-start rounded-full border shadow-md ${
+                    mediaType === 'movie' || mediaType === 'collection'
+                      ? 'border-blue-500 bg-blue-600/80'
+                      : isAlbum
+                        ? 'border-emerald-500 bg-emerald-600/80'
                         : 'border-purple-600 bg-purple-600/80'
-                }`}
-              >
-                <div className="flex h-4 items-center px-2 py-2 text-center text-xs font-medium uppercase tracking-wider text-white sm:h-5">
-                  {mediaType === 'movie'
-                    ? intl.formatMessage(globalMessages.movie)
-                    : mediaType === 'collection'
-                      ? intl.formatMessage(globalMessages.collection)
-                      : mediaType === 'tv'
-                        ? intl.formatMessage(globalMessages.tvshow)
-                        : isAlbum
-                          ? intl.formatMessage(globalMessages.album)
-                          : isBook
-                            ? intl.formatMessage(globalMessages.book)
+                  }`}
+                >
+                  <div className="flex h-4 items-center px-2 py-2 text-center text-xs font-medium text-white sm:h-5">
+                    {mediaType === 'movie'
+                      ? intl.formatMessage(globalMessages.movie)
+                      : mediaType === 'collection'
+                        ? intl.formatMessage(globalMessages.collection)
+                        : mediaType === 'tv'
+                          ? intl.formatMessage(globalMessages.tvshow)
+                          : isAlbum
+                            ? intl.formatMessage(globalMessages.album)
                             : intl.formatMessage(globalMessages.artist)}
+                  </div>
                 </div>
-              </div>
+              )}
               {currentStatus !== MediaStatus.BLOCKLISTED && (
                 <div className="z-40 flex items-center">
                   <AssociationBadge
@@ -747,7 +761,7 @@ const TitleCard = ({
                     className="h-7 w-full"
                   >
                     <ArrowDownTrayIcon />
-                    <span>{intl.formatMessage(globalMessages.request)}</span>
+                    <span>{requestLabel}</span>
                   </Button>
                 )}
               </div>
