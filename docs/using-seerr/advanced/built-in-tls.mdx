@@ -21,12 +21,68 @@ The default remains compatible with existing installations:
 | --- | --- | --- | --- |
 | `disabled` | HTTP on `PORT` (5055 by default) | Session cookies are HTTPS-only; direct HTTP login does not persist | A reverse proxy terminates HTTPS, or the interface is being used without authentication |
 | `disabled` + `SEERR_ALLOW_HTTP_AUTH=true` | HTTP on `PORT` | Cookies follow the request transport, including non-Secure cookies on HTTP | A deliberately trusted LAN needs direct HTTP login temporarily |
-| `self-signed` | HTTP redirect on `PORT`; HTTPS on `SEERR_HTTPS_PORT` (5056 by default) | HTTPS-only cookies | A direct LAN deployment needs encryption without an external proxy |
-| `provided` | HTTP redirect on `PORT`; HTTPS on `SEERR_HTTPS_PORT` | HTTPS-only cookies | The operator already has a certificate and private key |
+| `self-signed` | HTTPS on the configured HTTPS port; HTTP either redirects or returns an HTTPS upgrade response | HTTPS-only cookies | A direct LAN deployment needs encryption without an external proxy |
+| `provided` | HTTPS on the configured HTTPS port; HTTP either redirects or returns an HTTPS upgrade response | HTTPS-only cookies | The operator already has a certificate and private key |
 
 `SEERR_ALLOW_HTTP_AUTH=true` and any enabled TLS mode are mutually exclusive.
 SeerrNG refuses to start if both are configured, so a deployment cannot
 silently choose an insecure session path while the operator expects TLS.
+
+## First-run and administrator settings
+
+On a fresh installation, the setup page offers the same transport choices before
+the first media-server login:
+
+1. **Self-signed HTTPS** is the recommended direct-installation choice.
+2. **Provided certificate** is for a certificate and private key mounted into
+   the SeerrNG process.
+3. **HTTP authentication** is available only after checking an explicit risk
+   acknowledgement.
+
+Saving a first-run choice writes it to the persistent settings file. Restart
+SeerrNG before attempting the first login. This is intentional: changing the
+listener and session-cookie policy while the process is serving requests would
+make the result ambiguous.
+
+Existing installations are not switched during upgrade. Their persisted
+transport mode remains `disabled` unless an administrator changes it. Use
+**Settings > Network > Browser Transport Security** to select a mode, save it,
+and restart SeerrNG. When enabling HTTPS, leave **Redirect HTTP to HTTPS** off
+for the first restart, verify the HTTPS URL and certificate trust, then enable
+the redirect and restart again. With the redirect disabled, the HTTP port does
+not serve the authenticated application; it returns an HTTPS upgrade response.
+
+The same settings page can disable HTTPS again. If a certificate mistake makes
+the UI unreachable, use the startup recovery override
+`SEERR_TLS_MODE=disabled` and restart. If direct HTTP login is also required
+temporarily, explicitly set `SEERR_ALLOW_HTTP_AUTH=true` and acknowledge the
+network risk; remove it again after recovery.
+
+Listener changes are restart-required. The status endpoint and the Network page
+show the active mode, the saved mode, environment overrides, and whether a
+restart is pending. The HTTP redirect is intentionally a separate setting so
+an administrator can verify HTTPS before making HTTP redirect-only.
+
+The settings page accepts certificate paths for provided mode, but it never
+uploads or displays private key material. Mount the files into the container or
+host first. Environment variables override corresponding saved settings; when
+an override is present, change the deployment environment instead of the UI.
+
+The environment overrides are:
+
+- `SEERR_TLS_MODE`: `disabled`, `self-signed`, or `provided`.
+- `SEERR_HTTPS_PORT`: HTTPS listener port.
+- `SEERR_TLS_HOSTS`: comma-separated certificate and redirect host list.
+- `SEERR_TLS_CERT_FILE`, `SEERR_TLS_KEY_FILE`, and optional
+  `SEERR_TLS_CA_FILE`: provided-certificate paths.
+- `SEERR_HTTP_REDIRECT_TO_HTTPS`: `true` for HTTP `308` redirects or `false`
+  for the non-authenticated HTTPS upgrade response.
+- `SEERR_ALLOW_HTTP_AUTH`: explicit direct-HTTP authentication fallback.
+
+If any of these variables are set by a Compose file, systemd unit, chart, or
+container environment, they take precedence over the corresponding saved
+setting. Do not inject defaults such as `SEERR_TLS_MODE=disabled` if you want
+administrators to control transport from the Network page.
 
 ## Recommended direct-LAN configuration
 
@@ -130,7 +186,8 @@ public internet.
 
 ## Using a provided certificate
 
-Set `SEERR_TLS_MODE=provided` and provide a matching PEM certificate and
+Select **Provided certificate** in **Settings > Network**, or set
+`SEERR_TLS_MODE=provided`, and provide a matching PEM certificate and
 private-key file:
 
 ```yaml
@@ -150,13 +207,17 @@ and the private key must match it. Put the complete served chain in
 `SEERR_TLS_CA_FILE` can provide a CA bundle to the Node TLS context, but it
 does not replace serving the intermediate chain in the certificate file.
 
-The HTTP listener remains on `PORT` and sends a `308` redirect to HTTPS. The
-HTTPS listener defaults to 5056 and can be changed with
-`SEERR_HTTPS_PORT`; it must differ from `PORT`.
+The HTTPS listener defaults to 5056 and can be changed with `SEERR_HTTPS_PORT`
+or the Network settings page; it must differ from `PORT`. The HTTP listener
+returns an HTTPS upgrade response until **Redirect HTTP to HTTPS** is enabled.
+When enabled, it sends a `308` redirect to HTTPS.
 
 ## Explicit HTTP fallback
 
-If TLS is not possible on a trusted, isolated LAN, opt in explicitly:
+If TLS is not possible on a trusted, isolated LAN, select **Disabled** and
+enable **Allow authenticated browser sessions over HTTP** in the Network
+settings. The form requires an explicit acknowledgement. The equivalent
+environment configuration is:
 
 ```yaml
 environment:
@@ -170,7 +231,7 @@ ports:
 This mode keeps `HttpOnly`, SameSite, CSRF, rate limiting, and the other
 authentication protections, but it permits the session cookie to be sent over
 HTTP. Anyone able to observe the LAN traffic can steal that cookie. The startup
-log and setup/login UI show a prominent warning.
+log, setup/login UI, and Network settings page show a prominent warning.
 
 The setting is deliberately not inferred from a client IP address or a proxy
 header. If both `SEERR_ALLOW_HTTP_AUTH=true` and `SEERR_TLS_MODE=self-signed`
@@ -188,11 +249,12 @@ the application can safely use the proxy's `X-Forwarded-Proto` value for
 Secure cookies and CSRF transport decisions. Do not enable the HTTP fallback
 just because the proxy talks HTTP to the backend.
 
-In built-in TLS mode, port 5055 is intentionally redirect-only. The official
-container health check automatically switches to the HTTPS listener and uses
-certificate verification disabled only for that local readiness probe. Custom
-health checks should make the same mode-aware choice rather than following the
-HTTP redirect with a browser-style client.
+In built-in TLS mode, port 5055 is intentionally either redirect-only or
+upgrade-only, depending on the saved redirect setting. The official container
+health check automatically switches to the HTTPS listener and uses certificate
+verification disabled only for that local readiness probe. Custom health checks
+should make the same mode-aware choice rather than following the HTTP redirect
+with a browser-style client.
 
 If an HTTP request has a Host header that is not in `SEERR_TLS_HOSTS`, SeerrNG
 returns `421` instead of creating an open redirect. Add every browser-visible
@@ -209,5 +271,7 @@ to the login page:
    `SEERR_TLS_HOSTS`.
 4. If using a reverse proxy, enable **Enable Proxy Support** and forward
    `X-Forwarded-Proto: https`.
-5. Use `SEERR_ALLOW_HTTP_AUTH=true` only when the LAN risk is understood and
+5. If a certificate configuration prevents access, set `SEERR_TLS_MODE=disabled`
+   and restart, then correct the saved settings. Use
+   `SEERR_ALLOW_HTTP_AUTH=true` only when the LAN risk is understood and
    built-in/reverse-proxy HTTPS is not available.

@@ -94,4 +94,11 @@ export interface TlsStatusResponse {
   hosts: string[];
   fingerprint?: string;
   caDownloadAvailable: boolean;
+  configuredMode: 'disabled' | 'self-signed' | 'provided';
+  configuredHttpsPort: number | null;
+  configuredHttpAuthAllowed: boolean;
+  configuredRedirectsHttpToHttps: boolean;
+  environmentOverrides: string[];
+  pendingRestart: boolean;
+  setupRequired: boolean;
 }

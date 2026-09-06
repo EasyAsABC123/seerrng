@@ -6,6 +6,8 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import {
   buildHttpsRedirectLocation,
+  createHttpsUpgradeHandler,
+  getTlsConfigurationStatus,
   initializeTls,
   parseTlsBoolean,
   parseTlsHosts,
@@ -64,6 +66,61 @@ describe('TLS configuration parsing', () => {
       ),
       undefined
     );
+  });
+
+  it('reports environment overrides and supports a non-redirecting HTTP listener', () => {
+    const configured = getTlsConfigurationStatus(
+      {
+        mode: 'self-signed',
+        httpsPort: 5056,
+        hosts: 'localhost',
+        redirectHttpToHttps: false,
+        allowHttpAuth: false,
+      },
+      {
+        NODE_ENV: 'test',
+        SEERR_TLS_MODE: 'self-signed',
+        SEERR_HTTP_REDIRECT_TO_HTTPS: 'false',
+      }
+    );
+    assert.equal(configured.mode, 'self-signed');
+    assert.equal(configured.redirectsHttpToHttps, false);
+    assert.deepEqual(configured.environmentOverrides, [
+      'SEERR_TLS_MODE',
+      'SEERR_HTTP_REDIRECT_TO_HTTPS',
+    ]);
+
+    const legacyEnvironmentMode = getTlsConfigurationStatus(
+      { mode: 'self-signed', redirectHttpToHttps: false },
+      { NODE_ENV: 'test', SEERR_TLS_MODE: 'self-signed' }
+    );
+    assert.equal(legacyEnvironmentMode.redirectsHttpToHttps, true);
+
+    const response = {
+      headers: {} as Record<string, string>,
+      statusCode: 0,
+      body: '',
+      writeHead(status: number, headers: Record<string, string>) {
+        this.statusCode = status;
+        this.headers = headers;
+      },
+      end(body?: string) {
+        this.body = body ?? '';
+      },
+    };
+    createHttpsUpgradeHandler(5056, ['server.example'])(
+      {
+        headers: { host: 'server.example:5055' },
+        url: '/login',
+      } as never,
+      response as never
+    );
+    assert.equal(response.statusCode, 426);
+    assert.equal(
+      response.headers.Location,
+      'https://server.example:5056/login'
+    );
+    assert.match(response.body, /HTTPS is enabled/);
   });
 });
 
@@ -161,5 +218,28 @@ describe('built-in local TLS material', () => {
       }),
       /cannot be enabled together/i
     );
+  });
+
+  it('uses persisted transport settings when no environment override is present', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'seerrng-tls-'));
+    try {
+      const configuration = await initializeTls({
+        httpPort: 5055,
+        tlsDirectory: directory,
+        settings: {
+          mode: 'self-signed',
+          httpsPort: 5057,
+          hosts: 'seerr.local',
+          redirectHttpToHttps: false,
+          allowHttpAuth: false,
+        },
+        environment: { NODE_ENV: 'test' },
+      });
+      assert.equal(configuration.httpsPort, 5057);
+      assert.equal(configuration.redirectsHttpToHttps, false);
+      assert.deepEqual(configuration.hosts, ['seerr.local']);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   });
 });

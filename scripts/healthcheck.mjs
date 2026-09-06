@@ -1,12 +1,31 @@
+import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
+import path from 'node:path';
 
-const tlsMode = (process.env.SEERR_TLS_MODE ?? 'disabled').toLowerCase();
+const readPersistedTlsSettings = () => {
+  const configDirectory = process.env.CONFIG_DIRECTORY ?? '/app/config';
+  try {
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(configDirectory, 'settings.json'), 'utf8')
+    );
+    return settings?.network?.tls ?? {};
+  } catch {
+    return {};
+  }
+};
+
+const persistedTlsSettings = readPersistedTlsSettings();
+const tlsMode = (
+  process.env.SEERR_TLS_MODE ??
+  persistedTlsSettings.mode ??
+  'disabled'
+).toLowerCase();
 const tlsEnabled = tlsMode === 'self-signed' || tlsMode === 'provided';
 const readinessPath = process.argv[2] ?? '/api/v1/status/ready';
 const port = Number(
   tlsEnabled
-    ? (process.env.SEERR_HTTPS_PORT ?? '5056')
+    ? (process.env.SEERR_HTTPS_PORT ?? persistedTlsSettings.httpsPort ?? '5056')
     : (process.env.PORT ?? '5055')
 );
 const client = tlsEnabled ? https : http;

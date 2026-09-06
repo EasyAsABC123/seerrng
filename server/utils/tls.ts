@@ -22,6 +22,18 @@ import { parseListenPort } from './httpServer';
 
 export type TlsMode = 'disabled' | 'self-signed' | 'provided';
 
+export interface TlsSettings {
+  mode: TlsMode;
+  httpsPort: number;
+  hosts: string;
+  certificateFile: string;
+  keyFile: string;
+  caFile: string;
+  redirectHttpToHttps: boolean;
+  allowHttpAuth: boolean;
+  httpAuthAcknowledged: boolean;
+}
+
 export interface TlsRuntimeInfo {
   mode: TlsMode;
   httpPort: number;
@@ -39,6 +51,7 @@ export interface TlsConfiguration {
   httpPort: number;
   httpsPort?: number;
   hosts: string[];
+  redirectsHttpToHttps: boolean;
   httpsOptions?: ServerOptions;
   runtime: TlsRuntimeInfo;
   caCertificatePath?: string;
@@ -80,6 +93,17 @@ let activeRuntime: TlsRuntimeInfo = {
   caDownloadAvailable: false,
 };
 let activeCaCertificate: string | undefined;
+
+const TLS_ENVIRONMENT_KEYS = [
+  'SEERR_TLS_MODE',
+  'SEERR_HTTPS_PORT',
+  'SEERR_TLS_HOSTS',
+  'SEERR_TLS_CERT_FILE',
+  'SEERR_TLS_KEY_FILE',
+  'SEERR_TLS_CA_FILE',
+  'SEERR_HTTP_REDIRECT_TO_HTTPS',
+  'SEERR_ALLOW_HTTP_AUTH',
+] as const;
 
 const addDays = (date: Date, days: number): Date => {
   const result = new Date(date);
@@ -602,27 +626,149 @@ const setActiveRuntime = (
   activeCaCertificate = caCertificate;
 };
 
+interface ResolvedTlsSettings {
+  mode: TlsMode;
+  httpAuthAllowed: boolean;
+  redirectsHttpToHttps: boolean;
+  httpsPort?: number;
+  hosts: string[];
+  certificatePath?: string;
+  keyPath?: string;
+  caPath?: string;
+  environmentOverrides: string[];
+}
+
+const hasEnvironmentValue = (
+  environment: NodeJS.ProcessEnv,
+  key: (typeof TLS_ENVIRONMENT_KEYS)[number]
+): boolean => environment[key] !== undefined;
+
+const resolveTlsSettings = (
+  settings: Partial<TlsSettings> | undefined,
+  environment: NodeJS.ProcessEnv,
+  httpsPortOverride?: number
+): ResolvedTlsSettings => {
+  const mode = parseTlsMode(
+    hasEnvironmentValue(environment, 'SEERR_TLS_MODE')
+      ? environment.SEERR_TLS_MODE
+      : settings?.mode
+  );
+  const httpAuthAllowed = parseTlsBoolean(
+    'SEERR_ALLOW_HTTP_AUTH',
+    hasEnvironmentValue(environment, 'SEERR_ALLOW_HTTP_AUTH')
+      ? environment.SEERR_ALLOW_HTTP_AUTH
+      : settings?.allowHttpAuth === undefined
+        ? undefined
+        : String(settings.allowHttpAuth)
+  );
+  if (mode !== 'disabled' && httpAuthAllowed) {
+    throw new Error(
+      'HTTP authentication cannot be enabled together with TLS. Choose built-in HTTPS or the explicit insecure HTTP fallback.'
+    );
+  }
+
+  const redirectsHttpToHttps =
+    mode === 'disabled'
+      ? false
+      : parseTlsBoolean(
+          'SEERR_HTTP_REDIRECT_TO_HTTPS',
+          hasEnvironmentValue(environment, 'SEERR_HTTP_REDIRECT_TO_HTTPS')
+            ? environment.SEERR_HTTP_REDIRECT_TO_HTTPS
+            : hasEnvironmentValue(environment, 'SEERR_TLS_MODE')
+              ? undefined
+              : settings
+                ? String(settings.redirectHttpToHttps ?? false)
+                : undefined,
+          true
+        );
+
+  const environmentOverrides = TLS_ENVIRONMENT_KEYS.filter((key) =>
+    hasEnvironmentValue(environment, key)
+  );
+
+  if (mode === 'disabled') {
+    return {
+      mode,
+      httpAuthAllowed,
+      redirectsHttpToHttps: false,
+      hosts: [],
+      environmentOverrides,
+    };
+  }
+
+  const configuredHttpsPort =
+    httpsPortOverride ??
+    parseListenPort(
+      hasEnvironmentValue(environment, 'SEERR_HTTPS_PORT')
+        ? environment.SEERR_HTTPS_PORT
+        : settings?.httpsPort === undefined
+          ? undefined
+          : String(settings.httpsPort),
+      'SEERR_HTTPS_PORT',
+      DEFAULT_HTTPS_PORT
+    );
+  const hosts = parseTlsHosts(
+    hasEnvironmentValue(environment, 'SEERR_TLS_HOSTS')
+      ? environment.SEERR_TLS_HOSTS
+      : settings?.hosts
+  );
+
+  return {
+    mode,
+    httpAuthAllowed: false,
+    redirectsHttpToHttps,
+    httpsPort: configuredHttpsPort,
+    hosts,
+    certificatePath: hasEnvironmentValue(environment, 'SEERR_TLS_CERT_FILE')
+      ? environment.SEERR_TLS_CERT_FILE
+      : settings?.certificateFile,
+    keyPath: hasEnvironmentValue(environment, 'SEERR_TLS_KEY_FILE')
+      ? environment.SEERR_TLS_KEY_FILE
+      : settings?.keyFile,
+    caPath: hasEnvironmentValue(environment, 'SEERR_TLS_CA_FILE')
+      ? environment.SEERR_TLS_CA_FILE
+      : settings?.caFile,
+    environmentOverrides,
+  };
+};
+
+export interface TlsConfigurationStatus {
+  mode: TlsMode;
+  httpsPort: number | null;
+  httpAuthAllowed: boolean;
+  redirectsHttpToHttps: boolean;
+  environmentOverrides: string[];
+}
+
+export const getTlsConfigurationStatus = (
+  settings?: Partial<TlsSettings>,
+  environment: NodeJS.ProcessEnv = process.env
+): TlsConfigurationStatus => {
+  const resolved = resolveTlsSettings(settings, environment);
+  return {
+    mode: resolved.mode,
+    httpsPort: resolved.httpsPort ?? null,
+    httpAuthAllowed: resolved.httpAuthAllowed,
+    redirectsHttpToHttps: resolved.redirectsHttpToHttps,
+    environmentOverrides: [...resolved.environmentOverrides],
+  };
+};
+
 export const initializeTls = async ({
   httpPort,
   httpsPort,
   tlsDirectory,
+  settings,
   environment = process.env,
 }: {
   httpPort: number;
   httpsPort?: number;
   tlsDirectory?: string;
+  settings?: Partial<TlsSettings>;
   environment?: NodeJS.ProcessEnv;
 }): Promise<TlsConfiguration> => {
-  const mode = parseTlsMode(environment.SEERR_TLS_MODE);
-  const httpAuthAllowed = parseTlsBoolean(
-    'SEERR_ALLOW_HTTP_AUTH',
-    environment.SEERR_ALLOW_HTTP_AUTH
-  );
-  if (mode !== 'disabled' && httpAuthAllowed) {
-    throw new Error(
-      'SEERR_ALLOW_HTTP_AUTH cannot be enabled together with SEERR_TLS_MODE. Choose built-in HTTPS or the explicit insecure HTTP fallback.'
-    );
-  }
+  const resolved = resolveTlsSettings(settings, environment, httpsPort);
+  const { mode, httpAuthAllowed } = resolved;
 
   if (mode === 'disabled') {
     const runtime: TlsRuntimeInfo = {
@@ -635,16 +781,17 @@ export const initializeTls = async ({
       caDownloadAvailable: false,
     };
     setActiveRuntime(runtime);
-    return { mode, httpAuthAllowed, httpPort, hosts: [], runtime };
+    return {
+      mode,
+      httpAuthAllowed,
+      httpPort,
+      hosts: [],
+      redirectsHttpToHttps: false,
+      runtime,
+    };
   }
 
-  const configuredHttpsPort =
-    httpsPort ??
-    parseListenPort(
-      environment.SEERR_HTTPS_PORT,
-      'SEERR_HTTPS_PORT',
-      DEFAULT_HTTPS_PORT
-    );
+  const configuredHttpsPort = resolved.httpsPort!;
   if (configuredHttpsPort === httpPort) {
     throw new Error(
       'SEERR_HTTPS_PORT must be different from PORT when built-in TLS is enabled.'
@@ -652,8 +799,8 @@ export const initializeTls = async ({
   }
 
   if (mode === 'provided') {
-    const certificatePath = environment.SEERR_TLS_CERT_FILE;
-    const keyPath = environment.SEERR_TLS_KEY_FILE;
+    const certificatePath = resolved.certificatePath;
+    const keyPath = resolved.keyPath;
     if (!certificatePath || !keyPath) {
       throw new Error(
         'SEERR_TLS_CERT_FILE and SEERR_TLS_KEY_FILE are required when SEERR_TLS_MODE=provided.'
@@ -664,8 +811,8 @@ export const initializeTls = async ({
       'SEERR_TLS_CERT_FILE'
     );
     const key = readProvidedTlsFile(keyPath, 'SEERR_TLS_KEY_FILE');
-    const ca = environment.SEERR_TLS_CA_FILE
-      ? readProvidedTlsFile(environment.SEERR_TLS_CA_FILE, 'SEERR_TLS_CA_FILE')
+    const ca = resolved.caPath
+      ? readProvidedTlsFile(resolved.caPath, 'SEERR_TLS_CA_FILE')
       : undefined;
     createSecureContext({ key, cert: certificate, ...(ca ? { ca } : {}) });
     const x509 = new X509Certificate(certificate);
@@ -681,7 +828,7 @@ export const initializeTls = async ({
       httpPort,
       httpsPort: configuredHttpsPort,
       httpAuthAllowed: false,
-      redirectsHttpToHttps: true,
+      redirectsHttpToHttps: resolved.redirectsHttpToHttps,
       hosts,
       fingerprint: x509.fingerprint256,
       caDownloadAvailable: false,
@@ -693,12 +840,13 @@ export const initializeTls = async ({
       httpPort,
       httpsPort: configuredHttpsPort,
       hosts,
+      redirectsHttpToHttps: resolved.redirectsHttpToHttps,
       httpsOptions: { key, cert: certificate, ...(ca ? { ca } : {}) },
       runtime,
     };
   }
 
-  const hosts = parseTlsHosts(environment.SEERR_TLS_HOSTS);
+  const hosts = resolved.hosts;
   const paths = getTlsMaterialPaths(tlsDirectory);
   const material = await loadLocalTlsMaterial(paths, hosts);
   createSecureContext({
@@ -712,7 +860,7 @@ export const initializeTls = async ({
     httpPort,
     httpsPort: configuredHttpsPort,
     httpAuthAllowed: false,
-    redirectsHttpToHttps: true,
+    redirectsHttpToHttps: resolved.redirectsHttpToHttps,
     hosts,
     fingerprint,
     caDownloadAvailable: true,
@@ -724,6 +872,7 @@ export const initializeTls = async ({
     httpPort,
     httpsPort: configuredHttpsPort,
     hosts,
+    redirectsHttpToHttps: resolved.redirectsHttpToHttps,
     httpsOptions: {
       key: material.serverKey,
       cert: material.serverCertificate,
@@ -789,8 +938,8 @@ export const buildHttpsRedirectLocation = (
   return target.toString();
 };
 
-export const createHttpsRedirectHandler =
-  (httpsPort: number, allowedHosts: string[]) =>
+const createHttpsTransportHandler =
+  (httpsPort: number, allowedHosts: string[], redirect: boolean) =>
   (req: IncomingMessage, res: ServerResponse): void => {
     const location = buildHttpsRedirectLocation(req, httpsPort, allowedHosts);
     if (!location) {
@@ -803,6 +952,17 @@ export const createHttpsRedirectHandler =
       res.end(message);
       return;
     }
+    if (!redirect) {
+      const message = `HTTPS is enabled for this SeerrNG instance. Open ${location} and try again.\n`;
+      res.writeHead(426, {
+        'Cache-Control': 'no-store',
+        'Content-Length': Buffer.byteLength(message),
+        'Content-Type': 'text/plain; charset=utf-8',
+        Location: location,
+      });
+      res.end(message);
+      return;
+    }
     res.writeHead(308, {
       Location: location,
       'Cache-Control': 'no-store',
@@ -810,5 +970,15 @@ export const createHttpsRedirectHandler =
     });
     res.end();
   };
+
+export const createHttpsRedirectHandler = (
+  httpsPort: number,
+  allowedHosts: string[]
+) => createHttpsTransportHandler(httpsPort, allowedHosts, true);
+
+export const createHttpsUpgradeHandler = (
+  httpsPort: number,
+  allowedHosts: string[]
+) => createHttpsTransportHandler(httpsPort, allowedHosts, false);
 
 export const getTlsDefaultHttpsPort = (): number => DEFAULT_HTTPS_PORT;

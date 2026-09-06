@@ -60,7 +60,11 @@ import { configureHttpServer, parseListenPort } from '@server/utils/httpServer';
 import restartFlag from '@server/utils/restartFlag';
 import { getRateLimitKey } from '@server/utils/security';
 import { getSessionTransportOptions } from '@server/utils/sessionCookie';
-import { createHttpsRedirectHandler, initializeTls } from '@server/utils/tls';
+import {
+  createHttpsRedirectHandler,
+  createHttpsUpgradeHandler,
+  initializeTls,
+} from '@server/utils/tls';
 import compression from 'compression';
 import { TypeormStore } from 'connect-typeorm/out';
 import cookieParser from 'cookie-parser';
@@ -171,7 +175,10 @@ app
     // Load Settings
     const settings = await getSettings().load();
     const port = parseListenPort(process.env.PORT);
-    const tlsConfiguration = await initializeTls({ httpPort: port });
+    const tlsConfiguration = await initializeTls({
+      httpPort: port,
+      settings: settings.network.tls,
+    });
     loadExternalRuntimeConfig();
     restartFlag.initializeSettings(settings);
 
@@ -383,7 +390,9 @@ app
       tlsConfiguration.mode === 'disabled'
         ? http.createServer(server)
         : http.createServer(
-            createHttpsRedirectHandler(
+            (tlsConfiguration.redirectsHttpToHttps
+              ? createHttpsRedirectHandler
+              : createHttpsUpgradeHandler)(
               tlsConfiguration.httpsPort!,
               tlsConfiguration.hosts
             )
@@ -428,7 +437,7 @@ app
       listen(
         listener,
         port,
-        `HTTP redirect listener ready on ${host ? `${host} ` : ''}port ${port}`
+        `${tlsConfiguration.redirectsHttpToHttps ? 'HTTP redirect' : 'HTTP upgrade'} listener ready on ${host ? `${host} ` : ''}port ${port}`
       );
       listen(
         secureListener!,
