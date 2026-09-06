@@ -4,6 +4,21 @@ import { useIntl } from 'react-intl';
 import { twMerge } from 'tailwind-merge';
 
 export type BookFormat = 'book' | 'ebook' | 'audiobook' | 'both';
+export type RequestedBookFormat = Exclude<BookFormat, 'book'>;
+
+export const getRequestedBookFormat = (
+  format?: string | null
+): RequestedBookFormat => {
+  if (format === 'audiobook') {
+    return 'audiobook';
+  }
+
+  if (format === 'both') {
+    return 'both';
+  }
+
+  return 'ebook';
+};
 
 export const getBookFormatMessage = (format?: BookFormat | null) => {
   switch (format) {

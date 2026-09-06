@@ -589,7 +589,7 @@ const BookRequestModal = ({
       onCancel={onCancel}
       onOk={sendRequest}
       okDisabled={isUpdating || quota?.book?.restricted || !!formatWarning}
-      title={intl.formatMessage(messages.requestbook)}
+      title={requestLabel}
       subTitle={data?.title}
       okText={
         isUpdating
