@@ -56,7 +56,7 @@ const messages = defineMessages('components.RequestModal', {
 interface RequestModalProps extends React.HTMLAttributes<HTMLDivElement> {
   tmdbId: number;
   onCancel?: () => void;
-  onComplete?: (newStatus: MediaStatus) => void;
+  onComplete?: (newStatus: MediaStatus, is4k?: boolean) => void;
   onUpdating?: (isUpdating: boolean) => void;
   is4k?: boolean;
   editRequest?: NonFunctionProperties<MediaRequest>;
@@ -158,7 +158,7 @@ const TvRequestModal = ({
         }
       );
       if (onComplete) {
-        onComplete(MediaStatus.PENDING);
+        onComplete(MediaStatus.PENDING, is4k);
       }
     } catch {
       addToast(<span>{intl.formatMessage(messages.errorediting)}</span>, {
@@ -214,7 +214,7 @@ const TvRequestModal = ({
 
       if (response.data) {
         if (onComplete) {
-          onComplete(response.data.media.status);
+          onComplete(response.data.media[is4k ? 'status4k' : 'status'], is4k);
         }
         addToast(
           <span>

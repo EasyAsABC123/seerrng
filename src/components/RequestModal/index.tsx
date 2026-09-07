@@ -38,10 +38,11 @@ interface RequestModalProps {
   mbId?: string;
   bookId?: string;
   initialBookFormat?: 'ebook' | 'audiobook' | 'both';
+  initialIs4k?: boolean;
   is4k?: boolean;
   editRequest?: NonFunctionProperties<MediaRequest>;
   show4kSelector?: boolean;
-  onComplete?: (newStatus: MediaStatus) => void;
+  onComplete?: (newStatus: MediaStatus, is4k?: boolean) => void;
   onCancel?: () => void;
   onUpdating?: (isUpdating: boolean) => void;
 }
@@ -58,6 +59,7 @@ const RequestModal = ({
   mbId,
   bookId,
   initialBookFormat,
+  initialIs4k,
   is4k,
   editRequest,
   show4kSelector = false,
@@ -89,7 +91,7 @@ const RequestModal = ({
       { type: 'or' }
     );
   const [selectedIs4k, setSelectedIs4k] = useState(
-    is4k ?? (!canRequestStandard && canRequest4k)
+    is4k ?? initialIs4k ?? (!canRequestStandard && canRequest4k)
   );
   const canSelect4k =
     show4kSelector &&

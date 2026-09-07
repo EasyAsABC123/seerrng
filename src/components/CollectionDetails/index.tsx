@@ -527,11 +527,16 @@ const CollectionDetails = ({ collection }: CollectionDetailsProps) => {
               isAddedToWatchlist={title.mediaInfo?.watchlists?.length ?? 0}
               image={title.posterPath}
               status={title.mediaInfo?.status}
+              status4k={title.mediaInfo?.status4k}
               summary={title.overview}
               title={title.title}
               userScore={title.voteAverage}
               year={title.releaseDate}
               mediaType={title.mediaType}
+              inProgress={(title.mediaInfo?.downloadStatus ?? []).length > 0}
+              inProgress4k={
+                (title.mediaInfo?.downloadStatus4k ?? []).length > 0
+              }
               mutateParent={revalidate}
             />
           ))}

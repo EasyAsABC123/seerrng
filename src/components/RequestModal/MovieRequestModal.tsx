@@ -43,7 +43,7 @@ interface RequestModalProps extends React.HTMLAttributes<HTMLDivElement> {
   is4k?: boolean;
   editRequest?: NonFunctionProperties<MediaRequest>;
   onCancel?: () => void;
-  onComplete?: (newStatus: MediaStatus) => void;
+  onComplete?: (newStatus: MediaStatus, is4k?: boolean) => void;
   onUpdating?: (isUpdating: boolean) => void;
   requestQualityControl?: ReactNode;
 }
@@ -105,7 +105,7 @@ const MovieRequestModal = ({
 
       if (response.data) {
         if (onComplete) {
-          onComplete(response.data.media.status);
+          onComplete(response.data.media[is4k ? 'status4k' : 'status'], is4k);
         }
         addToast(
           <span>
@@ -147,7 +147,7 @@ const MovieRequestModal = ({
 
       if (response.status === 204) {
         if (onComplete) {
-          onComplete(MediaStatus.UNKNOWN);
+          onComplete(MediaStatus.UNKNOWN, is4k);
         }
         addToast(
           <span>
@@ -202,7 +202,7 @@ const MovieRequestModal = ({
       );
 
       if (onComplete) {
-        onComplete(MediaStatus.PENDING);
+        onComplete(MediaStatus.PENDING, is4k);
       }
     } catch {
       addToast(<span>{intl.formatMessage(messages.errorediting)}</span>, {
