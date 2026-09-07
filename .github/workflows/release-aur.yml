@@ -55,17 +55,11 @@ jobs:
           set -euo pipefail
           asset="seerrng-${TAG}-linux-x64.tar.gz"
           for attempt in {1..80}; do
-            release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
-            asset_url="$(jq -r --arg tag "$TAG" --arg asset "$asset" '
-              .[]
-              | select(.tag_name == $tag and .draft == true)
-              | .assets[]
-              | select(.name == $asset)
-              | .url
-            ' <<<"$release_json" | head -n 1)"
-            if [[ -n "$asset_url" ]] &&
-              curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
-                -H "Accept: application/octet-stream" "$asset_url" -o /tmp/seerrng.tar.gz; then
+            if gh release download "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "$asset" \
+              --output /tmp/seerrng.tar.gz \
+              --clobber; then
               tar -tzf /tmp/seerrng.tar.gz > /tmp/seerrng-files.txt
               grep -q "seerrng-${TAG}-linux-x64/dist/index.js" /tmp/seerrng-files.txt
               echo "sha256=$(sha256sum /tmp/seerrng.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
