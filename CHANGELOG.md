@@ -43,6 +43,40 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.17.0](https://github.com/snapetech/seerrng/compare/v3.16.0..v3.17.0) - 2026-09-07
+
+### User-facing changes
+
+#### Changed
+
+- **Media Ui:** Request-management panels now identify movie, series, and album requests alongside their status, including on compact layouts.
+- **Media Ui:** Media cards and request lists now show consistent badges for movies, series, albums, artists, collections, and books so each title’s media type is clear at a glance.
+- **Media Ui:** Movie and series cards now distinguish standard and 4K availability, downloads, and requests, including a clear 4K request affordance when that quality is missing.
+
+#### Fixed
+
+- **Discover:** Returning from movie, series, or book details now preserves the discovery list order and restores your previous scroll position after the results have loaded.
+
+### 🚀 Features
+- *(ui)* Surface movie and series quality state - ([a66dc4e](https://github.com/snapetech/seerrng/commit/a66dc4ea5968f479ace2c519b059decc44711772))
+- *(ui)* Identify media in request panels - ([3d63c1c](https://github.com/snapetech/seerrng/commit/3d63c1c8ee8508b00eeb4a585b441cf934f443fa))
+- *(ui)* Standardize media type badges - ([86bcb32](https://github.com/snapetech/seerrng/commit/86bcb327e081c1c4d78cbe1876aad35e9d70ad69))
+
+### 🐛 Bug Fixes
+- *(discover)* Harden persisted back-navigation state - ([f01052f](https://github.com/snapetech/seerrng/commit/f01052f4ef3587f47ec0d9107c92ad8147530cf5))
+- *(discover)* Restore list order and scroll on back navigation - ([d925405](https://github.com/snapetech/seerrng/commit/d92540590ae0a7a1d25841e0dd11b248ce3fe5b3))
+
+### 🎨 Styling
+- *(ci)* Format release workflow assertion - ([d0f0f0c](https://github.com/snapetech/seerrng/commit/d0f0f0ce79ab62341ac3caadf4348d2df20c223c))
+
+### 🧪 Testing
+- *(cypress)* Align book assertions with format-aware controls - ([ac80cfe](https://github.com/snapetech/seerrng/commit/ac80cfebe9a8f9168b2ee56c6b3306abd13d8019))
+
+### ⚙️ Miscellaneous Tasks
+- *(ci)* Honor internal release-note markers on pushes - ([6817587](https://github.com/snapetech/seerrng/commit/6817587157be11e7f544399f53213928ada12ee8))
+
 ## [3.16.0](https://github.com/snapetech/seerrng/compare/v3.15.0..v3.16.0) - 2026-09-07
 
 ### User-facing changes
