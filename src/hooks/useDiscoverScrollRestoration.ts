@@ -89,7 +89,7 @@ const useDiscoverScrollRestoration = ({
       return;
     }
 
-    let secondFrame: number;
+    let secondFrame: number | undefined;
     const firstFrame = window.requestAnimationFrame(() => {
       secondFrame = window.requestAnimationFrame(() => {
         window.scrollTo({ top: entry.scrollY, left: 0, behavior: 'auto' });
@@ -99,7 +99,9 @@ const useDiscoverScrollRestoration = ({
 
     return () => {
       window.cancelAnimationFrame(firstFrame);
-      window.cancelAnimationFrame(secondFrame);
+      if (secondFrame !== undefined) {
+        window.cancelAnimationFrame(secondFrame);
+      }
     };
   }, [entry, fetchMore, isLoading, isReachingEnd, itemCount]);
 };

@@ -27,6 +27,18 @@ describe('discover scroll restoration', () => {
     const state = { [DISCOVER_SCROLL_HISTORY_KEY]: entry };
 
     deepStrictEqual(getDiscoverScrollEntry(state, entry.path), entry);
+    deepStrictEqual(
+      getDiscoverScrollEntry(
+        {
+          [DISCOVER_SCROLL_HISTORY_KEY]: {
+            ...entry,
+            shuffleSeed: 'x'.repeat(128),
+          },
+        },
+        entry.path
+      ),
+      { ...entry, shuffleSeed: 'x'.repeat(128) }
+    );
     strictEqual(getDiscoverScrollEntry(state, '/discover/movies'), undefined);
     strictEqual(
       getDiscoverScrollEntry(
@@ -34,6 +46,18 @@ describe('discover scroll restoration', () => {
           [DISCOVER_SCROLL_HISTORY_KEY]: {
             ...entry,
             scrollY: Number.NaN,
+          },
+        },
+        entry.path
+      ),
+      undefined
+    );
+    strictEqual(
+      getDiscoverScrollEntry(
+        {
+          [DISCOVER_SCROLL_HISTORY_KEY]: {
+            ...entry,
+            shuffleSeed: 'x'.repeat(129),
           },
         },
         entry.path

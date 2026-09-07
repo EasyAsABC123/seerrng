@@ -9,6 +9,9 @@ export type DiscoverScrollEntry = {
 
 export const DISCOVER_SCROLL_HISTORY_KEY = '__seerrDiscoverScroll';
 
+// Keep persisted seeds within the same bound enforced by the discover APIs.
+const MAX_SHUFFLE_SEED_LENGTH = 128;
+
 const detailPathPatterns: Record<RestorableDiscoverMediaType, RegExp> = {
   movie: /^\/movie\/[^/?#]+(?:[/?#]|$)/,
   tv: /^\/tv\/[^/?#]+(?:[/?#]|$)/,
@@ -49,7 +52,10 @@ export const getDiscoverScrollEntry = (
     candidate.scrollY < 0 ||
     typeof candidate.itemCount !== 'number' ||
     !Number.isInteger(candidate.itemCount) ||
-    candidate.itemCount < 0
+    candidate.itemCount < 0 ||
+    (candidate.shuffleSeed !== undefined &&
+      (typeof candidate.shuffleSeed !== 'string' ||
+        candidate.shuffleSeed.length > MAX_SHUFFLE_SEED_LENGTH))
   ) {
     return undefined;
   }
