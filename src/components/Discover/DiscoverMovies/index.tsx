@@ -64,6 +64,7 @@ const DiscoverMovies = () => {
     isLoadingMore,
     isReachingEnd,
     titles,
+    shuffleSeed,
     fetchMore,
     error,
   } = useDiscover<MovieResult, unknown, FilterOptions>(
@@ -74,6 +75,7 @@ const DiscoverMovies = () => {
   useDiscoverScrollRestoration({
     mediaType: 'movie',
     itemCount: titles.length,
+    shuffleSeed,
     isLoading: isLoadingInitialData || isLoadingMore,
     isReachingEnd,
     fetchMore,

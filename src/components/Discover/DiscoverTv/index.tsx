@@ -64,6 +64,7 @@ const DiscoverTv = () => {
     isLoadingMore,
     isReachingEnd,
     titles,
+    shuffleSeed,
     fetchMore,
     error,
   } = useDiscover<TvResult, never, FilterOptions>(
@@ -76,6 +77,7 @@ const DiscoverTv = () => {
   useDiscoverScrollRestoration({
     mediaType: 'tv',
     itemCount: titles.length,
+    shuffleSeed,
     isLoading: isLoadingInitialData || isLoadingMore,
     isReachingEnd,
     fetchMore,

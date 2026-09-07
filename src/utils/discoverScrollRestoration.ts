@@ -4,6 +4,7 @@ export type DiscoverScrollEntry = {
   path: string;
   scrollY: number;
   itemCount: number;
+  shuffleSeed?: string;
 };
 
 export const DISCOVER_SCROLL_HISTORY_KEY = '__seerrDiscoverScroll';
@@ -76,4 +77,42 @@ export const getScrollRestorationAction = ({
   }
 
   return isLoading ? 'none' : 'load-more';
+};
+
+// Next.js replaces history.state during Back/Forward navigation, but retains key.
+const storageKey = (): string | undefined => {
+  const key = window.history.state?.key;
+  return typeof key === 'string'
+    ? `${DISCOVER_SCROLL_HISTORY_KEY}:${key}`
+    : undefined;
+};
+
+export const readDiscoverScrollEntry = (
+  path: string
+): DiscoverScrollEntry | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const key = storageKey();
+    return key
+      ? getDiscoverScrollEntry(
+          {
+            [DISCOVER_SCROLL_HISTORY_KEY]: JSON.parse(
+              window.sessionStorage.getItem(key) ?? 'null'
+            ),
+          },
+          path
+        )
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const saveDiscoverScrollEntry = (entry: DiscoverScrollEntry): void => {
+  try {
+    const key = storageKey();
+    if (key) window.sessionStorage.setItem(key, JSON.stringify(entry));
+  } catch {
+    // Navigation must still work when session storage is unavailable.
+  }
 };

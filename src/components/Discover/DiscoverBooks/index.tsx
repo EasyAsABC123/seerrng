@@ -63,6 +63,7 @@ const DiscoverBooks = () => {
     isLoadingMore,
     isReachingEnd,
     titles,
+    shuffleSeed,
     fetchMore,
   } = useDiscover<BookResult>(
     '/api/v1/discover/books',
@@ -72,6 +73,7 @@ const DiscoverBooks = () => {
   useDiscoverScrollRestoration({
     mediaType: 'book',
     itemCount: titles.length,
+    shuffleSeed,
     isLoading: isLoadingInitialData || isLoadingMore,
     isReachingEnd,
     fetchMore,
