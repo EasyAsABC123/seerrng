@@ -192,6 +192,27 @@ test('multi-architecture publishers perform the real build once and verify the i
     'validate-main-tag',
     'create-draft-release',
   ]);
+  const releaseCommit = release.jobs.publish.steps.find(
+    (step) => step.name === 'Resolve release commit'
+  );
+  assert.equal(releaseCommit.id, 'release');
+  assert.match(releaseCommit.run, /git rev-parse.*RELEASE_TAG/iu);
+  const metadata = release.jobs.publish.steps.find(
+    (step) => step.name === 'Extract metadata'
+  );
+  assert.match(
+    metadata.with.labels,
+    /org\.opencontainers\.image\.revision=\$\{\{ steps\.release\.outputs\.SHA \}\}/u,
+    'release image metadata must identify the tagged source commit'
+  );
+  const buildStep = release.jobs.publish.steps.find(
+    (step) => step.name === 'Build & Push (multi-arch)'
+  );
+  assert.match(
+    buildStep.run,
+    /release_sha="\$\{\{ steps\.release\.outputs\.SHA \}\}"/u,
+    'release image contents and metadata must use the same tagged source commit'
+  );
   assert.match(
     release.jobs.publish.steps.find(
       (step) => step.name === 'Verify published architectures'
