@@ -280,6 +280,16 @@ test('release notes flow into the draft release and Discord announcement', () =>
   );
 });
 
+test('release platform digest validation is portable across grep implementations', () => {
+  const releaseText = fs.readFileSync(
+    path.join(workflowDirectory, 'release.yml'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(releaseText, /grep -Eq '\^(?:amd64|arm64)\\tsha256:/u);
+  assert.equal((releaseText.match(/\[\[:blank:\]\]/gu) ?? []).length, 4);
+});
+
 test('pull-request CI publishes the exact release-note preview', () => {
   const ci = readWorkflow('ci.yml');
   const validation = ci.jobs['release-notes'].steps.find(

@@ -440,8 +440,8 @@ jobs:
           [[ "${#ghcr_platforms[@]}" -eq 2 ]] || exit 1
           [[ "${#dockerhub_platforms[@]}" -eq 2 ]] || exit 1
           diff -u <(printf '%s\n' "${ghcr_platforms[@]}") <(printf '%s\n' "${dockerhub_platforms[@]}")
-          printf '%s\n' "${ghcr_platforms[@]}" | grep -Eq '^amd64\tsha256:[0-9a-f]{64}$'
-          printf '%s\n' "${ghcr_platforms[@]}" | grep -Eq '^arm64\tsha256:[0-9a-f]{64}$'
+          printf '%s\n' "${ghcr_platforms[@]}" | grep -Eq '^amd64[[:blank:]]sha256:[0-9a-f]{64}$'
+          printf '%s\n' "${ghcr_platforms[@]}" | grep -Eq '^arm64[[:blank:]]sha256:[0-9a-f]{64}$'
           printf '%s\n' "${ghcr_platforms[@]}" > "$RUNNER_TEMP/seerrng-platform-digests"
 
       - name: Generate and attest per-platform SBOMs
@@ -534,8 +534,8 @@ jobs:
               resolve_platforms "$registry_image@${{ needs.publish.outputs.image_digest }}"
             )
             [[ "${#platforms[@]}" -eq 2 ]] || exit 1
-            printf '%s\n' "${platforms[@]}" | grep -Eq '^amd64\tsha256:[0-9a-f]{64}$'
-            printf '%s\n' "${platforms[@]}" | grep -Eq '^arm64\tsha256:[0-9a-f]{64}$'
+            printf '%s\n' "${platforms[@]}" | grep -Eq '^amd64[[:blank:]]sha256:[0-9a-f]{64}$'
+            printf '%s\n' "${platforms[@]}" | grep -Eq '^arm64[[:blank:]]sha256:[0-9a-f]{64}$'
             while IFS=$'\t' read -r arch digest; do
               timeout 5m cosign verify-attestation \
                 --type cyclonedx \
