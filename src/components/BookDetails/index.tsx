@@ -469,6 +469,7 @@ const BookDetails = () => {
                   downloadItem={bookDownloadStatus}
                   inProgress={bookDownloadStatus.length > 0}
                   mediaType="book"
+                  bookFormat={requestedBookFormat}
                   externalId={openLibraryWorkId}
                   serviceUrl={
                     data.mediaInfo.serviceUrl ??

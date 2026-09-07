@@ -329,6 +329,11 @@ const RequestCardError = ({ requestData }: RequestCardErrorProps) => {
                               ? 'tv'
                               : 'movie'
                       }
+                      bookFormat={
+                        requestData.type === 'book'
+                          ? getRequestedBookFormat(requestData.bookFormat)
+                          : undefined
+                      }
                       plexUrl={requestData.is4k ? plexUrl4k : plexUrl}
                       serviceUrl={getRequestServiceUrl(requestData)}
                     />
@@ -731,6 +736,11 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
                       : requestData.type === 'tv'
                         ? 'tv'
                         : 'movie'
+                }
+                bookFormat={
+                  requestData.type === 'book'
+                    ? getRequestedBookFormat(requestData.bookFormat)
+                    : undefined
                 }
                 plexUrl={requestData.is4k ? plexUrl4k : plexUrl}
                 serviceUrl={getRequestServiceUrl(requestData)}

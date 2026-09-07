@@ -1,4 +1,7 @@
 import Badge from '@app/components/Common/Badge';
+import BookFormatBadge, {
+  getRequestedBookFormat,
+} from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import Tooltip from '@app/components/Common/Tooltip';
@@ -44,9 +47,6 @@ const messages = defineMessages('components.RequestBlock', {
   requestedby: 'Requested By',
   lastmodifiedby: 'Last Modified By',
   bookFormat: 'Format',
-  ebook: 'Ebook',
-  audiobook: 'Audiobook',
-  both: 'Both',
   approve: 'Approve Request',
   decline: 'Decline Request',
   edit: 'Edit Request',
@@ -72,13 +72,6 @@ const RequestBlock = ({ request, onUpdate }: RequestBlockProps) => {
   const musicId = request.media?.mbId
     ? normalizeMusicBrainzId(request.media.mbId)
     : undefined;
-  const bookFormatMessage =
-    request.bookFormat === 'audiobook'
-      ? messages.audiobook
-      : request.bookFormat === 'both'
-        ? messages.both
-        : messages.ebook;
-
   const updateRequest = async (type: 'approve' | 'decline'): Promise<void> => {
     setIsUpdating(true);
     await axios.post(`/api/v1/request/${request.id}/${type}`);
@@ -254,7 +247,10 @@ const RequestBlock = ({ request, onUpdate }: RequestBlockProps) => {
               {request.type === 'book' && (
                 <span className="mr-1">
                   <Tooltip content={intl.formatMessage(messages.bookFormat)}>
-                    <Badge>{intl.formatMessage(bookFormatMessage)}</Badge>
+                    <BookFormatBadge
+                      format={getRequestedBookFormat(request.bookFormat)}
+                      variant="compact"
+                    />
                   </Tooltip>
                 </span>
               )}

@@ -1,8 +1,6 @@
 import Alert from '@app/components/Common/Alert';
-import BookFormatBadge, {
-  getBookFormatMessage,
-  type BookFormat,
-} from '@app/components/Common/BookFormatBadge';
+import { getBookFormatMessage } from '@app/components/Common/BookFormatBadge';
+import BookFormatSelector from '@app/components/Common/BookFormatSelector';
 import Modal from '@app/components/Common/Modal';
 import type { RequestOverrides } from '@app/components/RequestModal/AdvancedRequester';
 import AdvancedRequester from '@app/components/RequestModal/AdvancedRequester';
@@ -51,9 +49,8 @@ const messages = defineMessages('components.RequestModal.Book', {
   backendRequestFailed:
     'The request was submitted, but Bookshelf rejected it while processing.',
   editerror: 'Something went wrong while editing the request.',
-  format: 'Format',
   bothDefaultInfo:
-    'Both uses your default ebook and audiobook Bookshelf services. Choose a single format to override server, profile, folder, or tags.',
+    'Ebook + Audiobook uses your default ebook and audiobook Bookshelf services. Choose a single format to override server, profile, folder, or tags.',
   edition: 'Edition / ISBN',
   automaticEdition: 'Automatic best match',
   automaticEditionInfo:
@@ -65,14 +62,10 @@ const messages = defineMessages('components.RequestModal.Book', {
   noAudiobookServer:
     'No audiobook Bookshelf service is configured. Audiobook requests are unavailable.',
   noBothServers:
-    'Both requires ebook and audiobook Bookshelf services to be configured.',
+    'Ebook + Audiobook requires ebook and audiobook Bookshelf services to be configured.',
   ebook: 'Ebook',
   audiobook: 'Audiobook',
-  both: 'Both',
   ebookAndAudiobook: 'ebook and audiobook',
-  formatHint: 'Choose which format Seerr should request.',
-  formatUnavailable: 'Not configured',
-  formatAvailable: 'Configured',
 });
 
 interface BookRequestModalProps {
@@ -83,69 +76,6 @@ interface BookRequestModalProps {
   onUpdating?: (isUpdating: boolean) => void;
   editRequest?: NonFunctionProperties<MediaRequest>;
 }
-
-type RequestBookFormat = Exclude<BookFormat, 'book'>;
-
-interface BookFormatSelectorProps {
-  value: RequestBookFormat;
-  available: Record<RequestBookFormat, boolean>;
-  onChange: (value: RequestBookFormat) => void;
-}
-
-const BookFormatSelector = ({
-  value,
-  available,
-  onChange,
-}: BookFormatSelectorProps) => {
-  const intl = useIntl();
-  const options: RequestBookFormat[] = ['ebook', 'audiobook', 'both'];
-
-  return (
-    <fieldset className="mt-6">
-      <legend className="text-label">
-        {intl.formatMessage(messages.format)}
-      </legend>
-      <p className="mt-1 text-xs text-gray-400">
-        {intl.formatMessage(messages.formatHint)}
-      </p>
-      <div
-        className="mt-3 grid gap-2 sm:grid-cols-3"
-        role="radiogroup"
-        aria-label={intl.formatMessage(messages.format)}
-      >
-        {options.map((option) => {
-          const isSelected = value === option;
-          const isAvailable = available[option];
-
-          return (
-            <button
-              key={option}
-              type="button"
-              role="radio"
-              aria-checked={isSelected}
-              disabled={!isAvailable}
-              onClick={() => onChange(option)}
-              className={`flex min-h-16 min-w-0 flex-col justify-between rounded-lg border px-3 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-45 ${
-                isSelected
-                  ? 'border-indigo-400 bg-indigo-500/20 shadow-sm shadow-indigo-950/40'
-                  : 'border-gray-700 bg-gray-900/60 hover:border-gray-500 hover:bg-gray-900'
-              }`}
-            >
-              <BookFormatBadge format={option} variant="selector" />
-              <span className="mt-1 text-[11px] text-gray-400">
-                {intl.formatMessage(
-                  isAvailable
-                    ? messages.formatAvailable
-                    : messages.formatUnavailable
-                )}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-};
 
 const BookRequestModal = ({
   bookId,
