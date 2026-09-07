@@ -289,7 +289,7 @@ test('pull-request CI publishes the exact release-note preview', () => {
   assert.ok(validation);
   assert.equal(
     validation.env.PR_BODY,
-    '${{ github.event_name == \'pull_request\' && github.event.pull_request.body || github.event.head_commit.message || \'\' }}'
+    "${{ github.event_name == 'pull_request' && github.event.pull_request.body || github.event.head_commit.message || '' }}"
   );
   assert.match(validation.run, /--summary-file "\$GITHUB_STEP_SUMMARY"/u);
 });
