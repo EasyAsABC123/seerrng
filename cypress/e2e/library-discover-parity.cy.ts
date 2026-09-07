@@ -99,10 +99,10 @@ describe('Books and Music discover parity', () => {
       results: [],
     });
 
-    cy.wrap(themePalettes).each((palette) => {
+    themePalettes.forEach((palette) => {
       cy.visit('/discover/movies', {
         onBeforeLoad(win) {
-          win.localStorage.setItem('seerr-theme-palette', palette as string);
+          win.localStorage.setItem('seerr-theme-palette', palette);
           win.localStorage.setItem('seerr-theme-mode', 'dark');
         },
       });
@@ -128,7 +128,7 @@ describe('Books and Music discover parity', () => {
 
         cy.visit('/discover/movies', {
           onBeforeLoad(win) {
-            win.localStorage.setItem('seerr-theme-palette', palette as string);
+            win.localStorage.setItem('seerr-theme-palette', palette);
             win.localStorage.setItem('seerr-theme-mode', 'light');
           },
         });
@@ -413,8 +413,25 @@ describe('Books and Music discover parity', () => {
     cy.contains('[data-testid=modal-title]', 'Requestable Book').should(
       'be.visible'
     );
-    cy.contains('label', 'Format').should('be.visible');
-    cy.get('select[name=bookFormat]').should('be.visible');
+    cy.contains('legend', 'Format').should('be.visible');
+    cy.get('[role=radiogroup][aria-label=Format]').within(() => {
+      cy.get('[title=Ebook]')
+        .closest('[role=radio]')
+        .should('have.attr', 'aria-checked', 'true');
+      cy.get('[title=Audiobook]')
+        .closest('[role=radio]')
+        .click()
+        .should('have.attr', 'aria-checked', 'true');
+    });
+    cy.contains('[data-testid=modal-title]', 'Request Audiobook')
+      .scrollIntoView()
+      .should('be.visible');
+    cy.contains('[role=radio]', 'Ebook + Audiobook')
+      .click()
+      .should('have.attr', 'aria-checked', 'true');
+    cy.contains('[data-testid=modal-title]', 'Request Ebook + Audiobook')
+      .scrollIntoView()
+      .should('be.visible');
     cy.contains('label', 'Edition / ISBN').should('be.visible');
     cy.get('select[name=isbn]').should('be.visible');
     cy.contains('Automatic best match').should('be.visible');
