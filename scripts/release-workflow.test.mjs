@@ -290,6 +290,25 @@ test('release platform digest validation is portable across grep implementations
   assert.equal((releaseText.match(/\[\[:blank:\]\]/gu) ?? []).length, 4);
 });
 
+test('release asset checksums match the builder sidecar names', () => {
+  const releaseText = fs.readFileSync(
+    path.join(workflowDirectory, 'release.yml'),
+    'utf8'
+  );
+  const assetsText = fs.readFileSync(
+    path.join(workflowDirectory, 'release-assets.yml'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(releaseText, /(?:\\.tar\\.gz|\\.zip)\\.sha256/u);
+  assert.doesNotMatch(
+    assetsText,
+    /checksum="dist-release\/\$archive\.sha256"/u
+  );
+  assert.match(assetsText, /archive_base="\$\{archive%\.tar\.gz\}"/u);
+  assert.match(assetsText, /archive_base="\$\{archive_base%\.zip\}"/u);
+});
+
 test('pull-request CI publishes the exact release-note preview', () => {
   const ci = readWorkflow('ci.yml');
   const validation = ci.jobs['release-notes'].steps.find(

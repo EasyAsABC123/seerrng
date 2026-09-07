@@ -153,7 +153,9 @@ jobs:
           )
           for archive in "${expected[@]}"; do
             test -f "dist-release/$archive"
-            checksum="dist-release/$archive.sha256"
+            archive_base="${archive%.tar.gz}"
+            archive_base="${archive_base%.zip}"
+            checksum="dist-release/$archive_base.sha256"
             test -f "$checksum"
             (
               cd dist-release
