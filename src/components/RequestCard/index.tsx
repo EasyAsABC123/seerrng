@@ -5,6 +5,9 @@ import BookFormatBadge, {
 } from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
+import MediaTypeBadge, {
+  getMediaTypeBadgeType,
+} from '@app/components/Common/MediaTypeBadge';
 import Tooltip from '@app/components/Common/Tooltip';
 import StatusBadge from '@app/components/StatusBadge';
 import useDeepLinks from '@app/hooks/useDeepLinks';
@@ -566,15 +569,26 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
           className="relative z-10 flex min-w-0 flex-1 flex-col pr-4"
           data-testid="request-card-title"
         >
-          <div className="hidden text-xs font-medium text-white sm:flex">
-            {(isMovie(title)
-              ? title.releaseDate
-              : isMusic(title)
+          <div className="hidden flex-wrap items-center gap-1 text-xs font-medium text-white sm:flex">
+            {requestData.type !== 'book' && (
+              <MediaTypeBadge
+                mediaType={getMediaTypeBadgeType(requestData.type) ?? 'movie'}
+                variant="compact"
+              />
+            )}
+            {requestData.type !== 'book' && requestData.is4k && (
+              <Badge badgeType="warning">4K</Badge>
+            )}
+            <span>
+              {(isMovie(title)
                 ? title.releaseDate
-                : isBook(title)
-                  ? title.firstPublishYear?.toString()
-                  : title.firstAirDate
-            )?.slice(0, 4)}
+                : isMusic(title)
+                  ? title.releaseDate
+                  : isBook(title)
+                    ? title.firstPublishYear?.toString()
+                    : title.firstAirDate
+              )?.slice(0, 4)}
+            </span>
             {isMusic(title) && (
               <>
                 <span className="mx-2">-</span>

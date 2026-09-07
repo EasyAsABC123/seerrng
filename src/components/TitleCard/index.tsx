@@ -5,6 +5,7 @@ import BookFormatBadge, {
 } from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
+import MediaTypeBadge from '@app/components/Common/MediaTypeBadge';
 import StatusBadgeMini from '@app/components/Common/StatusBadgeMini';
 import Tooltip from '@app/components/Common/Tooltip';
 import ErrorCard from '@app/components/TitleCard/ErrorCard';
@@ -562,27 +563,11 @@ const TitleCard = ({
                   className="pointer-events-none z-40 self-start"
                 />
               ) : (
-                <div
-                  className={`pointer-events-none z-40 self-start rounded-full border shadow-md ${
-                    mediaType === 'movie' || mediaType === 'collection'
-                      ? 'border-blue-500 bg-blue-600/80'
-                      : isAlbum
-                        ? 'border-emerald-500 bg-emerald-600/80'
-                        : 'border-purple-600 bg-purple-600/80'
-                  }`}
-                >
-                  <div className="flex h-4 items-center px-2 py-2 text-center text-xs font-medium text-white sm:h-5">
-                    {mediaType === 'movie'
-                      ? intl.formatMessage(globalMessages.movie)
-                      : mediaType === 'collection'
-                        ? intl.formatMessage(globalMessages.collection)
-                        : mediaType === 'tv'
-                          ? intl.formatMessage(globalMessages.tvshow)
-                          : isAlbum
-                            ? intl.formatMessage(globalMessages.album)
-                            : intl.formatMessage(globalMessages.artist)}
-                  </div>
-                </div>
+                <MediaTypeBadge
+                  mediaType={mediaType === 'person' ? 'artist' : mediaType}
+                  variant="card"
+                  className="pointer-events-none z-40 self-start"
+                />
               )}
               {currentStatus !== MediaStatus.BLOCKLISTED && (
                 <div className="z-40 flex items-center">

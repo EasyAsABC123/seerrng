@@ -2,6 +2,7 @@ import Button from '@app/components/Common/Button';
 import ButtonWithDropdown from '@app/components/Common/ButtonWithDropdown';
 import CachedImage from '@app/components/Common/CachedImage';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import MediaTypeBadge from '@app/components/Common/MediaTypeBadge';
 import PageTitle from '@app/components/Common/PageTitle';
 import Tooltip from '@app/components/Common/Tooltip';
 import Slider from '@app/components/Slider';
@@ -367,6 +368,7 @@ const CollectionDetails = ({ collection }: CollectionDetailsProps) => {
         </div>
         <div className="media-title">
           <div className="media-status">
+            <MediaTypeBadge mediaType="collection" variant="inline" />
             <StatusBadge
               status={collectionStatus}
               downloadItem={downloadStatus}

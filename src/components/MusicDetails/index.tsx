@@ -3,6 +3,7 @@ import AssociationBadge from '@app/components/Association/AssociationBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import MediaTypeBadge from '@app/components/Common/MediaTypeBadge';
 import PageTitle from '@app/components/Common/PageTitle';
 import Tooltip from '@app/components/Common/Tooltip';
 import IssueBlock from '@app/components/IssueBlock';
@@ -366,9 +367,11 @@ const MusicDetails = () => {
         </div>
         <div className="min-w-0 flex-1 text-gray-300">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-emerald-500 bg-emerald-600/80 px-3 py-1 text-xs font-medium uppercase tracking-wider text-white">
-              {intl.formatMessage(messages.album)}
-            </span>
+            <MediaTypeBadge
+              mediaType="album"
+              variant="inline"
+              className="px-3 py-1 text-xs uppercase tracking-wider"
+            />
             {data.mediaInfo?.status &&
               data.mediaInfo.status !== MediaStatus.UNKNOWN && (
                 <StatusBadge

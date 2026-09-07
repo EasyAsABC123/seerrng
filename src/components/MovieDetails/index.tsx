@@ -9,6 +9,7 @@ import AssociationBadge from '@app/components/Association/AssociationBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import MediaTypeBadge from '@app/components/Common/MediaTypeBadge';
 import PageTitle from '@app/components/Common/PageTitle';
 import type { PlayButtonLink } from '@app/components/Common/PlayButton';
 import PlayButton from '@app/components/Common/PlayButton';
@@ -534,6 +535,7 @@ const MovieDetails = ({ movie }: MovieDetailsProps) => {
         </div>
         <div className="media-title">
           <div className="media-status">
+            <MediaTypeBadge mediaType="movie" variant="inline" />
             <StatusBadge
               status={data.mediaInfo?.status}
               downloadItem={data.mediaInfo?.downloadStatus}

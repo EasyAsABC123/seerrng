@@ -7,6 +7,9 @@ import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import Header from '@app/components/Common/Header';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import MediaTypeBadge, {
+  type MediaTypeBadgeType,
+} from '@app/components/Common/MediaTypeBadge';
 import PageTitle from '@app/components/Common/PageTitle';
 import useToasts from '@app/hooks/useToasts';
 import { Permission, useUser } from '@app/hooks/useUser';
@@ -437,6 +440,15 @@ const getMediaBadge = (
   return intl.formatMessage(messages.book);
 };
 
+const getMediaBadgeType = (
+  item: RequestStatusItem
+): MediaTypeBadgeType | undefined => {
+  if (item.request.type === 'movie') return 'movie';
+  if (item.request.type === 'tv') return 'tv';
+  if (item.request.type === 'music') return 'album';
+  return undefined;
+};
+
 const getMediaFormat = (
   intl: ReturnType<typeof useIntl>,
   item: RequestStatusItem
@@ -715,9 +727,10 @@ const RequestStatusCard = ({
               {bookFormat ? (
                 <BookFormatBadge format={bookFormat} variant="compact" />
               ) : (
-                <span className="inline-flex min-h-4 items-center rounded-full bg-indigo-600 px-1.5 text-[11px] font-semibold leading-[1.3] text-indigo-50">
-                  {getMediaBadge(intl, item)}
-                </span>
+                <MediaTypeBadge
+                  mediaType={getMediaBadgeType(item) ?? 'movie'}
+                  variant="compact"
+                />
               )}
               <dl className="mt-0.5 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-0.5">
                 <dt className="font-medium text-gray-100">

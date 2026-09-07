@@ -9,6 +9,7 @@ import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import MediaTypeBadge from '@app/components/Common/MediaTypeBadge';
 import PageTitle from '@app/components/Common/PageTitle';
 import type { PlayButtonLink } from '@app/components/Common/PlayButton';
 import PlayButton from '@app/components/Common/PlayButton';
@@ -581,6 +582,7 @@ const TvDetails = ({ tv }: TvDetailsProps) => {
         </div>
         <div className="media-title">
           <div className="media-status">
+            <MediaTypeBadge mediaType="tv" variant="inline" />
             <StatusBadge
               status={data.mediaInfo?.status}
               downloadItem={data.mediaInfo?.downloadStatus}
