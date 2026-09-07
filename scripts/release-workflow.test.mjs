@@ -40,6 +40,14 @@ test('release package channels wait for the reusable release asset build', () =>
     dispatchScript,
     /Skipping stable package channels for pre-release/u
   );
+  const inventoryScript = packageDispatch.steps.find(
+    (step) => step.name === 'Verify release package assets'
+  ).run;
+  assert.match(
+    inventoryScript,
+    /gh release view .*--json assets/u,
+    'package inventory must inspect draft releases through the GitHub CLI'
+  );
   assert.deepEqual(publishRelease.needs, [
     'create-draft-release',
     'verify',
