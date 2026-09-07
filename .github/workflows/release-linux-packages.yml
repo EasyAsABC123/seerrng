@@ -114,6 +114,7 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
           git remote add origin "https://github.com/${REPOSITORY}.git"
           git config http.https://github.com/.extraheader "AUTHORIZATION: bearer ${GH_TOKEN}"
