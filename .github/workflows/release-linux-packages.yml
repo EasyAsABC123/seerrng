@@ -105,6 +105,8 @@ jobs:
           [[ "$tag" != *-* ]] || { echo "Stable package channels reject pre-release tag: $tag" >&2; exit 2; }
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+      - name: Install git for tag verification
+        run: dnf install -y git
       - name: Verify release tag is on main
         env:
           TAG: ${{ steps.version.outputs.tag }}
