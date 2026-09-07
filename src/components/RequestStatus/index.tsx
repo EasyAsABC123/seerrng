@@ -388,7 +388,7 @@ const getDetailHref = (item: RequestStatusItem): string | null => {
   const bookId = getBookId(item);
   const bookFormat = getRequestedBookFormat(item.request.bookFormat);
   return bookId
-    ? `/book/${encodeApiPathSegment(normalizeOpenLibraryWorkId(bookId))}${bookFormat === 'both' ? '' : `?format=${bookFormat}`}`
+    ? `/book/${encodeApiPathSegment(normalizeOpenLibraryWorkId(bookId))}?format=${bookFormat}`
     : null;
 };
 
@@ -722,6 +722,10 @@ const RequestStatusCard = ({
               <dl className="mt-0.5 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-0.5">
                 <dt className="font-medium text-gray-100">
                   {intl.formatMessage(messages.mediaTypeValue)}:
+                </dt>
+                <dd className="m-0 truncate">{getMediaBadge(intl, item)}</dd>
+                <dt className="font-medium text-gray-100">
+                  {intl.formatMessage(messages.format)}:
                 </dt>
                 <dd className="m-0 truncate">{getMediaFormat(intl, item)}</dd>
                 <dt className="font-medium text-gray-100">

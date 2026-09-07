@@ -37,7 +37,7 @@ interface RequestModalProps {
   tmdbId?: number;
   mbId?: string;
   bookId?: string;
-  initialBookFormat?: 'ebook' | 'audiobook';
+  initialBookFormat?: 'ebook' | 'audiobook' | 'both';
   is4k?: boolean;
   editRequest?: NonFunctionProperties<MediaRequest>;
   show4kSelector?: boolean;

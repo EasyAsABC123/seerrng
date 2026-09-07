@@ -77,7 +77,7 @@ const messages = defineMessages('components.RequestModal.Book', {
 
 interface BookRequestModalProps {
   bookId: string;
-  initialBookFormat?: 'ebook' | 'audiobook';
+  initialBookFormat?: 'ebook' | 'audiobook' | 'both';
   onCancel?: () => void;
   onComplete?: (newStatus: MediaStatus) => void;
   onUpdating?: (isUpdating: boolean) => void;

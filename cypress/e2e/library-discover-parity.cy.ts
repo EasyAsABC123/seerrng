@@ -1895,4 +1895,39 @@ describe('Books and Music discover parity', () => {
       'be.visible'
     );
   });
+
+  it('keeps the selected book format visible from search through the request action', () => {
+    cy.intercept('GET', '/api/v1/search*', {
+      page: 1,
+      totalPages: 1,
+      totalResults: 1,
+      results: [
+        {
+          id: 'OLPRIDEW',
+          mediaType: 'book',
+          title: 'Pride and Prejudice',
+          author: 'Jane Austen',
+          firstPublishYear: 1813,
+          posterPath: null,
+        },
+      ],
+    }).as('bookSearch');
+
+    cy.visit('/search?query=pride%20and%20prejudice');
+    cy.wait('@bookSearch');
+    cy.contains('button', 'Audiobooks').click();
+    cy.wait('@bookSearch')
+      .its('request.url')
+      .should('include', 'type=book')
+      .and('include', 'format=audiobook');
+
+    cy.get('[data-testid=title-card]')
+      .first()
+      .within(() => {
+        cy.contains('Audiobook').should('be.visible');
+        cy.get('a[href*="format=audiobook"]').should('exist');
+      });
+    cy.get('[data-testid=title-card]').first().trigger('mouseover');
+    cy.contains('button', 'Request Audiobook').should('be.visible');
+  });
 });

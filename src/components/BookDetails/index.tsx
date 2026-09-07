@@ -112,8 +112,10 @@ const BookDetails = () => {
     ? normalizeOpenLibraryWorkId(bookId)
     : undefined;
   const routeBookFormat = getQueryParamString(router.query.format);
-  const preferredBookFormat =
-    routeBookFormat === 'audiobook' || routeBookFormat === 'ebook'
+  const preferredBookFormat: RequestedBookFormat | undefined =
+    routeBookFormat === 'audiobook' ||
+    routeBookFormat === 'ebook' ||
+    routeBookFormat === 'both'
       ? routeBookFormat
       : undefined;
 

@@ -113,7 +113,7 @@ const getRequestDetailHref = (
 ) => {
   const query = [
     manage ? 'manage=1' : null,
-    request.type === 'book' && request.bookFormat !== 'both'
+    request.type === 'book'
       ? `format=${getRequestedBookFormat(request.bookFormat)}`
       : null,
   ]

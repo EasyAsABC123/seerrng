@@ -19,5 +19,11 @@ describe('Request Status', () => {
 
     cy.get('select[aria-label="Time frame"]').select('7d');
     cy.location('search').should('not.contain', 'timeFrame=');
+
+    cy.contains('button', 'Ebooks').should('be.visible');
+    cy.contains('button', 'Audiobooks').click();
+    cy.location('search').should('contain', 'mediaType=audiobook');
+    cy.contains('Showing requests for').should('be.visible');
+    cy.contains('Audiobook').should('be.visible');
   });
 });
