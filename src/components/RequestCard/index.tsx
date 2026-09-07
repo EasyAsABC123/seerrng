@@ -569,7 +569,7 @@ const RequestCard = ({ request, onTitleData }: RequestCardProps) => {
           className="relative z-10 flex min-w-0 flex-1 flex-col pr-4"
           data-testid="request-card-title"
         >
-          <div className="hidden flex-wrap items-center gap-1 text-xs font-medium text-white sm:flex">
+          <div className="flex flex-wrap items-center gap-1 text-xs font-medium text-white">
             {requestData.type !== 'book' && (
               <MediaTypeBadge
                 mediaType={getMediaTypeBadgeType(requestData.type) ?? 'movie'}

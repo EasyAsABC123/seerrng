@@ -4,6 +4,9 @@ import BookFormatBadge, {
 } from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
+import MediaTypeBadge, {
+  getMediaTypeBadgeType,
+} from '@app/components/Common/MediaTypeBadge';
 import Tooltip from '@app/components/Common/Tooltip';
 import useRequestOverride from '@app/hooks/useRequestOverride';
 import { useUser } from '@app/hooks/useUser';
@@ -239,6 +242,14 @@ const RequestBlock = ({ request, onUpdate }: RequestBlockProps) => {
         <div className="mt-2 sm:flex sm:justify-between">
           <div className="sm:flex">
             <div className="mr-6 flex items-center text-sm leading-5">
+              {request.type !== 'book' && (
+                <span className="mr-1">
+                  <MediaTypeBadge
+                    mediaType={getMediaTypeBadgeType(request.type) ?? 'movie'}
+                    variant="compact"
+                  />
+                </span>
+              )}
               {request.is4k && (
                 <span className="mr-1">
                   <Badge badgeType="warning">4K</Badge>
