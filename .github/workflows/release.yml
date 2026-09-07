@@ -216,12 +216,16 @@ jobs:
           labels: |
             org.opencontainers.image.created=${{ steps.ts.outputs.TIMESTAMP }}
             org.opencontainers.image.revision=${{ steps.release.outputs.SHA }}
+          annotations: |
+            org.opencontainers.image.created=${{ steps.ts.outputs.TIMESTAMP }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.SHA }}
 
       - name: Build & Push (multi-arch)
         shell: bash
         env:
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
           IMAGE_LABELS: ${{ steps.meta.outputs.labels }}
+          IMAGE_ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
         run: |
           set -euo pipefail
           release_sha="${{ steps.release.outputs.SHA }}"
@@ -246,6 +250,10 @@ jobs:
           while IFS= read -r label; do
             [ -n "$label" ] && build_args+=(--label "$label")
           done <<< "$IMAGE_LABELS"
+
+          while IFS= read -r annotation; do
+            [ -n "$annotation" ] && build_args+=(--annotation "$annotation")
+          done <<< "$IMAGE_ANNOTATIONS"
 
           for attempt in 1 2 3 4 5; do
             echo "Building and pushing release image (attempt ${attempt}/5)"

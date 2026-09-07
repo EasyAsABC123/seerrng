@@ -205,6 +205,11 @@ test('multi-architecture publishers perform the real build once and verify the i
     /org\.opencontainers\.image\.revision=\$\{\{ steps\.release\.outputs\.SHA \}\}/u,
     'release image metadata must identify the tagged source commit'
   );
+  assert.match(
+    metadata.with.annotations,
+    /org\.opencontainers\.image\.revision=\$\{\{ steps\.release\.outputs\.SHA \}\}/u,
+    'release image annotations must identify the tagged source commit'
+  );
   const buildStep = release.jobs.publish.steps.find(
     (step) => step.name === 'Build & Push (multi-arch)'
   );
@@ -212,6 +217,16 @@ test('multi-architecture publishers perform the real build once and verify the i
     buildStep.run,
     /release_sha="\$\{\{ steps\.release\.outputs\.SHA \}\}"/u,
     'release image contents and metadata must use the same tagged source commit'
+  );
+  assert.match(
+    buildStep.env.IMAGE_ANNOTATIONS,
+    /steps\.meta\.outputs\.annotations/u,
+    'release image builds must receive OCI annotations from metadata'
+  );
+  assert.match(
+    buildStep.run,
+    /--annotation/u,
+    'release image builds must publish the tagged source commit as an OCI annotation'
   );
   assert.match(
     release.jobs.publish.steps.find(
