@@ -598,8 +598,16 @@ jobs:
             release-ppa.yml \
             release-copr.yml
           do
+            optional=false
+            [[ "$workflow" == "release-snap.yml" ]] && optional=true
             dispatch_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            gh workflow run "$workflow" --repo "$REPO" --ref main -f "tag=$TAG"
+            if ! gh workflow run "$workflow" --repo "$REPO" --ref main -f "tag=$TAG"; then
+              if [[ "$optional" == true ]]; then
+                echo "::warning::Optional package workflow $workflow could not be dispatched; continuing."
+                continue
+              fi
+              exit 1
+            fi
             run_id=""
             for attempt in {1..60}; do
               runs_json="$(gh api "repos/$REPO/actions/workflows/$workflow/runs?event=workflow_dispatch&branch=main&per_page=20")"
@@ -614,12 +622,22 @@ jobs:
               fi
               sleep 5
             done
-            [[ -n "$run_id" ]] || {
+            if [[ -z "$run_id" ]]; then
+              if [[ "$optional" == true ]]; then
+                echo "::warning::Optional package workflow $workflow did not appear; continuing."
+                continue
+              fi
               echo "Unable to find the dispatched $workflow run." >&2
               exit 1
-            }
+            fi
             echo "Waiting for $workflow run $run_id"
-            gh run watch "$run_id" --repo "$REPO" --interval 15 --exit-status
+            if ! gh run watch "$run_id" --repo "$REPO" --interval 15 --exit-status; then
+              if [[ "$optional" == true ]]; then
+                echo "::warning::Optional package workflow $workflow failed; continuing without Snap Store publication."
+                continue
+              fi
+              exit 1
+            fi
           done
 
       - name: Verify release package assets

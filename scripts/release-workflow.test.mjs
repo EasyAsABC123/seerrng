@@ -31,6 +31,11 @@ test('release package channels wait for the reusable release asset build', () =>
   assert.match(dispatchScript, /--ref main/u);
   assert.match(dispatchScript, /release-linux-packages\.yml/u);
   assert.match(dispatchScript, /gh run watch/u);
+  assert.match(dispatchScript, /release-snap\.yml[\s\S]*optional=false/u);
+  assert.match(
+    dispatchScript,
+    /Optional package workflow .*failed; continuing without Snap Store publication/u
+  );
   assert.match(
     dispatchScript,
     /Skipping stable package channels for pre-release/u
