@@ -57,7 +57,10 @@ for (const composeFile of composeFiles) {
       'the writable configuration volume is missing'
     );
     assert.equal(service.healthcheck.test[0], 'CMD-SHELL');
-    assert.match(service.healthcheck.test[1], /\/app\/scripts\/healthcheck\.mjs/u);
+    assert.match(
+      service.healthcheck.test[1],
+      /\/app\/scripts\/healthcheck\.mjs/u
+    );
   });
 }
 
