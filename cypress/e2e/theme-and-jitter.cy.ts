@@ -63,7 +63,8 @@ describe('Theme picker and seeded discovery refresh', () => {
       '#1f2937'
     );
     cy.get('button[aria-label="Theme picker"]').click();
-    cy.contains('button', /^Seerr$/).click();
+    cy.contains('button', /^Seerr$/).should('exist');
+    cy.contains('button', /^SeerrNG$/).click();
     cy.get('html').should('have.attr', 'data-theme-palette', 'seerr');
     cy.get('meta[name="theme-color"]').should(
       'not.have.attr',

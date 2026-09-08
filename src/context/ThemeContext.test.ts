@@ -8,12 +8,13 @@ import {
 } from './ThemeContext';
 
 describe('themePalettes', () => {
-  it('uses the upstream Seerr palette as the default', () => {
+  it('uses the Seerr palette as the default', () => {
     assert.equal(DEFAULT_THEME_PALETTE_ID, 'classic');
     assert.equal(themePalettes[0].id, DEFAULT_THEME_PALETTE_ID);
+    assert.equal(themePalettes[0].name, 'Seerr');
   });
 
-  it('preserves the upstream dark chrome in the classic palette', () => {
+  it('preserves the Seerr dark chrome in the default palette', () => {
     const tokens = getThemeTokens('dark', 'classic');
 
     assert.equal(tokens.pageBg, '17 24 39');
@@ -32,7 +33,7 @@ describe('themePalettes', () => {
 
     assert.deepStrictEqual(seerr, {
       id: 'seerr',
-      name: 'Seerr',
+      name: 'SeerrNG',
       swatches: ['#0f172a', '#2563eb', '#38bdf8'],
       surface: 'slate',
       primary: 'blue',

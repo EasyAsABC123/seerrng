@@ -15,7 +15,7 @@ import {
 
 export type ThemeMode = 'light' | 'dark';
 
-type ThemeChrome = 'upstream';
+type ThemeChrome = 'classic';
 
 export type ThemePalette = {
   id: string;
@@ -30,16 +30,16 @@ export type ThemePalette = {
 export const themePalettes: ThemePalette[] = [
   {
     id: 'classic',
-    name: 'Seerr Classic',
+    name: 'Seerr',
     swatches: ['#1f2937', '#4f46e5', '#9333ea'],
     surface: 'gray',
     primary: 'indigo',
     secondary: 'purple',
-    chrome: 'upstream',
+    chrome: 'classic',
   },
   {
     id: 'seerr',
-    name: 'Seerr',
+    name: 'SeerrNG',
     swatches: ['#0f172a', '#2563eb', '#38bdf8'],
     surface: 'slate',
     primary: 'blue',
@@ -614,7 +614,7 @@ const getThemeChromeTokens = (
   mode: ThemeMode,
   chrome?: ThemeChrome
 ): ThemeChromeTokens => {
-  if (mode === 'dark' && chrome === 'upstream') {
+  if (mode === 'dark' && chrome === 'classic') {
     return {
       pageBg: surfaceScale[9],
       pageGlowStart: surfaceScale[8],
@@ -690,7 +690,7 @@ export const getThemeTokens = (mode: ThemeMode, palette: string) => {
   const primaryScale = themeScales[activePalette.primary];
   const secondaryScale = themeScales[activePalette.secondary];
   const surfaceScale =
-    mode === 'dark' && activePalette.chrome === 'upstream'
+    mode === 'dark' && activePalette.chrome === 'classic'
       ? themeScales.gray
       : createSurfaceScale(
           themeScales[activePalette.surface],
