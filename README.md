@@ -368,6 +368,21 @@ Common runtime variables:
 | `SEERR_SKIP_DB_MIGRATIONS` | Skips automatically running database migrations at startup in production. Only relevant when migrations are run out-of-band (e.g. `pnpm migration:run`, or a prepared Cypress test database). |
 | `JELLYFIN_TYPE` | One-time settings-migration hint. Set to `emby` before the first start after upgrading if your existing configuration was saved as `Jellyfin` but the server is actually Emby; relabels the stored media server type and can be unset afterward. |
 
+### First-run browser transport
+
+The setup page will not allow a media-server login until the active browser
+transport can persist a session. On a direct installation, choose built-in
+self-signed HTTPS or a provided certificate, save the choice, restart SeerrNG,
+and then open the HTTPS address. If HTTPS must remain disabled on a trusted
+LAN, enable `SEERR_ALLOW_HTTP_AUTH=true` (or the matching **Allow authenticated
+sessions over HTTP** option), acknowledge the warning, save, and restart.
+
+If a previous attempt saved Jellyfin details but did not establish a session,
+restart after correcting the transport and use `/login` to sign in again. Do
+not submit the setup hostname a second time. See [Built-in HTTPS and HTTP
+authentication modes](docs/using-seerr/advanced/built-in-tls.mdx) for the
+status check and reverse-proxy requirements.
+
 Use deployment secrets, `.env` files, or container environment variables. Do not commit private TMDB, Plex, Jellyfin, Emby, Radarr, Sonarr, Lidarr, Bookshelf, SMTP, or notification credentials.
 
 Bookshelf deployment and migration variables live on the helper scripts rather

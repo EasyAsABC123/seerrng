@@ -33,6 +33,10 @@ const messages = defineMessages('components.Login', {
   validationUrlBaseLeadingSlash: 'URL base must have a leading slash',
   validationUrlBaseTrailingSlash: 'URL base must not end in a trailing slash',
   loginerror: 'Something went wrong while trying to sign in.',
+  setupSessionError:
+    'Jellyfin setup was saved, but SeerrNG could not establish a browser session. Restart SeerrNG after changing transport settings, then use HTTPS or enable authenticated HTTP sessions.',
+  setupAlreadyConfigured:
+    'Jellyfin is already configured. Restart SeerrNG if you changed transport settings, then sign in again from the login page.',
   adminerror: 'You must use an admin account to sign in.',
   noadminerror: 'No admin user found on the server.',
   credentialerror: 'The username or password is incorrect.',
@@ -49,7 +53,7 @@ const messages = defineMessages('components.Login', {
 });
 
 interface JellyfinSetupProps {
-  revalidate: () => void;
+  revalidate: () => Promise<unknown>;
   serverType?: MediaServerType;
   onCancel?: () => void;
 }
@@ -119,7 +123,7 @@ function JellyfinSetup({
       validationSchema={LoginSchema}
       onSubmit={async (values) => {
         try {
-          await axios.post('/api/v1/auth/jellyfin', {
+          const response = await axios.post('/api/v1/auth/jellyfin', {
             username: values.username,
             password: values.password,
             hostname: values.hostname,
@@ -129,9 +133,14 @@ function JellyfinSetup({
             email: values.email,
             serverType: serverType,
           });
+          if (!response.data?.id || !(await revalidate())) {
+            throw new Error('browser-session-not-established');
+          }
         } catch (e) {
           let errorMessage = messages.loginerror;
-          switch (e?.response?.data?.message) {
+          const responseError =
+            e?.response?.data?.message ?? e?.response?.data?.error;
+          switch (responseError) {
             case ApiErrorCode.InvalidUrl:
               errorMessage = messages.invalidurlerror;
               break;
@@ -144,6 +153,16 @@ function JellyfinSetup({
             case ApiErrorCode.NoAdminUser:
               errorMessage = messages.noadminerror;
               break;
+            case 'Jellyfin hostname already configured':
+              errorMessage = messages.setupAlreadyConfigured;
+              break;
+          }
+
+          if (
+            e instanceof Error &&
+            e.message === 'browser-session-not-established'
+          ) {
+            errorMessage = messages.setupSessionError;
           }
 
           toasts.addToast(
@@ -153,8 +172,6 @@ function JellyfinSetup({
               appearance: 'error',
             }
           );
-        } finally {
-          revalidate();
         }
       }}
     >
