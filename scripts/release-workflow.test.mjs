@@ -155,11 +155,27 @@ test('multi-architecture publishers perform the real build once and verify the i
     'publish',
     'preflight-deploy',
   ]);
+  assert.equal(
+    ci.jobs['preflight-deploy'].outputs.ready,
+    '${{ steps.verify-storage.outputs.ready }}'
+  );
   assert.match(
     ci.jobs['preflight-deploy'].steps.find(
-      (step) => step.name === 'Verify deployment storage is mounted read-write'
+      (step) =>
+        step.name === 'Verify deployment storage and determine readiness'
     ).run,
-    /refusing deployment until the host is repaired/u
+    /live deployment will remain skipped until the host is repaired/u
+  );
+  assert.match(
+    ci.jobs['preflight-deploy'].steps.find(
+      (step) =>
+        step.name === 'Verify deployment storage and determine readiness'
+    ).run,
+    /ready=false/u
+  );
+  assert.equal(
+    ci.jobs['deploy-main'].if,
+    "github.ref == 'refs/heads/main' && needs.preflight-deploy.outputs.ready == 'true'"
   );
   assert.match(
     ci.jobs.publish.steps.find(
