@@ -48,6 +48,7 @@ import {
 } from '@server/utils/validation';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import semver from 'semver';
 import artistRoutes from './artist';
 import associationRoutes from './association';
 import authRoutes from './auth';
@@ -143,6 +144,26 @@ export const getCommitUpdateStatus = (
     // is unknown but it is at least the number of relevant commits returned.
     commitsBehind: commitIndex >= 0 ? commitIndex : relevantCommits.length,
   };
+};
+
+export const getReleaseUpdateStatus = (
+  releases: {
+    tag_name: string;
+    prerelease: boolean;
+    draft: boolean;
+  }[],
+  currentVersion: string
+): boolean => {
+  const installedVersion = semver.valid(currentVersion);
+  if (!installedVersion) {
+    return false;
+  }
+
+  return releases
+    .filter((release) => !release.prerelease && !release.draft)
+    .map((release) => semver.valid(release.tag_name))
+    .filter((version): version is string => version !== null)
+    .some((version) => semver.gt(version, installedVersion));
 };
 
 router.use(checkUser);
@@ -256,7 +277,7 @@ router.get<Record<string, never>, StatusResponse>(
 
     if (checkUpdate) {
       const githubApi = new GithubAPI();
-      const branchMatch = currentVersion.match(/^main-/);
+      const branchMatch = currentVersion.match(/^(main)-/);
 
       if (branchMatch && commitTag !== 'local') {
         const commits = await githubApi.getSeerrCommits({
@@ -271,11 +292,7 @@ router.get<Record<string, never>, StatusResponse>(
         const releases = await githubApi.getSeerrReleases();
 
         if (releases.length) {
-          const latestVersion = releases[0];
-
-          if (!latestVersion.name.includes(currentVersion)) {
-            updateAvailable = true;
-          }
+          updateAvailable = getReleaseUpdateStatus(releases, currentVersion);
         }
       }
     }

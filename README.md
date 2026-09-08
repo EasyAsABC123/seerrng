@@ -56,6 +56,8 @@ breaking-change status, and CI shows the exact release-note preview during
 review.
 The historical tag coverage and audit method are documented in
 [`docs/maintainers/release-history-audit.md`](./docs/maintainers/release-history-audit.md).
+The in-app version check compares against published stable tags from the
+SeerrNG fork, not the upstream Seerr repository.
 
 ## Screenshots
 

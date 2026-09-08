@@ -27,6 +27,7 @@ import router, {
   EXTERNAL_METADATA_RATE_LIMIT,
   PUBLIC_BACKDROPS_RATE_LIMIT,
   getCommitUpdateStatus,
+  getReleaseUpdateStatus,
 } from './index';
 
 let app: Express;
@@ -196,6 +197,51 @@ describe('commit update status', () => {
     assert.deepEqual(
       getCommitUpdateStatus([commit('a'), commit('b')], 'older'),
       { updateAvailable: true, commitsBehind: 2 }
+    );
+  });
+});
+
+describe('stable release update status', () => {
+  const release = (
+    tag_name: string,
+    options: { prerelease?: boolean; draft?: boolean } = {}
+  ) => ({
+    tag_name,
+    prerelease: options.prerelease ?? false,
+    draft: options.draft ?? false,
+  });
+
+  it('does not flag a fork build that is newer than its public release feed', () => {
+    assert.equal(getReleaseUpdateStatus([release('v3.17.0')], '3.18.0'), false);
+  });
+
+  it('flags a semver-newer stable fork release', () => {
+    assert.equal(
+      getReleaseUpdateStatus(
+        [release('v3.18.0'), release('v3.19.0')],
+        '3.18.0'
+      ),
+      true
+    );
+  });
+
+  it('ignores prerelease and draft releases', () => {
+    assert.equal(
+      getReleaseUpdateStatus(
+        [
+          release('v4.0.0-rc.1', { prerelease: true }),
+          release('v4.0.0', { draft: true }),
+        ],
+        '3.18.0'
+      ),
+      false
+    );
+  });
+
+  it('ignores invalid installed versions and release tags', () => {
+    assert.equal(
+      getReleaseUpdateStatus([release('not-a-version')], 'main-abc123'),
+      false
     );
   });
 });
