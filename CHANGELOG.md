@@ -45,6 +45,42 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.18.0](https://github.com/snapetech/seerrng/compare/v3.17.0..v3.18.0) - 2026-09-08
+
+### User-facing changes
+
+#### Fixed
+
+- **Authentication:** First-run setup now waits for an active HTTPS or explicitly enabled HTTP session mode before media-server sign-in, and recovers clearly when a previous attempt saved Jellyfin details without establishing a browser session.
+  - **Action required:** restart SeerrNG after changing browser transport settings
+- **Metadata:** SeerrNG now bounds poster pre-caching, keeps key search and request views usable on narrow screens, shows MusicBrainz record-label metadata when available, and improves title-only book and audiobook matching.
+
+### 🚀 Features
+- Complete tester feedback media and import flows - ([2aa11a2](https://github.com/snapetech/seerrng/commit/2aa11a2ebab183304f81d37505a5fd590d13be09))
+
+### 🐛 Bug Fixes
+- *(ci)* Allow multiple release-note confirmations - ([abab5ea](https://github.com/snapetech/seerrng/commit/abab5eaedf8889e9f452c6de69a1989c108cdc46))
+- *(ci)* Keep releases moving when Snap Store is unavailable - ([4bc309d](https://github.com/snapetech/seerrng/commit/4bc309ddaaf400c329c72b0d1dd6dbdd05bbe7b3))
+- *(ci)* Install git in rpm package container - ([68cf515](https://github.com/snapetech/seerrng/commit/68cf515b078b9a2084d4fe0962df9bd3695cd6d5))
+- *(ci)* Validate release asset sidecars - ([f93c383](https://github.com/snapetech/seerrng/commit/f93c383c0c7fee813e0992e1685f740b6fe177dd))
+- *(ci)* Validate release platform digests portably - ([5b7b513](https://github.com/snapetech/seerrng/commit/5b7b5136976888e3c234b26596287c7664568bd3))
+- *(release)* Align OCI manifest annotations - ([ad82d50](https://github.com/snapetech/seerrng/commit/ad82d501f532230ac2cb94430af98de068d3b1e7))
+- *(release)* Label images with the tagged source commit - ([e5ce1f7](https://github.com/snapetech/seerrng/commit/e5ce1f754f11b1bc1d15e3266af2b3be0ad51c37))
+- *(release)* Inspect draft assets through gh release view - ([6fba0a9](https://github.com/snapetech/seerrng/commit/6fba0a9cd110f59437e2aae1c8e47ace2e8b37f0))
+- *(release)* Allow package channels to read drafts - ([625fcf7](https://github.com/snapetech/seerrng/commit/625fcf71319438ef744b0b00f1f6ce4293744092))
+- *(release)* Allow AUR to read draft assets - ([07ca314](https://github.com/snapetech/seerrng/commit/07ca3142db6c1195c7a28f9f203228eba51d2540))
+- *(release)* Use GitHub CLI for AUR assets - ([94eebe2](https://github.com/snapetech/seerrng/commit/94eebe2dfbddf200b10bc32a4dc4675f63bedb8f))
+- *(release)* Download AUR assets from draft releases - ([70c9f28](https://github.com/snapetech/seerrng/commit/70c9f2820d564db2ff38fbb241b2c6f2ae568806))
+- *(release)* Authenticate Fedora tag verification - ([78c93f1](https://github.com/snapetech/seerrng/commit/78c93f1b4696a274d580b4b5345773d579a72992))
+- *(release)* Mark Fedora workspace safe - ([5208653](https://github.com/snapetech/seerrng/commit/5208653b10cc54a4c7ab659b3ac789474c1e2210))
+- *(release)* Repair rpm tag verification - ([fd8998a](https://github.com/snapetech/seerrng/commit/fd8998a771b793ca22348745273e188b72389753))
+- *(setup)* Recover browser sessions during media server setup - ([60c1806](https://github.com/snapetech/seerrng/commit/60c1806e6b68c90ba8d92ccf39796dc31cfd5c64))
+
+### 🧪 Testing
+- *(e2e)* Acknowledge HTTP transport in Cypress [release-note: none] - ([ab553e3](https://github.com/snapetech/seerrng/commit/ab553e3792314cadd09264c9cc394686e6b9bfa7))
+
 ## [3.17.0](https://github.com/snapetech/seerrng/compare/v3.16.0..v3.17.0) - 2026-09-07
 
 ### User-facing changes
