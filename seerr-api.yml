@@ -9878,6 +9878,14 @@ paths:
           example: false
           schema:
             type: boolean
+        - in: query
+          name: format
+          description: Book format to remove (ebook, audiobook, or both)
+          required: false
+          example: audiobook
+          schema:
+            type: string
+            enum: [ebook, audiobook, both]
       responses:
         '204':
           description: Successfully removed media item
