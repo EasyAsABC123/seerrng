@@ -26,6 +26,7 @@ test('release package channels wait for the reusable release asset build', () =>
   assert.equal(assetBuild.uses, './.github/workflows/release-assets.yml');
   assert.equal(assetBuild.needs, 'verify');
   assert.equal(assetBuild.with.tag, '${{ inputs.tag || github.ref_name }}');
+  assert.equal(assetBuild.permissions.actions, 'read');
   assert.deepEqual(packageDispatch.needs, ['verify', 'build-release-assets']);
   assert.equal(packageDispatch['timeout-minutes'], 120);
   assert.match(dispatchScript, /--ref main/u);
