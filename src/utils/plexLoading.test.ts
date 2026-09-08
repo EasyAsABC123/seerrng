@@ -1,9 +1,9 @@
+import PlexLoading from '@app/pages/login/plex/loading';
 import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import PlexLoading from './loading';
 
 const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
   globalThis,
