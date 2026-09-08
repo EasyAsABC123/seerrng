@@ -298,10 +298,14 @@ test('tag preparation keeps Helm metadata aligned with the application release',
   assert.match(syncStep.run, /chart_patch=\$\(\(10#\$chart_patch \+ 1\)\)/u);
   assert.match(syncStep.run, /charts\/seerr-chart\/README\.md/u);
   assert.match(syncStep.run, /next_chart_version/u);
+  const commitStep = createTag.steps.find(
+    (step) => step.name === 'Commit updated files'
+  );
   assert.match(
-    createTag.steps.find((step) => step.name === 'Commit updated files').run,
+    commitStep.run,
     /git add CHANGELOG\.md package\.json charts\/seerr-chart\/Chart\.yaml charts\/seerr-chart\/README\.md/u
   );
+  assert.match(commitStep.run, /release-note: none/u);
 });
 
 test('release notes flow into the draft release and Discord announcement', () => {
