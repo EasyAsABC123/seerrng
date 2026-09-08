@@ -68,6 +68,12 @@ test('release package channels wait for the reusable release asset build', () =>
   );
 });
 
+test('release asset publication can download artifacts from the same run', () => {
+  const assets = readWorkflow('release-assets.yml');
+
+  assert.equal(assets.jobs.publish.permissions.actions, 'read');
+});
+
 test('package workflows build the requested tag and reject tags outside main', () => {
   for (const workflowName of [
     'release-linux-packages.yml',
