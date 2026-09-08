@@ -56,12 +56,14 @@ interface JellyfinSetupProps {
   revalidate: () => Promise<unknown>;
   serverType?: MediaServerType;
   onCancel?: () => void;
+  onSetupConfigured?: () => void;
 }
 
 function JellyfinSetup({
   revalidate,
   serverType,
   onCancel,
+  onSetupConfigured,
 }: JellyfinSetupProps) {
   const toasts = useToasts();
   const intl = useIntl();
@@ -133,7 +135,17 @@ function JellyfinSetup({
             email: values.email,
             serverType: serverType,
           });
-          if (!response.data?.id || !(await revalidate())) {
+          if (!response.data?.id) {
+            throw new Error('browser-session-not-established');
+          }
+
+          const authenticatedUser = await revalidate().catch(() => undefined);
+          if (!authenticatedUser) {
+            // The server may have persisted the media-server configuration and
+            // created the administrator before the browser rejected the
+            // session cookie. Let the setup page switch to its recovery state
+            // instead of allowing a second submission with the same hostname.
+            onSetupConfigured?.();
             throw new Error('browser-session-not-established');
           }
         } catch (e) {

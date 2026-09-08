@@ -22,12 +22,14 @@ interface LoginWithMediaServerProps {
   serverType: MediaServerType;
   onCancel: () => void;
   onComplete: () => void;
+  onSetupConfigured?: () => void;
 }
 
 const SetupLogin: React.FC<LoginWithMediaServerProps> = ({
   serverType,
   onCancel,
   onComplete,
+  onSetupConfigured,
 }) => {
   const [authToken, setAuthToken] = useState<string | undefined>(undefined);
   const [mediaServerType, setMediaServerType] = useState<MediaServerType>(
@@ -115,6 +117,7 @@ const SetupLogin: React.FC<LoginWithMediaServerProps> = ({
           revalidate={revalidate}
           serverType={serverType}
           onCancel={onCancel}
+          onSetupConfigured={onSetupConfigured}
         />
       )}
       {serverType === MediaServerType.EMBY && (
@@ -122,6 +125,7 @@ const SetupLogin: React.FC<LoginWithMediaServerProps> = ({
           revalidate={revalidate}
           serverType={serverType}
           onCancel={onCancel}
+          onSetupConfigured={onSetupConfigured}
         />
       )}
     </div>

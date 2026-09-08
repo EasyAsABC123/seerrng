@@ -239,6 +239,14 @@ const Setup = () => {
     void validateLibraries();
   };
 
+  const handleSetupConfigured = () => {
+    // The setup request can persist the media-server configuration even when
+    // the browser rejects the newly-issued session cookie. Refresh public
+    // settings immediately so the recovery UI replaces the setup form and
+    // prevents a duplicate submission with the same hostname.
+    void mutate('/api/v1/settings/public').catch(() => undefined);
+  };
+
   const mediaServerAlreadyConfigured =
     settings.currentSettings.mediaServerType !== MediaServerType.NOT_CONFIGURED;
   const needsTransportRecovery = mediaServerAlreadyConfigured && !user;
@@ -393,6 +401,7 @@ const Setup = () => {
                   setCurrentStep(1);
                 }}
                 onComplete={() => setCurrentStep(3)}
+                onSetupConfigured={handleSetupConfigured}
               />
             ))}
           {currentStep === 3 &&
