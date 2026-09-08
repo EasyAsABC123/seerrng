@@ -51,6 +51,24 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.19.2](https://github.com/snapetech/seerrng/compare/v3.19.1..v3.19.2) - 2026-09-08
+
+### User-facing changes
+
+#### Fixed
+
+- **Jellyfin:** If Jellyfin setup saves the server but the browser cannot keep the new session, SeerrNG now refreshes setup state and guides you to sign in again instead of submitting the same server details twice.
+- **Authentication:** The Plex login popup now closes automatically after Plex returns from a successful sign-in, while SeerrNG continues using its existing PIN polling and authentication checks.
+
+### 🐛 Bug Fixes
+- *(auth)* Close completed Plex login popups - ([f2f1722](https://github.com/snapetech/seerrng/commit/f2f1722f870618f48536d620de20722ac387372a))
+- *(setup)* Recover after Jellyfin session loss - ([6f3a723](https://github.com/snapetech/seerrng/commit/6f3a723810186c77d73f2db14ad1f97d3d5e2752))
+
+### ⚙️ Miscellaneous Tasks
+- *(release)* Mark generated prep commits internal - ([04c3104](https://github.com/snapetech/seerrng/commit/04c3104202805151f8e9f0a49832186d122c7b6d))
+
 ## [3.19.1](https://github.com/snapetech/seerrng/compare/v3.19.0..v3.19.1) - 2026-09-08
 
 ### User-facing changes
