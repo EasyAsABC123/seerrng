@@ -89,6 +89,15 @@ describe('Public endpoint resource boundaries', () => {
     assert.strictEqual(unavailable.text, '');
   });
 
+  it('honors an explicit false version-check query value', async () => {
+    const response = await request(app).get(
+      '/api/v1/status?checkUpdateAvailable=false'
+    );
+
+    assert.strictEqual(response.status, 200);
+    assert.equal('updateAvailable' in response.body, false);
+  });
+
   it('reports active and saved transport state without exposing certificate paths', async () => {
     const settings = getSettings();
     const originalTls = structuredClone(settings.network.tls);

@@ -45,6 +45,7 @@ import {
   parseBoundedString,
   parseOptionalBoundedString,
   parseOptionalLanguage,
+  parseOptionalQueryBoolean,
 } from '@server/utils/validation';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -264,14 +265,19 @@ router.get('/status/tls/ca', publicStatusRateLimit, (_req, res) => {
 router.get<Record<string, never>, StatusResponse>(
   '/status',
   publicStatusRateLimit,
-  async (req, res) => {
+  async (req, res, next) => {
     const settings = getSettings();
     const currentVersion = getAppVersion();
     const commitTag = getCommitTag();
+    const parsedCheckUpdate = parseOptionalQueryBoolean(
+      req.query.checkUpdateAvailable,
+      'checkUpdateAvailable'
+    );
+    if ('error' in parsedCheckUpdate) {
+      return next({ status: 400, message: parsedCheckUpdate.error });
+    }
     const checkUpdate =
-      req.query.checkUpdateAvailable !== undefined
-        ? Boolean(req.query.checkUpdateAvailable)
-        : settings.fullPublicSettings.versionCheck;
+      parsedCheckUpdate.value ?? settings.fullPublicSettings.versionCheck;
     let updateAvailable = false;
     let commitsBehind = 0;
 
