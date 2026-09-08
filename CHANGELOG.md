@@ -49,6 +49,19 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.19.1](https://github.com/snapetech/seerrng/compare/v3.19.0..v3.19.1) - 2026-09-08
+
+### User-facing changes
+
+#### Fixed
+
+- **Bookshelf:** Removing an ebook, audiobook, or both formats from Bookshelf now succeeds instead of being rejected as a bad request.
+
+### 🐛 Bug Fixes
+- *(bookshelf)* Validate format-aware file removal - ([81d5c65](https://github.com/snapetech/seerrng/commit/81d5c651a82c504984935368138beeed5099888a))
+
 ## [3.19.0](https://github.com/snapetech/seerrng/compare/v3.18.0..v3.19.0) - 2026-09-08
 
 ### User-facing changes
