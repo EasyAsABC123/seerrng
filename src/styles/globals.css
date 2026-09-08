@@ -62,7 +62,8 @@
   }
 
   :root,
-  [data-theme-palette='aurora'] {
+  [data-theme-palette='aurora'],
+  [data-theme-palette='classic'] {
     --color-indigo-50: 238 242 255;
     --color-indigo-100: 224 231 255;
     --color-indigo-200: 199 210 254;

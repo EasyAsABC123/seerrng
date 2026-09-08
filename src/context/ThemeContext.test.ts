@@ -1,9 +1,32 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { getThemeTokens, themePalettes } from './ThemeContext';
+import {
+  DEFAULT_THEME_PALETTE_ID,
+  getThemeTokens,
+  themePalettes,
+} from './ThemeContext';
 
 describe('themePalettes', () => {
+  it('uses the upstream Seerr palette as the default', () => {
+    assert.equal(DEFAULT_THEME_PALETTE_ID, 'classic');
+    assert.equal(themePalettes[0].id, DEFAULT_THEME_PALETTE_ID);
+  });
+
+  it('preserves the upstream dark chrome in the classic palette', () => {
+    const tokens = getThemeTokens('dark', 'classic');
+
+    assert.equal(tokens.pageBg, '17 24 39');
+    assert.equal(tokens.pageGlowStart, '31 41 55');
+    assert.equal(tokens.searchbarScrolled, '55 65 81');
+    assert.equal(tokens.sidebarStart, '31 41 55');
+    assert.equal(tokens.sidebarEnd, '19 25 40');
+    assert.equal(tokens.sidebarBorder, '55 65 81');
+    assert.equal(tokens.sidebarHover, '55 65 81');
+    assert.equal(tokens.primaryScale[6], '79 70 229');
+    assert.equal(tokens.secondaryScale[6], '147 51 234');
+  });
+
   it('includes the Sietch palette displayed by the theme picker', () => {
     assert.deepEqual(themePalettes.map((palette) => palette.id).slice(-3), [
       'violet',
