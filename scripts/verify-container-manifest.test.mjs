@@ -76,3 +76,65 @@ test('ignores unknown-platform provenance descriptors when verifying platforms',
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }
 });
+
+test('retries transient registry inspection failures', () => {
+  const temporaryDirectory = mkdtempSync(
+    path.join(tmpdir(), 'seerrng-manifest-retry-test-')
+  );
+  try {
+    const dockerPath = path.join(temporaryDirectory, 'docker');
+    const fixturePath = path.join(temporaryDirectory, 'manifest.json');
+    const attemptPath = path.join(temporaryDirectory, 'attempt');
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        manifests: [
+          {
+            digest: 'sha256:' + 'a'.repeat(64),
+            platform: { architecture: 'amd64', os: 'linux' },
+          },
+          {
+            digest: 'sha256:' + 'b'.repeat(64),
+            platform: { architecture: 'arm64', os: 'linux' },
+          },
+        ],
+        mediaType: 'application/vnd.oci.image.index.v1+json',
+      })
+    );
+    writeFileSync(
+      dockerPath,
+      `#!/usr/bin/env bash
+set -euo pipefail
+if [[ ! -f "$ATTEMPT_FILE" ]]; then
+  touch "$ATTEMPT_FILE"
+  echo 'temporary registry timeout' >&2
+  exit 1
+fi
+cat "$MANIFEST_FIXTURE"
+`,
+      { mode: 0o755 }
+    );
+
+    const result = spawnSync(
+      'bash',
+      [verifier, 'example:tag', 'linux/amd64', 'linux/arm64'],
+      {
+        env: {
+          ...process.env,
+          ATTEMPT_FILE: attemptPath,
+          MANIFEST_FIXTURE: fixturePath,
+          PATH: `${temporaryDirectory}:${process.env.PATH}`,
+        },
+        encoding: 'utf8',
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(
+      result.stderr,
+      /Manifest inspection failed for example:tag; retrying in 1s\./
+    );
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
