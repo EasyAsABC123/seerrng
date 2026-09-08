@@ -47,6 +47,41 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.19.0](https://github.com/snapetech/seerrng/compare/v3.18.0..v3.19.0) - 2026-09-08
+
+### User-facing changes
+
+#### Added
+
+- **Interface:** Seerr now includes a Seerr Classic palette matching the original upstream blue-gray appearance, and browser chrome follows the selected palette. It is the default for browsers without a saved palette choice, while existing saved palette preferences remain unchanged.
+- **Interface:** Seerr now includes a distinct Seerr palette with navy surfaces and blue/sky accents alongside Seerr Classic. Choose it from the browser-local theme picker without changing another user’s saved palette.
+
+#### Fixed
+
+- **Release Checks:** SeerrNG now compares installed and available versions using the SeerrNG release tags, so a fork build that is newer than the last public release no longer shows a false update warning. The stable status label also identifies SeerrNG in Swedish.
+- **Release Pipeline:** Release asset publication now has permission to download the platform archives produced earlier in the same workflow, so a successful build matrix can complete the GitHub release instead of failing at the upload gate.
+- **Release Pipeline:** Release retries now pass artifact-download permission from the top-level release workflow into the reusable asset workflow, allowing an existing draft release to recover after its platform archives finish building.
+- **Interface:** The default SeerrNG palette is now labeled **Seerr** in the theme picker and documentation, with the separate branded palette retaining its own distinct name.
+- **Services:** SeerrNG now retries a transient Sonarr, Radarr, or other provider read failure before showing a connection error, reducing false “unable to connect” warnings while preserving persistent failures.
+
+### 🚀 Features
+- Add branded Seerr palette - ([aa8ad8f](https://github.com/snapetech/seerrng/commit/aa8ad8fc571b0ab7c3f91f9f368461774fbead3b))
+- Restore the classic Seerr palette - ([472956c](https://github.com/snapetech/seerrng/commit/472956c7ba3eef247b7112857ba99c0aa97268a3))
+
+### 🐛 Bug Fixes
+- Name the default Seerr theme - ([4506d1d](https://github.com/snapetech/seerrng/commit/4506d1d69d9bf93fc1d7b5873a17033af3381677))
+- Pass release artifact permissions through - ([d6cc0ca](https://github.com/snapetech/seerrng/commit/d6cc0caa36c1e6636a53169e27d991447ca55289))
+- Allow release asset downloads - ([5028be8](https://github.com/snapetech/seerrng/commit/5028be89d7efe5177e5d7e4ca6daf131fbb95c47))
+- Parse public status query booleans - ([1cd5eb6](https://github.com/snapetech/seerrng/commit/1cd5eb688e67a495746131429ad152b62da4d7df))
+- Retry transient external API reads - ([7834580](https://github.com/snapetech/seerrng/commit/783458007ad4e33555c21e9ffa0df2a0678d35eb))
+- Report SeerrNG stable releases correctly - ([873e596](https://github.com/snapetech/seerrng/commit/873e596e84b89788dfeec93c43c88a5610bd1e7b))
+
+### 📖 Documentation
+- Clarify Seerr theme labels - ([cb924d4](https://github.com/snapetech/seerrng/commit/cb924d4ed82be1884b3b36622908e103a33d54f0))
+- Clarify transient service retry note - ([7174b0c](https://github.com/snapetech/seerrng/commit/7174b0cf1d0d1fbce21b3462baf6d3dc73e02b69))
+
 ## [3.18.0](https://github.com/snapetech/seerrng/compare/v3.17.0..v3.18.0) - 2026-09-08
 
 ### User-facing changes
