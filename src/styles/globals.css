@@ -198,7 +198,8 @@
   [data-theme-palette='sapphire'],
   [data-theme-palette='arctic'],
   [data-theme-palette='skyline'],
-  [data-theme-palette='steel'] {
+  [data-theme-palette='steel'],
+  [data-theme-palette='seerr'] {
     --color-indigo-50: 239 246 255;
     --color-indigo-100: 219 234 254;
     --color-indigo-200: 191 219 254;

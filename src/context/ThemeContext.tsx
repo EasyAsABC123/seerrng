@@ -38,6 +38,14 @@ export const themePalettes: ThemePalette[] = [
     chrome: 'upstream',
   },
   {
+    id: 'seerr',
+    name: 'Seerr',
+    swatches: ['#0f172a', '#2563eb', '#38bdf8'],
+    surface: 'slate',
+    primary: 'blue',
+    secondary: 'sky',
+  },
+  {
     id: 'aurora',
     name: 'Aurora',
     swatches: ['#4f46e5', '#a855f7', '#14b8a6'],

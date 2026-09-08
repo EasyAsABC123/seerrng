@@ -44,7 +44,7 @@ When enabled, SeerrNG checks the public release tags in the SeerrNG GitHub repos
 
 Open the paintbrush menu in the top-right corner to choose light or dark mode and a color palette. **Seerr Classic** matches the original upstream Seerr blue-gray appearance and is the default when the browser has no saved palette preference.
 
-Theme choices are stored in the current browser, not in the Seerr server configuration. A saved choice is preserved when Seerr is upgraded, and it does not change the palette for other installations.
+The **Seerr** palette provides a separate Seerr-branded navy, blue, and sky treatment, while **Seerr Classic** preserves the original upstream blue-gray appearance. Theme choices are stored in the current browser, not in the Seerr server configuration. A saved choice is preserved when Seerr is upgraded, and it does not change the palette for other installations.
 
 ## Discover Region, Discover Language & Streaming Region
 

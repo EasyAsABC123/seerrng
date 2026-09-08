@@ -27,6 +27,23 @@ describe('themePalettes', () => {
     assert.equal(tokens.secondaryScale[6], '147 51 234');
   });
 
+  it('exposes a distinct Seerr-branded blue palette', () => {
+    const seerr = themePalettes.find((palette) => palette.id === 'seerr');
+
+    assert.deepStrictEqual(seerr, {
+      id: 'seerr',
+      name: 'Seerr',
+      swatches: ['#0f172a', '#2563eb', '#38bdf8'],
+      surface: 'slate',
+      primary: 'blue',
+      secondary: 'sky',
+    });
+    assert.notEqual(
+      getThemeTokens('dark', 'seerr').pageBg,
+      getThemeTokens('dark', 'classic').pageBg
+    );
+  });
+
   it('includes the Sietch palette displayed by the theme picker', () => {
     assert.deepEqual(themePalettes.map((palette) => palette.id).slice(-3), [
       'violet',
