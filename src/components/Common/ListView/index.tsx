@@ -6,6 +6,9 @@ import TmdbTitleCard from '@app/components/TitleCard/TmdbTitleCard';
 import useCardTextVisibility from '@app/hooks/useCardTextVisibility';
 import { Permission, useUser } from '@app/hooks/useUser';
 import useVerticalScroll from '@app/hooks/useVerticalScroll';
+import useWarmImageCache, {
+  MAIN_MEDIA_POSTER_CACHE_WARM_LIMIT,
+} from '@app/hooks/useWarmImageCache';
 import globalMessages from '@app/i18n/globalMessages';
 import {
   canRequestMissingBookFormat,
@@ -81,6 +84,11 @@ const ListView = ({
       }),
     [blocklistVisibility, items]
   );
+
+  useWarmImageCache(visibleItems ?? [], {
+    maxUrls: MAIN_MEDIA_POSTER_CACHE_WARM_LIMIT,
+    posterOnly: true,
+  });
   const plexCards = useMemo(
     () =>
       plexItems?.flatMap((title, index) => {

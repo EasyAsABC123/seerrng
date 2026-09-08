@@ -7,6 +7,9 @@ import useCardTextVisibility from '@app/hooks/useCardTextVisibility';
 import useDiscoverHomeManifest from '@app/hooks/useDiscoverHomeManifest';
 import useSettings from '@app/hooks/useSettings';
 import { useUser } from '@app/hooks/useUser';
+import useWarmImageCache, {
+  DISCOVER_SHELF_POSTER_CACHE_WARM_LIMIT,
+} from '@app/hooks/useWarmImageCache';
 import {
   buildDiscoverCacheContextKey,
   buildDiscoverSnapshotKey,
@@ -362,6 +365,11 @@ const MediaSlider = ({
     () => renderableTitles.slice(0, MEDIA_SLIDER_TITLE_LIMIT),
     [renderableTitles]
   );
+
+  useWarmImageCache(renderableTitles, {
+    maxUrls: DISCOVER_SHELF_POSTER_CACHE_WARM_LIMIT,
+    posterOnly: true,
+  });
 
   const shouldLoadMore =
     renderableTitles.length < MEDIA_SLIDER_TITLE_LIMIT + 4 &&

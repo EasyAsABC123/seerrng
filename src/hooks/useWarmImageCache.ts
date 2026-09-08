@@ -12,6 +12,9 @@ type ImageWarmableResult = {
   artistBackdrop?: string | null;
 };
 
+export const MAIN_MEDIA_POSTER_CACHE_WARM_LIMIT = 100;
+export const DISCOVER_SHELF_POSTER_CACHE_WARM_LIMIT = 50;
+
 const getTmdbImageUrl = (path: string, size: string): string =>
   `https://image.tmdb.org/t/p/${size}${path}`;
 
@@ -27,7 +30,10 @@ const normalizeExternalImageUrl = (path?: string | null): string | null => {
   return null;
 };
 
-const getImageUrls = (item: ImageWarmableResult): string[] => {
+export const getImageUrls = (
+  item: ImageWarmableResult,
+  posterOnly = false
+): string[] => {
   const urls: (string | null)[] = [];
 
   if (
@@ -40,6 +46,11 @@ const getImageUrls = (item: ImageWarmableResult): string[] => {
   }
 
   urls.push(normalizeExternalImageUrl(item.remotePoster));
+
+  if (posterOnly) {
+    urls.push(normalizeExternalImageUrl(item.artistThumb));
+    return urls.filter((url): url is string => !!url);
+  }
 
   if (
     item.backdropPath &&
@@ -66,13 +77,18 @@ const getImageUrls = (item: ImageWarmableResult): string[] => {
 
 const useWarmImageCache = (
   items?: ImageWarmableResult[],
-  options: { enabled?: boolean; maxUrls?: number } = {}
+  options: { enabled?: boolean; maxUrls?: number; posterOnly?: boolean } = {}
 ) => {
   const { currentSettings } = useSettings();
-  const { enabled = true, maxUrls } = options;
+  const { enabled = true, maxUrls, posterOnly = false } = options;
   const imageUrls = useMemo(
-    () => [...new Set((items ?? []).flatMap(getImageUrls))].slice(0, maxUrls),
-    [items, maxUrls]
+    () =>
+      [
+        ...new Set(
+          (items ?? []).flatMap((item) => getImageUrls(item, posterOnly))
+        ),
+      ].slice(0, maxUrls),
+    [items, maxUrls, posterOnly]
   );
 
   useEffect(() => {

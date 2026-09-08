@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, before, describe, it, mock } from 'node:test';
 
+import CoverArtArchive from '@server/api/coverartarchive';
 import ListenBrainzAPI from '@server/api/listenbrainz';
 import MusicBrainz from '@server/api/musicbrainz';
 import TheAudioDb from '@server/api/theaudiodb';
@@ -344,6 +345,72 @@ describe('GET /music/:id', () => {
     assert.deepStrictEqual(res.body.tags.artist, []);
     assert.deepStrictEqual(res.body.stats.listeners, []);
     assert.deepStrictEqual(res.body.tracks[0].artists, []);
+  });
+
+  it('includes release labels when MusicBrainz exposes them', async () => {
+    const releaseId = '00000000-0000-0000-0000-000000000001';
+    mock.method(ListenBrainzAPI.prototype, 'getAlbum', async () => ({
+      caa_release_mbid: releaseId,
+      recordings_release_mbid: '',
+      release_group_mbid: 'release-group-id',
+      type: 'Album',
+      release_group_metadata: {
+        release_group: {
+          name: 'Labelled Album',
+          date: '2024-01-01',
+          caa_id: 0,
+          caa_release_mbid: '',
+          rels: [],
+          type: 'Album',
+        },
+        release: {
+          caa_id: 0,
+          caa_release_mbid: releaseId,
+          date: '2024-01-01',
+          name: 'Labelled Album',
+          rels: [],
+          type: 'Album',
+        },
+        artist: {
+          name: 'Labelled Artist',
+          artist_credit_id: 0,
+          artists: [],
+        },
+        tag: { artist: [], release_group: [] },
+      },
+      listening_stats: {
+        artist_mbids: [],
+        artist_name: 'Labelled Artist',
+        caa_id: 0,
+        caa_release_mbid: releaseId,
+        from_ts: 0,
+        last_updated: 0,
+        listeners: [],
+        release_group_mbid: 'release-group-id',
+        release_group_name: 'Labelled Album',
+        stats_range: '',
+        to_ts: 0,
+        total_listen_count: 0,
+        total_user_count: 0,
+      },
+      mediums: [],
+    }));
+    mock.method(MusicBrainz.prototype, 'getReleaseLabels', async () => [
+      'Example Records',
+      'Example Records Publishing',
+    ]);
+    mock.method(CoverArtArchive.prototype, 'getCoverArt', async () => ({
+      images: [],
+    }));
+
+    const agent = await login();
+    const res = await agent.get('/music/release-group-id');
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(
+      res.body.recordLabel,
+      'Example Records, Example Records Publishing'
+    );
   });
 
   it('falls back to MusicBrainz when ListenBrainz has no album detail page', async () => {

@@ -4,6 +4,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 
 import MusicBrainz, {
   MAX_MUSICBRAINZ_ARTIST_CREDITS,
+  MAX_MUSICBRAINZ_LABELS,
   MAX_MUSICBRAINZ_PAGE_SIZE,
   MAX_MUSICBRAINZ_RECORDING_RELEASES,
   MAX_MUSICBRAINZ_RELEASES,
@@ -14,6 +15,7 @@ import MusicBrainz, {
   sanitizeMusicBrainzAlbum,
   sanitizeMusicBrainzArtist,
   sanitizeMusicBrainzRecording,
+  sanitizeMusicBrainzReleaseLabels,
 } from './musicbrainz';
 
 afterEach(() => mock.restoreAll());
@@ -147,6 +149,49 @@ describe('MusicBrainz response boundaries', () => {
       sanitizeMusicBrainzRecording({ id: 'missing-title' }),
       undefined
     );
+  });
+
+  it('sanitizes release labels and bounds provider output', () => {
+    const labels = sanitizeMusicBrainzReleaseLabels({
+      'label-info': [
+        { label: { name: '  Label One  ' } },
+        { label: { name: '' } },
+        { label: { name: 'Label Two' } },
+        { label: { name: 'x'.repeat(300) } },
+        ...Array.from({ length: MAX_MUSICBRAINZ_LABELS + 10 }, (_, index) => ({
+          label: { name: `Label ${index + 3}` },
+        })),
+      ],
+    });
+
+    assert.equal(labels[0], 'Label One');
+    assert.equal(labels[1], 'Label Two');
+    assert.equal(labels[2].length, 256);
+    assert.equal(labels.length, MAX_MUSICBRAINZ_LABELS - 1);
+    assert.deepStrictEqual(sanitizeMusicBrainzReleaseLabels(null), []);
+  });
+
+  it('requests release labels from the MusicBrainz release endpoint', async () => {
+    const musicBrainz = new MusicBrainz();
+    Object.defineProperty(musicBrainz, 'get', {
+      configurable: true,
+      value: async (
+        path: string,
+        options: { params: Record<string, string> }
+      ) => {
+        assert.equal(path, '/release/00000000-0000-0000-0000-000000000001');
+        assert.deepStrictEqual(options.params, { inc: 'labels', fmt: 'json' });
+        return {
+          'label-info': [{ label: { name: 'Example Label' } }],
+        };
+      },
+    });
+
+    const labels = await musicBrainz.getReleaseLabels({
+      releaseId: '00000000-0000-0000-0000-000000000001',
+    });
+
+    assert.deepStrictEqual(labels, ['Example Label']);
   });
 
   it('sanitizes and bounds Wikipedia extracts and rejects provider URLs', async () => {

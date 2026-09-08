@@ -10,6 +10,7 @@ export interface MusicDetails {
   mediaType: 'album';
   type: string;
   releaseDate: string;
+  recordLabel?: string;
   artist: {
     id: string;
     name: string;

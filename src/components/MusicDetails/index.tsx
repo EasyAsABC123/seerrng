@@ -66,6 +66,8 @@ const messages = defineMessages('components.MusicDetails', {
   album: 'Album',
   artist: 'Artist',
   releasedate: 'Release Date',
+  recordlabel: 'Record Label',
+  notavailable: 'Not available',
   identifiers: 'Identifiers',
   musicbrainz: 'MusicBrainz',
   tracks: 'Tracks',
@@ -413,6 +415,10 @@ const MusicDetails = () => {
               </span>
             )}
             {data.type && <span>{data.type}</span>}
+            <span>
+              {intl.formatMessage(messages.recordlabel)}:{' '}
+              {data.recordLabel ?? intl.formatMessage(messages.notavailable)}
+            </span>
           </div>
           {(canWatchlist ||
             canShowRequest ||
@@ -549,6 +555,12 @@ const MusicDetails = () => {
                 <span className="media-fact-value">{data.type}</span>
               </div>
             )}
+            <div className="media-fact">
+              <span>{intl.formatMessage(messages.recordlabel)}</span>
+              <span className="media-fact-value">
+                {data.recordLabel ?? intl.formatMessage(messages.notavailable)}
+              </span>
+            </div>
             <div className="media-fact">
               <span>{intl.formatMessage(messages.identifiers)}</span>
               <span className="media-fact-value">
