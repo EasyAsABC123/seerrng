@@ -1,0 +1,91 @@
+{
+  "phase": "after-series",
+  "tab": "tv",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "fixtureTitle": "Scroll tv 74",
+  "browser": "145.0.7632.6",
+  "before": {
+    "y": 516.8125,
+    "h": 226.28125,
+    "scrollY": 2054,
+    "count": 120,
+    "docHeight": 4517
+  },
+  "samples": [
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    },
+    {
+      "y": 516.8125,
+      "h": 226.28125,
+      "scrollY": 2054,
+      "count": 120,
+      "docHeight": 4517
+    }
+  ],
+  "deltaY": 0,
+  "orderPreserved": true
+}

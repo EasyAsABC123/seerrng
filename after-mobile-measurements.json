@@ -1,0 +1,91 @@
+{
+  "phase": "after-mobile",
+  "tab": "movies",
+  "viewport": {
+    "width": 390,
+    "height": 900
+  },
+  "fixtureTitle": "Hoppers",
+  "browser": "145.0.7632.6",
+  "before": {
+    "y": 502,
+    "h": 256.5,
+    "scrollY": 9624,
+    "count": 100,
+    "docHeight": 14013
+  },
+  "samples": [
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    },
+    {
+      "y": 502,
+      "h": 256.5,
+      "scrollY": 9624,
+      "count": 100,
+      "docHeight": 14013
+    }
+  ],
+  "deltaY": 0,
+  "orderPreserved": true
+}

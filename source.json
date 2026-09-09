@@ -1,0 +1,6 @@
+{
+  "baseline": "47330370a741a316992f417b6c7d47fcafa0fe4d",
+  "fixed": "ed3d2990e54ffd53744c5cb4fb4d09f77cbf63f8",
+  "environment": "Local production builds; seeded E2E database; deterministic API fixtures; Playwright Chromium; service workers blocked so fixture interception applies.",
+  "productionDeployment": "Unchanged. Kubernetes was not mutated."
+}

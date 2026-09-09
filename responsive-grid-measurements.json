@@ -1,0 +1,230 @@
+{
+  "description": "Previously visited offscreen poster rows must adopt their new 2:3 height after a three-column to four-column resize.",
+  "browser": "145.0.7632.6",
+  "initialViewport": {
+    "width": 640,
+    "height": 900
+  },
+  "resizedViewport": {
+    "width": 650,
+    "height": 900
+  },
+  "variants": {
+    "baseline-auto-none": {
+      "beforeResize": [
+        {
+          "index": 0,
+          "width": 202.65625,
+          "height": 303.984375,
+          "expectedHeight": 303.984375,
+          "heightError": 0,
+          "viewportTop": -5500,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        },
+        {
+          "index": 12,
+          "width": 202.65625,
+          "height": 303.984375,
+          "expectedHeight": 303.984375,
+          "heightError": 0,
+          "viewportTop": -4220,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        },
+        {
+          "index": 48,
+          "width": 202.65625,
+          "height": 303.984375,
+          "expectedHeight": 303.984375,
+          "heightError": 0,
+          "viewportTop": -380,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        },
+        {
+          "index": 80,
+          "width": 202.671875,
+          "height": 304,
+          "expectedHeight": 304.0078125,
+          "heightError": -0.0078125,
+          "viewportTop": 2820,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        },
+        {
+          "index": 199,
+          "width": 202.671875,
+          "height": 304,
+          "expectedHeight": 304.0078125,
+          "heightError": -0.0078125,
+          "viewportTop": 15620,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        }
+      ],
+      "afterResize": [
+        {
+          "index": 0,
+          "width": 150.5,
+          "height": 303.984375,
+          "expectedHeight": 225.75,
+          "heightError": 78.234375,
+          "viewportTop": -3509,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        },
+        {
+          "index": 12,
+          "width": 150.5,
+          "height": 303.984375,
+          "expectedHeight": 225.75,
+          "heightError": 78.234375,
+          "viewportTop": -2549,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        },
+        {
+          "index": 48,
+          "width": 150.5,
+          "height": 225.75,
+          "expectedHeight": 225.75,
+          "heightError": 0,
+          "viewportTop": -60.25,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        },
+        {
+          "index": 80,
+          "width": 150.5,
+          "height": 225.75,
+          "expectedHeight": 225.75,
+          "heightError": 0,
+          "viewportTop": 1873.75,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        },
+        {
+          "index": 199,
+          "width": 150.5,
+          "height": 225.75,
+          "expectedHeight": 225.75,
+          "heightError": 0,
+          "viewportTop": 8884.5,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "auto"
+        }
+      ]
+    },
+    "fixed-min-height-zero": {
+      "beforeResize": [
+        {
+          "index": 0,
+          "width": 202.65625,
+          "height": 303.984375,
+          "expectedHeight": 303.984375,
+          "heightError": 0,
+          "viewportTop": -5500,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        },
+        {
+          "index": 12,
+          "width": 202.65625,
+          "height": 303.984375,
+          "expectedHeight": 303.984375,
+          "heightError": 0,
+          "viewportTop": -4220,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        },
+        {
+          "index": 48,
+          "width": 202.65625,
+          "height": 303.984375,
+          "expectedHeight": 303.984375,
+          "heightError": 0,
+          "viewportTop": -380,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        },
+        {
+          "index": 80,
+          "width": 202.671875,
+          "height": 304,
+          "expectedHeight": 304.0078125,
+          "heightError": -0.0078125,
+          "viewportTop": 2820,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        },
+        {
+          "index": 199,
+          "width": 202.671875,
+          "height": 304,
+          "expectedHeight": 304.0078125,
+          "heightError": -0.0078125,
+          "viewportTop": 15620,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        }
+      ],
+      "afterResize": [
+        {
+          "index": 0,
+          "width": 150.5,
+          "height": 225.75,
+          "expectedHeight": 225.75,
+          "heightError": 0,
+          "viewportTop": -2961,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        },
+        {
+          "index": 12,
+          "width": 150.5,
+          "height": 225.75,
+          "expectedHeight": 225.75,
+          "heightError": 0,
+          "viewportTop": -2235.75,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        },
+        {
+          "index": 48,
+          "width": 150.5,
+          "height": 225.75,
+          "expectedHeight": 225.75,
+          "heightError": 0,
+          "viewportTop": -60,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        },
+        {
+          "index": 80,
+          "width": 150.5,
+          "height": 225.75,
+          "expectedHeight": 225.75,
+          "heightError": 0,
+          "viewportTop": 1874,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        },
+        {
+          "index": 199,
+          "width": 150.5,
+          "height": 225.75,
+          "expectedHeight": 225.75,
+          "heightError": 0,
+          "viewportTop": 8884.75,
+          "containIntrinsicSize": "auto none",
+          "minHeight": "0px"
+        }
+      ]
+    }
+  },
+  "result": {
+    "baselineMaximumError": 78.234375,
+    "fixedMaximumError": 0
+  }
+}
