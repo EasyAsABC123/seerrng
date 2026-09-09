@@ -1,0 +1,22 @@
+[
+  {
+    "file": "mobile-all-media.mp4",
+    "bytes": 719264,
+    "gifBytes": 1957884,
+    "width": 390,
+    "height": 844,
+    "codec": "h264",
+    "pixelFormat": "yuv420p",
+    "duration": 20.64
+  },
+  {
+    "file": "desktop-poster-upgrade.mp4",
+    "bytes": 196568,
+    "gifBytes": 938746,
+    "width": 1440,
+    "height": 900,
+    "codec": "h264",
+    "pixelFormat": "yuv420p",
+    "duration": 8.96
+  }
+]

@@ -1,0 +1,573 @@
+{
+  "origin": "http://127.0.0.1:5155",
+  "app": "http://127.0.0.1:5156",
+  "browser": "152.0.7977.82",
+  "date": "2026-09-09T21:17:38.647Z",
+  "navigation": [
+    {
+      "mediaType": "movie",
+      "sw": "allow",
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+        "naturalWidth": 342,
+        "naturalHeight": 513,
+        "cssWidth": 171,
+        "cssHeight": 256.5,
+        "dpr": 2
+      },
+      "detail": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+        "naturalWidth": 342,
+        "naturalHeight": 513,
+        "cssWidth": 128,
+        "cssHeight": 192,
+        "dpr": 2
+      },
+      "detailOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+          "transferSize": 15019,
+          "encodedBodySize": 14719,
+          "decodedBodySize": 14719,
+          "duration": 4.9000000059604645
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+          "transferSize": 0,
+          "encodedBodySize": 14719,
+          "decodedBodySize": 14719,
+          "duration": 3.2999999970197678
+        }
+      ]
+    },
+    {
+      "mediaType": "tv",
+      "sw": "allow",
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-tv.png",
+        "naturalWidth": 342,
+        "naturalHeight": 513,
+        "cssWidth": 171,
+        "cssHeight": 256.5,
+        "dpr": 2
+      },
+      "detail": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-tv.png",
+        "naturalWidth": 342,
+        "naturalHeight": 513,
+        "cssWidth": 128,
+        "cssHeight": 192,
+        "dpr": 2
+      },
+      "detailOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-tv.png",
+          "transferSize": 14942,
+          "encodedBodySize": 14642,
+          "decodedBodySize": 14642,
+          "duration": 4.800000004470348
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-tv.png",
+          "transferSize": 0,
+          "encodedBodySize": 14642,
+          "decodedBodySize": 14642,
+          "duration": 3.899999998509884
+        }
+      ]
+    },
+    {
+      "mediaType": "book",
+      "sw": "allow",
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/openlibrarycovers/b/id/artwork-book-L.png",
+        "naturalWidth": 500,
+        "naturalHeight": 750,
+        "cssWidth": 171,
+        "cssHeight": 256.5,
+        "dpr": 2
+      },
+      "detail": {
+        "src": "http://127.0.0.1:5155/imageproxy/openlibrarycovers/b/id/artwork-book-L.png",
+        "naturalWidth": 500,
+        "naturalHeight": 750,
+        "cssWidth": 320,
+        "cssHeight": 480,
+        "dpr": 2
+      },
+      "detailOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/openlibrarycovers/b/id/artwork-book-L.png",
+          "transferSize": 27120,
+          "encodedBodySize": 26820,
+          "decodedBodySize": 26820,
+          "duration": 4.899999998509884
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/openlibrarycovers/b/id/artwork-book-L.png",
+          "transferSize": 0,
+          "encodedBodySize": 26820,
+          "decodedBodySize": 26820,
+          "duration": 9.400000005960464
+        }
+      ]
+    },
+    {
+      "mediaType": "audiobook",
+      "sw": "allow",
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/openlibrarycovers/b/id/artwork-audiobook-L.png?edition=audio",
+        "naturalWidth": 500,
+        "naturalHeight": 750,
+        "cssWidth": 171,
+        "cssHeight": 256.5,
+        "dpr": 2
+      },
+      "detail": {
+        "src": "http://127.0.0.1:5155/imageproxy/openlibrarycovers/b/id/artwork-audiobook-L.png?edition=audio",
+        "naturalWidth": 500,
+        "naturalHeight": 750,
+        "cssWidth": 320,
+        "cssHeight": 480,
+        "dpr": 2
+      },
+      "detailOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/openlibrarycovers/b/id/artwork-audiobook-L.png?edition=audio",
+          "transferSize": 28481,
+          "encodedBodySize": 28181,
+          "decodedBodySize": 28181,
+          "duration": 5
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/openlibrarycovers/b/id/artwork-audiobook-L.png?edition=audio",
+          "transferSize": 0,
+          "encodedBodySize": 28181,
+          "decodedBodySize": 28181,
+          "duration": 9.700000002980232
+        }
+      ]
+    },
+    {
+      "mediaType": "album",
+      "sw": "allow",
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/archiveorg/download/artwork-album/artwork-album_thumb250.png",
+        "naturalWidth": 250,
+        "naturalHeight": 250,
+        "cssWidth": 171,
+        "cssHeight": 256.5,
+        "dpr": 2
+      },
+      "detail": {
+        "src": "http://127.0.0.1:5155/imageproxy/archiveorg/download/artwork-album/artwork-album_thumb250.png",
+        "naturalWidth": 250,
+        "naturalHeight": 250,
+        "cssWidth": 320,
+        "cssHeight": 320,
+        "dpr": 2
+      },
+      "detailOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/archiveorg/download/artwork-album/artwork-album_thumb250.png",
+          "transferSize": 8436,
+          "encodedBodySize": 8136,
+          "decodedBodySize": 8136,
+          "duration": 5.100000001490116
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/archiveorg/download/artwork-album/artwork-album_thumb250.png",
+          "transferSize": 0,
+          "encodedBodySize": 8136,
+          "decodedBodySize": 8136,
+          "duration": 9.899999998509884
+        }
+      ]
+    },
+    {
+      "mediaType": "collection",
+      "sw": "allow",
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-collection.png",
+        "naturalWidth": 342,
+        "naturalHeight": 513,
+        "cssWidth": 171,
+        "cssHeight": 256.5,
+        "dpr": 2
+      },
+      "detail": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-collection.png",
+        "naturalWidth": 342,
+        "naturalHeight": 513,
+        "cssWidth": 128,
+        "cssHeight": 192,
+        "dpr": 2
+      },
+      "detailOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-collection.png",
+          "transferSize": 15809,
+          "encodedBodySize": 15509,
+          "decodedBodySize": 15509,
+          "duration": 5.100000001490116
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-collection.png",
+          "transferSize": 0,
+          "encodedBodySize": 15509,
+          "decodedBodySize": 15509,
+          "duration": 10.100000001490116
+        }
+      ]
+    },
+    {
+      "mediaType": "artist",
+      "sw": "allow",
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/theaudiodb/images/media/artist/artwork-artist.png",
+        "naturalWidth": 500,
+        "naturalHeight": 500,
+        "cssWidth": 116.25,
+        "cssHeight": 120.25,
+        "dpr": 2
+      },
+      "detail": {
+        "src": "http://127.0.0.1:5155/imageproxy/theaudiodb/images/media/artist/artwork-artist.png",
+        "naturalWidth": 500,
+        "naturalHeight": 500,
+        "cssWidth": 144,
+        "cssHeight": 144,
+        "dpr": 2
+      },
+      "detailOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/theaudiodb/images/media/artist/artwork-artist.png",
+          "transferSize": 21186,
+          "encodedBodySize": 20886,
+          "decodedBodySize": 20886,
+          "duration": 8.600000001490116
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/theaudiodb/images/media/artist/artwork-artist.png",
+          "transferSize": 0,
+          "encodedBodySize": 20886,
+          "decodedBodySize": 20886,
+          "duration": 10.200000002980232
+        }
+      ]
+    },
+    {
+      "mediaType": "person",
+      "sw": "allow",
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w600_and_h900_bestv2/artwork-person.png",
+        "naturalWidth": 600,
+        "naturalHeight": 900,
+        "cssWidth": 116.25,
+        "cssHeight": 120.25,
+        "dpr": 2
+      },
+      "detail": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w600_and_h900_bestv2/artwork-person.png",
+        "naturalWidth": 600,
+        "naturalHeight": 900,
+        "cssWidth": 144,
+        "cssHeight": 144,
+        "dpr": 2
+      },
+      "detailOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w600_and_h900_bestv2/artwork-person.png",
+          "transferSize": 34067,
+          "encodedBodySize": 33767,
+          "decodedBodySize": 33767,
+          "duration": 8.5
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w600_and_h900_bestv2/artwork-person.png",
+          "transferSize": 0,
+          "encodedBodySize": 33767,
+          "decodedBodySize": 33767,
+          "duration": 10.100000001490116
+        }
+      ]
+    }
+  ],
+  "upgrade": [
+    {
+      "sw": "allow",
+      "delayMs": 3300,
+      "card": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+        "naturalWidth": 342,
+        "naturalHeight": 513,
+        "cssWidth": 150.84375,
+        "cssHeight": 226.265625,
+        "dpr": 3
+      },
+      "interim": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+        "naturalWidth": 342,
+        "naturalHeight": 513,
+        "cssWidth": 208,
+        "cssHeight": 312,
+        "dpr": 3
+      },
+      "upgraded": {
+        "src": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w780/artwork-movie.png",
+        "naturalWidth": 780,
+        "naturalHeight": 1170,
+        "cssWidth": 208,
+        "cssHeight": 312,
+        "dpr": 3
+      },
+      "originDelta": {
+        "requests": 1,
+        "bytes": 49218
+      },
+      "backOriginDelta": {
+        "requests": 0,
+        "bytes": 0
+      },
+      "resources": [
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+          "transferSize": 15019,
+          "encodedBodySize": 14719,
+          "decodedBodySize": 14719,
+          "duration": 1.6999999955296516
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+          "transferSize": 0,
+          "encodedBodySize": 14719,
+          "decodedBodySize": 14719,
+          "duration": 3.6999999955296516
+        },
+        {
+          "name": "http://127.0.0.1:5155/imageproxy/tmdb/t/p/w780/artwork-movie.png",
+          "transferSize": 0,
+          "encodedBodySize": 49218,
+          "decodedBodySize": 49218,
+          "duration": 3323.9000000059605
+        }
+      ]
+    }
+  ],
+  "cold": [],
+  "runtimeErrors": [],
+  "upstreamErrors": [],
+  "imageRequests": [
+    {
+      "path": "/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+      "width": 342,
+      "bytes": 14719,
+      "status": 200,
+      "started": 1788988660210
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w342/artwork-tv.png",
+      "width": 342,
+      "bytes": 14642,
+      "status": 200,
+      "started": 1788988660210
+    },
+    {
+      "path": "/imageproxy/openlibrarycovers/b/id/artwork-book-L.png",
+      "width": 500,
+      "bytes": 26820,
+      "status": 200,
+      "started": 1788988660212
+    },
+    {
+      "path": "/imageproxy/openlibrarycovers/b/id/artwork-audiobook-L.png?edition=audio",
+      "width": 500,
+      "bytes": 28181,
+      "status": 200,
+      "started": 1788988660213
+    },
+    {
+      "path": "/imageproxy/archiveorg/download/artwork-album/artwork-album_thumb250.png",
+      "width": 250,
+      "bytes": 8136,
+      "status": 200,
+      "started": 1788988660215
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w342/artwork-collection.png",
+      "width": 342,
+      "bytes": 15509,
+      "status": 200,
+      "started": 1788988660220
+    },
+    {
+      "path": "/imageproxy/theaudiodb/images/media/artist/artwork-artist.png",
+      "width": 500,
+      "bytes": 20886,
+      "status": 200,
+      "started": 1788988660225
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w600_and_h900_bestv2/artwork-person.png",
+      "width": 600,
+      "bytes": 33767,
+      "status": 200,
+      "started": 1788988660229
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+      "width": 342,
+      "bytes": 14719,
+      "status": 200,
+      "started": 1788988661316
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w342/artwork-tv.png",
+      "width": 342,
+      "bytes": 14642,
+      "status": 200,
+      "started": 1788988661317
+    },
+    {
+      "path": "/imageproxy/openlibrarycovers/b/id/artwork-book-L.png",
+      "width": 500,
+      "bytes": 26820,
+      "status": 200,
+      "started": 1788988661317
+    },
+    {
+      "path": "/imageproxy/openlibrarycovers/b/id/artwork-audiobook-L.png?edition=audio",
+      "width": 500,
+      "bytes": 28181,
+      "status": 200,
+      "started": 1788988661317
+    },
+    {
+      "path": "/imageproxy/archiveorg/download/artwork-album/artwork-album_thumb250.png",
+      "width": 250,
+      "bytes": 8136,
+      "status": 200,
+      "started": 1788988661318
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w342/artwork-collection.png",
+      "width": 342,
+      "bytes": 15509,
+      "status": 200,
+      "started": 1788988661318
+    },
+    {
+      "path": "/imageproxy/theaudiodb/images/media/artist/artwork-artist.png",
+      "width": 500,
+      "bytes": 20886,
+      "status": 200,
+      "started": 1788988661321
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w600_and_h900_bestv2/artwork-person.png",
+      "width": 600,
+      "bytes": 33767,
+      "status": 200,
+      "started": 1788988661321
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w342/artwork-movie.png",
+      "width": 342,
+      "bytes": 14719,
+      "status": 200,
+      "started": 1788988682450
+    },
+    {
+      "path": "/imageproxy/tmdb/t/p/w780/artwork-movie.png",
+      "width": 780,
+      "bytes": 49218,
+      "status": 200,
+      "started": 1788988684181
+    }
+  ],
+  "commit": "bfe4d19fa25878861067d2da1733efe236c31038",
+  "fixtureDisclosure": "Actual SeerrNG production build running locally with deterministic metadata and fixed-size artwork served by an HTTP fixture proxy. These are not production catalog titles. No Playwright routing or browser cache disabling is used.",
+  "recordings": [
+    {
+      "name": "mobile-all-media",
+      "width": 390,
+      "height": 844,
+      "dpr": 2,
+      "trimStart": 0.334,
+      "trimDuration": 20.666
+    },
+    {
+      "name": "desktop-poster-upgrade",
+      "width": 1440,
+      "height": 900,
+      "dpr": 3,
+      "trimStart": 0.357,
+      "trimDuration": 9.121
+    }
+  ],
+  "success": true
+}
