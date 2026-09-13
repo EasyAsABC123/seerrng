@@ -6,6 +6,7 @@ import {
   normalizeOpenLibraryEditionId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
+import { normalizeValidIsbn } from '@server/lib/isbn';
 
 export interface OpenLibrarySearchDoc {
   key: string;
@@ -481,6 +482,62 @@ class OpenLibraryAPI extends ExternalAPI {
             .filter((doc): doc is OpenLibrarySearchDoc => !!doc)
         : [],
     };
+  }
+
+  /** Exact ISBN matching needs the complete result set, including duplicate works. */
+  public async findWorksByIsbns(
+    isbns: string[]
+  ): Promise<OpenLibrarySearchDoc[]> {
+    const identifiers = [
+      ...new Set(
+        isbns
+          .map(normalizeValidIsbn)
+          .filter((value): value is string => !!value)
+      ),
+    ];
+    if (!identifiers.length || identifiers.length > 25)
+      throw new Error('Invalid ISBN batch.');
+    const wanted = new Set(identifiers);
+    const response = await this.get<OpenLibrarySearchResponse>(
+      '/search.json',
+      {
+        params: {
+          q: identifiers.map((isbn) => `isbn:${isbn}`).join(' OR '),
+          limit: '100',
+          fields:
+            'key,title,author_key,author_name,first_publish_year,cover_i,isbn',
+        },
+      },
+      3600
+    );
+    if (
+      !isRecord(response) ||
+      !Array.isArray(response.docs) ||
+      !Number.isSafeInteger(response.numFound) ||
+      response.numFound < 0 ||
+      response.numFound !== response.docs.length ||
+      response.docs.length > 100
+    ) {
+      throw new Error('Open Library ISBN results are incomplete.');
+    }
+    return response.docs.map((doc) => {
+      if (
+        !isRecord(doc) ||
+        !Array.isArray(doc.isbn) ||
+        doc.isbn.length > 20000
+      ) {
+        throw new Error('Open Library ISBN results are invalid.');
+      }
+      const matches = doc.isbn
+        .filter((value): value is string => typeof value === 'string')
+        .map(normalizeValidIsbn)
+        .filter((value): value is string => !!value && wanted.has(value));
+      const sanitized = sanitizeSearchDoc({ ...doc, isbn: matches }, (value) =>
+        boundedStrings(value, 25)
+      );
+      if (!sanitized) throw new Error('Open Library ISBN results are invalid.');
+      return sanitized;
+    });
   }
 
   public async getWork(workId: string): Promise<OpenLibraryWork> {

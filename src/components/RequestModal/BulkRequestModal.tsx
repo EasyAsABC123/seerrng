@@ -48,6 +48,7 @@ const messages = defineMessages('components.RequestModal.BulkRequestModal', {
   quotaexceeded: 'Not enough request quota remaining.',
   summary: '{created} created, {skipped} skipped, {failed} failed.',
   requestbibliographyFormat: 'Request {format} Bibliography',
+  requestseriesFormat: 'Request {format} Series',
   requestitemsFormat:
     'Request {count} {count, plural, one {Item} other {Items}} as {format}',
   faileditems: 'Failed Items',
@@ -142,6 +143,7 @@ export interface BulkRequestModalProps {
   show: boolean;
   mediaType: BulkMediaType;
   title: string;
+  bookSeries?: boolean;
   artistId?: string;
   authorId?: string;
   initialItems?: BulkItem[];
@@ -191,7 +193,8 @@ const normalizeBulkItemId = (id: string, mediaType: BulkMediaType): string =>
 
 const dedupeBulkItems = (
   sourceItems: BulkItem[],
-  mediaType: BulkMediaType
+  mediaType: BulkMediaType,
+  identityOnly = false
 ): BulkItem[] => {
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();
@@ -205,7 +208,7 @@ const dedupeBulkItems = (
       const idKey = normalizeBulkItemId(item.id, mediaType);
       const titleKey = getBulkItemDedupeKey(item, mediaType);
 
-      if (seenIds.has(idKey) || seenTitles.has(titleKey)) {
+      if (seenIds.has(idKey) || (!identityOnly && seenTitles.has(titleKey))) {
         return false;
       }
 
@@ -336,6 +339,7 @@ const BulkRequestModal = ({
   title,
   artistId,
   authorId,
+  bookSeries = false,
   initialItems = EMPTY_BULK_ITEMS,
   initialTotalItems,
   sourceUrl,
@@ -348,7 +352,7 @@ const BulkRequestModal = ({
   const [format, setFormat] = useState<BulkBookFormat>('ebook');
   const [releaseType, setReleaseType] = useState('Album');
   const [items, setItems] = useState<BulkItem[]>(
-    dedupeBulkItems(initialItems, mediaType)
+    dedupeBulkItems(initialItems, mediaType, bookSeries)
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [requestOverrides, setRequestOverrides] =
@@ -395,10 +399,10 @@ const BulkRequestModal = ({
   }, [bookServices]);
 
   useEffect(() => {
-    setItems(dedupeBulkItems(initialItems, mediaType));
+    setItems(dedupeBulkItems(initialItems, mediaType, bookSeries));
     setAuthorOffset(initialItems.length);
     setAuthorTotal(initialTotalItems);
-  }, [initialItems, initialTotalItems, mediaType]);
+  }, [initialItems, initialTotalItems, mediaType, bookSeries]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -491,7 +495,7 @@ const BulkRequestModal = ({
         }
       } catch (error) {
         if (active && !axios.isCancel(error)) {
-          setItems(dedupeBulkItems(initialItems, mediaType));
+          setItems(dedupeBulkItems(initialItems, mediaType, bookSeries));
         }
       } finally {
         if (active) {
@@ -506,7 +510,15 @@ const BulkRequestModal = ({
       active = false;
       controller.abort();
     };
-  }, [artistId, authorId, initialItems, mediaType, releaseType, show]);
+  }, [
+    artistId,
+    authorId,
+    initialItems,
+    mediaType,
+    releaseType,
+    show,
+    bookSeries,
+  ]);
 
   useEffect(
     () => () => {
@@ -790,9 +802,14 @@ const BulkRequestModal = ({
         }
         title={
           mediaType === 'book'
-            ? intl.formatMessage(messages.requestbibliographyFormat, {
-                format: intl.formatMessage(getBookFormatMessage(format)),
-              })
+            ? intl.formatMessage(
+                bookSeries
+                  ? messages.requestseriesFormat
+                  : messages.requestbibliographyFormat,
+                {
+                  format: intl.formatMessage(getBookFormatMessage(format)),
+                }
+              )
             : intl.formatMessage(messages.requestdiscography)
         }
         subTitle={title}

@@ -1015,6 +1015,61 @@ components:
         artistBackdrop:
           type: string
           nullable: true
+    BookSeriesSummary:
+      type: object
+      required: [id, title, serverName, format]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        serverName:
+          type: string
+        format:
+          type: string
+          enum: [ebook, audiobook]
+        position:
+          type: string
+    BookSeriesDetails:
+      allOf:
+        - $ref: '#/components/schemas/BookSeriesSummary'
+        - type: object
+          required: [entries, truncated, scope]
+          properties:
+            description:
+              type: string
+            scope:
+              type: string
+              enum: [backend-library]
+            managementUrl:
+              type: string
+              description: Native series management link for request managers, when supported.
+            truncated:
+              type: boolean
+            entries:
+              type: array
+              maxItems: 500
+              items:
+                type: object
+                required: [providerId, title, isbns, matchStatus]
+                properties:
+                  providerId:
+                    type: string
+                  title:
+                    type: string
+                  position:
+                    type: string
+                  primary:
+                    type: boolean
+                  isbns:
+                    type: array
+                    items:
+                      type: string
+                  matchStatus:
+                    type: string
+                    enum: [matched, unmatched, ambiguous]
+                  book:
+                    $ref: '#/components/schemas/BookResult'
     BookResult:
       type: object
       required:
@@ -8660,6 +8715,100 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/BookResult'
+  /book/{bookId}/series:
+    get:
+      summary: Find a book's verified series
+      tags: [search]
+      parameters:
+        - in: path
+          name: bookId
+          required: true
+          schema:
+            type: string
+      responses:
+        default:
+          description: Request rejected or service unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+        '200':
+          description: Series discovery result; disabled when no provider is configured
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, series]
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      [
+                        disabled,
+                        not-in-library,
+                        matched,
+                        partial,
+                        unavailable,
+                        unsupported,
+                      ]
+                  series:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BookSeriesSummary'
+        '400':
+          description: Invalid book ID
+          content:
+            application/json:
+              schema:
+                type: object
+        '503':
+          description: Metadata provider unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+  /book-series/{id}:
+    get:
+      summary: Browse a book series with verified request identities
+      tags: [search]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        default:
+          description: Request rejected or service unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+        '200':
+          description: Ordered series catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookSeriesDetails'
+        '400':
+          description: Invalid series ID
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Series not found
+          content:
+            application/json:
+              schema:
+                type: object
+        '503':
+          description: Metadata unavailable or not configured
+          content:
+            application/json:
+              schema:
+                type: object
   /book/{bookId}:
     get:
       summary: Get book details

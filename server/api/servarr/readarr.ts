@@ -7,6 +7,7 @@ import logger from '@server/logger';
 import { trimTrailingSlashes } from '@server/utils/serviceUrl';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 import axios from 'axios';
+import { z } from 'zod';
 import ServarrBase, {
   MAX_SERVARR_CONFIGURATION_RESULTS,
   MAX_SERVARR_LIBRARY_RESULTS,
@@ -32,6 +33,28 @@ export type ReadarrMediaType = 'ebook' | 'audiobook';
 type ChaptarrDialect = 'hc' | 'gr';
 const CHAPTARR_REQUEST_TIMEOUT_MS = 60_000;
 const CHAPTARR_LIBRARY_PAGE_SIZE = 500;
+
+const nativeSeriesSchema = z
+  .array(
+    z.object({
+      id: z.number().int().positive().safe(),
+      title: z.string().max(2000),
+      description: z.string().max(100000).nullish(),
+      mediaType: z.enum(['ebook', 'audiobook']).optional(),
+      links: z
+        .array(
+          z.object({
+            bookId: z.number().int().positive().safe(),
+            position: z.string().max(128).nullish(),
+            seriesPosition: z.number().finite().optional(),
+            isPrimary: z.boolean().optional(),
+          })
+        )
+        .max(5000),
+    })
+  )
+  .max(500);
+export type ReadarrSeries = z.infer<typeof nativeSeriesSchema>[number];
 
 export interface ReadarrBookLookupResult {
   id?: number;
@@ -768,6 +791,75 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     }
 
     return books;
+  }
+
+  /** Series resources use the native API; Chaptarr's facade only normalizes books. */
+  public async getSeriesByAuthor(
+    authorId: number
+  ): Promise<ReadarrSeries[] | undefined> {
+    if (!Number.isSafeInteger(authorId) || authorId <= 0)
+      throw new Error('Invalid author ID.');
+    try {
+      const response = await this.get<unknown>(
+        '/series',
+        {
+          ...this.getRequestConfig(),
+          baseURL: this.nativeApiUrl,
+          params: {
+            authorId,
+            ...(this.mediaType ? { mediaType: this.mediaType } : {}),
+          },
+        },
+        300
+      );
+      return nativeSeriesSchema
+        .parse(response)
+        .filter(
+          (series) => !series.mediaType || series.mediaType === this.mediaType
+        );
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response
+        ?.status;
+      if (status === 404 || status === 405 || status === 501) return undefined;
+      throw new Error('Book server series metadata is unavailable.');
+    }
+  }
+
+  public getSeriesManagementPath(seriesId: number): string | undefined {
+    return this.isChaptarr() && Number.isSafeInteger(seriesId) && seriesId > 0
+      ? `/series/${seriesId}`
+      : undefined;
+  }
+
+  /** Reads local membership only; this does not add or monitor any books. */
+  public async getNativeSeriesBook(bookId: number) {
+    if (!Number.isSafeInteger(bookId) || bookId <= 0)
+      throw new Error('Invalid book ID.');
+    const response = await this.get<unknown>(
+      `/book/${bookId}`,
+      { ...this.getRequestConfig(), baseURL: this.nativeApiUrl },
+      300
+    );
+    const result = z
+      .object({
+        id: z.number().int().positive().safe(),
+        title: z.string().max(2000),
+        authorId: z.number().int().positive().safe().optional(),
+        author: z.object({ id: z.number().int().positive().safe() }).nullish(),
+        mediaType: z.enum(['ebook', 'audiobook']).optional(),
+        editions: z
+          .array(z.object({ isbn13: z.string().max(64).nullish() }))
+          .max(5000)
+          .nullish(),
+      })
+      .parse(response);
+    if (
+      result.id !== bookId ||
+      typeof result.title !== 'string' ||
+      (result.mediaType && result.mediaType !== this.mediaType)
+    )
+      throw new Error('Invalid book server member.');
+    return result;
   }
 
   public async getBooks(): Promise<ReadarrBook[]> {

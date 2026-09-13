@@ -1,0 +1,364 @@
+import OpenLibraryAPI from '@server/api/openlibrary';
+import ReadarrAPI from '@server/api/servarr/readarr';
+import { MediaStatus, MediaType } from '@server/constants/media';
+import { getRepository } from '@server/datasource';
+import BookSeries from '@server/entity/BookSeries';
+import Media from '@server/entity/Media';
+import MediaIdentifier, {
+  MediaIdentifierProvider,
+} from '@server/entity/MediaIdentifier';
+import { getSettings } from '@server/lib/settings';
+import { checkUser, isAuthenticated } from '@server/middleware/auth';
+import authRoutes from '@server/routes/auth';
+import bookRoutes from '@server/routes/book';
+import bookSeriesRoutes from '@server/routes/bookSeries';
+import { setupTestDb } from '@server/test/db';
+import express from 'express';
+import * as OpenApiValidator from 'express-openapi-validator';
+import type { OpenAPIV3 } from 'express-openapi-validator/dist/framework/types';
+import session from 'express-session';
+import yaml from 'js-yaml';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import request from 'supertest';
+
+const isbn = '9780140328721';
+const secondIsbn = '9780261103573';
+const app = express();
+app.use(express.json());
+app.use(
+  session({ secret: 'series-test', resave: false, saveUninitialized: false })
+);
+app.use(checkUser);
+app.use('/auth', authRoutes);
+app.use(
+  OpenApiValidator.middleware({
+    apiSpec: {
+      ...(yaml.load(
+        readFileSync('seerr-api.yml', 'utf8')
+      ) as OpenAPIV3.DocumentV3),
+      servers: [{ url: '/' }],
+    },
+    validateSecurity: false,
+    validateResponses: true,
+  })
+);
+// Validate the JSON representation sent over the wire, including Date values.
+app.use((_req, res, next) => {
+  const sendJson = res.json.bind(res);
+  res.json = (body: unknown) => sendJson(JSON.parse(JSON.stringify(body)));
+  next();
+});
+app.use('/book', isAuthenticated(), bookRoutes);
+app.use('/book-series', isAuthenticated(), bookSeriesRoutes);
+app.use(
+  (
+    err: { status?: number; message?: string },
+    _req: express.Request,
+    res: express.Response,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _next: express.NextFunction
+  ) => {
+    res.status(err.status ?? 500).json({ message: err.message });
+  }
+);
+setupTestDb();
+const server = (id = 1, serviceType: 'ebook' | 'audiobook' = 'ebook') => ({
+  id,
+  name: `Server ${id}`,
+  hostname: 'localhost',
+  port: 8787,
+  apiKey: 'secret',
+  useSsl: false,
+  activeProfileId: 1,
+  activeProfileName: 'Default',
+  activeDirectory: '/books',
+  tags: [],
+  is4k: false,
+  isDefault: true,
+  syncEnabled: true,
+  preventSearch: false,
+  tagRequests: false,
+  overrideRule: [],
+  serviceType,
+});
+beforeEach(() => {
+  getSettings().main.localLogin = true;
+  getSettings().readarr = [server()];
+});
+afterEach(() => {
+  mock.restoreAll();
+  getSettings().readarr = [];
+});
+const login = async (email = 'admin@seerr.dev') => {
+  const agent = request.agent(app);
+  assert.equal(
+    (await agent.post('/auth/local').send({ email, password: 'test1234' }))
+      .status,
+    200
+  );
+  return agent;
+};
+const bind = async (bookId = 1, workId = 'OL1W', serviceId = 1) => {
+  const media = await getRepository(Media).save(
+    new Media({
+      tmdbId: 0,
+      mediaType: MediaType.BOOK,
+      status: MediaStatus.AVAILABLE,
+      externalServiceId: bookId,
+      serviceId,
+    })
+  );
+  await getRepository(MediaIdentifier).save(
+    new MediaIdentifier({
+      media,
+      provider: MediaIdentifierProvider.OPENLIBRARY,
+      value: workId,
+      canonical: true,
+    })
+  );
+  return media;
+};
+const native = (ids = [1, 2, 3]) => {
+  mock.method(
+    ReadarrAPI.prototype,
+    'getNativeSeriesBook',
+    async (id: number) => ({
+      id,
+      title: `Book ${id}`,
+      authorId: 20,
+      editions: [
+        { isbn13: id === 1 ? isbn : id === 2 ? secondIsbn : undefined },
+      ],
+    })
+  );
+  return mock.method(ReadarrAPI.prototype, 'getSeriesByAuthor', async () => [
+    {
+      id: 10,
+      title: 'Series',
+      links: ids.map((bookId, index) => ({
+        bookId,
+        position: String(index + 1),
+      })),
+    },
+  ]);
+};
+const discover = async (agent: Awaited<ReturnType<typeof login>>) => {
+  const response = await agent.get('/book/OL1W/series');
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.status, 'matched');
+  return response.body.series[0].id as number;
+};
+
+describe('backend book series routes', () => {
+  it('requires authentication and validates IDs', async () => {
+    assert.equal((await request(app).get('/book-series/1')).status, 403);
+    const agent = await login();
+    assert.equal((await agent.get('/book-series/0')).status, 400);
+    assert.equal((await agent.get('/book/invalid/series')).status, 400);
+    assert.equal((await agent.get('/book-series/999')).status, 404);
+  });
+  it('does no metadata work without a configured server or local book binding', async () => {
+    const lookup = native();
+    const agent = await login();
+    assert.deepEqual((await agent.get('/book/OL1W/series')).body, {
+      status: 'not-in-library',
+      series: [],
+    });
+    getSettings().readarr = [];
+    assert.deepEqual((await agent.get('/book/OL1W/series')).body, {
+      status: 'disabled',
+      series: [],
+    });
+    assert.equal(lookup.mock.callCount(), 0);
+  });
+  it('uses native membership without a Hardcover credential and persists one series across authors', async () => {
+    await bind();
+    await bind(2, 'OL2W');
+    native();
+    mock.method(
+      ReadarrAPI.prototype,
+      'getNativeSeriesBook',
+      async (id: number) => ({ id, title: 'Book', authorId: id + 20 })
+    );
+    const agent = await login();
+    const first = await discover(agent);
+    const second = await agent.get('/book/OL2W/series');
+    assert.equal(second.body.series[0].id, first);
+    assert.equal(await getRepository(BookSeries).count(), 1);
+    assert.equal(JSON.stringify(second.body).includes('secret'), false);
+  });
+  it('ignores same-author series that do not contain the book', async () => {
+    await bind();
+    native([2, 3]);
+    assert.deepEqual((await (await login()).get('/book/OL1W/series')).body, {
+      status: 'matched',
+      series: [],
+    });
+  });
+  it('preserves a healthy format when another server fails', async () => {
+    const media = await bind();
+    await getRepository(Media).update(media.id, {
+      audiobookServiceId: 2,
+      audiobookExternalServiceId: 99,
+    });
+    getSettings().readarr.push(server(2, 'audiobook'));
+    native();
+    mock.method(
+      ReadarrAPI.prototype,
+      'getNativeSeriesBook',
+      async (id: number) => {
+        if (id === 99) throw new Error('secret');
+        return { id, title: 'Book', authorId: 20 };
+      }
+    );
+    const response = await (await login()).get('/book/OL1W/series');
+    assert.equal(response.body.status, 'partial');
+    assert.equal(response.body.series.length, 1);
+    assert.equal(response.body.series[0].format, 'ebook');
+  });
+  it('keeps identical native IDs separate across configured formats and servers', async () => {
+    const media = await bind();
+    await getRepository(Media).update(media.id, {
+      audiobookServiceId: 2,
+      audiobookExternalServiceId: 1,
+    });
+    getSettings().readarr.push(server(2, 'audiobook'));
+    native([1]);
+    const response = await (await login()).get('/book/OL1W/series');
+    assert.equal(response.body.status, 'matched');
+    assert.deepEqual(
+      response.body.series.map((entry: { format: string }) => entry.format),
+      ['ebook', 'audiobook']
+    );
+    assert.notEqual(response.body.series[0].id, response.body.series[1].id);
+    assert.equal(await getRepository(BookSeries).count(), 2);
+  });
+  it('distinguishes unsupported series from temporary failure', async () => {
+    await bind();
+    native();
+    const agent = await login();
+    mock.method(
+      ReadarrAPI.prototype,
+      'getSeriesByAuthor',
+      async () => undefined
+    );
+    assert.equal(
+      (await agent.get('/book/OL1W/series')).body.status,
+      'unsupported'
+    );
+    mock.method(ReadarrAPI.prototype, 'getSeriesByAuthor', async () => {
+      throw new Error('secret');
+    });
+    const response = await agent.get('/book/OL1W/series');
+    assert.deepEqual(response.body, { status: 'unavailable', series: [] });
+  });
+  it('does not reroute saved pages when a server ID is reused for another endpoint or format', async () => {
+    await bind();
+    native();
+    const agent = await login();
+    const id = await discover(agent);
+    getSettings().readarr[0].hostname = 'replacement';
+    assert.equal((await agent.get(`/book-series/${id}`)).status, 404);
+    getSettings().readarr[0].hostname = 'localhost';
+    getSettings().readarr[0].serviceType = 'audiobook';
+    assert.equal((await agent.get(`/book-series/${id}`)).status, 404);
+  });
+  it('retains canonical library identity without ISBNs and blocks ambiguous or unmatched candidates', async () => {
+    await bind();
+    native();
+    mock.method(
+      ReadarrAPI.prototype,
+      'getNativeSeriesBook',
+      async (id: number) => ({
+        id,
+        title: `Book ${id}`,
+        authorId: 20,
+        editions: id === 2 ? [{ isbn13: secondIsbn }] : [],
+      })
+    );
+    mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => [
+      { key: '/works/OL2W', title: 'Ambiguous', isbn: [secondIsbn] },
+      { key: '/works/OL3W', title: 'Ambiguous', isbn: [secondIsbn] },
+    ]);
+    const agent = await login();
+    const response = await agent.get(`/book-series/${await discover(agent)}`);
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.scope, 'backend-library');
+    assert.deepEqual(
+      response.body.entries.map((e: { matchStatus: string }) => e.matchStatus),
+      ['matched', 'ambiguous', 'unmatched']
+    );
+    assert.equal(response.body.entries[0].book.id, 'OL1W');
+    assert.equal(
+      response.body.entries[0].book.mediaInfo.status,
+      MediaStatus.AVAILABLE
+    );
+    assert.equal(response.body.entries[1].book, undefined);
+    assert.equal(response.body.entries[2].primary, undefined);
+  });
+  it('rejects two backend books competing for the same Open Library work', async () => {
+    await bind();
+    native([1, 2]);
+    mock.method(
+      ReadarrAPI.prototype,
+      'getNativeSeriesBook',
+      async (id: number) => ({
+        id,
+        title: 'Collision',
+        authorId: 20,
+        editions: [{ isbn13: isbn }],
+      })
+    );
+    mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => [
+      { key: '/works/OL1W', title: 'Collision', isbn: [isbn] },
+    ]);
+    const agent = await login();
+    const response = await agent.get(`/book-series/${await discover(agent)}`);
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.deepEqual(
+      response.body.entries.map((e: { matchStatus: string }) => e.matchStatus),
+      ['ambiguous', 'ambiguous']
+    );
+  });
+  it('offers only authorized, supported management links and preserves URL bases', async () => {
+    await bind();
+    native([1]);
+    mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => []);
+    mock.method(
+      ReadarrAPI.prototype,
+      'getSeriesManagementPath',
+      () => '/series/10'
+    );
+    getSettings().readarr[0].externalUrl =
+      'https://books.example.test/chaptarr/';
+    const agent = await login();
+    const id = await discover(agent);
+    assert.equal(
+      (await agent.get(`/book-series/${id}`)).body.managementUrl,
+      'https://books.example.test/chaptarr/series/10'
+    );
+    assert.equal(
+      (await (await login('friend@seerr.dev')).get(`/book-series/${id}`)).body
+        .managementUrl,
+      undefined
+    );
+    getSettings().readarr[0].externalUrl = 'javascript:alert(1)';
+    assert.equal(
+      (await agent.get(`/book-series/${id}`)).body.managementUrl,
+      undefined
+    );
+  });
+  it('does not expose incomplete evidence or upstream secrets', async () => {
+    await bind();
+    native();
+    mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => {
+      throw new Error('secret provider details');
+    });
+    const agent = await login();
+    const response = await agent.get(`/book-series/${await discover(agent)}`);
+    assert.equal(response.status, 503);
+    assert.equal(JSON.stringify(response.body).includes('secret'), false);
+  });
+});

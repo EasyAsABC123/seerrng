@@ -23,6 +23,7 @@ import deprecatedRoute from '@server/middleware/deprecation';
 import { mapProductionCompany } from '@server/models/Movie';
 import { mapNetwork } from '@server/models/Tv';
 import { mapWatchProviderDetails } from '@server/models/common';
+import bookSeriesRoutes from '@server/routes/bookSeries';
 import overrideRuleRoutes from '@server/routes/overrideRule';
 import settingsRoutes, { parseTlsSettingsBody } from '@server/routes/settings';
 import watchlistRoutes from '@server/routes/watchlist';
@@ -426,6 +427,7 @@ router.use(
 router.use('/movie', isAuthenticated(), externalMetadataRateLimit, movieRoutes);
 router.use('/tv', isAuthenticated(), externalMetadataRateLimit, tvRoutes);
 router.use('/music', isAuthenticated(), externalMetadataRateLimit, musicRoutes);
+router.use('/book-series', isAuthenticated(), bookSeriesRoutes);
 router.use('/book', isAuthenticated(), bookRoutes);
 router.use(
   '/artist',
