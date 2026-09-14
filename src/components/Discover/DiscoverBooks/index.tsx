@@ -1,3 +1,4 @@
+import InlineBookSeriesResults from '@app/components/BookSeriesSearch/InlineResults';
 import Button from '@app/components/Common/Button';
 import CardTextVisibilityToggle from '@app/components/Common/CardTextVisibilityToggle';
 import Header from '@app/components/Common/Header';
@@ -32,12 +33,15 @@ import {
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/solid';
 import type { BookResult } from '@server/models/Book';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 
 const messages = defineMessages('components.Discover.DiscoverBooks', {
   books: 'Books',
+  searchSeries: 'Search Book Series',
+  noBooks: 'No individual books found.',
   audiobooks: 'Audiobooks',
   mediaFilters: 'Media Filters',
   filters: 'Filters',
@@ -203,6 +207,21 @@ const DiscoverBooks = ({ format = 'ebook' }: DiscoverBooksProps) => {
       <PageTitle title={title} />
       <div className="mb-4">
         <Header>{title}</Header>
+        <div className="mb-5">
+          <Link
+            className="text-indigo-300 hover:underline"
+            href={{
+              pathname: '/book-series',
+              query: {
+                ...(query ? { query } : {}),
+                ...(activeFormat !== 'all' ? { format: activeFormat } : {}),
+              },
+            }}
+          >
+            {intl.formatMessage(messages.searchSeries)}
+          </Link>
+        </div>
+
         <div className="app-filter-section-heading">
           {intl.formatMessage(messages.mediaFilters)}
         </div>
@@ -351,6 +370,12 @@ const DiscoverBooks = ({ format = 'ebook' }: DiscoverBooksProps) => {
           </button>
         </div>
       </div>
+      {isRouteReady && (
+        <InlineBookSeriesResults
+          query={query}
+          format={activeFormat === 'all' ? undefined : activeFormat}
+        />
+      )}
       {discover.error && (
         <div
           className="mt-6 flex flex-col items-start gap-4 rounded-xl border border-red-500/50 bg-red-500/10 p-6 text-red-100 sm:flex-row sm:items-center sm:justify-between"
@@ -379,6 +404,7 @@ const DiscoverBooks = ({ format = 'ebook' }: DiscoverBooksProps) => {
       {(!discover.error || discover.titles.length > 0) && (
         <ListView
           items={discover.titles}
+          emptyMessage={intl.formatMessage(messages.noBooks)}
           preferredBookFormat={
             activeFormat === 'audiobook' ? 'audiobook' : 'ebook'
           }

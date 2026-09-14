@@ -1,3 +1,4 @@
+import InlineBookSeriesResults from '@app/components/BookSeriesSearch/InlineResults';
 import BookFormatBadge from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CardTextVisibilityToggle from '@app/components/Common/CardTextVisibilityToggle';
@@ -12,6 +13,7 @@ import {
 import { prepareFilterValues } from '@app/components/Discover/constants';
 import useDiscover from '@app/hooks/useDiscover';
 import { setSearchActivity } from '@app/hooks/useSearchActivity';
+import useSettings from '@app/hooks/useSettings';
 import defineMessages from '@app/utils/defineMessages';
 import { BarsArrowDownIcon, BarsArrowUpIcon } from '@heroicons/react/24/solid';
 import type {
@@ -67,6 +69,7 @@ const messages = defineMessages('components.Search', {
   descending: 'Descending',
   showingFormat: 'Showing',
   noResultsFound: 'No Results Found',
+  noTitleResults: 'No individual title results found.',
   searchUnavailable: 'Search is unavailable right now.',
   searchUnavailableHint: 'The catalog could not be reached. Try again.',
   retrySearch: 'Try again',
@@ -262,6 +265,12 @@ const compareOptional = <T,>(
 const Search = () => {
   const intl = useIntl();
   const router = useRouter();
+  const { currentSettings } = useSettings();
+  const showBookSeries =
+    currentSettings.booksEnabled &&
+    ['all', 'book', 'audiobook'].includes(
+      getSearchCategory(router.query.type, router.query.format).key
+    );
   const query =
     typeof router.query.query === 'string' ? router.query.query.trim() : '';
   const category = getSearchCategory(router.query.type, router.query.format);
@@ -506,7 +515,7 @@ const Search = () => {
           className="flex flex-wrap items-center gap-2"
           aria-label={intl.formatMessage(messages.mediaFilters)}
         >
-          {router.isReady && (
+          {router.isReady && currentSettings.booksEnabled && (
             <Link
               className={getFilterToggleButtonClass(false)}
               href={{
@@ -640,6 +649,9 @@ const Search = () => {
           })}
         </div>
       </div>
+      {router.isReady && showBookSeries && (
+        <InlineBookSeriesResults query={query} format={preferredBookFormat} />
+      )}
       {error && sortedTitles.length === 0 ? (
         searchError
       ) : (
@@ -648,7 +660,11 @@ const Search = () => {
           <ListView
             items={sortedTitles}
             preferredBookFormat={preferredBookFormat}
-            emptyMessage={intl.formatMessage(messages.noResultsFound)}
+            emptyMessage={intl.formatMessage(
+              showBookSeries && query.length >= 2
+                ? messages.noTitleResults
+                : messages.noResultsFound
+            )}
             emptyClassName="mt-6"
             isEmpty={isShowingEmptyState || (isSearchReady && isEmpty)}
             isLoading={
