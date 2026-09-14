@@ -233,3 +233,39 @@ Screenshots, browser fixture script/report, live adapter script/redacted output,
 and build/regression logs are retained in the operator's `series-search-evidence`
 directory. New code remains local until separately deployed; no source branch or
 PR was published for this search increment.
+
+## Catalog requests and latest-upstream validation (2026-09-14)
+
+This increment supersedes the prior catalog-preview-only handoff. Catalog books
+with a verified work identity now enter the existing bulk request modal directly
+inside SeerrNG. Both library and catalog series default to their displayed format.
+The implementation and limits are recorded in ADR 0003.
+
+- SeerrNG application runtime: `fd1e1a5c6407bd96d673a0ac8bdfce02c3a0cbec`,
+  including upstream/main `77a52d0d` (v3.21.1) and origin/main `a1b22625`.
+- Chaptarr optional catalog ISBN extension: `ac0f41b342b817820889a64ba8e372eabe581a6f`.
+- Focused/related SeerrNG tests: **211 passed**, covering resolver conflicts,
+  exact identities, API permissions, bulk requests and newly merged upstream
+  query/session-security behavior. Production build (including translation and
+  current-batch gates), TypeScript and focused lint passed.
+- Chaptarr focused series/identifier tests: **19 passed**; net10.0 Release publish
+  passed. The existing NU1902 warning was retained and did not introduce a new
+  dependency change.
+- Production browser fixtures: ordinary requester, verified members only,
+  audiobook default, deselect one book, one bulk POST, one created result,
+  desktop/mobile screenshots and no JavaScript exceptions. The backend API
+  integration independently creates exactly one pending-approval audiobook
+  request and proves catalog reads create none. Fixture browser results do not
+  establish live downloading.
+- Live Wayfarers preview: **two matched, two ambiguous, zero unavailable** after
+  the Chaptarr extension. Before the extension all four were unavailable because
+  individual native Hardcover book lookups returned HTTP 503. Exact ISBN lookup
+  returned backend results for both matched members. One result was a translated
+  edition; the normal acquisition path remains responsible for edition/language
+  choice. No title-based identity override was added.
+
+Raw sanitized records are in the local sibling `series-catalog-request-evidence`
+folder: `final-tests.log`, `chaptarr-tests.log`, `seerrng-build.log`, browser
+`report.json`, `live-resolution.json`, `live-acquisition-lookup.json`, artifact
+manifests and release-note preview. Private keys/database backups are kept outside
+application repositories. Application source remains local; no PR was opened.
