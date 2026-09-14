@@ -1,5 +1,7 @@
 # ADR 0002: Search series through configured book servers
 
+The catalog-request handoff in this record is superseded by [ADR 0003](0003-catalog-series-requests.md). Search and backend capability decisions remain applicable.
+
 - Status: accepted for local implementation; proposed for upstream review
 - Date: 2026-09-14
 - Supersedes: ADR 0001's navigation-only discovery entry point
