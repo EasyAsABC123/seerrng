@@ -269,3 +269,15 @@ folder: `final-tests.log`, `chaptarr-tests.log`, `seerrng-build.log`, browser
 `report.json`, `live-resolution.json`, `live-acquisition-lookup.json`, artifact
 manifests and release-note preview. Private keys/database backups are kept outside
 application repositories. Application source remains local; no PR was opened.
+
+### Post-rollout server-zero correction
+
+Live authenticated API checks found catalog previews returned HTTP 400 for the
+first configured book server (`id: 0`). The query schema and route had incorrectly
+required a positive ID. Runtime `54bb6f4b` accepts valid zero-based configuration
+IDs; all 19 route tests pass again, including normal pending approval through
+server zero. The backend was rebuilt with the unchanged validated frontend and
+production dependencies. Fleet deployment commit `24afb5a` supersedes `b4117ed`.
+The HTTPS ingress continues through Authentik. Automated browser data checks may
+use a UI authentication fixture with real API-key-authorized reads; these are
+separate from actual signed-in SSO acceptance.
