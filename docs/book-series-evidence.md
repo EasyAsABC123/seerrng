@@ -176,3 +176,26 @@ fully instrumented UI interactions, other live backends and unresolved identity
 reconciliation remain gaps. These playback findings should inform a separate
 provider compatibility policy; this series contribution does not redefine file
 availability as proof of decodability or create new acquisition scheduling.
+
+
+## Expanse codec replacement follow-up
+
+The user subsequently authorized replacing the first two Expanse trial files.
+Both originals were backed up and SHA-256 verified. Chaptarr imported compatible
+Jefferson Mays AAC-LC M4B replacements for Leviathan Wakes and Caliban's War.
+Initial MP3 torrents stayed at zero transferred bytes and were removed without
+blocklisting; approved Usenet releases supplied the successful replacements.
+
+Audiobookshelf's actual FFmpeg 8.0.1 decoded five-second samples at the beginning,
+midpoint and near the end of both replacements. Its automatic scan retained the
+existing item IDs and indexed the new files without missing/invalid flags. The
+queue was empty and all 279 book monitoring states remained unchanged. Confidence
+is high for those measured outcomes. The user confirmed actual playback and
+chapter seeking work for both replacements. Full-duration decoding and content
+completeness were not established.
+The replacement durations are 69,079.135873 and 71,411.580317 seconds; the latter
+is shorter than the original Caliban's War release (75,608.236916 seconds).
+
+These successful AAC-LC M4B checks narrow the failure to the tested xHE-AAC
+releases and decoder path. No global quality/player settings were changed, and
+this operational repair adds no series scheduling behavior.
