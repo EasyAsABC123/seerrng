@@ -42,7 +42,7 @@ describe('Book discovery formats', () => {
       .should('include', 'format=ebook');
     cy.get('[data-testid=book-format-tab-ebook]')
       .should('have.attr', 'aria-current', 'page')
-      .and('contain', 'Books');
+      .and('contain', 'Ebooks');
 
     cy.get('[data-testid=book-format-tab-audiobook]').should(
       'have.attr',

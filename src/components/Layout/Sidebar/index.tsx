@@ -16,7 +16,6 @@ import {
   FilmIcon,
   MusicalNoteIcon,
   SparklesIcon,
-  SpeakerWaveIcon,
   TvIcon,
   UsersIcon,
   XMarkIcon,
@@ -91,19 +90,8 @@ const SidebarLinks: SidebarLinkProps[] = [
     href: '/discover/books',
     messagesKey: 'browsebooks',
     svgIcon: <BookOpenIcon className="mr-3 h-6 w-6" />,
-    activeRegExp: /^\/(?:discover\/books(?:\/.*)?|book\/)/,
-  },
-  {
-    href: '/discover/audiobooks',
-    messagesKey: 'browseaudiobooks',
-    svgIcon: <SpeakerWaveIcon className="mr-3 h-6 w-6" />,
-    activeRegExp: /^\/discover\/audiobooks$/,
-  },
-  {
-    href: '/discover/audiobooks',
-    messagesKey: 'browseaudiobooks',
-    svgIcon: <SpeakerWaveIcon className="mr-3 h-6 w-6" />,
-    activeRegExp: /^\/discover\/audiobooks$/,
+    activeRegExp:
+      /^\/(?:discover\/(?:books|audiobooks)(?:\/|$)|book\/|book-series(?:\/|$))/,
   },
   {
     href: '/requests/status',
