@@ -44,7 +44,7 @@ bookSeriesRoutes.get('/catalog', async (req, res) => {
   const { serverId, scope, providerId } = req.query;
   if (
     typeof serverId !== 'string' ||
-    !/^[1-9]\d*$/.test(serverId) ||
+    !/^(0|[1-9]\d*)$/.test(serverId) ||
     !Number.isSafeInteger(Number(serverId)) ||
     typeof scope !== 'string' ||
     scope.length > 256 ||

@@ -561,8 +561,8 @@ describe('direct book series search', () => {
   });
 });
 
-it('submits a verified catalog book through normal pending approval without a backend handoff', async () => {
-  getSettings().readarr = [server(1, 'audiobook')];
+it('submits a verified catalog book through normal pending approval through configured server zero', async () => {
+  getSettings().readarr = [server(0, 'audiobook')];
   mock.method(ReadarrAPI.prototype, 'getNativeSeriesLibrary', async () => ({
     supported: true,
     partial: false,

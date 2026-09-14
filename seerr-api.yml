@@ -8907,7 +8907,7 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^[1-9]\d*$'
+            pattern: '^(0|[1-9]\d*)$'
         - in: query
           name: scope
           required: true
