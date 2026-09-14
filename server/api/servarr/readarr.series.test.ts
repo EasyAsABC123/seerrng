@@ -73,6 +73,23 @@ for (const appName of ['Readarr', 'Bookshelf', 'Chaptarr']) {
           appName === 'Chaptarr' ? '/series/10' : undefined
         );
         assert(calls.every((path) => !path.includes('facade')));
+        const freshClient = new ReadarrAPI({
+          url: `http://127.0.0.1:${address.port}/library/api/v1`,
+          apiKey: 'test-key',
+          mediaType: format,
+        });
+        await freshClient.getSeriesByAuthor(20);
+        assert.equal(
+          calls.filter((path) => path.startsWith('/library/api/v1/series?'))
+            .length,
+          1,
+          'the second client should reuse the cached native series'
+        );
+        assert.equal(
+          freshClient.getSeriesManagementPath(10),
+          appName === 'Chaptarr' ? '/series/10' : undefined,
+          'management capabilities must survive a warm-cache read'
+        );
       } finally {
         http.closeAllConnections();
         await new Promise<void>((resolve) => http.close(() => resolve()));

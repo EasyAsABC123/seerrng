@@ -96,3 +96,8 @@ that driver. All 223 selected adapter, series, request, identity, book-route,
 legacy-migration, session-store and concurrent startup-migration tests passed.
 The runtime dependencies must be rebuilt for the deployment platform; the old
 image dependency set is no longer compatible with this source baseline.
+
+Repeated live reads exposed a missing Chaptarr management URL on warm cache hits.
+The adapter now resolves backend capabilities before using a cached catalog.
+All 49 affected adapter/series tests pass, including fresh-adapter warm-cache
+assertions for Readarr, Bookshelf and Chaptarr in both formats.

@@ -800,6 +800,9 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     if (!Number.isSafeInteger(authorId) || authorId <= 0)
       throw new Error('Invalid author ID.');
     try {
+      // Cached native resources must not skip backend capability detection on
+      // a fresh client; management links depend on the detected provider.
+      await this.ensureProvider();
       const response = await this.get<unknown>(
         '/series',
         {

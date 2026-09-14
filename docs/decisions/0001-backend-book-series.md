@@ -118,3 +118,9 @@ The real trial also exposed stale bindings after changing library servers and lo
 canonical Open Library coverage. These are distinct from native series membership.
 Do not guess work identities or call this broad catalog coverage. A separate
 identity reconciliation design is required before proposing wider adoption.
+
+Native catalog caches are shared between short-lived adapter instances. Resolve
+provider capabilities before reading the catalog cache; otherwise a warm-cache
+request can lose its Chaptarr management URL even though the catalog is valid.
+Contract tests reopen the catalog through a fresh adapter, prove the data read
+is cached, and assert the management capability for each backend and format.
