@@ -441,3 +441,65 @@ describe('useSearchInput routing', () => {
     strictEqual(pushes.length, 0);
   });
 });
+
+it('waits for router hydration and restores the search before treating an empty input as a clear', async () => {
+  dom = new JSDOM('<div id="root"></div>', {
+    url: 'http://localhost/search?query=Kingkiller',
+  });
+  for (const name of ['window', 'document'] as const)
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      value: name === 'window' ? dom.window : dom.window.document,
+    });
+  (
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+  const replacements: unknown[] = [];
+  let search: ReturnType<typeof useSearchInput> | undefined;
+  const Probe = () => {
+    search = useSearchInput();
+    return null;
+  };
+  const router = createRouter({
+    isReady: false,
+    query: {},
+    replace: async (...args) => {
+      replacements.push(args);
+      return true;
+    },
+  });
+  root = createRoot(dom.window.document.getElementById('root')!);
+  await act(async () =>
+    root?.render(
+      createElement(RouterProvider, { router }, createElement(Probe))
+    )
+  );
+  await act(async () =>
+    root?.render(
+      createElement(
+        RouterProvider,
+        {
+          router: { ...router, isReady: true, query: { query: 'Kingkiller' } },
+        },
+        createElement(Probe)
+      )
+    )
+  );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  strictEqual(search?.searchValue, 'Kingkiller');
+  deepStrictEqual(replacements, []);
+  await act(async () => {
+    search?.setSearchValue('');
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  strictEqual(replacements.length, 1);
+  deepStrictEqual(replacements[0], [
+    { pathname: '/search', query: {} },
+    undefined,
+    { shallow: true },
+  ]);
+});
