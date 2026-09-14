@@ -78,11 +78,16 @@ suites passed 24 tests. Native edition enrichment additionally passed 28 adapter
 and series-route tests, including wrong-book and authentication-failure cases.
 
 The live Chaptarr build passed native reads for all 710 series (88 with current
-members, 622 empty), 89 same-state monitoring calls, and an audiobook monitoring
-round-trip. All 183 books retained their original format monitoring states.
-The SeerrNG discovery audit covered all 47 canonical book records after a normal
-backend sync. It exposed only two format-specific Bobiverse pages; 694 stale
-format bindings and missing canonical identities prevent claiming full coverage.
+members, 622 empty), 89 same-state monitoring calls, and separate audiobook and
+ebook monitoring round-trips. All 183 books retained their original format
+monitoring states at the recorded comparison times.
+The first SeerrNG discovery audit queried 47 canonical work IDs and found two
+Bobiverse format pages. That was a restricted subset: discovery also accepts saved
+aliases. The expanded audit queried all 128 known work IDs (47 canonical, 81 aliases)
+and discovered 64 format-specific native series pages. Every discovery call
+returned HTTP 200: 68 matched, 3 partial, 52 unavailable, 5 unsupported/unbound.
+The snapshot still contained 694 stale format bindings; identity and binding
+coverage prevents claiming every library series is discoverable.
 A separate native edition endpoint was required to obtain ISBN evidence for
 series members; this prompted the regression fix included here.
 
@@ -101,3 +106,19 @@ Repeated live reads exposed a missing Chaptarr management URL on warm cache hits
 The adapter now resolves backend capabilities before using a cached catalog.
 All 49 affected adapter/series tests pass, including fresh-adapter warm-cache
 assertions for Readarr, Bookshelf and Chaptarr in both formats.
+
+
+The final deployed application commit `a37eb1c6` passed all 64 discovered series
+page checks: 37 audiobook and 27 ebook pages, representing 113 distinct native
+books. Every page returned correct native membership and a Chaptarr management
+URL. Two initial HTTP 503 responses (The Cosmere ebook and Red Rising Saga
+audiobook) succeeded on retry; their causes were not established. All six repeated
+reads of the two Bobiverse pages also retained the management link.
+
+Across overlapping series pages, 93 entries matched, 80 were ambiguous and 18
+were unmatched; these are entry occurrences, not distinct-book totals. Ambiguous
+or unmatched entries remain unrequestable. The other 24 nonempty native series
+had no saved Open Library work IDs on their corresponding SeerrNG bindings.
+Native API coverage is complete for this snapshot, while SeerrNG discovery and
+request eligibility remain narrower. Confidence is high for these API measurements;
+authenticated deployed UI behavior and acquisition are still unverified.

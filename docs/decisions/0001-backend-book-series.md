@@ -124,3 +124,23 @@ provider capabilities before reading the catalog cache; otherwise a warm-cache
 request can lose its Chaptarr management URL even though the catalog is valid.
 Contract tests reopen the catalog through a fresh adapter, prove the data read
 is cached, and assert the management capability for each backend and format.
+
+
+## Live-trial decision: coverage evidence and reconciliation
+
+Discovery accepts all saved Open Library work identifiers, including aliases.
+Auditing only canonical identifiers understated coverage: 47 canonical IDs exposed
+two pages, while the complete set of 128 known IDs exposed 64 format-specific
+native series records. These can include overlapping or translated series records;
+they are not necessarily distinct story universes. Request eligibility remains
+a separate exact-identity check. Count discovery, native membership and requestable
+entries separately when presenting evidence.
+
+A normal backend scan refreshed current bindings but left historical native IDs
+from a previous library. Do not silently clear or reassign them in this navigation
+change: numeric IDs can be reused across backend resets, and title matching cannot
+prove identity. A follow-up reconciliation design should provide a preview with
+proven provider/format/work matches, explicit conflicts, and reversible changes.
+Missing native bindings and missing work identities need separate classifications.
+No bulk acquisition or new metadata-provider dependency is justified by an audit
+coverage gap alone.
