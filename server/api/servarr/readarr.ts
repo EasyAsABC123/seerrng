@@ -821,7 +821,9 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
       const status = (error as { response?: { status?: number } }).response
         ?.status;
       if (status === 404 || status === 405 || status === 501) return undefined;
-      throw new Error('Book server series metadata is unavailable.');
+      throw new Error('Book server series metadata is unavailable.', {
+        cause: error,
+      });
     }
   }
 
@@ -885,7 +887,9 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
         const status = (error as { response?: { status?: number } }).response
           ?.status;
         if (status !== 404 && status !== 405 && status !== 501)
-          throw new Error('Book server edition metadata is unavailable.');
+          throw new Error('Book server edition metadata is unavailable.', {
+            cause: error,
+          });
       }
     }
     return result;
