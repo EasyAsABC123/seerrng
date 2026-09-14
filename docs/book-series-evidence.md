@@ -169,8 +169,9 @@ Cibola Burn's incompatible audio. All 64 imported MP3 files parsed and passed a
 five-second decode sample using Audiobookshelf's runtime; its automatic scan
 indexed the replacement. The first two Expanse files remain unchanged.
 
-Confidence is high for those request/import and decoder measurements. Actual
-client playback/seek confirmation is tracked separately. Regular-user permissions,
+The user confirmed actual playback and seeking work for the Cibola Burn
+replacement. Confidence is high for this tested request/import/playback path,
+combining measured provider outcomes with direct user acceptance. Regular-user permissions,
 fully instrumented UI interactions, other live backends and unresolved identity
 reconciliation remain gaps. These playback findings should inform a separate
 provider compatibility policy; this series contribution does not redefine file
