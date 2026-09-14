@@ -54,7 +54,7 @@ const getBookFormatHref = (
 const messages = defineMessages('components.Discover.BookFormatTabs', {
   format: 'Book format',
   allBooks: 'All Books',
-  books: 'Ebooks',
+  books: 'Books',
   audiobooks: 'Audiobooks',
 });
 
