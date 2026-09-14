@@ -26,3 +26,30 @@ export interface BookSeriesDetails extends BookSeriesSummary {
     book?: BookResult;
   })[];
 }
+
+export interface BookSeriesSearchResult {
+  key: string;
+  title: string;
+  serverName: string;
+  format: 'ebook' | 'audiobook';
+  source: 'library' | 'catalog';
+  href: string;
+  bookCount?: number;
+  description?: string;
+}
+
+export interface BookSeriesSearchResponse {
+  results: BookSeriesSearchResult[];
+  status: 'ok' | 'partial' | 'unavailable' | 'unsupported' | 'disabled';
+  truncated: boolean;
+}
+
+export interface BookSeriesPreview {
+  title: string;
+  description?: string;
+  serverName: string;
+  format: 'ebook' | 'audiobook';
+  bookCount: number;
+  managementUrl?: string;
+  books: { title: string; position?: string; author?: string }[];
+}

@@ -362,3 +362,189 @@ describe('backend book series routes', () => {
     assert.equal(JSON.stringify(response.body).includes('secret'), false);
   });
 });
+
+describe('direct book series search', () => {
+  const library = () =>
+    mock.method(ReadarrAPI.prototype, 'getNativeSeriesLibrary', async () => ({
+      supported: true,
+      partial: false,
+      truncated: false,
+      entries: [
+        {
+          authorId: 20,
+          series: {
+            id: 10,
+            title: 'The Expanse',
+            links: [{ bookId: 1, position: '1' }],
+          },
+        },
+      ],
+    }));
+  const catalog = () =>
+    mock.method(ReadarrAPI.prototype, 'searchSeriesCatalog', async () => [
+      { providerId: 'hc:123', title: 'A Catalog Series', bookCount: 4 },
+    ]);
+
+  it('requires authentication, validates query and format, and does not call providers for invalid searches', async () => {
+    const native = library();
+    catalog();
+    assert.equal(
+      (await request(app).get('/book-series/search?query=Expanse')).status,
+      403
+    );
+    const agent = await login();
+    for (const query of [
+      '',
+      '?query=a',
+      '?query=%20%20',
+      '?query=ab&format=both',
+      '?query=ab&query=cd',
+    ]) {
+      assert.equal(
+        (await agent.get('/book-series/search' + query)).status,
+        400
+      );
+    }
+    assert.equal(native.mock.callCount(), 0);
+  });
+
+  it('finds library series without a SeerrNG book binding and opens the existing detail identity', async () => {
+    library();
+    catalog();
+    native([1]);
+    mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => []);
+    const agent = await login();
+    const response = await agent.get('/book-series/search?query=expanse');
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.status, 'ok');
+    assert.equal(response.body.results.length, 2);
+    const local = response.body.results.find(
+      (r: { source: string }) => r.source === 'library'
+    );
+    assert.match(local.href, /^\/book-series\/\d+$/);
+    assert.equal((await agent.get(local.href)).status, 200);
+    assert.equal(
+      await getRepository(Media).count(),
+      0,
+      'search must not add books'
+    );
+    const again = await agent.get('/book-series/search?query=Expanse');
+    assert.equal(again.body.results[0].href, local.href);
+  });
+
+  it('keeps format identities separate and filters servers before any lookup', async () => {
+    getSettings().readarr = [server(1, 'ebook'), server(2, 'audiobook')];
+    const inventory = library();
+    catalog();
+    const agent = await login();
+    const response = await agent.get(
+      '/book-series/search?query=expanse&format=audiobook'
+    );
+    assert.equal(response.status, 200);
+    assert(
+      response.body.results.every(
+        (r: { format: string }) => r.format === 'audiobook'
+      )
+    );
+    assert.equal(inventory.mock.callCount(), 1);
+    const all = await agent.get('/book-series/search?query=expanse');
+    assert.equal(
+      new Set(all.body.results.map((r: { key: string }) => r.key)).size,
+      4
+    );
+  });
+
+  it('preserves library results when catalog search fails and reports incomplete results', async () => {
+    library();
+    mock.method(ReadarrAPI.prototype, 'searchSeriesCatalog', async () => {
+      throw new Error('private backend error');
+    });
+    const response = await (
+      await login()
+    ).get('/book-series/search?query=expanse');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.status, 'partial');
+    assert.equal(response.body.results.length, 1);
+    assert(!JSON.stringify(response.body).includes('private'));
+  });
+
+  it('reports disabled, unsupported, unavailable, and truncation instead of empty-success', async () => {
+    getSettings().readarr = [];
+    const agent = await login();
+    assert.equal(
+      (await agent.get('/book-series/search?query=expanse')).body.status,
+      'disabled'
+    );
+    getSettings().readarr = [server()];
+    const inv = mock.method(
+      ReadarrAPI.prototype,
+      'getNativeSeriesLibrary',
+      async () => ({
+        entries: [],
+        supported: false,
+        partial: false,
+        truncated: false,
+      })
+    );
+    mock.method(
+      ReadarrAPI.prototype,
+      'searchSeriesCatalog',
+      async () => undefined
+    );
+    assert.equal(
+      (await agent.get('/book-series/search?query=expanse')).body.status,
+      'unsupported'
+    );
+    inv.mock.mockImplementation(async () => {
+      throw new Error('unavailable');
+    });
+    assert.equal(
+      (await agent.get('/book-series/search?query=expanse')).body.status,
+      'unavailable'
+    );
+    inv.mock.mockImplementation(async () => ({
+      entries: [],
+      supported: true,
+      partial: false,
+      truncated: true,
+    }));
+    assert.equal(
+      (await agent.get('/book-series/search?query=expanse')).body.truncated,
+      true
+    );
+  });
+
+  it('bounds previews to the original server scope and never turns provider IDs into book requests', async () => {
+    library();
+    catalog();
+    mock.method(ReadarrAPI.prototype, 'getSeriesCatalogPreview', async () => ({
+      foreignSeriesId: 'hc:123',
+      title: 'Catalog Series',
+      workCount: 1,
+      books: [
+        { foreignBookId: 'hc:456', title: 'Catalog Book', position: '1' },
+      ],
+    }));
+    const agent = await login();
+    const search = await agent.get('/book-series/search?query=series');
+    const url = search.body.results[0].href.replace(
+      '/book-series/catalog?',
+      '/book-series/catalog?'
+    );
+    const response = await agent.get(url);
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.books[0].title, 'Catalog Book');
+    assert.equal(response.body.books[0].foreignBookId, undefined);
+    assert.match(
+      response.body.managementUrl,
+      /\/add\/search\?term=Catalog%20Series$/
+    );
+    const friend = await login('friend@seerr.dev');
+    assert.equal((await friend.get(url)).body.managementUrl, undefined);
+    getSettings().readarr[0].externalUrl = 'javascript:alert(1)';
+    assert.equal((await agent.get(url)).body.managementUrl, undefined);
+    getSettings().readarr[0].hostname = 'replacement.local';
+    assert.equal((await agent.get(url)).status, 404);
+    assert.equal(await getRepository(Media).count(), 0);
+  });
+});

@@ -25,12 +25,12 @@ import type {
 } from '@server/models/BookSeries';
 import { createHash } from 'node:crypto';
 
-const backendScope = (server: ReadarrSettings) =>
+export const backendScope = (server: ReadarrSettings) =>
   `readarr:${server.id}:${createHash('sha256')
     .update(ReadarrAPI.buildUrl(server, '/api/v1'))
     .digest('hex')
     .slice(0, 16)}:${server.serviceType ?? 'ebook'}`;
-const clientFor = (server: ReadarrSettings) =>
+export const clientFor = (server: ReadarrSettings) =>
   new ReadarrAPI({
     url: ReadarrAPI.buildUrl(server, '/api/v1'),
     apiKey: server.apiKey,

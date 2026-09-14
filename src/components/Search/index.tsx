@@ -22,6 +22,7 @@ import type {
   PersonResult,
   TvResult,
 } from '@server/models/Search';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo } from 'react';
 import { useIntl } from 'react-intl';
@@ -43,6 +44,7 @@ import {
 
 const messages = defineMessages('components.Search', {
   search: 'Search',
+  bookSeries: 'Book Series',
   searchresults: 'Search Results',
   all: 'All',
   movies: 'Movies',
@@ -504,6 +506,22 @@ const Search = () => {
           className="flex flex-wrap items-center gap-2"
           aria-label={intl.formatMessage(messages.mediaFilters)}
         >
+          {router.isReady && (
+            <Link
+              className={getFilterToggleButtonClass(false)}
+              href={{
+                pathname: '/book-series',
+                query: {
+                  query,
+                  ...(preferredBookFormat
+                    ? { format: preferredBookFormat }
+                    : {}),
+                },
+              }}
+            >
+              {intl.formatMessage(messages.bookSeries)}
+            </Link>
+          )}
           {searchCategories.map((searchCategory) => {
             const isSelected = category.key === searchCategory.key;
 

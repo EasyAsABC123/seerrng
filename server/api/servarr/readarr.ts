@@ -830,6 +830,140 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     }
   }
 
+  /** Native library inventory, independent of SeerrNG book identity bindings. */
+  public async getNativeSeriesLibrary() {
+    await this.ensureProvider();
+    const authors = z
+      .array(z.object({ id: z.number().int().positive().safe() }))
+      .max(MAX_SERVARR_LIBRARY_RESULTS)
+      .parse(
+        await this.get<unknown>(
+          '/author',
+          {
+            ...this.getRequestConfig(),
+            baseURL: this.nativeApiUrl,
+          },
+          300
+        )
+      );
+    const ids = [...new Set(authors.map((author) => author.id))].sort(
+      (a, b) => a - b
+    );
+    const results = new Map<
+      number,
+      { series: ReadarrSeries; authorId: number }
+    >();
+    let supported = ids.length === 0,
+      failed = false;
+    for (let offset = 0; offset < Math.min(ids.length, 250); offset += 5) {
+      const batch = await Promise.allSettled(
+        ids.slice(offset, Math.min(offset + 5, 250)).map(async (authorId) => ({
+          authorId,
+          series: await this.getSeriesByAuthor(authorId),
+        }))
+      );
+      for (const result of batch) {
+        if (result.status === 'rejected') {
+          failed = true;
+          continue;
+        }
+        if (!result.value.series) continue;
+        supported = true;
+        for (const series of result.value.series) {
+          if (!results.has(series.id))
+            results.set(series.id, { series, authorId: result.value.authorId });
+        }
+      }
+      // A missing series capability is independent of author; avoid scanning all authors.
+      if (offset === 0 && !supported) break;
+    }
+    return {
+      entries: [...results.values()],
+      supported,
+      partial: failed,
+      truncated: ids.length > 250,
+    };
+  }
+
+  /** Catalog lookup is a backend capability; provider credentials stay there. */
+  public async searchSeriesCatalog(query: string) {
+    await this.ensureProvider();
+    if (!this.isChaptarr()) return undefined;
+    const response = await this.get<unknown>(
+      '/search',
+      {
+        ...this.getRequestConfig(),
+        baseURL: this.nativeApiUrl,
+        params: { term: query },
+      },
+      300
+    );
+    const rows = z
+      .array(
+        z.object({
+          foreignId: z.string().max(256).nullish(),
+          series: z
+            .object({
+              foreignSeriesId: z.string().max(256).nullish(),
+              title: z.string().max(2000),
+              description: z.string().max(100000).nullish(),
+              workCount: z.number().int().nonnegative().optional(),
+            })
+            .nullish(),
+        })
+      )
+      .max(500)
+      .parse(response);
+    return rows.flatMap((row) => {
+      if (!row.series) return [];
+      const providerId = row.foreignId ?? row.series.foreignSeriesId;
+      // Only identifiers supported by Chaptarr's series/lookup are previewable.
+      if (!providerId || !/^hc:[1-9]\d*$/.test(providerId)) return [];
+      return [
+        {
+          providerId,
+          title: row.series.title,
+          description: row.series.description ?? undefined,
+          bookCount: row.series.workCount,
+        },
+      ];
+    });
+  }
+
+  public async getSeriesCatalogPreview(providerId: string) {
+    if (!/^hc:[1-9]\d*$/.test(providerId))
+      throw new Error('Invalid series catalog ID.');
+    await this.ensureProvider();
+    if (!this.isChaptarr()) return undefined;
+    const response = await this.get<unknown>(
+      '/series/lookup',
+      {
+        ...this.getRequestConfig(),
+        baseURL: this.nativeApiUrl,
+        params: { foreignSeriesId: providerId },
+      },
+      300
+    );
+    return z
+      .object({
+        foreignSeriesId: z.literal(providerId),
+        title: z.string().max(2000),
+        description: z.string().max(100000).nullish(),
+        workCount: z.number().int().nonnegative(),
+        books: z
+          .array(
+            z.object({
+              foreignBookId: z.string().max(256),
+              title: z.string().max(2000),
+              authorName: z.string().max(2000).nullish(),
+              position: z.string().max(128).nullish(),
+            })
+          )
+          .max(600),
+      })
+      .parse(response);
+  }
+
   public getSeriesManagementPath(seriesId: number): string | undefined {
     return this.isChaptarr() && Number.isSafeInteger(seriesId) && seriesId > 0
       ? `/series/${seriesId}`

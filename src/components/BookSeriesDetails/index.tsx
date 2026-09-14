@@ -16,6 +16,7 @@ import useSWR from 'swr';
 
 const messages = defineMessages('components.BookSeriesDetails', {
   series: 'Book Series',
+  search: 'Search Book Series',
   manage: 'Manage Series in {server}',
   request: 'Request Series',
   extras: 'Include companion books and other extras in requests',
@@ -134,11 +135,17 @@ export default function BookSeriesDetails() {
           onComplete={() => mutate()}
         />
       )}
-      <div className="mb-8 mt-6 space-y-4">
+      <div className="mt-6 mb-8 space-y-4">
         <p className="text-sm text-gray-400">
           {intl.formatMessage(messages.series)}
         </p>
         <h1 className="text-3xl font-bold text-white">{data.title}</h1>
+        <Link
+          className="inline-block text-indigo-300 hover:underline"
+          href={{ pathname: '/book-series', query: { format: data.format } }}
+        >
+          {intl.formatMessage(messages.search)}
+        </Link>
         {data.managementUrl && hasPermission(Permission.MANAGE_REQUESTS) && (
           <Button
             as="a"

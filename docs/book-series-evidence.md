@@ -199,3 +199,37 @@ is shorter than the original Caliban's War release (75,608.236916 seconds).
 These successful AAC-LC M4B checks narrow the failure to the tested xHE-AAC
 releases and decoder path. No global quality/player settings were changed, and
 this operational repair adds no series scheduling behavior.
+
+## Direct series search
+
+Added a Book Series entry to Search and a standalone `/book-series` page. Native
+library inventory bypasses SeerrNG work bindings and opens existing series URLs.
+Recognized Chaptarr catalog results open a separate read-only preview using its
+existing search/lookup APIs. Provider credentials stay in the backend. Readarr
+and Bookshelf catalog lookup is not assumed; their native library contract is
+covered by adapter fixtures. See ADR 0002 for bounds and ownership decisions.
+
+All 38 series route/adapter tests passed, including ten new search/preview cases.
+Another 47 adapter, search-filter/input and series-migration regressions passed.
+Server/client typechecks, changed-file ESLint, translation extraction/check,
+current-batch/style contracts, attribution, and server/Next production builds
+passed. Browser fixtures passed global search entry with typed query/format,
+library-result navigation, catalog preview without request controls, mobile
+layout, partial-result retry, disabled state, and absence of backend mutations or
+runtime JavaScript exceptions. The dev preview exposed an existing duplicate
+Audiobooks sidebar-key warning; no clean-console-warning claim is made.
+
+A read-only adapter check against the deployed Chaptarr completed in 3.462 seconds.
+Its native inventory returned 83 audiobook series with no partial/truncation flag,
+including Dungeon Crawler Carl and the Expanse variants. Catalog search returned
+six series. The main Expanse search result advertised nine books, while the
+backend lookup returned seven preview books and a count of seven. This is provider
+preview incompleteness, not proof of a complete remote bibliography; the UI states
+that previews may omit books. No books were requested, added, or monitored by this
+check. Confidence is high for observed search/navigation behavior and unknown for
+catalog completeness beyond the returned provider data.
+
+Screenshots, browser fixture script/report, live adapter script/redacted output,
+and build/regression logs are retained in the operator's `series-search-evidence`
+directory. New code remains local until separately deployed; no source branch or
+PR was published for this search increment.

@@ -9,9 +9,8 @@ The page displays the **server's known library members**, not a complete catalog
 of every published or announced title. Readarr and Bookshelf series resources
 are supported, as are Chaptarr's native resources. A server without a compatible
 series endpoint simply supplies no series links. Audiobookshelf library sync
-alone does not supply these Readarr-style relationships. Unrequested books that
-have no linked library-manager record cannot discover a series through this
-feature.
+alone does not supply these Readarr-style relationships. Book-details links still require a linked library-manager record. Direct series
+search, described below, does not require a SeerrNG book binding.
 
 **Request Series** opens the existing selection dialog. Requests keep the usual
 format selection, missing-format checks, permissions, approvals, quotas, and
@@ -45,3 +44,23 @@ membership refresh remains the backend's responsibility.
 
 See [the decision record](decisions/0001-backend-book-series.md) and
 [validation evidence](book-series-evidence.md) for contribution scope and limits.
+
+## Search by series name
+
+Choose **Book Series** on the Search page, or open `/book-series`. Enter a series
+name and optionally select books or audiobooks. The search includes series known
+to configured compatible book servers, including those without a saved SeerrNG
+book match. Results identify the server, format and whether they are a library
+series or a catalog preview.
+
+Library results open the existing series page and its verified request selection.
+Chaptarr can also supply catalog results using its own configured metadata
+provider. Those results open a read-only book preview. Request managers can use
+**Open in Chaptarr** to continue through its native search/add flow. A preview
+does not add books, request them, or enable monitoring. No additional provider
+key is required in SeerrNG; Chaptarr catalog search needs its existing provider
+configuration. Readarr and Bookshelf provide native library search only.
+
+Search scans at most 250 authors per server and displays up to 100 results per
+source/server. An incomplete-results notice appears when a limit is reached or a
+source is unavailable. Other available results remain usable.

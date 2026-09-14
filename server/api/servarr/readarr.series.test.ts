@@ -209,3 +209,158 @@ for (const scenario of [
     }
   });
 }
+
+for (const appName of ['Readarr', 'Bookshelf', 'Chaptarr']) {
+  it(`searches ${appName} library series and only uses an advertised catalog dialect`, async () => {
+    const paths: string[] = [];
+    const http = createServer((req, res) => {
+      assert.equal(req.method, 'GET');
+      const url = new URL(req.url!, 'http://localhost');
+      paths.push(url.pathname);
+      assert.equal(url.searchParams.get('apikey'), 'series-key');
+      res.setHeader('content-type', 'application/json');
+      if (url.pathname.endsWith('/system/status'))
+        res.end(JSON.stringify({ appName, version: '1.0.0' }));
+      else if (url.pathname.endsWith('/config/hardcover'))
+        res.end(JSON.stringify({ enabled: true }));
+      else if (url.pathname === '/base/api/v1/author')
+        res.end(JSON.stringify([{ id: 20 }, { id: 21 }]));
+      else if (url.pathname === '/base/api/v1/series')
+        res.end(
+          JSON.stringify([
+            {
+              id: 10,
+              title: 'Library series',
+              mediaType: 'audiobook',
+              links: [{ bookId: 1 }],
+            },
+          ])
+        );
+      else if (url.pathname === '/base/api/v1/search') {
+        assert.equal(url.searchParams.get('term'), 'Expanse & friends');
+        res.end(
+          JSON.stringify([
+            { book: { title: 'A book' } },
+            {
+              foreignId: 'hc:12',
+              series: {
+                foreignSeriesId: 'gr:99',
+                title: 'Catalog series',
+                workCount: 3,
+              },
+            },
+            {
+              foreignId: 'gr:12',
+              series: { title: 'Unsupported catalog identity' },
+            },
+          ])
+        );
+      } else if (url.pathname === '/base/api/v1/series/lookup') {
+        assert.equal(url.searchParams.get('foreignSeriesId'), 'hc:12');
+        res.end(
+          JSON.stringify({
+            foreignSeriesId: 'hc:12',
+            title: 'Catalog series',
+            workCount: 3,
+            books: [
+              {
+                foreignBookId: 'hc:32',
+                title: 'Book',
+                position: '1',
+                authorName: 'Author',
+              },
+            ],
+          })
+        );
+      } else {
+        res.statusCode = 404;
+        res.end('{}');
+      }
+    }).listen(0, '127.0.0.1');
+    await once(http, 'listening');
+    try {
+      const api = new ReadarrAPI({
+        url: `http://127.0.0.1:${(http.address() as { port: number }).port}/base/api/v1`,
+        apiKey: 'series-key',
+        mediaType: 'audiobook',
+      });
+      const library = await api.getNativeSeriesLibrary();
+      assert.equal(
+        library.entries.length,
+        1,
+        'multi-author series must be deduplicated by native identity'
+      );
+      assert.equal(library.entries[0].authorId, 20);
+      assert.equal(library.supported, true);
+      const catalog = await api.searchSeriesCatalog('Expanse & friends');
+      if (appName === 'Chaptarr') {
+        assert.equal(catalog?.length, 1);
+        assert.equal(
+          catalog?.[0].providerId,
+          'hc:12',
+          'search provider identity wins over preferred foreign alias'
+        );
+        assert.equal(
+          (await api.getSeriesCatalogPreview('hc:12'))?.books[0].foreignBookId,
+          'hc:32'
+        );
+      } else {
+        assert.equal(catalog, undefined);
+        assert(!paths.includes('/base/api/v1/search'));
+      }
+      await assert.rejects(api.getSeriesCatalogPreview('../12'));
+      assert(paths.every((path) => !path.includes('/readarr/')));
+    } finally {
+      http.closeAllConnections();
+      await new Promise<void>((resolve) => http.close(() => resolve()));
+    }
+  });
+}
+
+it('keeps partial native inventories and rejects mismatched catalog previews', async () => {
+  const http = createServer((req, res) => {
+    const url = new URL(req.url!, 'http://localhost');
+    res.setHeader('content-type', 'application/json');
+    if (url.pathname.endsWith('/system/status'))
+      res.end(JSON.stringify({ appName: 'Chaptarr', version: '1.0.0' }));
+    else if (url.pathname.endsWith('/config/hardcover'))
+      res.end(JSON.stringify({ enabled: true }));
+    else if (url.pathname.endsWith('/author'))
+      res.end(JSON.stringify([{ id: 20 }, { id: 21 }]));
+    else if (
+      url.pathname.endsWith('/series') &&
+      url.searchParams.get('authorId') === '20'
+    )
+      res.end(
+        JSON.stringify([{ id: 10, title: 'Series', links: [{ bookId: 1 }] }])
+      );
+    else if (url.pathname.endsWith('/series/lookup'))
+      res.end(
+        JSON.stringify({
+          foreignSeriesId: 'hc:99',
+          title: 'Wrong series',
+          workCount: 0,
+          books: [],
+        })
+      );
+    else {
+      res.statusCode = 503;
+      res.end('{}');
+    }
+  }).listen(0, '127.0.0.1');
+  await once(http, 'listening');
+  try {
+    const api = new ReadarrAPI({
+      url: `http://127.0.0.1:${(http.address() as { port: number }).port}/api/v1`,
+      apiKey: 'key',
+      mediaType: 'ebook',
+    });
+    const library = await api.getNativeSeriesLibrary();
+    assert.equal(library.partial, true);
+    assert.equal(library.entries.length, 1);
+    await assert.rejects(api.getSeriesCatalogPreview('hc:12'));
+  } finally {
+    http.closeAllConnections();
+    await new Promise<void>((resolve) => http.close(() => resolve()));
+  }
+});
