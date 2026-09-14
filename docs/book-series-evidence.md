@@ -281,3 +281,9 @@ production dependencies. Fleet deployment commit `24afb5a` supersedes `b4117ed`.
 The HTTPS ingress continues through Authentik. Automated browser data checks may
 use a UI authentication fixture with real API-key-authorized reads; these are
 separate from actual signed-in SSO acceptance.
+
+Final live API verification on `54bb6f4b` passed for server zero: Wayfarers search
+and preview returned two verified and two ambiguous members. Both application
+Deployments are Ready. The direct live-browser attempt stopped at login because
+API-key access does not create an SSO session; actual signed-in acceptance of this
+increment remains unverified. Ordinary-user production browser fixtures passed.
