@@ -62,6 +62,8 @@ const useSearchInput = (): SearchObject => {
       isSearchPage &&
       searchOpen &&
       debouncedValue === '' &&
+      // A restored URL may have updated the input before its debounce settles.
+      debouncedValue === searchValue &&
       routeQuery !== '' &&
       pendingSearchQuery.current !== ''
     ) {
@@ -123,6 +125,7 @@ const useSearchInput = (): SearchObject => {
     router,
     router.pathname,
     searchOpen,
+    searchValue,
   ]);
 
   /**
