@@ -52,7 +52,7 @@ export default function BookSeriesSearch() {
   const { data, error, isValidating, mutate } =
     useSWR<BookSeriesSearchResponse>(
       router.isReady && valid
-        ? `/api/v1/book-series/search?${new URLSearchParams({ query, ...(format ? { format } : {}) })}`
+        ? `/api/v1/book-series/search?${new URLSearchParams({ query, ...(format ? { format } : {}) }).toString().replace(/\+/g, '%20')}`
         : null,
       {
         keepPreviousData: false,
