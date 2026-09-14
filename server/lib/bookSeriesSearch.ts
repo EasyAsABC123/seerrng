@@ -84,7 +84,11 @@ export const searchBookSeries = async (
   }
   results.sort(
     (a, b) =>
-      (a.source === b.source ? 0 : a.source === 'library' ? -1 : 1) ||
+      (a.source === b.source ? 0 : a.source === 'catalog' ? -1 : 1) ||
+      Number(b.title.toLocaleLowerCase() === query.trim().toLocaleLowerCase()) -
+        Number(
+          a.title.toLocaleLowerCase() === query.trim().toLocaleLowerCase()
+        ) ||
       a.title.localeCompare(b.title)
   );
   return {

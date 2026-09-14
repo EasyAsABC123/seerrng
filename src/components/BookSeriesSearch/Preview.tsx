@@ -92,6 +92,9 @@ export default function BookSeriesPreview() {
           bookSeries
           mediaType="book"
           initialBookFormat={data.format}
+          unresolvedBookTitles={data.books
+            .filter((b) => b.matchStatus !== 'matched' || !b.book)
+            .map((b) => b.title)}
           title={data.title}
           initialItems={items}
           onCancel={() => setShowRequest(false)}

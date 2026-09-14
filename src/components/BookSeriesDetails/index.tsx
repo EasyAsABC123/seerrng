@@ -1,3 +1,4 @@
+import InlineBookSeriesResults from '@app/components/BookSeriesSearch/InlineResults';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
@@ -15,10 +16,11 @@ import { useIntl } from 'react-intl';
 import useSWR from 'swr';
 
 const messages = defineMessages('components.BookSeriesDetails', {
-  series: 'Book Series',
+  series: 'Library Series Subset',
+  linkedBooks: 'Books linked in your library',
   search: 'Search Book Series',
   manage: 'Manage Series in {server}',
-  request: 'Request Series',
+  request: 'Request Listed Library Books',
   extras: 'Include companion books and other extras in requests',
   extra: 'Extra',
   source: '{server} · {format}',
@@ -128,6 +130,7 @@ export default function BookSeriesDetails() {
         <BulkRequestModal
           show
           bookSeries
+          librarySubset
           initialBookFormat={data.format}
           mediaType="book"
           title={data.title}
@@ -173,6 +176,11 @@ export default function BookSeriesDetails() {
             {intl.formatMessage(messages.unclassified)}
           </p>
         )}
+        <InlineBookSeriesResults
+          query={data.title}
+          format={data.format}
+          catalogOnly
+        />
         {data.description && (
           <p className="max-w-4xl whitespace-pre-line text-gray-300">
             {data.description}
@@ -208,6 +216,9 @@ export default function BookSeriesDetails() {
           </div>
         )}
       </div>
+      <h2 className="mb-4 text-xl font-semibold text-white">
+        {intl.formatMessage(messages.linkedBooks)}
+      </h2>
       {!data.entries.length && <p>{intl.formatMessage(messages.noBooks)}</p>}
       <ol className="divide-y divide-gray-700 rounded-lg border border-gray-700">
         {data.entries.map((entry, index) => (

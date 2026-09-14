@@ -6,6 +6,9 @@ import BookSeriesSearchResults from './Results';
 
 const messages = defineMessages('components.BookSeriesSearch.InlineResults', {
   title: 'Book Series',
+  catalog: 'Find the series in the catalog',
+  catalogHint:
+    'Catalog entries can include books that are missing from your library. Open the matching series to choose books to request.',
   browse: 'View all series results',
   hint: 'Series matches use the name and selected format.',
 });
@@ -13,20 +16,24 @@ const messages = defineMessages('components.BookSeriesSearch.InlineResults', {
 export default function InlineBookSeriesResults({
   query,
   format,
+  catalogOnly = false,
 }: {
   query: string;
   format?: 'ebook' | 'audiobook';
+  catalogOnly?: boolean;
 }) {
   const intl = useIntl();
   if (!bookSeriesSearchUrl(query, format)) return null;
   return (
     <section
-      aria-label={intl.formatMessage(messages.title)}
+      aria-label={intl.formatMessage(
+        catalogOnly ? messages.catalog : messages.title
+      )}
       className="mb-6 text-gray-300"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold text-white">
-          {intl.formatMessage(messages.title)}
+          {intl.formatMessage(catalogOnly ? messages.catalog : messages.title)}
         </h2>
         <Link
           className="text-indigo-300 hover:underline"
@@ -39,9 +46,14 @@ export default function InlineBookSeriesResults({
         </Link>
       </div>
       <p className="mt-1 text-sm text-gray-400">
-        {intl.formatMessage(messages.hint)}
+        {intl.formatMessage(catalogOnly ? messages.catalogHint : messages.hint)}
       </p>
-      <BookSeriesSearchResults query={query} format={format} limit={6} />
+      <BookSeriesSearchResults
+        query={query}
+        format={format}
+        limit={6}
+        sourceFilter={catalogOnly ? 'catalog' : undefined}
+      />
     </section>
   );
 }

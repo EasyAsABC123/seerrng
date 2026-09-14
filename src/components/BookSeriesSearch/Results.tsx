@@ -10,8 +10,8 @@ import useSWR from 'swr';
 const messages = defineMessages('components.BookSeriesSearch.Results', {
   ebook: 'Books',
   audiobook: 'Audiobooks',
-  library: 'Library series',
-  catalog: 'Catalog preview',
+  library: 'Library subset',
+  catalog: 'Series catalog',
   count: '{count, plural, one {# book} other {# books}}',
   empty: 'No matching series found.',
   disabled: 'No book server is configured for this format.',
@@ -28,10 +28,12 @@ export default function BookSeriesSearchResults({
   query,
   format,
   limit = 100,
+  sourceFilter,
 }: {
   query: string;
   format?: 'ebook' | 'audiobook';
   limit?: number;
+  sourceFilter?: 'catalog';
 }) {
   const intl = useIntl();
   const url = bookSeriesSearchUrl(query, format);
@@ -43,6 +45,9 @@ export default function BookSeriesSearchResults({
       shouldRetryOnError: false,
       dedupingInterval: 60000,
     });
+  const results = (data?.results ?? []).filter(
+    (series) => !sourceFilter || series.source === sourceFilter
+  );
   const failed = error || data?.status === 'unavailable';
   return (
     <>
@@ -68,7 +73,7 @@ export default function BookSeriesSearchResults({
           {intl.formatMessage(messages.truncated)}
         </p>
       )}
-      {data && !data.results.length && !failed && data.status !== 'partial' && (
+      {data && !results.length && !failed && data.status !== 'partial' && (
         <p className="my-6">
           {intl.formatMessage(
             data.status === 'disabled'
@@ -80,7 +85,7 @@ export default function BookSeriesSearchResults({
         </p>
       )}
       <ul className="mt-6 grid gap-4 sm:grid-cols-2">
-        {data?.results.slice(0, limit).map((series) => (
+        {results.slice(0, limit).map((series) => (
           <li
             key={series.key}
             className="rounded-lg border border-gray-700 bg-gray-800 p-4"

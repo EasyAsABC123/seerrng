@@ -436,7 +436,12 @@ describe('direct book series search', () => {
       'search must not add books'
     );
     const again = await agent.get('/book-series/search?query=Expanse');
-    assert.equal(again.body.results[0].href, local.href);
+    assert.equal(again.body.results[0].source, 'catalog');
+    assert.equal(
+      again.body.results.find((r: { source: string }) => r.source === 'library')
+        .href,
+      local.href
+    );
   });
 
   it('keeps format identities separate and filters servers before any lookup', async () => {

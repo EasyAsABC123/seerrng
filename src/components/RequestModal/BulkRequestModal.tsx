@@ -49,6 +49,11 @@ const messages = defineMessages('components.RequestModal.BulkRequestModal', {
   summary: '{created} created, {skipped} skipped, {failed} failed.',
   requestbibliographyFormat: 'Request {format} Bibliography',
   requestseriesFormat: 'Request {format} Series',
+  requestLibraryFormat: 'Request {format} Library Books',
+  librarySubset:
+    'This request includes only the listed library entries. Use the series catalog to find missing books.',
+  unresolvedBooks:
+    'These books could not be verified and are not included in this request:',
   requestitemsFormat:
     'Request {count} {count, plural, one {Item} other {Items}} as {format}',
   faileditems: 'Failed Items',
@@ -144,6 +149,8 @@ export interface BulkRequestModalProps {
   mediaType: BulkMediaType;
   title: string;
   bookSeries?: boolean;
+  librarySubset?: boolean;
+  unresolvedBookTitles?: string[];
   initialBookFormat?: BulkBookFormat;
   artistId?: string;
   authorId?: string;
@@ -341,6 +348,8 @@ const BulkRequestModal = ({
   artistId,
   authorId,
   bookSeries = false,
+  librarySubset = false,
+  unresolvedBookTitles,
   initialBookFormat = 'ebook',
   initialItems = EMPTY_BULK_ITEMS,
   initialTotalItems,
@@ -806,7 +815,9 @@ const BulkRequestModal = ({
           mediaType === 'book'
             ? intl.formatMessage(
                 bookSeries
-                  ? messages.requestseriesFormat
+                  ? librarySubset
+                    ? messages.requestLibraryFormat
+                    : messages.requestseriesFormat
                   : messages.requestbibliographyFormat,
                 {
                   format: intl.formatMessage(getBookFormatMessage(format)),
@@ -875,6 +886,24 @@ const BulkRequestModal = ({
                   title={intl.formatMessage(messages.requestadmin)}
                   type="info"
                 />
+              </div>
+            )}
+            {librarySubset && (
+              <p className="mt-4 text-gray-300">
+                {intl.formatMessage(messages.librarySubset)}
+              </p>
+            )}
+            {!!unresolvedBookTitles?.length && (
+              <div
+                role="status"
+                className="mt-4 rounded-lg border border-yellow-600 p-4 text-gray-300"
+              >
+                <p>{intl.formatMessage(messages.unresolvedBooks)}</p>
+                <ul className="mt-2 list-inside list-disc">
+                  {unresolvedBookTitles.map((title, index) => (
+                    <li key={index}>{title}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {confirmLargeBatch && (

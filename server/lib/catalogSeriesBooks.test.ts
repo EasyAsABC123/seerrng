@@ -161,3 +161,169 @@ it('rejects truncated series identifier evidence rather than matching a subset',
   );
   assert.equal(result.books[0].matchStatus, 'unavailable');
 });
+
+it('resolves the Kingkiller novels using ISBN plus full title and author, excluding sets, novellas, and split volumes', async () => {
+  const main1 = '9780756404079',
+    set = '9781473232280',
+    novella = '9788401337208';
+  const main2 = '9780756404734',
+    split1 = '9783867179614',
+    split2 = '9782352946588';
+  mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => [
+    {
+      key: '/works/OL8479867W',
+      title: 'The Name of the Wind',
+      author_name: ['Patrick Rothfuss', 'Marc Simonetti'],
+      isbn: [main1, novella],
+    },
+    {
+      key: '/works/OL24343635W',
+      title: 'Kingkiller Chronicle Patrick Rothfuss Collection 3 Books Set',
+      author_name: ['Patrick Rothfuss'],
+      isbn: [set],
+    },
+    {
+      key: '/works/OL17067388W',
+      title: 'A Slow Regard of Silent Things',
+      author_name: ['Patrick Rothfuss'],
+      isbn: [novella],
+    },
+    {
+      key: '/works/OL8479869W',
+      title: 'The Wise Man’s Fear',
+      author_name: ['Patrick Rothfuss'],
+      isbn: [main2],
+    },
+    {
+      key: '/works/OL16817144W',
+      title: 'The Wise Man’s Fear [1/2]',
+      author_name: ['Patrick Rothfuss'],
+      isbn: [split1],
+    },
+    {
+      key: '/works/OL16817145W',
+      title: 'The Wise Man’s Fear [2/2]',
+      author_name: ['Patrick Rothfuss'],
+      isbn: [split2],
+    },
+  ]);
+  const result = await resolveCatalogSeriesBooks(
+    [
+      {
+        foreignBookId: 'hc:379217',
+        title: 'The Name of the Wind',
+        authorName: 'Patrick Rothfuss',
+        isbns: [main1, set, novella],
+        identifiersComplete: true,
+      },
+      {
+        foreignBookId: 'hc:381332',
+        title: "The Wise Man's Fear",
+        authorName: 'Patrick Rothfuss',
+        isbns: [main2, split1, split2],
+        identifiersComplete: true,
+      },
+    ],
+    { getCatalogBookIdentity: async () => undefined }
+  );
+  assert.deepEqual(
+    result.books.map((b) => b.book?.id),
+    ['OL8479867W', 'OL8479869W']
+  );
+  assert(
+    result.books.every(
+      (b) =>
+        b.matchStatus === 'matched' && b.book?.author === 'Patrick Rothfuss'
+    )
+  );
+});
+
+it('keeps duplicate full titles, absent author evidence, and author disagreement ambiguous', async () => {
+  for (const authors of [undefined, ['Different Author'], ['Author']]) {
+    mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => [
+      {
+        key: '/works/OL1W',
+        title: 'Main Work',
+        author_name: authors,
+        isbn: [isbn],
+      },
+      {
+        key: '/works/OL2W',
+        title: authors?.[0] === 'Author' ? 'Main Work' : 'Main Work [1/2]',
+        isbn: [otherIsbn],
+      },
+    ]);
+    const result = await resolveCatalogSeriesBooks(
+      [
+        {
+          foreignBookId: 'hc:1',
+          title: 'Main Work',
+          authorName: 'Author',
+          isbns: [isbn, otherIsbn],
+          identifiersComplete: true,
+        },
+      ],
+      { getCatalogBookIdentity: async () => undefined }
+    );
+    assert.equal(result.books[0].matchStatus, 'ambiguous');
+    assert.equal(result.books[0].book, undefined);
+  }
+});
+
+it('never uses title/author agreement to override explicit work IDs or incomplete evidence', async () => {
+  mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => [
+    {
+      key: '/works/OL2W',
+      title: 'Main Work',
+      author_name: ['Author'],
+      isbn: [isbn],
+    },
+  ]);
+  const result = await resolveCatalogSeriesBooks(
+    [{ foreignBookId: 'hc:1', title: 'Main Work', authorName: 'Author' }],
+    {
+      getCatalogBookIdentity: async () => ({
+        workIds: ['OL1W'],
+        isbns: [isbn],
+      }),
+    }
+  );
+  assert.equal(result.books[0].matchStatus, 'ambiguous');
+  const incomplete = await resolveCatalogSeriesBooks(
+    [
+      {
+        foreignBookId: 'hc:1',
+        title: 'Main Work',
+        authorName: 'Author',
+        isbns: [isbn],
+        identifiersComplete: false,
+      },
+    ],
+    { getCatalogBookIdentity: async () => undefined }
+  );
+  assert.equal(incomplete.books[0].matchStatus, 'unavailable');
+});
+
+it('does not search or request a work based on matching title and author without matching ISBN evidence', async () => {
+  mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => [
+    {
+      key: '/works/OL1W',
+      title: 'Main Work',
+      author_name: ['Author'],
+      isbn: [otherIsbn],
+    },
+  ]);
+  const result = await resolveCatalogSeriesBooks(
+    [
+      {
+        foreignBookId: 'hc:1',
+        title: 'Main Work',
+        authorName: 'Author',
+        isbns: [isbn],
+        identifiersComplete: true,
+      },
+    ],
+    { getCatalogBookIdentity: async () => undefined }
+  );
+  assert.equal(result.books[0].matchStatus, 'unmatched');
+});

@@ -10,6 +10,19 @@ import { normalizeValidIsbn } from '@server/lib/isbn';
 import { mapOpenLibrarySearchDoc } from '@server/models/Book';
 import type { BookSeriesPreview } from '@server/models/BookSeries';
 
+// Only typography/whitespace normalization: no fuzzy titles, subtitle stripping,
+// author guessing, or popularity-based selection.
+const sameMetadataText = (a: string, b: string) => {
+  const normalize = (value: string) =>
+    value
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[‘’ʼ]/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  return !!normalize(a) && normalize(a) === normalize(b);
+};
+
 export const resolveCatalogSeriesBooks = async (
   books: {
     foreignBookId: string;
@@ -137,9 +150,28 @@ export const resolveCatalogSeriesBooks = async (
       if (explicit.has(id)) matches.set(id, explicit.get(id)!);
     for (const isbn of identity?.isbns ?? [])
       for (const [id, doc] of isbnMatches.get(isbn) ?? []) matches.set(id, doc);
+    // A provider's edition set can include a box set or split-volume ISBNs.
+    // Resolve that conflict only when one ISBN-backed candidate also agrees on
+    // the full work title and an explicitly named author. Explicit work-ID
+    // conflicts remain blocked. Retain all candidates for cross-book collisions.
+    const sameTitle = [...matches.entries()].filter(([, doc]) =>
+      sameMetadataText(book.title, doc.title)
+    );
+    const agreedId =
+      identity?.workIds.length === 0 &&
+      [...matches.values()].every((doc) => doc.title.trim()) &&
+      sameTitle.length === 1 &&
+      book.authorName &&
+      sameTitle[0][1].author_name?.some((author) =>
+        sameMetadataText(book.authorName!, author)
+      )
+        ? sameTitle[0][0]
+        : undefined;
+    const resolvedId = matches.size === 1 ? [...matches.keys()][0] : agreedId;
     return {
       source: book,
       matches,
+      resolvedId,
       failed:
         !identity ||
         identity.failed ||
@@ -155,11 +187,15 @@ export const resolveCatalogSeriesBooks = async (
     }
   const unique = (candidate: (typeof candidates)[number]) =>
     !candidate.failed &&
-    candidate.matches.size === 1 &&
-    owners.get([...candidate.matches.keys()][0])?.size === 1;
+    candidate.resolvedId !== undefined &&
+    owners.get(candidate.resolvedId)?.size === 1;
   const docs = [
     ...new Map(
-      candidates.flatMap((c) => (unique(c) ? [...c.matches.entries()] : []))
+      candidates.flatMap((c) =>
+        unique(c)
+          ? [[c.resolvedId!, c.matches.get(c.resolvedId!)!] as const]
+          : []
+      )
     ).values(),
   ];
   const media = new Map<string, Media>();
@@ -174,7 +210,7 @@ export const resolveCatalogSeriesBooks = async (
     resolutionTruncated: ids.length > 100,
     books: candidates.map((candidate) => {
       const doc = unique(candidate)
-        ? [...candidate.matches.values()][0]
+        ? candidate.matches.get(candidate.resolvedId!)
         : undefined;
       return {
         title: candidate.source.title,
