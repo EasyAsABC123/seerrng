@@ -115,3 +115,80 @@ for (const status of [404, 405, 501, 401, 503, 200]) {
     }
   });
 }
+
+for (const scenario of [
+  'valid',
+  'wrong-book',
+  'unsupported',
+  'outage',
+] as const) {
+  it(`resolves missing native Chaptarr editions with ${scenario} membership evidence`, async () => {
+    const paths: string[] = [];
+    const http = createServer((req, res) => {
+      const url = new URL(req.url!, 'http://localhost');
+      assert.equal(req.method, 'GET');
+      assert.equal(url.searchParams.get('apikey'), 'test-key');
+      paths.push(url.pathname);
+      res.setHeader('content-type', 'application/json');
+      if (url.pathname === '/library/api/v1/system/status') {
+        res.end(JSON.stringify({ appName: 'Chaptarr', version: '0.9.964' }));
+      } else if (url.pathname === '/library/api/v1/config/hardcover') {
+        res.end(JSON.stringify({ enabled: true }));
+      } else if (url.pathname === '/library/api/v1/book/1') {
+        res.end(
+          JSON.stringify({
+            id: 1,
+            title: 'Book',
+            authorId: 20,
+            mediaType: 'audiobook',
+          })
+        );
+      } else if (url.pathname === '/library/api/v1/edition') {
+        assert.equal(url.searchParams.get('bookId'), '1');
+        assert.equal(url.searchParams.get('mediaType'), 'audiobook');
+        res.statusCode =
+          scenario === 'unsupported' ? 404 : scenario === 'outage' ? 401 : 200;
+        res.end(
+          JSON.stringify([
+            {
+              bookId: scenario === 'wrong-book' ? 2 : 1,
+              isbn13: '9780441172719',
+            },
+          ])
+        );
+      } else {
+        res.statusCode = 404;
+        res.end('{}');
+      }
+    }).listen(0, '127.0.0.1');
+    await once(http, 'listening');
+    try {
+      const api = new ReadarrAPI({
+        url: `http://127.0.0.1:${(http.address() as { port: number }).port}/library/api/v1`,
+        apiKey: 'test-key',
+        mediaType: 'audiobook',
+      });
+      assert.equal((await api.getNativeSeriesBook(1)).editions, undefined);
+      assert(
+        !paths.some((path) => path.endsWith('/edition')),
+        'discovery must not fetch edition catalogs'
+      );
+      if (scenario === 'wrong-book' || scenario === 'outage') {
+        await assert.rejects(api.getNativeSeriesBook(1, true), {
+          message: 'Book server edition metadata is unavailable.',
+        });
+      } else {
+        const book = await api.getNativeSeriesBook(1, true);
+        assert.deepEqual(
+          book.editions,
+          scenario === 'valid' ? [{ isbn13: '9780441172719' }] : undefined
+        );
+      }
+      assert(paths.includes('/library/api/v1/edition'));
+      assert(paths.every((path) => !path.includes('/readarr/')));
+    } finally {
+      http.closeAllConnections();
+      await new Promise<void>((resolve) => http.close(() => resolve()));
+    }
+  });
+}

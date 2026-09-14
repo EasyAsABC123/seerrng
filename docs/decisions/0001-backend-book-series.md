@@ -90,7 +90,9 @@ requestable results when identity evidence is incomplete.
 
 ## Rollout, rollback, and contribution boundaries
 
-No live service was changed, no remote branch was pushed, and no PR was opened.
+The initial validation used disposable services. A later operator-authorized
+homelab trial deployed both contributions without publishing application branches
+or opening a PR. Deployment configuration alone was pushed to the operator repo.
 The migration is additive and reversible; SQLite rollback is tested. PostgreSQL
 uses the equivalent migration but requires a database integration run before a
 PostgreSQL deployment. Reverting UI/routes removes the feature; the identity table
@@ -101,3 +103,18 @@ collect operator feedback about the limited library scope, and ask maintainers
 whether this fits their desired book-provider direction. Keep the contribution
 focused and offer reproducible evidence with explicit unknowns. Future monitoring
 should be proposed separately if maintainers want it, not smuggled into a UI patch.
+
+## Live-trial decision: native edition identity evidence
+
+The Chaptarr 0.9.964 native book endpoint omits editions. Series detail resolution
+therefore reads the native `/edition?bookId=...` endpoint when inline editions are
+absent. Discovery does not need this extra lookup. Validate every returned edition
+against the requested native book ID and bound the response to 5,000 editions.
+Unsupported endpoints preserve unresolved/previously established identities;
+authentication failures, outages and mixed-book responses stop resolution. Keep
+these reads on the native API even when acquisition uses a compatibility facade.
+
+The real trial also exposed stale bindings after changing library servers and low
+canonical Open Library coverage. These are distinct from native series membership.
+Do not guess work identities or call this broad catalog coverage. A separate
+identity reconciliation design is required before proposing wider adoption.

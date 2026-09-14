@@ -164,7 +164,7 @@ export const getSeriesDetails = async (
   for (let offset = 0; offset < Math.min(links.length, 500); offset += 5) {
     const batch = await Promise.all(
       links.slice(offset, Math.min(offset + 5, 500)).map(async (link) => {
-        const book = await client.getNativeSeriesBook(link.bookId);
+        const book = await client.getNativeSeriesBook(link.bookId, true);
         return {
           providerId: String(book.id),
           title: book.title,

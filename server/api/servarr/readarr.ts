@@ -832,7 +832,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
   }
 
   /** Reads local membership only; this does not add or monitor any books. */
-  public async getNativeSeriesBook(bookId: number) {
+  public async getNativeSeriesBook(bookId: number, includeEditions = false) {
     if (!Number.isSafeInteger(bookId) || bookId <= 0)
       throw new Error('Invalid book ID.');
     const response = await this.get<unknown>(
@@ -859,6 +859,35 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
       (result.mediaType && result.mediaType !== this.mediaType)
     )
       throw new Error('Invalid book server member.');
+    // Chaptarr omits editions from native book resources. Keep discovery cheap,
+    // but load exact native edition membership when resolving request identities.
+    if (includeEditions && !result.editions?.length) {
+      try {
+        const response = await this.get<unknown>(
+          '/edition',
+          {
+            ...this.getRequestConfig({ bookId }),
+            baseURL: this.nativeApiUrl,
+          },
+          300
+        );
+        const editions = z
+          .array(
+            z.object({
+              bookId: z.literal(bookId),
+              isbn13: z.string().max(64).nullish(),
+            })
+          )
+          .max(5000)
+          .parse(response);
+        result.editions = editions.map(({ isbn13 }) => ({ isbn13 }));
+      } catch (error) {
+        const status = (error as { response?: { status?: number } }).response
+          ?.status;
+        if (status !== 404 && status !== 405 && status !== 501)
+          throw new Error('Book server edition metadata is unavailable.');
+      }
+    }
     return result;
   }
 

@@ -1,7 +1,8 @@
 # Book-series contribution evidence
 
 Recorded locally on 2026-09-13 against upstream `5358da198f8d9f3773c3a2a73418c489df0c0bfd`.
-No PR, push, deployment, or real-library mutation was performed.
+This section records the initial disposable validation; see the live-trial
+addendum below for subsequent authorized deployment and library testing.
 
 ## Automated validation
 
@@ -67,3 +68,24 @@ reasons to overstate this increment as a future-series watch.
 The workspace contribution dossier retains raw logs, browser scripts/screenshots,
 patches, and JSON reports. This repository record is intentionally portable and
 contains no credentials or machine-specific artifact paths.
+
+## Authorized live-trial addendum
+
+The contribution was rebased onto upstream `ec45661b` (v3.21.0); the new book
+layout retains series navigation and its terminology checks pass. The integrated
+adapter/series/request suites passed 189 tests, and the Open Library/book-route
+suites passed 24 tests. Native edition enrichment additionally passed 28 adapter
+and series-route tests, including wrong-book and authentication-failure cases.
+
+The live Chaptarr build passed native reads for all 710 series (88 with current
+members, 622 empty), 89 same-state monitoring calls, and an audiobook monitoring
+round-trip. All 183 books retained their original format monitoring states.
+The SeerrNG discovery audit covered all 47 canonical book records after a normal
+backend sync. It exposed only two format-specific Bobiverse pages; 694 stale
+format bindings and missing canonical identities prevent claiming full coverage.
+A separate native edition endpoint was required to obtain ISBN evidence for
+series members; this prompted the regression fix included here.
+
+Actual HTTPS routes reached their expected login boundaries. An authenticated
+browser session was unavailable, so the deployed signed-in UI and end-to-end
+acquisition remain unverified. No application branch or PR was published.
