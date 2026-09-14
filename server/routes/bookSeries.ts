@@ -65,7 +65,7 @@ bookSeriesRoutes.get('/catalog', async (req, res) => {
     );
     if (!preview)
       return res.status(404).json({ message: 'Series catalog not found.' });
-    return res.json(preview);
+    return res.json(filterEntityResponse(preview, req.user));
   } catch {
     return res.status(503).json({
       message: 'The series preview is unavailable. Please try again later.',

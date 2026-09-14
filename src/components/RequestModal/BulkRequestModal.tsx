@@ -144,6 +144,7 @@ export interface BulkRequestModalProps {
   mediaType: BulkMediaType;
   title: string;
   bookSeries?: boolean;
+  initialBookFormat?: BulkBookFormat;
   artistId?: string;
   authorId?: string;
   initialItems?: BulkItem[];
@@ -340,6 +341,7 @@ const BulkRequestModal = ({
   artistId,
   authorId,
   bookSeries = false,
+  initialBookFormat = 'ebook',
   initialItems = EMPTY_BULK_ITEMS,
   initialTotalItems,
   sourceUrl,
@@ -349,7 +351,7 @@ const BulkRequestModal = ({
   const intl = useIntl();
   const { addToast } = useToasts();
   const { user, hasPermission } = useUser();
-  const [format, setFormat] = useState<BulkBookFormat>('ebook');
+  const [format, setFormat] = useState<BulkBookFormat>(initialBookFormat);
   const [releaseType, setReleaseType] = useState('Album');
   const [items, setItems] = useState<BulkItem[]>(
     dedupeBulkItems(initialItems, mediaType, bookSeries)

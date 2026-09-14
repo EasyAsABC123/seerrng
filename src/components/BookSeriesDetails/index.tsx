@@ -128,6 +128,7 @@ export default function BookSeriesDetails() {
         <BulkRequestModal
           show
           bookSeries
+          initialBookFormat={data.format}
           mediaType="book"
           title={data.title}
           initialItems={items}

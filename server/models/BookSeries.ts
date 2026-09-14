@@ -51,5 +51,12 @@ export interface BookSeriesPreview {
   format: 'ebook' | 'audiobook';
   bookCount: number;
   managementUrl?: string;
-  books: { title: string; position?: string; author?: string }[];
+  resolutionTruncated: boolean;
+  books: {
+    title: string;
+    position?: string;
+    author?: string;
+    matchStatus: 'matched' | 'unmatched' | 'ambiguous' | 'unavailable';
+    book?: BookResult;
+  }[];
 }

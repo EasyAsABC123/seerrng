@@ -142,6 +142,18 @@ components:
         - email
         - createdAt
         - updatedAt
+    PublicUser:
+      type: object
+      description: Minimal public identity embedded in requests.
+      properties:
+        id:
+          type: integer
+        displayName:
+          type: string
+        avatar:
+          type: string
+      required:
+        - id
     UserSettings:
       type: object
       properties:
@@ -1050,7 +1062,8 @@ components:
                 type: string
     BookSeriesPreview:
       type: object
-      required: [title, serverName, format, bookCount, books]
+      required:
+        [title, serverName, format, bookCount, books, resolutionTruncated]
       properties:
         title:
           type: string
@@ -1065,13 +1078,20 @@ components:
           type: integer
         managementUrl:
           type: string
+        resolutionTruncated:
+          type: boolean
         books:
           type: array
           maxItems: 600
           items:
             type: object
-            required: [title]
+            required: [title, matchStatus]
             properties:
+              matchStatus:
+                type: string
+                enum: [matched, unmatched, ambiguous, unavailable]
+              book:
+                $ref: '#/components/schemas/BookResult'
               title:
                 type: string
               author:
@@ -2010,10 +2030,10 @@ components:
           example: '2020-09-12T10:00:27.000Z'
           readOnly: true
         requestedBy:
-          $ref: '#/components/schemas/User'
+          $ref: '#/components/schemas/PublicUser'
         modifiedBy:
           anyOf:
-            - $ref: '#/components/schemas/User'
+            - $ref: '#/components/schemas/PublicUser'
             - type: string
               nullable: true
         is4k:
@@ -2021,14 +2041,19 @@ components:
           example: false
         serverId:
           type: number
+          nullable: true
         profileId:
           type: number
+          nullable: true
         rootFolder:
           type: string
+          nullable: true
         metadataProfileId:
           type: number
+          nullable: true
         tags:
           type: array
+          nullable: true
           items:
             type: number
         bookFormat:

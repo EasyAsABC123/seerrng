@@ -364,3 +364,65 @@ it('keeps partial native inventories and rejects mismatched catalog previews', a
     await new Promise<void>((resolve) => http.close(() => resolve()));
   }
 });
+
+for (const scenario of [
+  'exact',
+  'alias',
+  'wrong-book',
+  'wrong-format',
+  'missing',
+] as const) {
+  it(`checks native catalog identity (${scenario}) before exposing ISBN evidence`, async () => {
+    const http = createServer((req, res) => {
+      const url = new URL(req.url!, 'http://localhost');
+      assert.equal(req.method, 'GET');
+      res.setHeader('content-type', 'application/json');
+      if (url.pathname.endsWith('/system/status'))
+        res.end(JSON.stringify({ appName: 'Chaptarr', version: '1' }));
+      else if (url.pathname.endsWith('/config/hardcover'))
+        res.end(JSON.stringify({ enabled: true }));
+      else {
+        assert.equal(url.pathname, '/base/api/v1/book/lookup');
+        assert.equal(url.searchParams.get('term'), 'hc:123');
+        assert.equal(url.searchParams.get('mediaType'), 'audiobook');
+        res.end(
+          JSON.stringify(
+            scenario === 'missing'
+              ? []
+              : [
+                  {
+                    foreignBookId: scenario === 'exact' ? 'hc:123' : 'gr:456',
+                    hardcoverBookId:
+                      scenario === 'wrong-book' ? 'hc:999' : 'hc:123',
+                    openLibraryWorkId: 'ol:OL1W',
+                    mediaType:
+                      scenario === 'wrong-format' ? 'ebook' : 'audiobook',
+                    editions: [{ isbn13: '9780140328721' }],
+                  },
+                ]
+          )
+        );
+      }
+    }).listen(0, '127.0.0.1');
+    await once(http, 'listening');
+    try {
+      const api = new ReadarrAPI({
+        url: `http://127.0.0.1:${(http.address() as { port: number }).port}/base/api/v1`,
+        apiKey: 'test',
+        mediaType: 'audiobook',
+      });
+      if (scenario === 'wrong-book' || scenario === 'wrong-format')
+        await assert.rejects(api.getCatalogBookIdentity('hc:123'));
+      else
+        assert.deepEqual(
+          await api.getCatalogBookIdentity('hc:123'),
+          scenario === 'missing'
+            ? undefined
+            : { workIds: ['OL1W'], isbns: ['9780140328721'] }
+        );
+    } finally {
+      http.closeAllConnections();
+      await new Promise<void>((resolve) => http.close(() => resolve()));
+    }
+  });
+}

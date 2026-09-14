@@ -1,10 +1,13 @@
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
+import BulkRequestModal from '@app/components/RequestModal/BulkRequestModal';
+import { Permission, useUser } from '@app/hooks/useUser';
 import defineMessages from '@app/utils/defineMessages';
 import type { BookSeriesPreview } from '@server/models/BookSeries';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
 
@@ -13,7 +16,13 @@ const messages = defineMessages('components.BookSeriesPreview', {
   scope:
     'A preview from your book server’s catalog. It may not list every book. Previewing does not request books or enable monitoring.',
   manage: 'Open in {server}',
-  hint: 'To add this series to your library, continue in your book server.',
+  hint: 'Choose books and formats to request. Your book server handles monitoring and downloads.',
+  request: 'Request Series',
+  unmatched: 'No verified book match — requests unavailable',
+  ambiguous: 'Conflicting book matches — requests unavailable',
+  unresolved: 'Book identity could not be checked — try again',
+  truncated:
+    'Only the first 100 distinct books were checked for requests. Other entries remain visible.',
   unavailable: 'This series preview could not be loaded.',
   retry: 'Try Again',
   search: 'Search Book Series',
@@ -25,6 +34,8 @@ const messages = defineMessages('components.BookSeriesPreview', {
 export default function BookSeriesPreview() {
   const intl = useIntl();
   const router = useRouter();
+  const { hasPermission } = useUser();
+  const [showRequest, setShowRequest] = useState(false);
   const { serverId, scope, providerId } = router.query;
   const params =
     typeof serverId === 'string' &&
@@ -40,6 +51,26 @@ export default function BookSeriesPreview() {
       shouldRetryOnError: false,
     }
   );
+  const items = useMemo(
+    () =>
+      (data?.books ?? []).flatMap((entry) => {
+        const book = entry.book;
+        if (entry.matchStatus !== 'matched' || !book) return [];
+        return [
+          {
+            id: book.id,
+            title: entry.title,
+            year: book.firstPublishYear,
+            image: book.posterPath,
+            artist: book.author,
+            isbn13: book.isbn13,
+            authorId: book.authorId,
+            mediaInfo: book.mediaInfo,
+          },
+        ];
+      }),
+    [data]
+  );
   if (!router.isReady || (params && !data && !error)) return <LoadingSpinner />;
   if (!data)
     return (
@@ -54,6 +85,19 @@ export default function BookSeriesPreview() {
   return (
     <>
       <PageTitle title={data.title} />
+      {showRequest && (
+        <BulkRequestModal
+          key={params}
+          show
+          bookSeries
+          mediaType="book"
+          initialBookFormat={data.format}
+          title={data.title}
+          initialItems={items}
+          onCancel={() => setShowRequest(false)}
+          onComplete={() => mutate()}
+        />
+      )}
       <p className="mt-6 text-sm text-gray-400">
         {intl.formatMessage(messages.title)}
       </p>
@@ -74,6 +118,17 @@ export default function BookSeriesPreview() {
         {intl.formatMessage(messages.hint)}
       </p>
       <div className="mb-6 flex flex-wrap items-center gap-4">
+        {hasPermission([Permission.REQUEST, Permission.REQUEST_BOOK], {
+          type: 'or',
+        }) && (
+          <Button
+            buttonType="primary"
+            disabled={!items.length}
+            onClick={() => setShowRequest(true)}
+          >
+            {intl.formatMessage(messages.request)}
+          </Button>
+        )}
         {data.managementUrl && (
           <Button
             as="a"
@@ -94,14 +149,44 @@ export default function BookSeriesPreview() {
           {intl.formatMessage(messages.search)}
         </Link>
       </div>
+      {data.resolutionTruncated && (
+        <p role="status" className="mb-4 text-gray-300">
+          {intl.formatMessage(messages.truncated)}
+        </p>
+      )}
+      {data.books.some((book) => book.matchStatus === 'unavailable') && (
+        <Button onClick={() => mutate()}>
+          {intl.formatMessage(messages.retry)}
+        </Button>
+      )}
       {!data.books.length && <p>{intl.formatMessage(messages.empty)}</p>}
       <ol className="divide-y divide-gray-700 rounded-lg border border-gray-700">
         {data.books.map((book, index) => (
           <li key={index} className="p-4">
             <span className="mr-3 text-gray-400">{book.position}</span>
-            <span className="font-semibold text-gray-100">{book.title}</span>
+            {book.book ? (
+              <Link
+                className="font-semibold text-indigo-200 hover:underline"
+                href={`/book/${book.book.id}`}
+              >
+                {book.title}
+              </Link>
+            ) : (
+              <span className="font-semibold text-gray-100">{book.title}</span>
+            )}
             {book.author && (
               <span className="ml-3 text-gray-400">{book.author}</span>
+            )}
+            {book.matchStatus !== 'matched' && (
+              <p className="mt-2 text-sm text-gray-400">
+                {intl.formatMessage(
+                  book.matchStatus === 'ambiguous'
+                    ? messages.ambiguous
+                    : book.matchStatus === 'unavailable'
+                      ? messages.unresolved
+                      : messages.unmatched
+                )}
+              </p>
             )}
           </li>
         ))}

@@ -1,17 +1,23 @@
 import OpenLibraryAPI from '@server/api/openlibrary';
 import ReadarrAPI from '@server/api/servarr/readarr';
-import { MediaStatus, MediaType } from '@server/constants/media';
+import {
+  MediaRequestStatus,
+  MediaStatus,
+  MediaType,
+} from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import BookSeries from '@server/entity/BookSeries';
 import Media from '@server/entity/Media';
 import MediaIdentifier, {
   MediaIdentifierProvider,
 } from '@server/entity/MediaIdentifier';
+import MediaRequest from '@server/entity/MediaRequest';
 import { getSettings } from '@server/lib/settings';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
 import authRoutes from '@server/routes/auth';
 import bookRoutes from '@server/routes/book';
 import bookSeriesRoutes from '@server/routes/bookSeries';
+import requestRoutes from '@server/routes/request';
 import { setupTestDb } from '@server/test/db';
 import express from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
@@ -52,6 +58,7 @@ app.use((_req, res, next) => {
 });
 app.use('/book', isAuthenticated(), bookRoutes);
 app.use('/book-series', isAuthenticated(), bookSeriesRoutes);
+app.use('/request', isAuthenticated(), requestRoutes);
 app.use(
   (
     err: { status?: number; message?: string },
@@ -515,6 +522,11 @@ describe('direct book series search', () => {
   });
 
   it('bounds previews to the original server scope and never turns provider IDs into book requests', async () => {
+    mock.method(
+      ReadarrAPI.prototype,
+      'getCatalogBookIdentity',
+      async () => undefined
+    );
     library();
     catalog();
     mock.method(ReadarrAPI.prototype, 'getSeriesCatalogPreview', async () => ({
@@ -547,4 +559,80 @@ describe('direct book series search', () => {
     assert.equal((await agent.get(url)).status, 404);
     assert.equal(await getRepository(Media).count(), 0);
   });
+});
+
+it('submits a verified catalog book through normal pending approval without a backend handoff', async () => {
+  getSettings().readarr = [server(1, 'audiobook')];
+  mock.method(ReadarrAPI.prototype, 'getNativeSeriesLibrary', async () => ({
+    supported: true,
+    partial: false,
+    truncated: false,
+    entries: [],
+  }));
+  mock.method(ReadarrAPI.prototype, 'searchSeriesCatalog', async () => [
+    { providerId: 'hc:123', title: 'Catalog Series' },
+  ]);
+  mock.method(ReadarrAPI.prototype, 'getSeriesCatalogPreview', async () => ({
+    foreignSeriesId: 'hc:123',
+    title: 'Catalog Series',
+    workCount: 2,
+    books: [
+      {
+        foreignBookId: 'hc:456',
+        title: 'Verified Book',
+        isbns: [isbn],
+        identifiersComplete: true,
+      },
+      {
+        foreignBookId: 'hc:789',
+        title: 'Unresolved Book',
+        isbns: [],
+        identifiersComplete: true,
+      },
+    ],
+  }));
+  mock.method(ReadarrAPI.prototype, 'getCatalogBookIdentity', async () => {
+    throw new Error('Catalog evidence should avoid this call');
+  });
+  mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => [
+    { key: '/works/OL1W', title: 'Verified Book', isbn: [isbn] },
+  ]);
+  mock.method(OpenLibraryAPI.prototype, 'getWork', async () => ({
+    key: '/works/OL1W',
+    title: 'Verified Book',
+  }));
+  mock.method(OpenLibraryAPI.prototype, 'getWorkEditions', async () => ({
+    size: 1,
+    entries: [{ key: '/books/OL1M', isbn_13: [isbn] }],
+  }));
+  const agent = await login('friend@seerr.dev');
+  const search = await agent.get('/book-series/search?query=Catalog');
+  const preview = await agent.get(search.body.results[0].href);
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  assert.equal(preview.body.managementUrl, undefined);
+  assert.equal(preview.body.books[1].book, undefined);
+  assert.equal(
+    await getRepository(MediaRequest).count(),
+    0,
+    'reading a catalog must not request books'
+  );
+  const selected = preview.body.books[0].book;
+  const response = await agent.post('/request/bulk').send({
+    mediaType: 'book',
+    format: preview.body.format,
+    items: [
+      {
+        mediaId: selected.id,
+        title: selected.title,
+        isbn13: selected.isbn13,
+      },
+    ],
+  });
+  assert.equal(response.status, 207, JSON.stringify(response.body));
+  assert.equal(response.body.created.length, 1);
+  assert.equal(response.body.created[0].requestedBy.email, undefined);
+  const requests = await getRepository(MediaRequest).find();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].status, MediaRequestStatus.PENDING);
+  assert.equal(requests[0].bookFormat, 'audiobook');
 });

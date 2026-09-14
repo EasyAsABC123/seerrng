@@ -930,6 +930,70 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     });
   }
 
+  /** Resolve work identities through the native backend, never a facade or title search. */
+  public async getCatalogBookIdentity(providerId: string) {
+    if (!/^hc:[1-9]\d*$/.test(providerId)) return undefined;
+    await this.ensureProvider();
+    if (!this.isChaptarr()) return undefined;
+    const response = await this.get<unknown>(
+      '/book/lookup',
+      {
+        ...this.getRequestConfig({ term: providerId }),
+        baseURL: this.nativeApiUrl,
+      },
+      300
+    );
+    const rows = z
+      .array(
+        z.object({
+          foreignBookId: z.string().max(256).nullish(),
+          hardcoverBookId: z.string().max(256).nullish(),
+          openLibraryWorkId: z.string().max(256).nullish(),
+          mediaType: z.enum(['ebook', 'audiobook']).optional(),
+          editions: z
+            .array(z.object({ isbn13: z.string().max(64).nullish() }))
+            .max(5000)
+            .nullish(),
+        })
+      )
+      .max(100)
+      .parse(response);
+    if (!rows.length) return undefined;
+    if (
+      rows.some(
+        (row) =>
+          (row.foreignBookId !== providerId &&
+            row.hardcoverBookId !== providerId &&
+            `hc:${row.hardcoverBookId}` !== providerId) ||
+          (row.mediaType && row.mediaType !== this.mediaType)
+      )
+    ) {
+      throw new Error(
+        'Catalog book identity does not match the requested work and format.'
+      );
+    }
+    return {
+      workIds: [
+        ...new Set(
+          rows.flatMap((row) =>
+            row.openLibraryWorkId
+              ? [row.openLibraryWorkId.replace(/^ol:/, '')]
+              : []
+          )
+        ),
+      ],
+      isbns: [
+        ...new Set(
+          rows.flatMap((row) =>
+            (row.editions ?? []).flatMap((edition) =>
+              edition.isbn13 ? [edition.isbn13] : []
+            )
+          )
+        ),
+      ],
+    };
+  }
+
   public async getSeriesCatalogPreview(providerId: string) {
     if (!/^hc:[1-9]\d*$/.test(providerId))
       throw new Error('Invalid series catalog ID.');
@@ -940,7 +1004,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
       {
         ...this.getRequestConfig(),
         baseURL: this.nativeApiUrl,
-        params: { foreignSeriesId: providerId },
+        params: { foreignSeriesId: providerId, includeBookIdentifiers: true },
       },
       300
     );
@@ -954,6 +1018,8 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
           .array(
             z.object({
               foreignBookId: z.string().max(256),
+              isbns: z.array(z.string().max(64)).max(400).nullish(),
+              identifiersComplete: z.boolean().nullish(),
               title: z.string().max(2000),
               authorName: z.string().max(2000).nullish(),
               position: z.string().max(128).nullish(),

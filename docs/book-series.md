@@ -55,12 +55,24 @@ series or a catalog preview.
 
 Library results open the existing series page and its verified request selection.
 Chaptarr can also supply catalog results using its own configured metadata
-provider. Those results open a read-only book preview. Request managers can use
-**Open in Chaptarr** to continue through its native search/add flow. A preview
-does not add books, request them, or enable monitoring. No additional provider
+provider. Those results open a catalog preview with **Request Series** for users allowed
+to request books. Only members with a verified Open Library identity enter the
+normal selection dialog; conflicting, absent or unavailable matches remain
+visible. Requests keep normal approval, quota, format and backend-routing rules.
+Both library and catalog audiobook series default to audiobook requests. Reading
+a preview does not add books, request them, or enable monitoring. Request managers
+can also use **Open in Chaptarr** for optional native management. No additional provider
 key is required in SeerrNG; Chaptarr catalog search needs its existing provider
 configuration. Readarr and Bookshelf provide native library search only.
 
 Search scans at most 250 authors per server and displays up to 100 results per
 source/server. An incomplete-results notice appears when a limit is reached or a
 source is unavailable. Other available results remain usable.
+
+Catalog identity resolution uses exact backend work IDs or checksum-valid edition
+ISBNs, never a title guess. Chaptarr's optional `includeBookIdentifiers=true`
+series extension avoids an individual metadata lookup when it returns complete
+edition evidence; older versions use exact native book lookup. Upgrading the
+backend can therefore improve resolution without adding a provider key in
+SeerrNG. Each preview checks up to 100 distinct members and 2,500 ISBNs. Incomplete
+identifier sets fail closed. See [ADR 0003](decisions/0003-catalog-series-requests.md).

@@ -3,6 +3,7 @@ import { getRepository } from '@server/datasource';
 import BookSeries from '@server/entity/BookSeries';
 import type { User } from '@server/entity/User';
 import { backendScope, clientFor } from '@server/lib/bookSeries';
+import { resolveCatalogSeriesBooks } from '@server/lib/catalogSeriesBooks';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import type {
@@ -141,10 +142,6 @@ export const getBookSeriesPreview = async (
     format: server.serviceType ?? 'ebook',
     bookCount: preview.workCount,
     managementUrl,
-    books: preview.books.map((b) => ({
-      title: b.title,
-      position: b.position ?? undefined,
-      author: b.authorName ?? undefined,
-    })),
+    ...(await resolveCatalogSeriesBooks(preview.books, client, user)),
   };
 };
