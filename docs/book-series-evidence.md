@@ -287,3 +287,17 @@ and preview returned two verified and two ambiguous members. Both application
 Deployments are Ready. The direct live-browser attempt stopped at login because
 API-key access does not create an SSO session; actual signed-in acceptance of this
 increment remains unverified. Ordinary-user production browser fixtures passed.
+
+### Repeating update prompt correction
+
+The user reported the update dialog on `request.schucreations.com`. The running
+frontend had been compiled with commitTag `local`, while the backend reported
+`54bb6f4b`; reload could not clear that mismatch. Rebuilt both parts with the exact
+runtime commit `8818cf5c`. Packaging now rejects a compiled frontend tag that does
+not match the runtime commit. Full production build and a browser regression
+passed: an old version prompts, and one reload with matching versions clears it.
+The deployed public API, compiled frontend and backend markers now all match;
+the public StatusChecker chunk is byte-identical to the validated build. Fleet
+commit `50d995f` deployed it after retrying an unrelated chart-download 504.
+Evidence is in the local sibling `series-reload-fix-evidence` folder. No source
+branch or PR was published.
