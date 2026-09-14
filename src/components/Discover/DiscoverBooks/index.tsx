@@ -98,6 +98,7 @@ const DiscoverBooks = ({ format = 'ebook' }: DiscoverBooksProps) => {
   const activeFormat = routedFormat ?? format;
   const [search, debouncedSearch, setSearch] = useDebouncedState(query);
   const routedSearchRef = useRef(query.trim());
+  const editedSearchRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     routedSearchRef.current = query.trim();
     setSearch(query);
@@ -158,13 +159,16 @@ const DiscoverBooks = ({ format = 'ebook' }: DiscoverBooksProps) => {
   const setParam = (values: Record<string, string | undefined>) =>
     update({ ...values, page: undefined });
   useEffect(() => {
+    // Restoring a URL updates the input too, but must never clear the URL.
+    if (!isRouteReady || editedSearchRef.current !== debouncedSearch) return;
+    editedSearchRef.current = undefined;
     const nextSearch = debouncedSearch.trim();
 
     if (nextSearch !== routedSearchRef.current) {
       routedSearchRef.current = nextSearch;
       update({ search: nextSearch || undefined, page: undefined });
     }
-  }, [debouncedSearch, update]);
+  }, [debouncedSearch, isRouteReady, update]);
   const title = intl.formatMessage(
     activeFormat === 'audiobook' ? messages.audiobooks : messages.books
   );
@@ -239,6 +243,7 @@ const DiscoverBooks = ({ format = 'ebook' }: DiscoverBooksProps) => {
             aria-pressed={!hasActiveFilters}
             className={getFilterResetButtonClass(!hasActiveFilters)}
             onClick={() => {
+              editedSearchRef.current = undefined;
               setSearch('');
               setParam({
                 search: undefined,
@@ -256,6 +261,7 @@ const DiscoverBooks = ({ format = 'ebook' }: DiscoverBooksProps) => {
             className="discover-filter-control w-72 max-w-full flex-none"
             onSubmit={(e) => {
               e.preventDefault();
+              editedSearchRef.current = undefined;
               const nextSearch = search.trim();
               routedSearchRef.current = nextSearch;
               setParam({ search: nextSearch || undefined });
@@ -272,7 +278,10 @@ const DiscoverBooks = ({ format = 'ebook' }: DiscoverBooksProps) => {
             <input
               type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                editedSearchRef.current = e.target.value;
+                setSearch(e.target.value);
+              }}
               placeholder={intl.formatMessage(messages.searchBooks)}
               aria-label={intl.formatMessage(messages.searchBooks)}
               className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1 text-xs font-medium text-gray-200 placeholder:text-gray-500 focus:ring-0"
