@@ -89,3 +89,10 @@ series members; this prompted the regression fix included here.
 Actual HTTPS routes reached their expected login boundaries. An authenticated
 browser session was unavailable, so the deployed signed-in UI and end-to-end
 acquisition remain unverified. No application branch or PR was published.
+
+A second upstream refresh incorporated `949700bc`, including its runtime
+dependency updates and `better-sqlite3` driver. The series migration test now uses
+that driver. All 223 selected adapter, series, request, identity, book-route,
+legacy-migration, session-store and concurrent startup-migration tests passed.
+The runtime dependencies must be rebuilt for the deployment platform; the old
+image dependency set is no longer compatible with this source baseline.

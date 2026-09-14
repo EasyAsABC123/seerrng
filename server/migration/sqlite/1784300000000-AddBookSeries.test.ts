@@ -5,7 +5,7 @@ import { DataSource } from 'typeorm';
 
 it('creates unique provider series identities and rolls back cleanly', async () => {
   const source = await new DataSource({
-    type: 'sqlite',
+    type: 'better-sqlite3',
     database: ':memory:',
   }).initialize();
   const runner = source.createQueryRunner();
