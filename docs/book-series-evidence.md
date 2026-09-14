@@ -148,3 +148,30 @@ probe could not handle audio object type 42; FFmpeg 9.0.1 identified the codec b
 also failed a short sample decode. The original library files were untouched.
 Authenticated deployed browser click-through and future-series watching remain
 outside the demonstrated result. No application branch or PR was published.
+
+## User-submitted series request and playback follow-up
+
+The next series member, Abaddon's Gate, remained ambiguous and unrequestable.
+Cibola Burn had a verified work identity. A one-item call to the series dialog's
+bulk endpoint created an audiobook request, returning HTTP 207 with one success
+and no failed/skipped entries. The user subsequently reported submitting through
+SeerrNG; the live record created 25 seconds later requested both formats. Both
+requests reached available state after provider import. This is user-reported UI
+participation corroborated by request records, not instrumented browser coverage.
+The ebook grab in this overlapping test cannot be attributed solely to companion
+synchronization because a both-format user request exists.
+
+Audiobookshelf's actual FFmpeg 8.0.1 failed to decode the three selected Expanse
+xHE-AAC files, while an existing Dungeon Crawler Carl AAC-LC file passed the same
+check. That finding is specific to the releases/decoder path, not all M4B files.
+After a verified backup, an approved Jefferson Mays MP3 release replaced only
+Cibola Burn's incompatible audio. All 64 imported MP3 files parsed and passed a
+five-second decode sample using Audiobookshelf's runtime; its automatic scan
+indexed the replacement. The first two Expanse files remain unchanged.
+
+Confidence is high for those request/import and decoder measurements. Actual
+client playback/seek confirmation is tracked separately. Regular-user permissions,
+fully instrumented UI interactions, other live backends and unresolved identity
+reconciliation remain gaps. These playback findings should inform a separate
+provider compatibility policy; this series contribution does not redefine file
+availability as proof of decodability or create new acquisition scheduling.
