@@ -1027,6 +1027,30 @@ components:
         artistBackdrop:
           type: string
           nullable: true
+    BookSeriesSearchVariant:
+      type: object
+      required: [key, title, serverName, format, source, href]
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        serverName:
+          type: string
+        format:
+          type: string
+          enum: [ebook, audiobook]
+        source:
+          type: string
+          enum: [library, catalog]
+        href:
+          type: string
+        bookCount:
+          type: integer
+        description:
+          type: string
+        providerId:
+          type: string
     BookSeriesSearchResponse:
       type: object
       required: [results, status, truncated]
@@ -1039,27 +1063,14 @@ components:
         results:
           type: array
           items:
-            type: object
-            required: [key, title, serverName, format, source, href]
-            properties:
-              key:
-                type: string
-              title:
-                type: string
-              serverName:
-                type: string
-              format:
-                type: string
-                enum: [ebook, audiobook]
-              source:
-                type: string
-                enum: [library, catalog]
-              href:
-                type: string
-              bookCount:
-                type: integer
-              description:
-                type: string
+            allOf:
+              - $ref: '#/components/schemas/BookSeriesSearchVariant'
+              - type: object
+                properties:
+                  variants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BookSeriesSearchVariant'
     BookSeriesPreview:
       type: object
       required:

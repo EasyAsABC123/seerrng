@@ -10,7 +10,41 @@ import type {
   BookSeriesPreview,
   BookSeriesSearchResponse,
   BookSeriesSearchResult,
+  BookSeriesSearchVariant,
 } from '@server/models/BookSeries';
+
+/** Group display choices by explicit global provider identity, retaining every route. */
+export const groupBookSeriesResults = (
+  results: BookSeriesSearchVariant[]
+): BookSeriesSearchResult[] => {
+  const groups = new Map<string, BookSeriesSearchVariant[]>();
+  for (const result of results) {
+    // Titles and native numeric IDs are not globally unique series identities.
+    const key =
+      result.providerId && /^(?:hc|gr):[1-9]\d*$/.test(result.providerId)
+        ? `provider:${result.providerId}`
+        : result.key;
+    const variants = groups.get(key) ?? [];
+    if (!variants.some((variant) => variant.key === result.key))
+      variants.push(result);
+    groups.set(key, variants);
+  }
+  return [...groups].map(([key, variants]) => {
+    const primary =
+      variants.find((variant) => variant.source === 'catalog') ?? variants[0];
+    const counts = new Set(
+      variants
+        .filter((variant) => variant.source === primary.source)
+        .map((variant) => variant.bookCount)
+    );
+    return {
+      ...primary,
+      key,
+      bookCount: counts.size === 1 ? primary.bookCount : undefined,
+      variants,
+    };
+  });
+};
 
 export const searchBookSeries = async (
   query: string,
@@ -51,6 +85,7 @@ export const searchBookSeries = async (
           serverName: server.name,
           format: server.serviceType ?? 'ebook',
           source: 'library',
+          providerId: series.foreignSeriesId ?? undefined,
           href: `/book-series/${local.id}`,
           bookCount: new Set(series.links.map((l) => l.bookId)).size,
         });
@@ -73,6 +108,7 @@ export const searchBookSeries = async (
           serverName: server.name,
           format: server.serviceType ?? 'ebook',
           source: 'catalog',
+          providerId: entry.providerId,
           href: `/book-series/catalog?serverId=${server.id}&scope=${encodeURIComponent(scope)}&providerId=${encodeURIComponent(entry.providerId)}`,
           description: entry.description,
           bookCount: entry.bookCount,
@@ -92,7 +128,7 @@ export const searchBookSeries = async (
       a.title.localeCompare(b.title)
   );
   return {
-    results,
+    results: groupBookSeriesResults(results),
     truncated,
     status: !servers.length
       ? 'disabled'

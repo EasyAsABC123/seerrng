@@ -444,7 +444,7 @@ describe('direct book series search', () => {
     );
   });
 
-  it('keeps format identities separate and filters servers before any lookup', async () => {
+  it('groups catalog formats while preserving native routes and filtering servers before lookup', async () => {
     getSettings().readarr = [server(1, 'ebook'), server(2, 'audiobook')];
     const inventory = library();
     catalog();
@@ -462,7 +462,15 @@ describe('direct book series search', () => {
     const all = await agent.get('/book-series/search?query=expanse');
     assert.equal(
       new Set(all.body.results.map((r: { key: string }) => r.key)).size,
-      4
+      3
+    );
+    const grouped = all.body.results.find(
+      (r: { source: string }) => r.source === 'catalog'
+    );
+    assert.equal(grouped.variants.length, 2);
+    assert.deepEqual(
+      grouped.variants.map((r: { format: string }) => r.format).sort(),
+      ['audiobook', 'ebook']
     );
   });
 

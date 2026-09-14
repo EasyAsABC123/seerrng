@@ -260,14 +260,14 @@ describe('GET /search', () => {
     assert.strictEqual(bookSearch.mock.callCount(), 0);
   });
 
-  it('limits global book keywords to visible title and author fields', async () => {
+  it('includes catalog subjects when matching global book keywords', async () => {
     const bookSearch = mock.method(
       OpenLibraryAPI.prototype,
       'searchBooks',
       async ({ query }: { query: string }) => {
         assert.strictEqual(
           query,
-          '(title:"windows" OR author:"windows") AND (title:"11" OR author:"11")'
+          '(title:"windows" OR author:"windows" OR subject:"windows") AND (title:"11" OR author:"11" OR subject:"11")'
         );
 
         return {
@@ -282,7 +282,7 @@ describe('GET /search', () => {
             {
               key: '/works/OLHIDDENW',
               title: 'A Completely Unrelated Novel',
-              subject: ['Windows', '11'],
+              subject: ['Unrelated Fiction'],
             },
           ],
         };
@@ -302,6 +302,62 @@ describe('GET /search', () => {
       res.body.results.map((result: { title: string }) => result.title),
       ['Windows 11 Inside Out']
     );
+  });
+
+  it('finds individual novels by their series subject after the global provider deadline', async () => {
+    mock.method(
+      OpenLibraryAPI.prototype,
+      'searchBooks',
+      async ({ query }: { query: string }) => {
+        assert.equal(
+          query,
+          '(title:"kingkiller" OR author:"kingkiller" OR subject:"kingkiller")'
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, SEARCH_PROVIDER_TIMEOUT_MS + 100)
+        );
+        return {
+          numFound: 2,
+          start: 0,
+          docs: [
+            {
+              key: '/works/OL8479867W',
+              title: 'The Name of the Wind',
+              author_name: ['Patrick Rothfuss'],
+              subject: ['The Kingkiller Chronicle'],
+            },
+            {
+              key: '/works/OL8479869W',
+              title: "The Wise Man's Fear",
+              author_name: ['Patrick Rothfuss'],
+              subject: ['The Kingkiller Chronicle'],
+            },
+          ],
+        };
+      }
+    );
+    const agent = await loginAs('friend@seerr.dev', 'test1234');
+    const response = await agent
+      .get('/search')
+      .query({ query: 'kingkiller', type: 'book', format: 'ebook' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      response.body.results.map((book: { id: string }) => book.id),
+      ['OL8479867W', 'OL8479869W']
+    );
+  });
+
+  it('returns a static useful error when the book catalog fails', async () => {
+    mock.method(OpenLibraryAPI.prototype, 'searchBooks', async () => {
+      throw new Error('private provider credential');
+    });
+    const agent = await loginAs('friend@seerr.dev', 'test1234');
+    const response = await agent
+      .get('/search')
+      .query({ query: 'kingkiller', type: 'book' });
+    assert.equal(response.status, 503);
+    assert.match(response.body.message, /Open Library.*unavailable/);
+    assert(!JSON.stringify(response.body).includes('private'));
   });
 
   it('keeps the main artist search while refining music by album title', async () => {

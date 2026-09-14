@@ -40,6 +40,7 @@ const nativeSeriesSchema = z
       id: z.number().int().positive().safe(),
       title: z.string().max(2000),
       description: z.string().max(100000).nullish(),
+      foreignSeriesId: z.string().max(256).nullish(),
       mediaType: z.enum(['ebook', 'audiobook']).optional(),
       links: z
         .array(

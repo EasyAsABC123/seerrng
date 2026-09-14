@@ -13,6 +13,8 @@ const messages = defineMessages('components.BookSeriesSearch.Results', {
   library: 'Library subset',
   catalog: 'Series catalog',
   count: '{count, plural, one {# book} other {# books}}',
+  formatOnServer: '{format} on {server}',
+  libraryFormat: 'Library: {format}',
   empty: 'No matching series found.',
   disabled: 'No book server is configured for this format.',
   unsupported: 'Your book servers do not provide series search.',
@@ -96,14 +98,37 @@ export default function BookSeriesSearchResults({
             >
               {series.title}
             </Link>
-            <p className="mt-2 text-sm text-gray-300">
-              {series.serverName} ·{' '}
-              {intl.formatMessage(
-                series.format === 'audiobook'
-                  ? messages.audiobook
-                  : messages.ebook
-              )}
-            </p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-gray-300">
+              {(series.variants ?? [series])
+                .filter(
+                  (variant) => !sourceFilter || variant.source === sourceFilter
+                )
+                .map((variant) => {
+                  const formatLabel = intl.formatMessage(
+                    variant.format === 'audiobook'
+                      ? messages.audiobook
+                      : messages.ebook
+                  );
+                  return (
+                    <Link
+                      key={variant.key}
+                      href={variant.href}
+                      className="text-indigo-300 hover:underline"
+                      title={intl.formatMessage(messages.formatOnServer, {
+                        format: formatLabel,
+                        server: variant.serverName,
+                      })}
+                    >
+                      {variant.source === 'library' &&
+                      series.source === 'catalog'
+                        ? intl.formatMessage(messages.libraryFormat, {
+                            format: formatLabel,
+                          })
+                        : formatLabel}
+                    </Link>
+                  );
+                })}
+            </div>
             <p className="mt-1 text-sm text-gray-400">
               {intl.formatMessage(
                 series.source === 'library'

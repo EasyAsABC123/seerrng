@@ -981,3 +981,17 @@ it is not part of this ordered conflict list.
 - No active ledger item remains unclassified.
 
 - Rendered-audit correction: the first production visual pass found that the Blocklist action was hidden when a title was already available. The detail-page contract requires the action on Movie, Series, Music, and Book pages for users with Blocklist permission unless the title is already blocklisted. The four page implementations and validator now enforce that state-aware rule.
+
+## Local homelab trial: series-aware book keywords (2026-09-14)
+
+The user reported duplicate ebook/audiobook series results and failing book
+searches for Kingkiller. For this contribution trial, book keywords now include
+catalog subjects, where the provider records series membership, alongside title
+and author. This updates the earlier visible-title/author-only acceptance rule.
+Unrelated publisher-only matches are still excluded. See
+[decision 0006](../decisions/0006-series-search-formats-and-book-subjects.md).
+
+Source and automated checks: explicit provider-ID grouping preserves format
+routes; series-subject novel matches and provider-deadline behavior have route
+tests. Production browser/API verification is recorded separately in the trial
+evidence. Application source and PR publication remain deferred for this trial.

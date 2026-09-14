@@ -27,15 +27,20 @@ export interface BookSeriesDetails extends BookSeriesSummary {
   })[];
 }
 
-export interface BookSeriesSearchResult {
+export interface BookSeriesSearchVariant {
   key: string;
   title: string;
   serverName: string;
   format: 'ebook' | 'audiobook';
   source: 'library' | 'catalog';
+  providerId?: string;
   href: string;
   bookCount?: number;
   description?: string;
+}
+
+export interface BookSeriesSearchResult extends BookSeriesSearchVariant {
+  variants?: BookSeriesSearchVariant[];
 }
 
 export interface BookSeriesSearchResponse {
