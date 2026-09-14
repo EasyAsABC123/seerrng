@@ -122,3 +122,29 @@ had no saved Open Library work IDs on their corresponding SeerrNG bindings.
 Native API coverage is complete for this snapshot, while SeerrNG discovery and
 request eligibility remain narrower. Confidence is high for these API measurements;
 authenticated deployed UI behavior and acquisition are still unverified.
+
+## Two-book acquisition follow-up
+
+A later live trial requested the first two Expanse audiobooks through SeerrNG's
+normal request API. Both downloaded and imported through Chaptarr, reached
+`available`, and had actual library files matching their recorded sizes. Both
+work IDs then discovered the same series at positions 1 and 2, with exact native
+membership and working management URLs in the API responses. The main series had
+24 provider-known members and its chronological variant had 23. One initial
+metadata 503 succeeded on retry. No remaining volumes were requested.
+
+After import, the new native series monitor turned the two selected audiobook
+members off and back on. Reads verified all 279 current book records and unchanged
+author policy. Provider metadata population had added 96 catalog records; it did
+not request 96 downloads. The provider's existing author cross-format sync policy
+also initially monitored two ebook companions. The trial cleared only those ebook
+flags through the scoped series endpoint, preserving all 183 pre-existing books'
+monitoring states. Add/request policy interactions warrant a separate review.
+
+This supersedes the earlier acquisition-untested statement for these two books.
+Confidence is high for request, import, availability and series API behavior.
+Playback remains unproven: both releases use xHE-AAC. The deployed FFmpeg 6.1.1
+probe could not handle audio object type 42; FFmpeg 9.0.1 identified the codec but
+also failed a short sample decode. The original library files were untouched.
+Authenticated deployed browser click-through and future-series watching remain
+outside the demonstrated result. No application branch or PR was published.
