@@ -29,7 +29,9 @@ when exactly one candidate has the complete normalized title, and its author
 list explicitly includes the backend's named author. Other candidates must
 have nonempty differing titles. Normalize case, Unicode typography and
 whitespace only; do not drop subtitles, split-volume markers or use fuzzy
-matching. Never select by popularity or number of matching ISBNs.
+matching. Never select by popularity or number of matching ISBNs. Require at least one
+ISBN exclusive to the selected work and pass only those unshared ISBNs to
+acquisition; a contaminated shared ISBN cannot become the request identity.
 
 Keep all original candidates for cross-book ownership collision checks.
 Missing/incomplete provider evidence, unavailable ISBN batches, explicit

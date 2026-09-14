@@ -167,7 +167,26 @@ export const resolveCatalogSeriesBooks = async (
       )
         ? sameTitle[0][0]
         : undefined;
-    const resolvedId = matches.size === 1 ? [...matches.keys()][0] : agreedId;
+    const exclusiveIsbns = (identity?.isbns ?? []).filter(
+      (isbn) =>
+        agreedId &&
+        isbnMatches.get(isbn)?.size === 1 &&
+        isbnMatches.get(isbn)?.has(agreedId)
+    );
+    const resolvedId =
+      matches.size === 1
+        ? [...matches.keys()][0]
+        : exclusiveIsbns.length
+          ? agreedId
+          : undefined;
+    // Downstream acquisition must receive an ISBN exclusive to the chosen work,
+    // never the contaminated ISBN that also identifies another candidate.
+    if (matches.size > 1 && resolvedId) {
+      matches.set(resolvedId, {
+        ...matches.get(resolvedId)!,
+        isbn: exclusiveIsbns,
+      });
+    }
     return {
       source: book,
       matches,

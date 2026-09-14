@@ -230,6 +230,10 @@ it('resolves the Kingkiller novels using ISBN plus full title and author, exclud
     result.books.map((b) => b.book?.id),
     ['OL8479867W', 'OL8479869W']
   );
+  assert.deepEqual(
+    result.books.map((b) => b.book?.isbn13),
+    [main1, main2]
+  );
   assert(
     result.books.every(
       (b) =>
@@ -326,4 +330,35 @@ it('does not search or request a work based on matching title and author without
     { getCatalogBookIdentity: async () => undefined }
   );
   assert.equal(result.books[0].matchStatus, 'unmatched');
+});
+
+it('refuses metadata disambiguation when no ISBN uniquely identifies the chosen candidate', async () => {
+  mock.method(OpenLibraryAPI.prototype, 'findWorksByIsbns', async () => [
+    {
+      key: '/works/OL1W',
+      title: 'Main Work',
+      author_name: ['Author'],
+      isbn: [isbn],
+    },
+    {
+      key: '/works/OL2W',
+      title: 'Another Work',
+      author_name: ['Author'],
+      isbn: [isbn],
+    },
+  ]);
+  const result = await resolveCatalogSeriesBooks(
+    [
+      {
+        foreignBookId: 'hc:1',
+        title: 'Main Work',
+        authorName: 'Author',
+        isbns: [isbn],
+        identifiersComplete: true,
+      },
+    ],
+    { getCatalogBookIdentity: async () => undefined }
+  );
+  assert.equal(result.books[0].matchStatus, 'ambiguous');
+  assert.equal(result.books[0].book, undefined);
 });
