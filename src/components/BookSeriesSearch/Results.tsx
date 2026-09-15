@@ -90,10 +90,10 @@ export default function BookSeriesSearchResults({
         {results.slice(0, limit).map((series) => (
           <li
             key={series.key}
-            className="rounded-lg border border-gray-700 bg-gray-800 p-4"
+            className="relative rounded-lg border border-gray-700 bg-gray-800 p-4 transition-colors hover:border-gray-500"
           >
             <Link
-              className="text-lg font-semibold text-indigo-200 hover:underline"
+              className="text-lg font-semibold text-indigo-200 after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:underline focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-indigo-500"
               href={series.href}
             >
               {series.title}
@@ -113,7 +113,7 @@ export default function BookSeriesSearchResults({
                     <Link
                       key={variant.key}
                       href={variant.href}
-                      className="text-indigo-300 hover:underline"
+                      className="relative z-10 text-indigo-300 hover:underline"
                       title={intl.formatMessage(messages.formatOnServer, {
                         format: formatLabel,
                         server: variant.serverName,
