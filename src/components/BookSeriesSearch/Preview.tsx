@@ -1,3 +1,4 @@
+import BookSeriesWatch from '@app/components/BookSeriesWatch';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
@@ -17,7 +18,7 @@ const messages = defineMessages('components.BookSeriesPreview', {
     'A preview from your book server’s catalog. It may not list every book. Previewing does not request books or enable monitoring.',
   manage: 'Open in {server}',
   hint: 'Choose books and formats to request. Your book server handles monitoring and downloads.',
-  request: 'Request Series',
+  request: 'Request Selected Books',
   unmatched: 'No verified book match — requests unavailable',
   ambiguous: 'Conflicting book matches — requests unavailable',
   unresolved: 'Book identity could not be checked — try again',
@@ -152,6 +153,14 @@ export default function BookSeriesPreview() {
           {intl.formatMessage(messages.search)}
         </Link>
       </div>
+      {typeof serverId === 'string' &&
+        typeof scope === 'string' &&
+        typeof providerId === 'string' && (
+          <BookSeriesWatch
+            key={params}
+            target={{ serverId: Number(serverId), scope, providerId }}
+          />
+        )}
       {data.resolutionTruncated && (
         <p role="status" className="mb-4 text-gray-300">
           {intl.formatMessage(messages.truncated)}

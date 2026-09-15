@@ -1031,6 +1031,94 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
       .parse(response);
   }
 
+  public async getSeriesWatchCapabilities() {
+    await this.ensureProvider();
+    if (!this.isChaptarr()) return undefined;
+    try {
+      const value = await this.get<unknown>(
+        '/series/watch/capabilities',
+        {
+          ...this.getRequestConfig(),
+          baseURL: this.nativeApiUrl,
+        },
+        0
+      );
+      return z
+        .object({
+          version: z.literal(1),
+          futureBooks: z.literal(true),
+          providers: z.array(z.enum(['hc', 'gr'])),
+        })
+        .parse(value);
+    } catch (error) {
+      if (
+        axios.isAxiosError(error) &&
+        [404, 405].includes(error.response?.status ?? 0)
+      )
+        return undefined;
+      throw error;
+    }
+  }
+
+  public async getSeriesWatch(providerId: string) {
+    const value = await this.get<unknown>(
+      '/series/watch',
+      {
+        ...this.getRequestConfig(),
+        baseURL: this.nativeApiUrl,
+        params: { providerId, mediaType: this.mediaType },
+      },
+      0
+    );
+    return z
+      .object({
+        enabled: z.boolean(),
+        watchId: z
+          .number()
+          .int()
+          .positive()
+          .nullish()
+          .transform((value) => value ?? null),
+        includeExtras: z.boolean().optional(),
+      })
+      .parse(value);
+  }
+
+  public async setSeriesWatch(
+    providerId: string,
+    options: {
+      enabled: boolean;
+      includeExtras: boolean;
+      rootFolder: string;
+      qualityProfileId: number;
+      metadataProfileId: number;
+      searchForMissing: boolean;
+    }
+  ) {
+    const response = await this.request<unknown>(
+      'PUT',
+      '/series/watch',
+      {
+        ...options,
+        providerId,
+        mediaType: this.mediaType,
+      },
+      { ...this.getRequestConfig(), baseURL: this.nativeApiUrl }
+    );
+    return z
+      .object({
+        enabled: z.boolean(),
+        watchId: z
+          .number()
+          .int()
+          .positive()
+          .nullish()
+          .transform((value) => value ?? null),
+        includeExtras: z.boolean().optional(),
+      })
+      .parse(response.data);
+  }
+
   public getSeriesManagementPath(seriesId: number): string | undefined {
     return this.isChaptarr() && Number.isSafeInteger(seriesId) && seriesId > 0
       ? `/series/${seriesId}`

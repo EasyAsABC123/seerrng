@@ -1297,3 +1297,82 @@ describe('ReadarrAPI Chaptarr compatibility', () => {
     }
   });
 });
+
+describe('ReadarrAPI native series watch contract', () => {
+  it('uses Chaptarr native endpoints and carries exactly one format through watch writes', async () => {
+    const writes: Record<string, unknown>[] = [];
+    const paths: string[] = [];
+    const server = createServer((req, res) => {
+      void (async () => {
+        const url = new URL(req.url ?? '/', 'http://localhost');
+        paths.push(url.pathname);
+        if (url.pathname === '/api/v1/system/status')
+          return writeJson(res, 200, {
+            appName: 'Chaptarr',
+            version: '1.0',
+            urlBase: '',
+          });
+        if (url.pathname === '/api/v1/config/hardcover')
+          return writeJson(res, 200, { enabled: true });
+        if (url.pathname === '/api/v1/series/watch/capabilities')
+          return writeJson(res, 200, {
+            version: 1,
+            futureBooks: true,
+            providers: ['hc', 'gr'],
+          });
+        if (url.pathname === '/api/v1/series/watch') {
+          if (req.method === 'GET') {
+            assert.equal(url.searchParams.get('providerId'), 'hc:988');
+            assert.equal(url.searchParams.get('mediaType'), 'audiobook');
+            return writeJson(res, 200, { enabled: false });
+          }
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          writes.push(body);
+          return writeJson(res, 200, {
+            enabled: body.enabled,
+            watchId: 7,
+            includeExtras: false,
+          });
+        }
+        writeJson(res, 404, {});
+      })().catch((error) => {
+        writeJson(res, 500, { message: String(error) });
+      });
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    try {
+      const client = new ReadarrAPI({
+        url: `http://127.0.0.1:${address.port}/api/v1`,
+        apiKey: 'fixture-key',
+        mediaType: 'audiobook',
+      });
+      assert.equal(
+        (await client.getSeriesWatchCapabilities())?.futureBooks,
+        true
+      );
+      assert.equal((await client.getSeriesWatch('hc:988')).enabled, false);
+      assert.equal(
+        (
+          await client.setSeriesWatch('hc:988', {
+            enabled: true,
+            includeExtras: false,
+            rootFolder: '/audiobooks',
+            qualityProfileId: 2,
+            metadataProfileId: 3,
+            searchForMissing: true,
+          })
+        ).watchId,
+        7
+      );
+      assert.equal(writes[0].mediaType, 'audiobook');
+      assert.equal(writes[0].providerId, 'hc:988');
+      assert.ok(paths.every((path) => !path.includes('/readarr/')));
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});

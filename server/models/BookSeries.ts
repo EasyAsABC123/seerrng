@@ -17,6 +17,7 @@ export interface SeriesCatalogEntry {
 }
 
 export interface BookSeriesDetails extends BookSeriesSummary {
+  watchTarget?: BookSeriesWatchTarget;
   description?: string;
   managementUrl?: string;
   truncated: boolean;
@@ -64,4 +65,21 @@ export interface BookSeriesPreview {
     matchStatus: 'matched' | 'unmatched' | 'ambiguous' | 'unavailable';
     book?: BookResult;
   }[];
+}
+
+export interface BookSeriesWatchTarget {
+  serverId: number;
+  scope: string;
+  providerId: string;
+}
+export interface BookSeriesWatchStatus {
+  supported: boolean;
+  enabled?: boolean;
+  request?: {
+    id: number;
+    title: string;
+    format: 'ebook' | 'audiobook';
+    status: string;
+    includeExtras: boolean;
+  };
 }

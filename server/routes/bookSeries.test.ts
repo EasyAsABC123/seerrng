@@ -7,11 +7,15 @@ import {
 } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import BookSeries from '@server/entity/BookSeries';
+import BookSeriesWatchRequest from '@server/entity/BookSeriesWatchRequest';
 import Media from '@server/entity/Media';
 import MediaIdentifier, {
   MediaIdentifierProvider,
 } from '@server/entity/MediaIdentifier';
 import MediaRequest from '@server/entity/MediaRequest';
+import { User } from '@server/entity/User';
+import { backendScope } from '@server/lib/bookSeries';
+import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
 import authRoutes from '@server/routes/auth';
@@ -648,4 +652,185 @@ it('submits a verified catalog book through normal pending approval through conf
   assert.equal(requests.length, 1);
   assert.equal(requests[0].status, MediaRequestStatus.PENDING);
   assert.equal(requests[0].bookFormat, 'audiobook');
+});
+
+describe('backend-owned series watches', () => {
+  const target = () => ({
+    serverId: 1,
+    scope: backendScope(getSettings().readarr[0]),
+    providerId: 'hc:988',
+    includeExtras: false,
+  });
+  const backend = () => {
+    mock.method(
+      ReadarrAPI.prototype,
+      'getSeriesWatchCapabilities',
+      async () => ({ version: 1, providers: ['hc', 'gr'], futureBooks: true })
+    );
+    mock.method(ReadarrAPI.prototype, 'getSeriesCatalogPreview', async () => ({
+      title: 'The Kingkiller Chronicle',
+      foreignSeriesId: 'hc:988',
+      workCount: 3,
+      books: [],
+    }));
+    mock.method(ReadarrAPI.prototype, 'getSeriesWatch', async () => ({
+      enabled: false,
+      watchId: null,
+    }));
+    return mock.method(
+      ReadarrAPI.prototype,
+      'setSeriesWatch',
+      async (_id: string, options: { enabled: boolean }) => ({
+        enabled: options.enabled,
+        watchId: 42,
+      })
+    );
+  };
+  it('records a pending user request without backend writes and requires a manager to approve', async () => {
+    const writes = backend();
+    const friend = await login('friend@seerr.dev');
+    const pending = await friend.post('/book-series/watch').send(target());
+    assert.equal(pending.status, 200, JSON.stringify(pending.body));
+    assert.equal(pending.body.status, 'pending');
+    assert.equal(writes.mock.callCount(), 0);
+    assert.equal(
+      (
+        await friend.post(
+          `/book-series/watch/requests/${pending.body.id}/approve`
+        )
+      ).status,
+      403
+    );
+    const admin = await login();
+    const approved = await admin.post(
+      `/book-series/watch/requests/${pending.body.id}/approve`
+    );
+    assert.equal(approved.status, 200, JSON.stringify(approved.body));
+    assert.equal(approved.body.status, 'active');
+    assert.equal(writes.mock.callCount(), 1);
+    assert.equal(writes.mock.calls[0].arguments[0], 'hc:988');
+    const options = writes.mock.calls[0].arguments[1] as Record<
+      string,
+      unknown
+    >;
+    assert.equal(options.rootFolder, '/books');
+    assert.equal(options.enabled, true);
+  });
+  it('deduplicates concurrent submissions and never requests individual Open Library books', async () => {
+    const writes = backend();
+    const admin = await login();
+    const results = await Promise.all([
+      admin.post('/book-series/watch').send(target()),
+      admin.post('/book-series/watch').send(target()),
+    ]);
+    assert.ok(
+      results.every((result) => result.status === 200),
+      JSON.stringify(results.map((result) => result.body))
+    );
+    assert.equal(results[0].body.id, results[1].body.id);
+    assert.equal(writes.mock.callCount(), 1);
+    assert.equal(await getRepository(BookSeriesWatchRequest).count(), 1);
+    assert.equal(await getRepository(MediaRequest).count(), 0);
+  });
+  it('keeps a failed dispatch retryable without falsely reporting active', async () => {
+    const writes = backend();
+    writes.mock.mockImplementationOnce(async () => {
+      throw new Error('secret backend error');
+    });
+    const admin = await login();
+    const failed = await admin.post('/book-series/watch').send(target());
+    assert.equal(failed.status, 503);
+    assert.ok(!JSON.stringify(failed.body).includes('secret backend error'));
+    const row = (await getRepository(BookSeriesWatchRequest).find())[0];
+    assert.equal(row.status, 'failed');
+    const retry = await admin.post(
+      `/book-series/watch/requests/${row.id}/approve`
+    );
+    assert.equal(retry.body.status, 'active');
+    assert.equal(await getRepository(BookSeriesWatchRequest).count(), 1);
+  });
+  it('rejects changed server scope and unsupported backends before writing', async () => {
+    const writes = backend();
+    const admin = await login();
+    assert.equal(
+      (
+        await admin
+          .post('/book-series/watch')
+          .send({ ...target(), scope: 'stale' })
+      ).status,
+      409
+    );
+    mock.method(
+      ReadarrAPI.prototype,
+      'getSeriesWatchCapabilities',
+      async () => undefined
+    );
+    assert.equal(
+      (await admin.post('/book-series/watch').send(target())).status,
+      409
+    );
+    assert.equal(writes.mock.callCount(), 0);
+    assert.equal(await getRepository(BookSeriesWatchRequest).count(), 0);
+  });
+  it('does not let unprivileged users request watches or see other users requests', async () => {
+    const writes = backend();
+    const admin = await login();
+    await admin.post('/book-series/watch').send(target());
+    const user = await getRepository(User).findOneByOrFail({
+      email: 'friend@seerr.dev',
+    });
+    user.permissions = Permission.NONE;
+    await getRepository(User).save(user);
+    const friend = await login('friend@seerr.dev');
+    assert.equal(
+      (await friend.post('/book-series/watch').send(target())).status,
+      403
+    );
+    const list = await friend.get('/book-series/watch/requests');
+    assert.equal(list.status, 200);
+    assert.deepEqual(list.body, []);
+    assert.equal(writes.mock.callCount(), 1);
+  });
+  it('requires manager approval when auto-approved book users have finite quotas', async () => {
+    const writes = backend();
+    const user = await getRepository(User).findOneByOrFail({
+      email: 'friend@seerr.dev',
+    });
+    user.permissions = Permission.REQUEST_BOOK + Permission.AUTO_APPROVE_BOOK;
+    user.bookQuotaLimit = 5;
+    await getRepository(User).save(user);
+    const friend = await login('friend@seerr.dev');
+    const result = await friend.post('/book-series/watch').send(target());
+    assert.equal(result.status, 200);
+    assert.equal(result.body.status, 'pending');
+    assert.equal(writes.mock.callCount(), 0);
+  });
+  it('stops a watch through the backend and preserves its request record', async () => {
+    const writes = backend();
+    const admin = await login();
+    const added = await admin.post('/book-series/watch').send(target());
+    const result = await admin.post(
+      `/book-series/watch/requests/${added.body.id}/stop`
+    );
+    assert.equal(result.status, 200);
+    assert.equal(result.body.status, 'stopped');
+    assert.equal(writes.mock.calls[1].arguments[1].enabled, false);
+    assert.equal(await getRepository(BookSeriesWatchRequest).count(), 1);
+  });
+  it('validates identities, booleans and format policy', async () => {
+    const writes = backend();
+    const admin = await login();
+    for (const body of [
+      { ...target(), includeExtras: 'true' },
+      { ...target(), providerId: 'hc:0' },
+      { ...target(), serverId: -1 },
+      { ...target(), providerId: 'gr:45262' },
+    ]) {
+      assert.equal(
+        (await admin.post('/book-series/watch').send(body)).status,
+        400
+      );
+    }
+    assert.equal(writes.mock.callCount(), 0);
+  });
 });

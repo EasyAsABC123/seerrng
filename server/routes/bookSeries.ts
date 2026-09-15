@@ -3,6 +3,7 @@ import {
   getBookSeriesPreview,
   searchBookSeries,
 } from '@server/lib/bookSeriesSearch';
+import bookSeriesWatchRoutes from '@server/routes/bookSeriesWatch';
 import { filterEntityResponse } from '@server/utils/entityResponse';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -19,6 +20,7 @@ bookSeriesRoutes.use(
       process.env.NODE_ENV === 'test' || process.env.E2E_TESTS === 'true',
   })
 );
+bookSeriesRoutes.use('/watch', bookSeriesWatchRoutes);
 bookSeriesRoutes.get('/search', async (req, res) => {
   const { query, format } = req.query;
   if (

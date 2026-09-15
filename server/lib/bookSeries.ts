@@ -282,6 +282,15 @@ export const getSeriesDetails = async (
   }
   return {
     managementUrl,
+    watchTarget:
+      catalog.foreignSeriesId &&
+      /^(hc|gr):[1-9]\d*$/.test(catalog.foreignSeriesId)
+        ? {
+            serverId: server.id,
+            scope: backendScope(server),
+            providerId: catalog.foreignSeriesId,
+          }
+        : undefined,
     id: local.id,
     title: catalog.title,
     description: catalog.description ?? undefined,

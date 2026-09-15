@@ -1124,12 +1124,21 @@ components:
           enum: [ebook, audiobook]
         position:
           type: string
+    BookSeriesWatchTarget:
+      type: object
+      required: [serverId, scope, providerId]
+      properties:
+        serverId: { type: integer, minimum: 0 }
+        scope: { type: string }
+        providerId: { type: string }
     BookSeriesDetails:
       allOf:
         - $ref: '#/components/schemas/BookSeriesSummary'
         - type: object
           required: [entries, truncated, scope]
           properties:
+            watchTarget:
+              $ref: '#/components/schemas/BookSeriesWatchTarget'
             description:
               type: string
             scope:
@@ -8866,6 +8875,181 @@ paths:
             application/json:
               schema:
                 type: object
+  /book-series/watch:
+    get:
+      summary: Check backend series-watch capability and live enabled state
+      tags: [Books]
+      parameters:
+        - {
+            in: query,
+            name: serverId,
+            required: true,
+            schema: { type: integer, minimum: 0, maximum: 1000000000 },
+          }
+        - {
+            in: query,
+            name: scope,
+            required: true,
+            schema: { type: string, maxLength: 256 },
+          }
+        - {
+            in: query,
+            name: providerId,
+            required: true,
+            schema: { type: string, maxLength: 32 },
+          }
+      responses:
+        '200':
+          {
+            description: Backend capability and watch status,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '400':
+          {
+            description: Invalid identity,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '403':
+          {
+            description: Authentication required,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '404':
+          {
+            description: Missing book server,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '409':
+          {
+            description: Book server configuration changed,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '503':
+          {
+            description: Backend unavailable,
+            content: { application/json: { schema: { type: object } } },
+          }
+    post:
+      summary: Request ongoing series monitoring in the configured backend
+      description: Book request permissions apply. Finite book quotas and service overrides require manager approval. Monitoring uses backend provider identities and schedules.
+      tags: [Books]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [serverId, scope, providerId, includeExtras]
+              properties:
+                serverId: { type: integer, minimum: 0, maximum: 1000000000 }
+                scope: { type: string, maxLength: 256 }
+                providerId:
+                  { type: string, pattern: '^(hc|gr):[1-9]\d*$', maxLength: 32 }
+                includeExtras: { type: boolean }
+      responses:
+        '200':
+          {
+            description: Pending or active watch request,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '400':
+          {
+            description: Invalid request,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '403':
+          {
+            description: Insufficient permission,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '404':
+          {
+            description: Missing book server or series,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '409':
+          {
+            description: Backend changed or unsupported,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '503':
+          {
+            description: Backend has not confirmed the watch,
+            content: { application/json: { schema: { type: object } } },
+          }
+  /book-series/watch/requests:
+    get:
+      summary: List own series watch requests or all requests for managers
+      tags: [Books]
+      responses:
+        '200':
+          {
+            description: Up to 100 most recent requests,
+            content:
+              {
+                application/json:
+                  { schema: { type: array, items: { type: object } } },
+              },
+          }
+        '403':
+          {
+            description: Authentication required,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '503':
+          {
+            description: Requests unavailable,
+            content: { application/json: { schema: { type: object } } },
+          }
+  /book-series/watch/requests/{id}/{action}:
+    post:
+      summary: Approve, retry, decline or stop a backend series watch
+      tags: [Books]
+      parameters:
+        - {
+            in: path,
+            name: id,
+            required: true,
+            schema: { type: integer, minimum: 1 },
+          }
+        - {
+            in: path,
+            name: action,
+            required: true,
+            schema: { type: string, enum: [approve, decline, stop] },
+          }
+      responses:
+        '200':
+          {
+            description: Saved request state,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '400':
+          {
+            description: Invalid action,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '403':
+          {
+            description: Request manager permission required,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '404':
+          {
+            description: Request not found,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '409':
+          {
+            description: Changed backend configuration or invalid transition,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '503':
+          {
+            description: Backend has not confirmed the watch,
+            content: { application/json: { schema: { type: object } } },
+          }
   /book-series/search:
     get:
       summary: Search configured book servers for library series and supported catalog previews

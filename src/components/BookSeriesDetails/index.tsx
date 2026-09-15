@@ -1,4 +1,5 @@
 import InlineBookSeriesResults from '@app/components/BookSeriesSearch/InlineResults';
+import BookSeriesWatch from '@app/components/BookSeriesWatch';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
@@ -44,7 +45,7 @@ const messages = defineMessages('components.BookSeriesDetails', {
   position: 'Book {position}',
   noBooks: 'No books have been listed for this series yet.',
   description:
-    'Select books and formats to request. Your book server handles monitoring, searches, and downloads. This page does not enable future-series watching.',
+    'Select books and formats to request. Your book server handles monitoring, searches, and downloads. Use Monitor Series below for ongoing monitoring when supported.',
 });
 
 export default function BookSeriesDetails() {
@@ -216,6 +217,9 @@ export default function BookSeriesDetails() {
           </div>
         )}
       </div>
+      {data.watchTarget && (
+        <BookSeriesWatch key={data.id} target={data.watchTarget} />
+      )}
       <h2 className="mb-4 text-xl font-semibold text-white">
         {intl.formatMessage(messages.linkedBooks)}
       </h2>
