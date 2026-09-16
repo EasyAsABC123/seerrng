@@ -434,7 +434,7 @@ it('series artwork stays on the configured origin and rejects redirects, unsafe 
   const http = createServer((req, res) => {
     calls++;
     const u = new URL(req.url!, 'http://localhost');
-    assert.equal(u.pathname, '/base' + path);
+    assert.equal(u.pathname, '/base/api/v1' + path);
     assert.equal(u.searchParams.get('apikey'), 'art-key');
     if (mode === 'redirect') {
       res.writeHead(302, { Location: 'http://127.0.0.1:1/private' });

@@ -17,7 +17,12 @@ Only backend-owned MediaCover and MediaCoverProxy paths are accepted. Images sta
 on that server origin, without redirects, with a five-megabyte limit and restricted
 raster MIME types. Neither API credentials nor backend image URLs reach the browser.
 Artwork has a separate rate budget so thumbnails do not consume series action
-limits. No extra Chaptarr change or metadata key is required.
+limits. No extra metadata key is required.
+
+Live validation found that Chaptarr's UI artwork route requires a browser session.
+Use its authenticated API artwork route instead, added with this trial. That route
+reuses Chaptarr's existing registered-image proxy and missing-image policies; it
+does not relax UI authentication. Older backends without this API show icons.
 
 Use touch scrolling, previous/next controls, keyboard arrows, visible focus and
 reduced-motion preferences. Covers open the series rather than inventing a book

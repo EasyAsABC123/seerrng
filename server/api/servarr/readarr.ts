@@ -1075,7 +1075,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     )
       throw new Error('Invalid series cover path.');
     const response = await this.axios.get<ArrayBuffer>(
-      `${this.coverBaseUrl}${path}`,
+      `${this.nativeApiUrl}${path}`,
       {
         responseType: 'arraybuffer',
         maxRedirects: 0,
