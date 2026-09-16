@@ -2984,7 +2984,7 @@ discoverRoutes.get('/books', async (req, res) => {
   };
   const queryParts = [
     hasSearchQuery
-      ? toFieldedBooleanAndQuery(searchQuery, ['title', 'author'])
+      ? toFieldedBooleanAndQuery(searchQuery, ['title', 'author', 'subject'])
       : hasSubjectFilter
         ? `subject:${subjectQuery}`
         : '*:*',
@@ -3062,7 +3062,7 @@ discoverRoutes.get('/books', async (req, res) => {
       if (
         hasSearchQuery &&
         !matchesAllSearchTerms(
-          [doc.title, ...(doc.author_name ?? [])],
+          [doc.title, ...(doc.author_name ?? []), ...(doc.subject ?? [])],
           searchQuery
         )
       ) {

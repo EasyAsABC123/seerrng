@@ -1,3 +1,4 @@
+import BookSeriesLinks from '@app/components/BookSeriesDetails/BookSeriesLinks';
 import CachedImage from '@app/components/Common/CachedImage';
 import PlayOnDeviceButton from '@app/components/Common/PlayOnDeviceButton';
 import AvailabilityValue from '@app/components/MediaDetails/AvailabilityValue';
@@ -312,6 +313,8 @@ const BookDetailsLayout = ({
             {primaryActions}
             {secondaryActions}
           </div>
+
+          <BookSeriesLinks bookId={data.id} />
 
           <section className="refreshed-inset-surface mt-[5px] rounded-lg border border-gray-700 p-3">
             <h2 className="text-xs font-semibold text-gray-200">

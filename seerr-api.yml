@@ -142,6 +142,18 @@ components:
         - email
         - createdAt
         - updatedAt
+    PublicUser:
+      type: object
+      description: Minimal public identity embedded in requests.
+      properties:
+        id:
+          type: integer
+        displayName:
+          type: string
+        avatar:
+          type: string
+      required:
+        - id
     UserSettings:
       type: object
       properties:
@@ -1015,6 +1027,152 @@ components:
         artistBackdrop:
           type: string
           nullable: true
+    BookSeriesSearchVariant:
+      type: object
+      required: [key, title, serverName, format, source, href]
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        serverName:
+          type: string
+        format:
+          type: string
+          enum: [ebook, audiobook]
+        source:
+          type: string
+          enum: [library, catalog]
+        href:
+          type: string
+        bookCount:
+          type: integer
+        description:
+          type: string
+        providerId:
+          type: string
+    BookSeriesSearchResponse:
+      type: object
+      required: [results, status, truncated]
+      properties:
+        status:
+          type: string
+          enum: [ok, partial, unavailable, unsupported, disabled]
+        truncated:
+          type: boolean
+        results:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/BookSeriesSearchVariant'
+              - type: object
+                properties:
+                  variants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BookSeriesSearchVariant'
+    BookSeriesPreview:
+      type: object
+      required:
+        [title, serverName, format, bookCount, books, resolutionTruncated]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        serverName:
+          type: string
+        format:
+          type: string
+          enum: [ebook, audiobook]
+        bookCount:
+          type: integer
+        managementUrl:
+          type: string
+        resolutionTruncated:
+          type: boolean
+        books:
+          type: array
+          maxItems: 600
+          items:
+            type: object
+            required: [title, matchStatus]
+            properties:
+              matchStatus:
+                type: string
+                enum: [matched, unmatched, ambiguous, unavailable]
+              book:
+                $ref: '#/components/schemas/BookResult'
+              title:
+                type: string
+              author:
+                type: string
+              position:
+                type: string
+    BookSeriesSummary:
+      type: object
+      required: [id, title, serverName, format]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        serverName:
+          type: string
+        format:
+          type: string
+          enum: [ebook, audiobook]
+        position:
+          type: string
+    BookSeriesWatchTarget:
+      type: object
+      required: [serverId, scope, providerId]
+      properties:
+        serverId: { type: integer, minimum: 0 }
+        scope: { type: string }
+        providerId: { type: string }
+    BookSeriesDetails:
+      allOf:
+        - $ref: '#/components/schemas/BookSeriesSummary'
+        - type: object
+          required: [entries, truncated, scope]
+          properties:
+            watchTarget:
+              $ref: '#/components/schemas/BookSeriesWatchTarget'
+            description:
+              type: string
+            scope:
+              type: string
+              enum: [backend-library]
+            managementUrl:
+              type: string
+              description: Native series management link for request managers, when supported.
+            truncated:
+              type: boolean
+            entries:
+              type: array
+              maxItems: 500
+              items:
+                type: object
+                required: [providerId, title, isbns, matchStatus]
+                properties:
+                  providerId:
+                    type: string
+                  title:
+                    type: string
+                  position:
+                    type: string
+                  primary:
+                    type: boolean
+                  isbns:
+                    type: array
+                    items:
+                      type: string
+                  matchStatus:
+                    type: string
+                    enum: [matched, unmatched, ambiguous]
+                  book:
+                    $ref: '#/components/schemas/BookResult'
     BookResult:
       type: object
       required:
@@ -1892,10 +2050,10 @@ components:
           example: '2020-09-12T10:00:27.000Z'
           readOnly: true
         requestedBy:
-          $ref: '#/components/schemas/User'
+          $ref: '#/components/schemas/PublicUser'
         modifiedBy:
           anyOf:
-            - $ref: '#/components/schemas/User'
+            - $ref: '#/components/schemas/PublicUser'
             - type: string
               nullable: true
         is4k:
@@ -1903,14 +2061,19 @@ components:
           example: false
         serverId:
           type: number
+          nullable: true
         profileId:
           type: number
+          nullable: true
         rootFolder:
           type: string
+          nullable: true
         metadataProfileId:
           type: number
+          nullable: true
         tags:
           type: array
+          nullable: true
           items:
             type: number
         bookFormat:
@@ -8660,6 +8823,470 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/BookResult'
+  /book/{bookId}/series:
+    get:
+      summary: Find a book's verified series
+      tags: [search]
+      parameters:
+        - in: path
+          name: bookId
+          required: true
+          schema:
+            type: string
+      responses:
+        default:
+          description: Request rejected or service unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+        '200':
+          description: Series discovery result; disabled when no provider is configured
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, series]
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      [
+                        disabled,
+                        not-in-library,
+                        matched,
+                        partial,
+                        unavailable,
+                        unsupported,
+                      ]
+                  series:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BookSeriesSummary'
+        '400':
+          description: Invalid book ID
+          content:
+            application/json:
+              schema:
+                type: object
+        '503':
+          description: Metadata provider unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+  /book-series/watch:
+    get:
+      summary: Check backend series-watch capability and live enabled state
+      tags: [Books]
+      parameters:
+        - {
+            in: query,
+            name: serverId,
+            required: true,
+            schema: { type: integer, minimum: 0, maximum: 1000000000 },
+          }
+        - {
+            in: query,
+            name: scope,
+            required: true,
+            schema: { type: string, maxLength: 256 },
+          }
+        - {
+            in: query,
+            name: providerId,
+            required: true,
+            schema: { type: string, maxLength: 32 },
+          }
+      responses:
+        '200':
+          {
+            description: Backend capability and watch status,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '400':
+          {
+            description: Invalid identity,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '403':
+          {
+            description: Authentication required,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '404':
+          {
+            description: Missing book server,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '409':
+          {
+            description: Book server configuration changed,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '503':
+          {
+            description: Backend unavailable,
+            content: { application/json: { schema: { type: object } } },
+          }
+    post:
+      summary: Request ongoing series monitoring in the configured backend
+      description: Book request permissions apply. Finite book quotas and service overrides require manager approval. Monitoring uses backend provider identities and schedules.
+      tags: [Books]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [serverId, scope, providerId, includeExtras]
+              properties:
+                serverId: { type: integer, minimum: 0, maximum: 1000000000 }
+                scope: { type: string, maxLength: 256 }
+                providerId:
+                  { type: string, pattern: '^(hc|gr):[1-9]\d*$', maxLength: 32 }
+                includeExtras: { type: boolean }
+      responses:
+        '200':
+          {
+            description: Pending or active watch request,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '400':
+          {
+            description: Invalid request,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '403':
+          {
+            description: Insufficient permission,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '404':
+          {
+            description: Missing book server or series,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '409':
+          {
+            description: Backend changed or unsupported,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '503':
+          {
+            description: Backend has not confirmed the watch,
+            content: { application/json: { schema: { type: object } } },
+          }
+  /book-series/watch/requests:
+    get:
+      summary: List own series watch requests or all requests for managers
+      tags: [Books]
+      responses:
+        '200':
+          {
+            description: Up to 100 most recent requests,
+            content:
+              {
+                application/json:
+                  { schema: { type: array, items: { type: object } } },
+              },
+          }
+        '403':
+          {
+            description: Authentication required,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '503':
+          {
+            description: Requests unavailable,
+            content: { application/json: { schema: { type: object } } },
+          }
+  /book-series/watch/requests/{id}/{action}:
+    post:
+      summary: Approve, retry, decline or stop a backend series watch
+      tags: [Books]
+      parameters:
+        - {
+            in: path,
+            name: id,
+            required: true,
+            schema: { type: integer, minimum: 1 },
+          }
+        - {
+            in: path,
+            name: action,
+            required: true,
+            schema: { type: string, enum: [approve, decline, stop] },
+          }
+      responses:
+        '200':
+          {
+            description: Saved request state,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '400':
+          {
+            description: Invalid action,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '403':
+          {
+            description: Request manager permission required,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '404':
+          {
+            description: Request not found,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '409':
+          {
+            description: Changed backend configuration or invalid transition,
+            content: { application/json: { schema: { type: object } } },
+          }
+        '503':
+          {
+            description: Backend has not confirmed the watch,
+            content: { application/json: { schema: { type: object } } },
+          }
+  /book-series/covers:
+    get:
+      summary: Read a small backend book-cover preview for a series card
+      tags: [Books]
+      parameters:
+        - in: query
+          name: seriesId
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: serverId
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: scope
+          schema: { type: string, maxLength: 256 }
+        - in: query
+          name: providerId
+          schema: { type: string, pattern: '^hc:[1-9]\d*$', maxLength: 32 }
+      responses:
+        '200':
+          description: Up to twenty backend members with optional same-origin image URLs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [books]
+                properties:
+                  books:
+                    type: array
+                    maxItems: 20
+                    items:
+                      type: object
+                      required: [title]
+                      properties:
+                        title: { type: string }
+                        position: { type: string }
+                        coverUrl: { type: string }
+        '400':
+          description: Invalid or mixed target identities
+          content:
+            application/json:
+              schema: { type: object }
+        '403':
+          description: Authentication required
+          content:
+            application/json:
+              schema: { type: object }
+        '404':
+          description: Series not found
+          content:
+            application/json:
+              schema: { type: object }
+        '503':
+          description: Artwork metadata unavailable
+          content:
+            application/json:
+              schema: { type: object }
+  /book-series/covers/image:
+    get:
+      summary: Read a cover from the configured backend for an exact series member
+      tags: [Books]
+      parameters:
+        - in: query
+          name: seriesId
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: serverId
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: scope
+          schema: { type: string, maxLength: 256 }
+        - in: query
+          name: providerId
+          schema: { type: string, pattern: '^hc:[1-9]\d*$', maxLength: 32 }
+        - in: query
+          name: book
+          required: true
+          schema: { type: integer, minimum: 0, maximum: 19 }
+      responses:
+        '200':
+          description: Backend cover image
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        '400':
+          description: Invalid target or member
+          content:
+            application/json:
+              schema: { type: object }
+        '403':
+          description: Authentication required
+          content:
+            application/json:
+              schema: { type: object }
+        '404':
+          description: Cover unavailable
+          content:
+            application/json:
+              schema: { type: object }
+  /book-series/search:
+    get:
+      summary: Search configured book servers for library series and supported catalog previews
+      tags: [Books]
+      parameters:
+        - in: query
+          name: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 200
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [ebook, audiobook]
+      responses:
+        '403':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                type: object
+        '200':
+          description: Series results with explicit partial, unavailable and unsupported states
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookSeriesSearchResponse'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                type: object
+        '503':
+          description: Search unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+  /book-series/catalog:
+    get:
+      summary: Preview a backend catalog series without requesting or monitoring books
+      tags: [Books]
+      parameters:
+        - in: query
+          name: serverId
+          required: true
+          schema:
+            type: string
+            pattern: '^(0|[1-9]\d*)$'
+        - in: query
+          name: scope
+          required: true
+          schema:
+            type: string
+            maxLength: 256
+        - in: query
+          name: providerId
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+            pattern: '^hc:[1-9]\d*$'
+      responses:
+        '403':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                type: object
+        '200':
+          description: Catalog preview; native management link only for request managers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookSeriesPreview'
+        '400':
+          description: Invalid identity
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Server scope or capability not found
+          content:
+            application/json:
+              schema:
+                type: object
+        '503':
+          description: Catalog preview unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+  /book-series/{id}:
+    get:
+      summary: Browse a book series with verified request identities
+      tags: [search]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        default:
+          description: Request rejected or service unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+        '200':
+          description: Ordered series catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookSeriesDetails'
+        '400':
+          description: Invalid series ID
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Series not found
+          content:
+            application/json:
+              schema:
+                type: object
+        '503':
+          description: Metadata unavailable or not configured
+          content:
+            application/json:
+              schema:
+                type: object
   /book/{bookId}:
     get:
       summary: Get book details

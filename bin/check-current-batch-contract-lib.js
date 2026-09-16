@@ -2357,22 +2357,22 @@ const validateCurrentBatchContract = (files) => {
   }
   requireText(
     'server/routes/discover.ts',
-    "toFieldedBooleanAndQuery(searchQuery, ['title', 'author'])",
-    'Book provider searches must be limited to visible title and author fields'
+    "toFieldedBooleanAndQuery(searchQuery, ['title', 'author', 'subject'])",
+    'Book provider searches must include title, author, and catalog subjects for series keywords'
   );
-  rejectText(
+  requireText(
     'server/routes/discover.ts',
     '[doc.title, ...(doc.author_name ?? []), ...(doc.subject ?? [])]',
-    'Book keyword relevance must not admit hidden subject-only matches'
+    'Book keyword relevance must include series subjects'
   );
   requireText(
     'server/routes/search.ts',
     'query: toFieldedBooleanAndQuery(queryString, [',
-    'Global Book searches must use the same visible title and author provider query'
+    'Global Book searches must use the same fielded provider query'
   );
   requireText(
     'server/routes/search.test.ts',
-    'limits global book keywords to visible title and author fields',
+    'includes catalog subjects when matching global book keywords',
     'Global Book keyword relevance must have regression coverage'
   );
   const apiSpec = requireFile('seerr-api.yml');
@@ -2489,7 +2489,7 @@ const validateCurrentBatchContract = (files) => {
     ],
     [
       'server/routes/discover.test.ts',
-      'keeps relevant book search order and drops hidden metadata-only matches',
+      'keeps title, author, and subject matches in provider order and drops unrelated results',
       'must test Book keyword relevance',
     ],
     [

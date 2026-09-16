@@ -36,6 +36,7 @@ import useSWR from 'swr';
 
 const messages = defineMessages('components.RequestList', {
   requests: 'Requests',
+  seriesMonitoring: 'Series Monitoring Requests',
   showallrequests: 'Show All Requests',
   sortAdded: 'Most Recent',
   sortModified: 'Last Modified',
@@ -194,6 +195,14 @@ const RequestList = () => {
             : intl.formatMessage(messages.requests)
         }
       />
+      {!router.pathname.startsWith('/profile') && !router.query.userId && (
+        <Link
+          href="/book-series/requests"
+          className="mb-4 inline-block text-indigo-300 hover:underline"
+        >
+          {intl.formatMessage(messages.seriesMonitoring)}
+        </Link>
+      )}
       <div className="mb-4 flex flex-col justify-between lg:flex-row lg:items-end">
         <Header
           subtext={

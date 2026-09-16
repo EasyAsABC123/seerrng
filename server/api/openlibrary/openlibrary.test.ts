@@ -208,3 +208,54 @@ describe('OpenLibraryAPI response bounds', () => {
     await assert.rejects(openLibrary.getAuthor('OL1A'), /invalid author/i);
   });
 });
+
+describe('Open Library exact ISBN batches', () => {
+  const isbn = '9780140328721';
+  const createApi = (response: unknown) => {
+    const api = new OpenLibraryAPI();
+    Object.defineProperty(api, 'get', { value: async () => response });
+    return api;
+  };
+  it('retains duplicate works and matching identifiers beyond the normal search ISBN cap', async () => {
+    const api = createApi({
+      numFound: 2,
+      docs: [
+        {
+          key: '/works/OL1W',
+          title: 'First',
+          isbn: [...Array(300).fill('invalid'), isbn],
+        },
+        { key: '/works/OL2W', title: 'Second', isbn: ['0140328726'] },
+      ],
+    });
+    const docs = await api.findWorksByIsbns([isbn]);
+    assert.equal(docs.length, 2);
+    assert.deepEqual(
+      docs.map((doc) => doc.isbn),
+      [[isbn], [isbn]]
+    );
+  });
+  it('rejects incomplete results rather than making a false unique match', async () => {
+    await assert.rejects(
+      () =>
+        createApi({
+          numFound: 2,
+          docs: [{ key: '/works/OL1W', title: 'Only one', isbn: [isbn] }],
+        }).findWorksByIsbns([isbn]),
+      /incomplete/
+    );
+  });
+  it('rejects invalid inputs and malformed ISBN evidence', async () => {
+    await assert.rejects(() =>
+      createApi({}).findWorksByIsbns(['bad OR key:OL1W'])
+    );
+    await assert.rejects(
+      () =>
+        createApi({
+          numFound: 1,
+          docs: [{ key: '/works/OL1W', title: 'Book' }],
+        }).findWorksByIsbns([isbn]),
+      /invalid/
+    );
+  });
+});

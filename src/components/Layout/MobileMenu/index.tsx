@@ -15,7 +15,6 @@ import {
   FilmIcon,
   MusicalNoteIcon,
   SparklesIcon,
-  SpeakerWaveIcon,
   TvIcon,
   UsersIcon,
 } from '@heroicons/react/24/outline';
@@ -28,7 +27,6 @@ import {
   FilmIcon as FilledFilmIcon,
   MusicalNoteIcon as FilledMusicalNoteIcon,
   SparklesIcon as FilledSparklesIcon,
-  SpeakerWaveIcon as FilledSpeakerWaveIcon,
   TvIcon as FilledTvIcon,
   UsersIcon as FilledUsersIcon,
   XMarkIcon,
@@ -135,21 +133,8 @@ const MobileMenu = ({
         content: intl.formatMessage(menuMessages.browsebooks),
         svgIcon: <BookOpenIcon className="h-6 w-6" />,
         svgIconSelected: <FilledBookOpenIcon className="h-6 w-6" />,
-        activeRegExp: /^\/(?:discover\/books(?:\/.*)?|book\/)/,
-      },
-      {
-        href: '/discover/audiobooks',
-        content: intl.formatMessage(menuMessages.browseaudiobooks),
-        svgIcon: <SpeakerWaveIcon className="h-6 w-6" />,
-        svgIconSelected: <FilledSpeakerWaveIcon className="h-6 w-6" />,
-        activeRegExp: /^\/discover\/audiobooks$/,
-      },
-      {
-        href: '/discover/audiobooks',
-        content: intl.formatMessage(menuMessages.browseaudiobooks),
-        svgIcon: <SpeakerWaveIcon className="h-6 w-6" />,
-        svgIconSelected: <FilledSpeakerWaveIcon className="h-6 w-6" />,
-        activeRegExp: /^\/discover\/audiobooks$/,
+        activeRegExp:
+          /^\/(?:discover\/(?:books|audiobooks)(?:\/|$)|book\/|book-series(?:\/|$))/,
       },
       {
         href: '/requests/status',

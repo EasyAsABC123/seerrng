@@ -58,10 +58,13 @@ const useSearchInput = (): SearchObject => {
    * in a new route. If we are, then we only replace the history.
    */
   useEffect(() => {
+    if (!router.isReady) return;
     if (
       isSearchPage &&
       searchOpen &&
       debouncedValue === '' &&
+      // A restored URL may have updated the input before its debounce settles.
+      debouncedValue === searchValue &&
       routeQuery !== '' &&
       pendingSearchQuery.current !== ''
     ) {
@@ -122,7 +125,9 @@ const useSearchInput = (): SearchObject => {
     routeQuery,
     router,
     router.pathname,
+    router.isReady,
     searchOpen,
+    searchValue,
   ]);
 
   /**
@@ -164,6 +169,7 @@ const useSearchInput = (): SearchObject => {
    * is on /search
    */
   useEffect(() => {
+    if (!router.isReady) return;
     const restoringSearchRoute =
       isSearchPage &&
       !searchOpen &&
@@ -204,6 +210,7 @@ const useSearchInput = (): SearchObject => {
     isSearchPage,
     routeQuery,
     router.pathname,
+    router.isReady,
     searchOpen,
     searchValue,
     setSearchValue,

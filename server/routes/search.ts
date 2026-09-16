@@ -56,6 +56,7 @@ export const SEARCH_RATE_LIMIT = {
 export const MAX_SEARCH_RESULTS_PER_PROVIDER = 20;
 export const MAX_COMBINED_SEARCH_RESULTS = 100;
 export const SEARCH_PROVIDER_TIMEOUT_MS = 5_000;
+export const BOOK_SEARCH_PROVIDER_TIMEOUT_MS = 15_000;
 export const SEARCH_CREDIT_LOOKUP_CONCURRENCY = 4;
 const searchRateLimit = rateLimit({
   ...SEARCH_RATE_LIMIT,
@@ -334,7 +335,11 @@ searchRoutes.get('/', async (req, res, next) => {
           : Promise.resolve({ results: [], totalResults: 0 }),
         shouldSearchBooks && booksEnabled
           ? openLibrary.searchBooks({
-              query: toFieldedBooleanAndQuery(queryString, ['title', 'author']),
+              query: toFieldedBooleanAndQuery(queryString, [
+                'title',
+                'author',
+                'subject',
+              ]),
               page,
               limit: 20,
             })
@@ -369,7 +374,9 @@ searchRoutes.get('/', async (req, res, next) => {
               })
             )
           ),
-          SEARCH_PROVIDER_TIMEOUT_MS
+          typeFilter === 'book'
+            ? BOOK_SEARCH_PROVIDER_TIMEOUT_MS
+            : SEARCH_PROVIDER_TIMEOUT_MS
         );
       const providerResults = new Map(
         providerResponses.results
@@ -395,8 +402,7 @@ searchRoutes.get('/', async (req, res, next) => {
         booksEnabled &&
         (!bookProviderResponse || bookProviderResponse.status === 'rejected')
       ) {
-        return next({
-          status: 503,
+        return res.status(503).json({
           message:
             'Open Library, the service used for book searches, timed out or is unavailable. Please try again.',
         });
@@ -460,7 +466,7 @@ searchRoutes.get('/', async (req, res, next) => {
       const dedupedBookDocs = dedupeBookSearchDocs(bookResults.docs).filter(
         (doc) =>
           matchesAllSearchTerms(
-            [doc.title, ...(doc.author_name ?? [])],
+            [doc.title, ...(doc.author_name ?? []), ...(doc.subject ?? [])],
             queryString
           )
       );

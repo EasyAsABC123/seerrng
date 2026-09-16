@@ -8,6 +8,7 @@ import {
   findBookMediaForSearchDocs,
   findBookMediaForWork,
 } from '@server/lib/bookMediaMatcher';
+import { findSeriesForBook } from '@server/lib/bookSeries';
 import {
   isValidOpenLibraryResourceId,
   normalizeOpenLibraryWorkId,
@@ -45,6 +46,20 @@ const bookRateLimit = rateLimit({
 });
 
 bookRoutes.use(bookRateLimit);
+
+bookRoutes.get('/:id/series', async (req, res) => {
+  const id = parseOpenLibraryWorkId(req.params.id);
+  if ('error' in id || !/^OL[0-9]+W$/.test(id.value)) {
+    return res.status(400).json({ message: 'Book ID is invalid.' });
+  }
+  try {
+    return res.json(await findSeriesForBook(id.value, req.user));
+  } catch {
+    return res
+      .status(503)
+      .json({ message: 'Book series metadata is unavailable.' });
+  }
+});
 
 const parseBookSearchQuery = (value: unknown) =>
   parseBoundedString(value, {
