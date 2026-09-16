@@ -17,16 +17,16 @@ import { useIntl } from 'react-intl';
 import useSWR from 'swr';
 
 const messages = defineMessages('components.BookSeriesDetails', {
-  series: 'Library Series Subset',
-  linkedBooks: 'Books linked in your library',
+  series: 'Book Series',
+  linkedBooks: 'Books in Series',
   search: 'Search Book Series',
   manage: 'Manage Series in {server}',
-  request: 'Request Listed Library Books',
+  request: 'Request Selected Books',
   extras: 'Include companion books and other extras in requests',
   extra: 'Extra',
   source: '{server} · {format}',
   scope:
-    'Books currently linked to this series in your book server. Its catalog may not include every published or announced book.',
+    'Series membership and reading order from your book server, including books you have not downloaded.',
   unclassified:
     'The server has not classified primary and extra entries for every book.',
   unmatched: 'No verified book match — requests unavailable',
@@ -45,7 +45,7 @@ const messages = defineMessages('components.BookSeriesDetails', {
   position: 'Book {position}',
   noBooks: 'No books have been listed for this series yet.',
   description:
-    'Select books and formats to request. Your book server handles monitoring, searches, and downloads. Use Monitor Series below for ongoing monitoring when supported.',
+    'Request selected books, or use Monitor Series for ongoing monitoring. Your book server handles searches and downloads.',
 });
 
 export default function BookSeriesDetails() {
@@ -177,11 +177,6 @@ export default function BookSeriesDetails() {
             {intl.formatMessage(messages.unclassified)}
           </p>
         )}
-        <InlineBookSeriesResults
-          query={data.title}
-          format={data.format}
-          catalogOnly
-        />
         {data.description && (
           <p className="max-w-4xl whitespace-pre-line text-gray-300">
             {data.description}
@@ -275,6 +270,13 @@ export default function BookSeriesDetails() {
           </li>
         ))}
       </ol>
+      <div className="mt-8">
+        <InlineBookSeriesResults
+          query={data.title}
+          format={data.format}
+          catalogOnly
+        />
+      </div>
     </>
   );
 }

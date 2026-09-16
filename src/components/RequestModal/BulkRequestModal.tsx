@@ -49,9 +49,9 @@ const messages = defineMessages('components.RequestModal.BulkRequestModal', {
   summary: '{created} created, {skipped} skipped, {failed} failed.',
   requestbibliographyFormat: 'Request {format} Bibliography',
   requestseriesFormat: 'Request {format} Series',
-  requestLibraryFormat: 'Request {format} Library Books',
+  requestLibraryFormat: 'Request Selected {format} Books',
   librarySubset:
-    'This request includes only the listed library entries. Use the series catalog to find missing books.',
+    'Choose from the books listed by your book server. Use Monitor Series on the series page for ongoing monitoring.',
   unresolvedBooks:
     'These books could not be verified and are not included in this request:',
   requestitemsFormat:

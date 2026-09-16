@@ -6,9 +6,9 @@ import BookSeriesSearchResults from './Results';
 
 const messages = defineMessages('components.BookSeriesSearch.InlineResults', {
   title: 'Book Series',
-  catalog: 'Find the series in the catalog',
+  catalog: 'Other Catalog Matches',
   catalogHint:
-    'Catalog entries can include books that are missing from your library. Open the matching series to choose books to request.',
+    'Explore other catalog entries for this series. Their book lists may differ from your book server.',
   browse: 'View all series results',
   hint: 'Series matches use the name and selected format.',
 });
