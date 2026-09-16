@@ -426,3 +426,54 @@ for (const scenario of [
     }
   });
 }
+
+it('series artwork stays on the configured origin and rejects redirects, unsafe paths and non-images', async () => {
+  const path = `/MediaCoverProxy/${'a'.repeat(64)}/cover.jpg`;
+  let mode = 'image',
+    calls = 0;
+  const http = createServer((req, res) => {
+    calls++;
+    const u = new URL(req.url!, 'http://localhost');
+    assert.equal(u.pathname, '/base' + path);
+    assert.equal(u.searchParams.get('apikey'), 'art-key');
+    if (mode === 'redirect') {
+      res.writeHead(302, { Location: 'http://127.0.0.1:1/private' });
+      res.end();
+      return;
+    }
+    res.setHeader(
+      'Content-Type',
+      mode === 'image' ? 'image/jpeg' : 'image/svg+xml'
+    );
+    res.end('cover');
+  }).listen(0, '127.0.0.1');
+  await once(http, 'listening');
+  try {
+    const api = new ReadarrAPI({
+      url: `http://127.0.0.1:${(http.address() as { port: number }).port}/base/api/v1`,
+      apiKey: 'art-key',
+    });
+    for (const unsafe of [
+      'https://example.com/image.jpg',
+      '//evil.test/cover.jpg',
+      '/api/v1/config',
+      '/MediaCover/1/../../config',
+      '/MediaCover/1/cover.jpg?apikey=oops',
+      path + '%2f..',
+    ])
+      await assert.rejects(api.getSeriesCoverImage(unsafe));
+    assert.equal(calls, 0);
+    assert.equal(
+      (await api.getSeriesCoverImage(path)).imageBuffer.toString(),
+      'cover'
+    );
+    mode = 'redirect';
+    await assert.rejects(api.getSeriesCoverImage(path));
+    mode = 'svg';
+    await assert.rejects(api.getSeriesCoverImage(path));
+    assert.equal(calls, 3);
+  } finally {
+    http.closeAllConnections();
+    await new Promise<void>((resolve) => http.close(() => resolve()));
+  }
+});

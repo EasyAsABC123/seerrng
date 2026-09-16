@@ -3,12 +3,14 @@ import {
   getBookSeriesPreview,
   searchBookSeries,
 } from '@server/lib/bookSeriesSearch';
+import bookSeriesCoverRoutes from '@server/routes/bookSeriesCovers';
 import bookSeriesWatchRoutes from '@server/routes/bookSeriesWatch';
 import { filterEntityResponse } from '@server/utils/entityResponse';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 
 const bookSeriesRoutes = Router();
+bookSeriesRoutes.use('/covers', bookSeriesCoverRoutes);
 bookSeriesRoutes.use(
   rateLimit({
     windowMs: 60_000,

@@ -1,3 +1,4 @@
+import CoverCarousel from '@app/components/BookSeriesSearch/CoverCarousel';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import { bookSeriesSearchUrl } from '@app/utils/bookSeriesSearch';
@@ -90,7 +91,7 @@ export default function BookSeriesSearchResults({
         {results.slice(0, limit).map((series) => (
           <li
             key={series.key}
-            className="relative rounded-lg border border-gray-700 bg-gray-800 p-4 transition-colors hover:border-gray-500"
+            className="relative min-w-0 rounded-lg border border-gray-700 bg-gray-800 p-4 transition-colors hover:border-gray-500"
           >
             <Link
               className="text-lg font-semibold text-indigo-200 after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:underline focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-indigo-500"
@@ -138,6 +139,7 @@ export default function BookSeriesSearchResults({
               {series.bookCount !== undefined &&
                 ` · ${intl.formatMessage(messages.count, { count: series.bookCount })}`}
             </p>
+            <CoverCarousel href={series.href} title={series.title} />
             {series.description && (
               <p className="mt-3 line-clamp-3 text-sm text-gray-300">
                 {series.description}

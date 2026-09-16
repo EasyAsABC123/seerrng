@@ -83,3 +83,7 @@ export interface BookSeriesWatchStatus {
     includeExtras: boolean;
   };
 }
+
+export interface BookSeriesCovers {
+  books: { title: string; position?: string; coverUrl?: string }[];
+}

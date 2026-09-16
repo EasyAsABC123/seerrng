@@ -9050,6 +9050,104 @@ paths:
             description: Backend has not confirmed the watch,
             content: { application/json: { schema: { type: object } } },
           }
+  /book-series/covers:
+    get:
+      summary: Read a small backend book-cover preview for a series card
+      tags: [Books]
+      parameters:
+        - in: query
+          name: seriesId
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: serverId
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: scope
+          schema: { type: string, maxLength: 256 }
+        - in: query
+          name: providerId
+          schema: { type: string, pattern: '^hc:[1-9]\d*$', maxLength: 32 }
+      responses:
+        '200':
+          description: Up to twenty backend members with optional same-origin image URLs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [books]
+                properties:
+                  books:
+                    type: array
+                    maxItems: 20
+                    items:
+                      type: object
+                      required: [title]
+                      properties:
+                        title: { type: string }
+                        position: { type: string }
+                        coverUrl: { type: string }
+        '400':
+          description: Invalid or mixed target identities
+          content:
+            application/json:
+              schema: { type: object }
+        '403':
+          description: Authentication required
+          content:
+            application/json:
+              schema: { type: object }
+        '404':
+          description: Series not found
+          content:
+            application/json:
+              schema: { type: object }
+        '503':
+          description: Artwork metadata unavailable
+          content:
+            application/json:
+              schema: { type: object }
+  /book-series/covers/image:
+    get:
+      summary: Read a cover from the configured backend for an exact series member
+      tags: [Books]
+      parameters:
+        - in: query
+          name: seriesId
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: serverId
+          schema: { type: integer, minimum: 0 }
+        - in: query
+          name: scope
+          schema: { type: string, maxLength: 256 }
+        - in: query
+          name: providerId
+          schema: { type: string, pattern: '^hc:[1-9]\d*$', maxLength: 32 }
+        - in: query
+          name: book
+          required: true
+          schema: { type: integer, minimum: 0, maximum: 19 }
+      responses:
+        '200':
+          description: Backend cover image
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        '400':
+          description: Invalid target or member
+          content:
+            application/json:
+              schema: { type: object }
+        '403':
+          description: Authentication required
+          content:
+            application/json:
+              schema: { type: object }
+        '404':
+          description: Cover unavailable
+          content:
+            application/json:
+              schema: { type: object }
   /book-series/search:
     get:
       summary: Search configured book servers for library series and supported catalog previews

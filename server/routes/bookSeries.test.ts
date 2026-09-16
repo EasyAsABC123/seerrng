@@ -834,3 +834,138 @@ describe('backend-owned series watches', () => {
     assert.equal(writes.mock.callCount(), 0);
   });
 });
+
+describe('series card artwork', () => {
+  const path = `/MediaCoverProxy/${'a'.repeat(64)}/cover.jpg`;
+  it('requires authentication and rejects mixed or stale backend identities', async () => {
+    assert.equal(
+      (await request(app).get('/book-series/covers?seriesId=1')).status,
+      403
+    );
+    const agent = await login();
+    assert.equal(
+      (await agent.get('/book-series/covers?seriesId=1&serverId=0')).status,
+      400
+    );
+    assert.equal(
+      (
+        await agent.get(
+          '/book-series/covers?serverId=1&scope=old&providerId=hc%3A12'
+        )
+      ).status,
+      404
+    );
+    assert.equal(
+      (await agent.get('/book-series/covers/image?seriesId=1&book=20')).status,
+      400
+    );
+  });
+  it('uses lightweight catalog metadata and never exposes backend artwork paths or credentials', async () => {
+    const configured = server(0, 'audiobook');
+    getSettings().readarr = [configured];
+    const lookup = mock.method(
+      ReadarrAPI.prototype,
+      'getSeriesCatalogPreview',
+      async () => ({
+        title: 'Series',
+        workCount: 2,
+        foreignSeriesId: 'hc:12',
+        books: [
+          {
+            foreignBookId: 'hc:2',
+            title: 'Second',
+            position: '2',
+            images: [{ url: 'https://untrusted.test/cover.jpg' }],
+          },
+          {
+            foreignBookId: 'hc:1',
+            title: 'First',
+            position: '1',
+            images: [{ url: path, coverType: 'cover' }],
+          },
+        ],
+      })
+    );
+    const agent = await login();
+    const query = new URLSearchParams({
+      serverId: '0',
+      scope: backendScope(configured),
+      providerId: 'hc:12',
+    }).toString();
+    const result = await agent.get('/book-series/covers?' + query);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.deepEqual(
+      result.body.books.map((b: { title: string }) => b.title),
+      ['First', 'Second']
+    );
+    assert.equal(
+      lookup.mock.calls[0].arguments[1],
+      false,
+      'no ISBN enrichment for artwork'
+    );
+    assert.equal(result.body.books[1].coverUrl, undefined);
+    assert(!JSON.stringify(result.body).includes('MediaCoverProxy'));
+    const image = mock.method(
+      ReadarrAPI.prototype,
+      'getSeriesCoverImage',
+      async () => ({
+        imageBuffer: Buffer.from('cover'),
+        contentType: 'image/jpeg',
+      })
+    );
+    const cover = await agent.get(
+      result.body.books[0].coverUrl.replace('/api/v1', '')
+    );
+    assert.equal(cover.status, 200);
+    assert.equal(cover.headers['content-type'], 'image/jpeg');
+    assert.match(cover.headers['cache-control'], /^private/);
+    assert.equal(image.mock.calls[0].arguments[0], path);
+    assert.equal(
+      (await agent.get('/book-series/covers/image?' + query + '&book=1'))
+        .status,
+      404
+    );
+  });
+  it('bounds native previews and leaves missing artwork as title-only members', async () => {
+    const configured = server();
+    getSettings().readarr = [configured];
+    const local = await getRepository(BookSeries).save(
+      getRepository(BookSeries).create({
+        provider: backendScope(configured),
+        providerId: '10',
+        authorId: 20,
+        title: 'Series',
+      })
+    );
+    const metadata = mock.method(
+      ReadarrAPI.prototype,
+      'getSeriesByAuthor',
+      async () => [
+        {
+          id: 10,
+          title: 'Series',
+          links: [],
+          books: Array.from({ length: 25 }, (_, i) => ({
+            title: `Book ${i + 1}`,
+            position: String(i + 1),
+          })).reverse(),
+        },
+      ]
+    );
+    const perBook = mock.method(
+      ReadarrAPI.prototype,
+      'getNativeSeriesBook',
+      async () => {
+        throw new Error('Artwork must not resolve individual books');
+      }
+    );
+    const agent = await login();
+    const result = await agent.get('/book-series/covers?seriesId=' + local.id);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.books.length, 20);
+    assert.equal(result.body.books[0].title, 'Book 1');
+    assert.equal(result.body.books[19].title, 'Book 20');
+    assert.equal(perBook.mock.callCount(), 0);
+    assert.equal(metadata.mock.calls[0].arguments[0], 20);
+  });
+});

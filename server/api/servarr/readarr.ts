@@ -34,6 +34,27 @@ type ChaptarrDialect = 'hc' | 'gr';
 const CHAPTARR_REQUEST_TIMEOUT_MS = 60_000;
 const CHAPTARR_LIBRARY_PAGE_SIZE = 500;
 
+const seriesArtworkBooksSchema = z
+  .array(
+    z.object({
+      title: z.string().max(2000),
+      position: z.string().max(128).nullish(),
+      images: z
+        .array(
+          z.object({
+            url: z.string().max(2048),
+            coverType: z.string().max(32).optional(),
+          })
+        )
+        .max(50)
+        .nullish()
+        .catch(undefined),
+    })
+  )
+  .max(5000)
+  .nullish()
+  .catch(undefined);
+
 const nativeSeriesSchema = z
   .array(
     z.object({
@@ -41,6 +62,7 @@ const nativeSeriesSchema = z
       title: z.string().max(2000),
       description: z.string().max(100000).nullish(),
       foreignSeriesId: z.string().max(256).nullish(),
+      books: seriesArtworkBooksSchema,
       mediaType: z.enum(['ebook', 'audiobook']).optional(),
       links: z
         .array(
@@ -995,7 +1017,10 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     };
   }
 
-  public async getSeriesCatalogPreview(providerId: string) {
+  public async getSeriesCatalogPreview(
+    providerId: string,
+    includeBookIdentifiers = true
+  ) {
     if (!/^hc:[1-9]\d*$/.test(providerId))
       throw new Error('Invalid series catalog ID.');
     await this.ensureProvider();
@@ -1005,7 +1030,7 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
       {
         ...this.getRequestConfig(),
         baseURL: this.nativeApiUrl,
-        params: { foreignSeriesId: providerId, includeBookIdentifiers: true },
+        params: { foreignSeriesId: providerId, includeBookIdentifiers },
       },
       300
     );
@@ -1024,11 +1049,55 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
               title: z.string().max(2000),
               authorName: z.string().max(2000).nullish(),
               position: z.string().max(128).nullish(),
+              images: z
+                .array(
+                  z.object({
+                    url: z.string().max(2048),
+                    coverType: z.string().max(32).optional(),
+                  })
+                )
+                .max(50)
+                .nullish()
+                .catch(undefined),
             })
           )
           .max(600),
       })
       .parse(response);
+  }
+
+  /** Only fetch backend-owned artwork paths; never accept an arbitrary image URL. */
+  public async getSeriesCoverImage(path: string): Promise<ReadarrCoverImage> {
+    if (
+      !/^\/(?:MediaCoverProxy\/[a-f0-9]{32,128}\/[A-Za-z0-9_.-]+|MediaCover\/\d+\/(?:cover|poster)\.(?:jpg|jpeg|png|webp))$/i.test(
+        path
+      )
+    )
+      throw new Error('Invalid series cover path.');
+    const response = await this.axios.get<ArrayBuffer>(
+      `${this.coverBaseUrl}${path}`,
+      {
+        responseType: 'arraybuffer',
+        maxRedirects: 0,
+        timeout: 10000,
+        maxContentLength: 5 * 1024 * 1024,
+        headers: { Accept: 'image/*' },
+      }
+    );
+    const contentType = String(response.headers['content-type'] ?? '')
+      .split(';')[0]
+      .toLowerCase();
+    if (
+      ![
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif',
+        'image/avif',
+      ].includes(contentType)
+    )
+      throw new Error('Invalid series cover content type.');
+    return { imageBuffer: Buffer.from(response.data), contentType };
   }
 
   public async getSeriesWatchCapabilities() {
