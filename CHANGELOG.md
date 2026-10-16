@@ -200,6 +200,39 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.61.0](https://github.com/snapetech-org/seerrng/compare/v3.60.0..v3.61.0) - 2026-10-16
+
+### User-facing changes
+
+#### Added
+
+- **Profiles:** Administrators can assign separate movie and TV maturity limits to users. Browsing and requests apply those limits, and titles with missing or unrecognized U.S. ratings are excluded while a limit is active.
+  - **Action required:** set movie and TV maturity rating limits
+
+#### Fixed
+
+- **Music:** Discography requests now detect MP3 and FLAC services from their configured music quality, including lossless profiles that do not mention FLAC by name.
+  - **Action required:** recognize configured music formats when requesting a discography
+- **Servarr:** A single Radarr or Sonarr instance can now report installed 4K movies and episodes as 4K, while SeerrNG keeps HD availability separate by reading each file's resolution.
+
+### 🚀 Features
+- Add per-user video maturity limits - ([8857cb7](https://github.com/snapetech-org/seerrng/commit/8857cb7c1fd33544d6db54fdca6fb37c51b013d6))
+
+### 🐛 Bug Fixes
+- *(servarr)* Classify single-instance 4K files by resolution - ([1b7adce](https://github.com/snapetech-org/seerrng/commit/1b7adce6cc1eaed08f43f30e76ae4a58da2b446b))
+- Detect music service quality in discography requests - ([472c8ae](https://github.com/snapetech-org/seerrng/commit/472c8ae3f1f0321af1c89e7f88981b01cecabac9))
+
+### 📖 Documentation
+- Refresh README and upstream retirement matrix - ([c043518](https://github.com/snapetech-org/seerrng/commit/c043518c03d0574d7a52df1489d63fc0272444a8))
+
+### 🧪 Testing
+- *(sonarr)* Relax season mapping payload assertion - ([4c1cecc](https://github.com/snapetech-org/seerrng/commit/4c1cecc6506d98167438b57fd2331514a635584a))
+- *(sonarr)* Include season type in retry payload - ([2a93263](https://github.com/snapetech-org/seerrng/commit/2a932635e8d252371b0d2f486d176a8f1a3b981a))
+- *(ui)* Bound watchlist preview AST assertion - ([a970455](https://github.com/snapetech-org/seerrng/commit/a970455e35f370c71e94bc66cf8c96d7dec684ba))
+- Mock maturity policy for collection routes - ([793e276](https://github.com/snapetech-org/seerrng/commit/793e276541496aafa6f1b9c04e2f571ceb47f10a))
+
 ## [3.60.0](https://github.com/snapetech-org/seerrng/compare/v3.59.0..v3.60.0) - 2026-10-16
 
 ### User-facing changes
