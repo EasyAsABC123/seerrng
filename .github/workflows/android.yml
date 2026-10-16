@@ -56,7 +56,7 @@ jobs:
             --device pixel_2 \
             --force
           test -f "$ANDROID_AVD_HOME/seerrng-api36.ini"
-          emulator -list-avds | grep -Fxq 'seerrng-api36'
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fxq 'seerrng-api36'
           echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
 
       - name: Run unit and emulator tests, then build debug APK
