@@ -36,10 +36,10 @@
     <string name="download_external_server">For safety, downloads must come from the selected SeerrNG server.</string>
     <string name="download_permission_denied">Storage permission is needed to save downloads on this Android version.</string>
     <string name="download_already_waiting">Finish the pending download permission request first.</string>
-    <string name="no_ads_description">One purchase removes in-app ads for your Google Play account. The local price is shown before you buy.</string>
+    <string name="no_ads_description">One purchase removes in-app ads for your Google Play account. Google Play shows your local price before you buy.</string>
     <string name="remove_ads">Remove Ads</string>
     <string name="remove_ads_with_price">Remove Ads · %1$s once</string>
-    <string name="restore_purchase">Restore</string>
+    <string name="restore_purchase">Restore purchase</string>
     <string name="no_ads_unlocked">Lifetime no-ads unlock is active for this Google Play account.</string>
     <string name="ad_privacy_options">Ad privacy options</string>
     <string name="no_ads_purchase_unavailable">Google Play billing is unavailable here. The one-time no-ads purchase is offered by the Google Play version.</string>

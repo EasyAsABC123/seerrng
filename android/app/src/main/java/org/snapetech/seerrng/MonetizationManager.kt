@@ -21,7 +21,7 @@ import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
-import com.google.android.gms.ads.mediation.admob.AdMobAdapter
+import com.google.ads.mediation.admob.AdMobAdapter
 import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
@@ -74,6 +74,7 @@ internal class MonetizationManager(
     }
 
     fun onResume() {
+        if (released) return
         adView?.resume()
         connectBilling()
         if (BuildConfig.BILLING_ENABLED && billingClient?.isReady == true) {
@@ -96,6 +97,7 @@ internal class MonetizationManager(
     }
 
     fun purchaseNoAds() {
+        if (released) return
         if (!BuildConfig.BILLING_ENABLED) {
             onMessage(R.string.no_ads_product_unavailable)
             return
@@ -110,14 +112,15 @@ internal class MonetizationManager(
 
         queryProductDetails { details ->
             val offer = details?.oneTimePurchaseOfferDetailsList?.firstOrNull()
-            if (details == null || offer == null) {
+            val offerToken = offer?.offerToken?.takeIf(String::isNotBlank)
+            if (details == null || offerToken == null) {
                 onMessage(R.string.no_ads_product_unavailable)
                 return@queryProductDetails
             }
 
             val productParams = BillingFlowParams.ProductDetailsParams.newBuilder()
                 .setProductDetails(details)
-                .setOfferToken(offer.offerToken)
+                .setOfferToken(offerToken)
                 .build()
             val result = client.launchBillingFlow(
                 activity,
@@ -132,6 +135,7 @@ internal class MonetizationManager(
     }
 
     fun restoreNoAds() {
+        if (released) return
         if (!BuildConfig.BILLING_ENABLED) {
             onMessage(R.string.no_ads_purchase_unavailable)
             return
@@ -154,6 +158,7 @@ internal class MonetizationManager(
         }
 
         UserMessagingPlatform.showPrivacyOptionsForm(activity) { error ->
+            if (released) return@showPrivacyOptionsForm
             if (error != null) onMessage(R.string.ad_privacy_unavailable)
             updatePrivacyOptionsVisibility()
             updateBanner()
@@ -174,7 +179,7 @@ internal class MonetizationManager(
         client.startConnection(object : com.android.billingclient.api.BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 billingConnecting = false
-                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                if (!released && billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                     queryOwnedPurchases(manualRestore = false)
                     queryProductDetails()
                 }
@@ -202,6 +207,7 @@ internal class MonetizationManager(
             .build()
 
         client.queryProductDetailsAsync(params) { result, detailsResult ->
+            if (released) return@queryProductDetailsAsync
             val details = if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 detailsResult.productDetailsList.firstOrNull()
             } else {
@@ -219,6 +225,7 @@ internal class MonetizationManager(
             .setProductType(BillingClient.ProductType.INAPP)
             .build()
         client.queryPurchasesAsync(params) { result, purchases ->
+            if (released) return@queryPurchasesAsync
             if (result.responseCode != BillingClient.BillingResponseCode.OK) return@queryPurchasesAsync
 
             val wasUnlocked = noAdsUnlocked
@@ -235,6 +242,7 @@ internal class MonetizationManager(
     }
 
     private fun onPurchasesUpdated(result: BillingResult, purchases: List<Purchase>?) {
+        if (released) return
         when {
             result.responseCode == BillingClient.BillingResponseCode.OK && purchases != null -> {
                 val wasUnlocked = noAdsUnlocked
@@ -256,7 +264,7 @@ internal class MonetizationManager(
     }
 
     private fun applyPurchaseState(purchases: List<Purchase>) {
-        val records = purchases.map(Purchase::toStorePurchase)
+        val records = purchases.map { it.toStorePurchase() }
         purchases.filter { purchase ->
             MonetizationPolicy.shouldAcknowledge(purchase.toStorePurchase())
         }.forEach(::acknowledgePurchase)
@@ -295,14 +303,21 @@ internal class MonetizationManager(
             activity,
             parameters,
             {
+                if (released || !browsingServer || activity.isFinishing || activity.isDestroyed) {
+                    consentRequestInProgress = false
+                    updatePrivacyOptionsVisibility()
+                    return@requestConsentInfoUpdate
+                }
                 UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { _ ->
                     consentRequestInProgress = false
+                    if (released) return@loadAndShowConsentFormIfRequired
                     updatePrivacyOptionsVisibility()
                     initializeMobileAdsIfAllowed()
                 }
             },
             {
                 consentRequestInProgress = false
+                if (released) return@requestConsentInfoUpdate
                 updatePrivacyOptionsVisibility()
                 initializeMobileAdsIfAllowed()
             },
@@ -319,9 +334,11 @@ internal class MonetizationManager(
 
         mobileAdsInitializing = true
         MobileAds.initialize(activity) {
-            mobileAdsInitializing = false
-            mobileAdsInitialized = true
-            updateBanner()
+            activity.runOnUiThread {
+                mobileAdsInitializing = false
+                mobileAdsInitialized = true
+                updateBanner()
+            }
         }
     }
 
@@ -332,6 +349,7 @@ internal class MonetizationManager(
     }
 
     private fun updateBanner() {
+        if (released) return
         val allowedByApp = MonetizationPolicy.shouldShowBanner(
             adsEnabled = BuildConfig.MONETIZATION_ENABLED,
             browsingServer = browsingServer,
@@ -347,16 +365,26 @@ internal class MonetizationManager(
         bannerRequestPending = true
         adContainer.visibility = View.GONE
         adContainer.post {
-            if (released || adContainer.width <= 0 || !browsingServer || noAdsUnlocked || !mobileAdsInitialized) {
+            if (released ||
+                !BuildConfig.MONETIZATION_ENABLED ||
+                consentInformation?.canRequestAds() != true ||
+                adView != null ||
+                adContainer.width <= 0 ||
+                !browsingServer ||
+                noAdsUnlocked ||
+                !mobileAdsInitialized
+            ) {
                 bannerRequestPending = false
                 return@post
             }
 
             val density = activity.resources.displayMetrics.density
             val widthDp = (adContainer.width / density).toInt().coerceAtLeast(1)
+            @Suppress("DEPRECATION")
+            val bannerSize = AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(activity, widthDp)
             val view = AdView(activity).apply {
                 adUnitId = BuildConfig.ADMOB_BANNER_AD_UNIT_ID
-                setAdSize(AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, widthDp))
+                setAdSize(bannerSize)
                 adListener = object : AdListener() {
                     override fun onAdLoaded() {
                         bannerRequestPending = false
