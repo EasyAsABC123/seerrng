@@ -1,10 +1,19 @@
 import type { DVRSettings } from '@server/lib/settings';
 import { normalizeStashDbId } from '@server/lib/stashdbIdentity';
+import {
+  fetchSafeRemoteImage,
+  MAX_SAFE_REMOTE_IMAGE_BYTES,
+  normalizeSafeRasterImage,
+  type SafeRemoteImage,
+} from '@server/utils/safeRemoteImage';
 import ServarrBase, {
+  isServarrServiceUrl,
   MAX_SERVARR_LIBRARY_RESPONSE_BYTES,
   MAX_SERVARR_LIBRARY_RESULTS,
   MAX_SERVARR_LOOKUP_RESULTS,
+  sanitizeServarrImages,
   sanitizeServarrRecordArray,
+  type ServarrImage,
 } from './base';
 
 const MAX_SCENE_TEXT_LENGTH = 10_000;
@@ -17,6 +26,20 @@ const text = (value: unknown): string =>
   typeof value === 'string' ? value.slice(0, MAX_SCENE_TEXT_LENGTH).trim() : '';
 const integer = (value: unknown): number =>
   Number.isSafeInteger(value) ? (value as number) : 0;
+const stringArray = (value: unknown, maximum = 100): string[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, maximum)
+    .flatMap((item) => (typeof item === 'string' ? [text(item)] : []))
+    .filter(Boolean);
+const imageUrl = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length <= 2_048 ? value : undefined;
+const addedDate = (value: unknown): string | undefined => {
+  if (typeof value !== 'string' || value.length > 100) return undefined;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toISOString()
+    : undefined;
+};
 
 export interface WhisparrScene {
   id: number;
@@ -25,6 +48,10 @@ export interface WhisparrScene {
   year?: number;
   overview?: string;
   studio?: string;
+  posterUrl?: string;
+  images: ServarrImage[];
+  performerNames: string[];
+  added?: string;
   monitored: boolean;
   hasFile: boolean;
   path?: string;
@@ -33,7 +60,15 @@ export interface WhisparrScene {
 
 export type WhisparrSceneLookup = Pick<
   WhisparrScene,
-  'foreignId' | 'title' | 'year' | 'overview' | 'studio'
+  | 'foreignId'
+  | 'title'
+  | 'year'
+  | 'overview'
+  | 'studio'
+  | 'posterUrl'
+  | 'images'
+  | 'performerNames'
+  | 'hasFile'
 >;
 
 export interface WhisparrAddSceneOptions {
@@ -49,6 +84,7 @@ export interface WhisparrAddSceneOptions {
 
 const sanitizeScene = (value: unknown): WhisparrScene | undefined => {
   if (!isRecord(value)) return undefined;
+  if (value.itemType && value.itemType !== 'scene') return undefined;
   const foreignId = normalizeStashDbId(value.foreignId);
   const title = text(value.title);
   const id = integer(value.id);
@@ -61,6 +97,10 @@ const sanitizeScene = (value: unknown): WhisparrScene | undefined => {
     year: integer(value.year) || undefined,
     overview: text(value.overview) || undefined,
     studio: text(value.studio) || undefined,
+    posterUrl: imageUrl(value.remotePoster),
+    images: sanitizeServarrImages(value.images),
+    performerNames: stringArray(value.performerNames),
+    added: addedDate(value.added),
     monitored: value.monitored === true,
     hasFile: value.hasFile === true,
     path: text(value.path) || undefined,
@@ -81,13 +121,24 @@ const sanitizeLookup = (value: unknown): WhisparrSceneLookup | undefined => {
     title,
     year: integer(value.year) || undefined,
     overview: text(value.overview) || undefined,
-    studio: text(value.studio) || undefined,
+    studio: text(value.studioTitle ?? value.studio) || undefined,
+    posterUrl: imageUrl(value.remotePoster),
+    images: sanitizeServarrImages(value.images),
+    performerNames: stringArray(value.performerNames),
+    hasFile: value.hasFile === true || value.isAvailable === true,
   };
 };
 
 class WhisparrAPI extends ServarrBase<{ movieId: number }> {
+  private readonly coverBaseUrl: string;
+
   constructor({ url, apiKey }: { url: string; apiKey: string }) {
     super({ url, apiKey, cacheName: 'whisparr', apiName: 'Whisparr' });
+    const parsedUrl = new URL(url);
+    parsedUrl.pathname = parsedUrl.pathname.replace(/\/api\/v\d+\/?$/i, '');
+    parsedUrl.search = '';
+    parsedUrl.hash = '';
+    this.coverBaseUrl = parsedUrl.toString().replace(/\/$/, '');
   }
 
   public searchScenes = async (
@@ -148,6 +199,73 @@ class WhisparrAPI extends ServarrBase<{ movieId: number }> {
       const normalized = sanitizeScene(scene);
       return normalized ? [normalized] : [];
     });
+  };
+
+  public getSceneCover = async (
+    stashDbId: string
+  ): Promise<SafeRemoteImage> => {
+    const scene = await this.getSceneByStashDbId(stashDbId);
+    if (!scene) throw new Error('[Whisparr] Scene cover was not found.');
+
+    const coverImages = scene.images.filter((image) => {
+      const coverType = image.coverType?.toLowerCase();
+      return !coverType || coverType === 'poster' || coverType === 'cover';
+    });
+    const imageUrls = [
+      ...coverImages.flatMap((image) => [image.url, image.remoteUrl]),
+      scene.posterUrl,
+    ].filter((value): value is string => Boolean(value));
+    const candidates = [
+      ...new Set(
+        imageUrls.flatMap((value) => {
+          try {
+            if (value.startsWith('/') && !value.startsWith('//')) {
+              const serviceUrl = new URL(this.coverBaseUrl);
+              const basePath = serviceUrl.pathname.replace(/\/$/, '');
+              if (
+                basePath &&
+                (value === basePath || value.startsWith(`${basePath}/`))
+              ) {
+                return [`${serviceUrl.origin}${value}`];
+              }
+              return [`${this.coverBaseUrl}${value}`];
+            }
+            return [new URL(value, `${this.coverBaseUrl}/`).toString()];
+          } catch {
+            return [];
+          }
+        })
+      ),
+    ];
+    let lastError: unknown;
+
+    for (const coverUrl of candidates) {
+      try {
+        if (!isServarrServiceUrl(coverUrl, this.coverBaseUrl)) {
+          return await fetchSafeRemoteImage(coverUrl);
+        }
+
+        const response = await this.axios.get<ArrayBuffer>(coverUrl, {
+          responseType: 'arraybuffer',
+          maxContentLength: MAX_SAFE_REMOTE_IMAGE_BYTES,
+          maxBodyLength: MAX_SAFE_REMOTE_IMAGE_BYTES,
+          headers: { Accept: 'image/*' },
+        });
+        return normalizeSafeRasterImage(
+          response.data,
+          response.headers['content-type']
+        );
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw new Error(
+      `[Whisparr] Failed to retrieve scene cover: ${
+        lastError instanceof Error ? lastError.message : 'No cover was found'
+      }`,
+      { cause: lastError }
+    );
   };
 
   public addScene = async (
