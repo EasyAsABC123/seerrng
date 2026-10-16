@@ -137,9 +137,11 @@ class ServerManagementTest {
                 port = 5055,
                 isHttps = false,
             )
+            val ipv6Uri = Uri.parse("http://[2001:db8::1]:5055/seerrng/api/download/42")
             assertTrue(
+                "IPv6 URLs must be parsed from the encoded authority on old Android releases",
                 activity.isSameServerDownload(
-                    Uri.parse("http://[2001:db8::1]:5055/seerrng/api/download/42"),
+                    ipv6Uri,
                     ipv6Address,
                 ),
             )

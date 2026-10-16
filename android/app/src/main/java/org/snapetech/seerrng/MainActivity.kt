@@ -37,6 +37,8 @@ import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 
+private data class UriHostPort(val host: String, val port: Int?)
+
 class MainActivity : Activity() {
     private lateinit var serverStore: ServerStore
     private lateinit var serverPicker: View
@@ -365,12 +367,12 @@ class MainActivity : Activity() {
 
     internal fun isSameServerDownload(uri: Uri, address: ParsedServerAddress): Boolean {
         val expectedScheme = if (address.isHttps) "https" else "http"
-        if (uri.scheme?.lowercase() != expectedScheme || !hasHost(uri, address.host)) {
-            return false
-        }
+        if (uri.scheme?.lowercase() != expectedScheme) return false
+        val endpoint = uriHostPort(uri) ?: return false
+        if (!endpoint.host.equals(address.host, ignoreCase = true)) return false
 
         val expectedPort = address.port ?: if (address.isHttps) 443 else 80
-        val actualPort = uri.port.takeIf { it != -1 } ?: if (address.isHttps) 443 else 80
+        val actualPort = endpoint.port ?: if (address.isHttps) 443 else 80
         if (actualPort != expectedPort) return false
 
         val basePath = Uri.parse(address.url).encodedPath.orEmpty().trimEnd('/')
@@ -535,10 +537,10 @@ class MainActivity : Activity() {
             "https" -> return false
             "http" -> {
                 val active = activeAddress ?: return true
-                val sameHost = hasHost(uri, active.host)
-                val uriPort = uri.port.takeIf { it != -1 }
+                val endpoint = uriHostPort(uri)
+                val sameHost = endpoint?.host.equals(active.host, ignoreCase = true)
                 val expectedPort = active.port ?: if (active.isHttps) 443 else 80
-                val samePort = (uriPort ?: 80) == expectedPort
+                val samePort = (endpoint?.port ?: 80) == expectedPort
                 if (!active.isHttps && sameHost && samePort) return false
                 if (userGesture) openExternal(uri)
                 return true
@@ -552,10 +554,38 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun hasHost(uri: Uri, expectedHost: String): Boolean {
-        val host = uri.host ?: return false
-        return host.removePrefix("[").removeSuffix("]")
-            .equals(expectedHost.removePrefix("[").removeSuffix("]"), ignoreCase = true)
+    private fun uriHostPort(uri: Uri): UriHostPort? {
+        val authority = uri.encodedAuthority ?: return null
+        if ('@' in authority) return null
+
+        val host: String
+        val port: Int?
+        if (authority.startsWith("[")) {
+            val closingBracket = authority.indexOf(']')
+            if (closingBracket <= 1) return null
+            host = Uri.decode(authority.substring(1, closingBracket))
+            val suffix = authority.substring(closingBracket + 1)
+            port = when {
+                suffix.isEmpty() -> null
+                !suffix.startsWith(":") || suffix.length == 1 -> return null
+                else -> suffix.substring(1).toIntOrNull() ?: return null
+            }
+        } else {
+            val colon = authority.lastIndexOf(':')
+            if (colon == -1) {
+                host = Uri.decode(authority)
+                port = null
+            } else {
+                if (authority.indexOf(':') != colon) return null
+                host = Uri.decode(authority.substring(0, colon))
+                val portText = authority.substring(colon + 1)
+                if (portText.isEmpty()) return null
+                port = portText.toIntOrNull() ?: return null
+            }
+        }
+
+        if (host.isBlank() || port != null && port !in 1..65535) return null
+        return UriHostPort(host, port)
     }
 
     private fun openExternal(uri: Uri) {
