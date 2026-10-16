@@ -39,6 +39,9 @@ jobs:
 
       - name: Install Android SDK and emulator
         run: |
+          mkdir -p "$RUNNER_TEMP/android-avd"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           sdkmanager \
             'platforms;android-36' \
             'build-tools;36.0.0' \
