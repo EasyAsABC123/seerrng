@@ -2421,6 +2421,14 @@ export class MediaRequest {
             selectedSonarr?.activeLanguageProfileId)
           : selectedSonarr?.activeLanguageProfileId
         : undefined;
+    const metadataLanguageId =
+      requestBody.mediaType === MediaType.TV && useAdvancedOptions
+        ? requestBody.metadataLanguageId
+        : undefined;
+    const sonarrSeasonType =
+      requestBody.mediaType === MediaType.TV && useAdvancedOptions
+        ? requestBody.sonarrSeasonType
+        : undefined;
 
     const mediaLanguagePreference = getPreferredLanguage(
       requestUser.settings?.preferredLanguages,
@@ -2962,6 +2970,8 @@ export class MediaRequest {
           profileId: profileId,
           rootFolder: rootFolder,
           languageProfileId,
+          metadataLanguageId,
+          sonarrSeasonType,
           tags: tags,
           serviceTargets:
             serverId === undefined
@@ -3155,6 +3165,12 @@ export class MediaRequest {
 
   @Column({ nullable: true })
   public languageProfileId: number;
+
+  @Column({ type: 'integer', nullable: true })
+  public metadataLanguageId?: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  public sonarrSeasonType?: string | null;
 
   @Column({ nullable: true })
   public metadataProfileId: number;

@@ -105,6 +105,21 @@ describe('request status routes behind the OpenAPI validator', () => {
     assert.strictEqual(response.status, 200, JSON.stringify(response.body));
   });
 
+  it('allows an explicit Sonarr v5 season order on a retry mapping', async () => {
+    const response = await request(createValidatedApp())
+      .post('/api/v1/request/31/retry')
+      .send({
+        tvdbId: 184871,
+        seasonType: 'absolute',
+        seasonMappings: [
+          { seasonNumber: 1, externalSeasonNumber: 12 },
+          { seasonNumber: 2, externalSeasonNumber: 13 },
+        ],
+      });
+
+    assert.strictEqual(response.status, 200, JSON.stringify(response.body));
+  });
+
   it('allows an empty optional request retry body', async () => {
     const response = await request(createValidatedApp())
       .post('/api/v1/request/31/retry')

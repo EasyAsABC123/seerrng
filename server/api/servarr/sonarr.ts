@@ -38,6 +38,32 @@ const integerArray = (value: unknown): number[] =>
     .slice(0, MAX_SONARR_NESTED_RESULTS)
     .filter((item): item is number => Number.isSafeInteger(item));
 
+const sanitizeSonarrSeasonTypes = (value: unknown): SonarrSeasonType[] =>
+  (Array.isArray(value) ? value : []).slice(0, 50).flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const name = text(item.name);
+    const type = text(item.type);
+    if (!name || !type) return [];
+    return [
+      {
+        name,
+        type,
+        seasonNumbers: integerArray(item.seasonNumbers).filter(
+          (seasonNumber) => seasonNumber >= 0 && seasonNumber <= 10_000
+        ),
+      },
+    ];
+  });
+
+const sanitizeSonarrMetadataLanguage = (
+  value: unknown
+): SonarrMetadataLanguage | undefined => {
+  if (!isRecord(value) || !Number.isSafeInteger(value.id)) return undefined;
+  const id = value.id as number;
+  const name = text(value.name);
+  return id >= 0 && name ? { id, name } : undefined;
+};
+
 type SonarrApiVersion = 'v3' | 'v5';
 
 const SONARR_API_VERSION_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -103,6 +129,10 @@ export const sanitizeSonarrSeries = (
   if (tvdbId <= 0 || !title) return undefined;
   const stats = isRecord(value.statistics) ? value.statistics : {};
   const ratings = isRecord(value.ratings) ? value.ratings : {};
+  const language = sanitizeSonarrMetadataLanguage(value.language);
+  const originalLanguage = sanitizeSonarrMetadataLanguage(
+    value.originalLanguage
+  );
   const seriesType = ['standard', 'daily', 'anime'].includes(
     String(value.seriesType)
   )
@@ -141,6 +171,24 @@ export const sanitizeSonarrSeries = (
     firstAired: text(value.firstAired),
     lastInfoSync: text(value.lastInfoSync) || undefined,
     seriesType,
+    ...(language ? { language } : {}),
+    ...(originalLanguage ? { originalLanguage } : {}),
+    seasonType: text(value.seasonType) || undefined,
+    seasonTypes: sanitizeSonarrSeasonTypes(value.seasonTypes),
+    malIds: integerArray(value.malIds).filter((id) => id > 0),
+    aniListIds: integerArray(value.aniListIds).filter((id) => id > 0),
+    originalCountry: text(value.originalCountry) || undefined,
+    originalTitle: text(value.originalTitle) || undefined,
+    alternateTitles: (Array.isArray(value.alternateTitles)
+      ? value.alternateTitles
+      : []
+    )
+      .slice(0, 100)
+      .flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const title = text(item.title);
+        return title ? [title] : [];
+      }),
     cleanTitle: text(value.cleanTitle),
     imdbId: text(value.imdbId),
     titleSlug: text(value.titleSlug),
@@ -180,8 +228,21 @@ export const sanitizeSonarrSeries = (
       episodeFileCount: integer(stats.episodeFileCount),
       episodeCount: integer(stats.episodeCount),
       totalEpisodeCount: integer(stats.totalEpisodeCount),
+      monitoredEpisodeCount: integer(stats.monitoredEpisodeCount),
       sizeOnDisk: finiteNumber(stats.sizeOnDisk),
       releaseGroups: textArray(stats.releaseGroups),
+      releaseTypes: textArray(stats.releaseTypes),
+      episodeFileQualities: (Array.isArray(stats.episodeFileQualities)
+        ? stats.episodeFileQualities
+        : []
+      )
+        .slice(0, 50)
+        .flatMap((item) => {
+          if (!isRecord(item)) return [];
+          const quality = isRecord(item.quality) ? item.quality : item;
+          const name = text(quality.name);
+          return name ? [name] : [];
+        }),
       percentOfEpisodes: finiteNumber(stats.percentOfEpisodes),
     },
   };
@@ -260,6 +321,60 @@ export interface SonarrSeason {
     percentOfEpisodes: number;
   };
 }
+
+export interface SonarrSeasonType {
+  name: string;
+  type: string;
+  seasonNumbers: number[];
+}
+
+export interface SonarrMetadataLanguage {
+  id: number;
+  name: string;
+}
+
+export interface SonarrHistoryEvent {
+  id: number;
+  date: string;
+  eventType: string;
+  sourceTitle: string;
+  seriesTitle?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  episodeTitle?: string;
+}
+
+export const sanitizeSonarrHistory = (value: unknown): SonarrHistoryEvent[] => {
+  const events = sanitizeServarrRecordArray<Record<string, unknown>>(
+    value,
+    MAX_SONARR_NESTED_RESULTS
+  ).flatMap((item) => {
+    const id = integer(item.id);
+    const date = text(item.date);
+    if (id <= 0 || !date || !Number.isFinite(Date.parse(date))) return [];
+    const episode = isRecord(item.episode) ? item.episode : {};
+    const seasonNumber = integer(episode.seasonNumber);
+    const episodeNumber = integer(episode.episodeNumber);
+    return [
+      {
+        id,
+        date,
+        eventType: text(item.eventType),
+        sourceTitle: text(item.sourceTitle),
+        ...(Number.isSafeInteger(episode.seasonNumber) && seasonNumber >= 0
+          ? { seasonNumber }
+          : {}),
+        ...(Number.isSafeInteger(episode.episodeNumber) && episodeNumber > 0
+          ? { episodeNumber }
+          : {}),
+        ...(text(episode.title) ? { episodeTitle: text(episode.title) } : {}),
+      },
+    ];
+  });
+  return events
+    .sort((left, right) => Date.parse(right.date) - Date.parse(left.date))
+    .slice(0, 100);
+};
 interface EpisodeResult {
   seriesId: number;
   episodeFileId: number;
@@ -306,6 +421,15 @@ export interface SonarrSeries {
   firstAired: string;
   lastInfoSync?: string;
   seriesType: 'standard' | 'daily' | 'anime';
+  language?: SonarrMetadataLanguage;
+  originalLanguage?: SonarrMetadataLanguage;
+  seasonType?: string;
+  seasonTypes?: SonarrSeasonType[];
+  malIds?: number[];
+  aniListIds?: number[];
+  originalCountry?: string;
+  originalTitle?: string;
+  alternateTitles?: string[];
   cleanTitle: string;
   imdbId: string;
   titleSlug: string;
@@ -320,6 +444,7 @@ export interface SonarrSeries {
   };
   qualityProfileId: number;
   id?: number;
+  sonarrServerId?: number;
   rootFolderPath?: string;
   addOptions?: {
     ignoreEpisodesWithFiles?: boolean;
@@ -331,8 +456,11 @@ export interface SonarrSeries {
     episodeFileCount: number;
     episodeCount: number;
     totalEpisodeCount: number;
+    monitoredEpisodeCount?: number;
     sizeOnDisk: number;
     releaseGroups: string[];
+    releaseTypes?: string[];
+    episodeFileQualities?: string[];
     percentOfEpisodes: number;
   };
 }
@@ -347,6 +475,8 @@ export interface AddSeriesOptions {
   title: string;
   profileId: number;
   languageProfileId?: number;
+  metadataLanguageId?: number;
+  seasonType?: string;
   seasons: number[];
   episodeSelections?: SeasonEpisodeSelection[];
   seasonFolder: boolean;
@@ -570,6 +700,35 @@ class SonarrAPI extends ServarrBase<{
     }
   }
 
+  private async updateSeriesV5Metadata(
+    seriesId: number,
+    changes: {
+      seasonType?: string;
+      language?: SonarrMetadataLanguage;
+    }
+  ): Promise<SonarrSeries> {
+    const currentResponse = await this.request<unknown>(
+      'GET',
+      `/series/${seriesId}`
+    );
+    if (
+      !isRecord(currentResponse.data) ||
+      integer(currentResponse.data.id) !== seriesId
+    ) {
+      throw new Error('Sonarr returned an invalid series for metadata update.');
+    }
+
+    const payload = { ...currentResponse.data, ...changes };
+    const response = await this.request<unknown>(
+      'PUT',
+      `/series/${seriesId}`,
+      payload
+    );
+    return requireSonarrSeries(
+      isRecord(response.data) ? { ...payload, ...response.data } : payload
+    );
+  }
+
   public async getSeries({
     strict = false,
     tvdbId,
@@ -718,8 +877,13 @@ class SonarrAPI extends ServarrBase<{
     );
   }
 
-  public async getSeriesByTitle(title: string): Promise<SonarrSeries[]> {
+  public async getSeriesByTitle(
+    title: string,
+    languageId?: number
+  ): Promise<SonarrSeries[]> {
     try {
+      const apiVersion =
+        languageId !== undefined ? await this.getApiVersion() : undefined;
       const response = await this.request<SonarrSeries[]>(
         'GET',
         '/series/lookup',
@@ -727,6 +891,9 @@ class SonarrAPI extends ServarrBase<{
         {
           params: {
             term: title,
+            ...(languageId !== undefined && apiVersion === 'v5'
+              ? { language: languageId }
+              : {}),
           },
         }
       );
@@ -836,8 +1003,56 @@ class SonarrAPI extends ServarrBase<{
 
   public async addSeries(options: AddSeriesOptions): Promise<SonarrSeries> {
     try {
-      const series = await this.getSeriesByTvdbId(options.tvdbid);
+      let series = await this.getSeriesByTvdbId(options.tvdbid);
       const apiVersion = await this.getApiVersion();
+      if (
+        options.seasonType &&
+        apiVersion !== 'v5' &&
+        options.seasonType !== 'standard'
+      ) {
+        throw new Error('Alternate season ordering requires Sonarr v5.');
+      }
+      if (
+        options.seasonType &&
+        apiVersion === 'v5' &&
+        options.seasonType !== 'standard' &&
+        !(series.seasonTypes ?? []).some(
+          (item) => item.type === options.seasonType
+        )
+      ) {
+        throw new Error('The requested Sonarr season order is not available.');
+      }
+
+      const metadataLanguage =
+        apiVersion === 'v5' && options.metadataLanguageId !== undefined
+          ? (await this.getMetadataLanguages()).find(
+              (language) => language.id === options.metadataLanguageId
+            )
+          : undefined;
+      if (options.metadataLanguageId !== undefined && !metadataLanguage) {
+        throw new Error(
+          'The requested Sonarr metadata language is not available.'
+        );
+      }
+
+      const metadataLanguageChanged =
+        metadataLanguage !== undefined &&
+        series.language?.id !== metadataLanguage.id;
+      const seasonTypeChanged =
+        options.seasonType !== undefined &&
+        options.seasonType !== series.seasonType;
+
+      if (
+        series.id &&
+        apiVersion === 'v5' &&
+        (seasonTypeChanged || metadataLanguageChanged)
+      ) {
+        await this.updateSeriesV5Metadata(series.id, {
+          ...(options.seasonType ? { seasonType: options.seasonType } : {}),
+          ...(metadataLanguage ? { language: metadataLanguage } : {}),
+        });
+        series = await this.getSeriesById(series.id);
+      }
       const fullySelectedSeasons = options.episodeSelections
         ? options.episodeSelections
             .filter((selection) => selection.episodeNumbers === undefined)
@@ -992,6 +1207,13 @@ class SonarrAPI extends ServarrBase<{
       if (apiVersion === 'v3' && options.languageProfileId !== undefined) {
         createSeriesPayload.languageProfileId = options.languageProfileId;
       }
+      if (apiVersion === 'v5') {
+        if (metadataLanguage) createSeriesPayload.language = metadataLanguage;
+        const seasonType = options.seasonType ?? series.seasonType;
+        if (seasonType) {
+          createSeriesPayload.seasonType = seasonType;
+        }
+      }
 
       const createdSeriesResponse = await this.request<SonarrSeries>(
         'POST',
@@ -1134,6 +1356,58 @@ class SonarrAPI extends ServarrBase<{
       );
 
       throw new Error('Failed to get language profiles', { cause: e });
+    }
+  }
+
+  public async getMetadataLanguages(): Promise<SonarrMetadataLanguage[]> {
+    if ((await this.getApiVersion()) !== 'v5') return [];
+    try {
+      const response = await this.request<unknown>('GET', '/language');
+      return sanitizeServarrRecordArray<Record<string, unknown>>(
+        response.data,
+        MAX_SERVARR_CONFIGURATION_RESULTS
+      ).flatMap((item) => {
+        const language = sanitizeSonarrMetadataLanguage(item);
+        return language ? [language] : [];
+      });
+    } catch (e) {
+      logger.error('Unable to retrieve Sonarr metadata languages.', {
+        label: 'Sonarr API',
+        errorMessage: e instanceof Error ? e.message : String(e),
+      });
+      throw new Error('Failed to get metadata languages', { cause: e });
+    }
+  }
+
+  public async getSeriesHistory(
+    seriesId: number,
+    limit = 20
+  ): Promise<SonarrHistoryEvent[] | undefined> {
+    if (!Number.isSafeInteger(seriesId) || seriesId <= 0) {
+      throw new Error('A valid Sonarr series ID is required.');
+    }
+    if ((await this.getApiVersion()) !== 'v5') return undefined;
+    try {
+      const response = await this.request<unknown>(
+        'GET',
+        '/history/series',
+        undefined,
+        {
+          params: { seriesId },
+          maxContentLength: MAX_SERVARR_LIBRARY_RESPONSE_BYTES,
+        }
+      );
+      return sanitizeSonarrHistory(response.data).slice(
+        0,
+        Math.max(1, Math.min(limit, 100))
+      );
+    } catch (e) {
+      logger.error('Unable to retrieve Sonarr series history.', {
+        label: 'Sonarr API',
+        errorMessage: e instanceof Error ? e.message : String(e),
+        seriesId,
+      });
+      throw new Error('Failed to get series history', { cause: e });
     }
   }
 

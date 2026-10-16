@@ -434,6 +434,8 @@ const TvRequestModal = ({
           profileId: requestOverrides?.profile,
           rootFolder: requestOverrides?.folder,
           languageProfileId: requestOverrides?.language,
+          metadataLanguageId: requestOverrides?.metadataLanguage,
+          sonarrSeasonType: requestOverrides?.sonarrSeasonType,
           userId: requestOverrides?.user?.id,
           tags: requestOverrides?.tags,
           seasons: [...selectedSeasons].sort((a, b) => a - b),
@@ -530,6 +532,8 @@ const TvRequestModal = ({
           profileId: requestOverrides.profile,
           rootFolder: requestOverrides.folder,
           languageProfileId: requestOverrides.language,
+          metadataLanguageId: requestOverrides.metadataLanguage,
+          sonarrSeasonType: requestOverrides.sonarrSeasonType,
           userId: requestOverrides?.user?.id,
           tags: requestOverrides.tags,
         };
@@ -1516,6 +1520,7 @@ const TvRequestModal = ({
             key={(selectedIs4k ? '4k' : 'hd') + '-' + qualityRevision}
             type="tv"
             tmdbId={tmdbId}
+            tvdbId={tvdbId ?? data?.externalIds.tvdbId}
             is4k={selectedIs4k}
             allow4kServerSelection={allow4kServerSelection && !editRequest}
             isAnime={isAnime}
@@ -1530,6 +1535,8 @@ const TvRequestModal = ({
                     profile: editRequest.profileId,
                     server: editRequest.serverId,
                     language: editRequest.languageProfileId,
+                    metadataLanguage: editRequest.metadataLanguageId,
+                    sonarrSeasonType: editRequest.sonarrSeasonType,
                     tags: editRequest.tags,
                   }
                 : undefined

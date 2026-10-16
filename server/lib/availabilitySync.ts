@@ -62,6 +62,7 @@ class AvailabilitySync {
 
   private sonarrSeasonsCache: Record<string, SonarrSeason[]>;
   private sonarrTvdbIdCache: Record<string, number>;
+  private sonarrSeasonTypeCache: Record<string, string>;
   private tvdbSeasonMappingCache = new Map<string, SeasonNumberMapping[]>();
   private radarrServers: RadarrSettings[];
   private sonarrServers: SonarrSettings[];
@@ -108,6 +109,7 @@ class AvailabilitySync {
       this.jellyfinEpisodeExistsCache = {};
       this.sonarrSeasonsCache = {};
       this.sonarrTvdbIdCache = {};
+      this.sonarrSeasonTypeCache = {};
       this.tvdbSeasonMappingCache.clear();
 
       logger.info(`Starting availability sync...`, {
@@ -675,6 +677,8 @@ class AvailabilitySync {
           const cacheKey = `${server.id}-${externalServiceId}`;
           this.sonarrSeasonsCache[cacheKey] = sonarr.seasons;
           this.sonarrTvdbIdCache[cacheKey + '-' + is4k] = sonarr.tvdbId;
+          this.sonarrSeasonTypeCache[cacheKey] =
+            sonarr.seasonType ?? 'standard';
 
           if (sonarr.statistics.episodeFileCount > 0) {
             existsInSonarr = true;
@@ -757,8 +761,15 @@ class AvailabilitySync {
       }`;
       const tvdbId =
         this.sonarrTvdbIdCache[cacheKey + '-' + is4k] ?? media.tvdbId;
+      const seasonType = this.sonarrSeasonTypeCache[cacheKey] ?? 'standard';
       const mappings = tvdbId
-        ? await this.getSeasonNumberMappings(media.id, tvdbId, server.id, is4k)
+        ? await this.getSeasonNumberMappings(
+            media.id,
+            tvdbId,
+            server.id,
+            is4k,
+            seasonType
+          )
         : [];
       const externalSeasonNumber = externalSeasonNumberFor(
         season.seasonNumber,
@@ -1129,9 +1140,10 @@ class AvailabilitySync {
     mediaId: number,
     tvdbId: number,
     sonarrServerId: number,
-    is4k: boolean
+    is4k: boolean,
+    seasonType: string
   ): Promise<SeasonNumberMapping[]> {
-    const key = `${mediaId}:${tvdbId}:${sonarrServerId}:${is4k}`;
+    const key = `${mediaId}:${tvdbId}:${sonarrServerId}:${is4k}:${seasonType}`;
     const cached = this.tvdbSeasonMappingCache.get(key);
     if (cached) return cached;
 
@@ -1140,7 +1152,8 @@ class AvailabilitySync {
       mediaId,
       tvdbId,
       sonarrServerId,
-      is4k
+      is4k,
+      seasonType
     );
     this.tvdbSeasonMappingCache.set(key, mappings);
     return mappings;

@@ -41,6 +41,8 @@ export type MediaRequestBody = {
   profileName?: string;
   rootFolder?: string;
   languageProfileId?: number;
+  metadataLanguageId?: number | null;
+  sonarrSeasonType?: string | null;
   metadataProfileId?: number;
   format?: 'ebook' | 'audiobook' | 'both';
   editionId?: string;

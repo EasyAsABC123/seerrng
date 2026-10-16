@@ -17,7 +17,20 @@ Seerr checks these linked servers to determine whether or not media has already 
 ### Radarr/Sonarr Settings
 
 :::warning
-**Radarr v3/v4 and Sonarr v3/v4 are supported. Sonarr 5.0 beta is also supported through its v5 API.** SeerrNG detects the Sonarr version and retries the matching v3 route when a v5 route returns 404. The v5 beta API may change before stable release; v2 Radarr/Sonarr servers are not supported.
+**Radarr v3/v4 and Sonarr v3/v4 are supported. Sonarr 5.0 beta is supported through its v5 API.** SeerrNG detects each Sonarr server's version: v3 and v4 use the v3 API, while v5 uses the v5 API with per-endpoint fallback when a route is unavailable. The [v5 beta API](https://sonarr.tv/docs/api/?api=v5) may change before stable release; back up Sonarr before upgrading because downgrading requires restoring a v4 backup. See the [Sonarr v5 beta announcement](https://forums.sonarr.tv/t/sonarr-v5-beta/41099) for upgrade details. Radarr/Sonarr v2 is not supported.
+
+Sonarr v5 adds request options for the series metadata language and, when the
+series exposes more than one, its season order. These are advanced request
+options and apply to the selected Sonarr server. Metadata language controls
+Sonarr's series metadata; it is separate from an audio language profile. A
+selected season order is retained with the request so season monitoring,
+availability, and any manual season repair use the same numbering.
+
+When a failed TV request needs manual season repair, the mapping dialog shows
+the installed series' order, progress, anime identifiers, and recent history
+when Sonarr v5 provides them. Standard-order seasons are checked against
+official TVDB data. Alternate-order seasons are checked against the selected
+Sonarr series, and the mapping stays scoped to that server and quality.
 ::::
 
 #### Default Server

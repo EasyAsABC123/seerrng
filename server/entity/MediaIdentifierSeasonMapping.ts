@@ -14,12 +14,14 @@ import MediaIdentifier from './MediaIdentifier';
   'mediaIdentifier',
   'sonarrServerId',
   'is4k',
+  'seasonType',
   'seasonNumber',
 ])
 @Unique('UNIQUE_MEDIA_IDENTIFIER_EXTERNAL_SEASON_MAPPING', [
   'mediaIdentifier',
   'sonarrServerId',
   'is4k',
+  'seasonType',
   'externalSeasonNumber',
 ])
 class MediaIdentifierSeasonMapping {
@@ -42,6 +44,9 @@ class MediaIdentifierSeasonMapping {
 
   @Column({ type: 'boolean', default: false })
   public is4k: boolean;
+
+  @Column({ type: 'varchar', default: 'standard' })
+  public seasonType: string;
 
   @Column({ type: 'integer' })
   public seasonNumber: number;

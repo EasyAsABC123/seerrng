@@ -1328,6 +1328,51 @@ const sanitizeMediaRequestBody = (
     return metadataProfileId;
   }
 
+  const metadataLanguageId = parseOptionalRequestOptionId(
+    bodyObject.metadataLanguageId,
+    'metadataLanguageId',
+    true
+  );
+  if ('error' in metadataLanguageId) {
+    return metadataLanguageId;
+  }
+  const sanitizedMetadataLanguageId =
+    bodyObject.metadataLanguageId === null ? null : metadataLanguageId.value;
+
+  const sonarrSeasonType = parseOptionalRequestString(
+    bodyObject.sonarrSeasonType,
+    'sonarrSeasonType',
+    100
+  );
+  if (
+    'error' in sonarrSeasonType ||
+    (sonarrSeasonType.value !== undefined &&
+      !/^[A-Za-z0-9._-]+$/.test(sonarrSeasonType.value))
+  ) {
+    return 'error' in sonarrSeasonType
+      ? sonarrSeasonType
+      : {
+          error: {
+            status: 400,
+            message: 'sonarrSeasonType must be a valid Sonarr order name.',
+          },
+        };
+  }
+  const sanitizedSonarrSeasonType =
+    bodyObject.sonarrSeasonType === null ? null : sonarrSeasonType.value;
+  if (
+    mediaType !== MediaType.TV &&
+    (sanitizedMetadataLanguageId !== undefined ||
+      sanitizedSonarrSeasonType !== undefined)
+  ) {
+    return {
+      error: {
+        status: 400,
+        message: 'Sonarr metadata options are only valid for TV requests.',
+      },
+    };
+  }
+
   const userId = parseOptionalRequestOptionId(bodyObject.userId, 'userId');
   if ('error' in userId) {
     return userId;
@@ -1450,6 +1495,8 @@ const sanitizeMediaRequestBody = (
     profileName: profileName.value,
     rootFolder: rootFolder.value,
     languageProfileId: languageProfileId.value,
+    metadataLanguageId: sanitizedMetadataLanguageId,
+    sonarrSeasonType: sanitizedSonarrSeasonType,
     metadataProfileId: metadataProfileId.value,
     format: format.value,
     preferredEditionId: preferredEditionId.value,
@@ -4461,6 +4508,31 @@ requestRoutes.put<{ requestId: string }>(
                         request.languageProfileId =
                           body.languageProfileId as number;
                       }
+                      if (
+                        (body.metadataLanguageId !== undefined ||
+                          body.sonarrSeasonType !== undefined) &&
+                        !actor.hasPermission(
+                          [
+                            Permission.REQUEST_ADVANCED,
+                            Permission.MANAGE_REQUESTS,
+                          ],
+                          { type: 'or' }
+                        )
+                      ) {
+                        return next({
+                          status: 403,
+                          message:
+                            'You do not have permission to change Sonarr metadata options.',
+                        });
+                      }
+                      if (body.metadataLanguageId !== undefined) {
+                        request.metadataLanguageId = body.metadataLanguageId as
+                          number | null;
+                      }
+                      if (body.sonarrSeasonType !== undefined) {
+                        request.sonarrSeasonType = body.sonarrSeasonType as
+                          string | null;
+                      }
                       if (body.tags !== undefined) {
                         request.tags = body.tags;
                       }
@@ -4737,14 +4809,22 @@ requestRoutes.post<{
 }>('/:requestId/retry', isAuthenticated(), async (req, res, next) => {
   const requestRepository = getRepository(MediaRequest);
   let manualSeasonMapping:
-    { tvdbId: number; mappings: SeasonNumberMapping[] } | undefined;
+    | {
+        tvdbId: number;
+        seasonType: string;
+        mappings: SeasonNumberMapping[];
+      }
+    | undefined;
 
   if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
     const body = req.body as Record<string, unknown>;
     const bodyKeys = Object.keys(body);
     if (bodyKeys.length > 0) {
       if (
-        bodyKeys.some((key) => key !== 'tvdbId' && key !== 'seasonMappings')
+        bodyKeys.some(
+          (key) =>
+            key !== 'tvdbId' && key !== 'seasonType' && key !== 'seasonMappings'
+        )
       ) {
         return next({
           status: 400,
@@ -4753,8 +4833,13 @@ requestRoutes.post<{
       }
 
       const tvdbId = parsePositiveRouteId(body.tvdbId, maxRequestIdValue);
+      const seasonType =
+        body.seasonType === undefined ? 'standard' : body.seasonType;
       if (
         tvdbId === undefined ||
+        typeof seasonType !== 'string' ||
+        seasonType.length > 100 ||
+        !/^[A-Za-z0-9._-]+$/.test(seasonType) ||
         !Array.isArray(body.seasonMappings) ||
         body.seasonMappings.length === 0 ||
         body.seasonMappings.length > maxSeasonCount
@@ -4810,7 +4895,7 @@ requestRoutes.post<{
         externalSeasons.add(externalSeasonNumber);
         mappings.push({ seasonNumber, externalSeasonNumber });
       }
-      manualSeasonMapping = { tvdbId, mappings };
+      manualSeasonMapping = { tvdbId, seasonType, mappings };
     }
   } else if (req.body !== undefined && req.body !== null) {
     return next({ status: 400, message: 'The retry body must be an object.' });
@@ -4894,6 +4979,7 @@ requestRoutes.post<{
               });
             }
 
+            let mappingSonarrServerId: number | undefined;
             if (manualSeasonMapping) {
               if (!actor.hasPermission(Permission.MANAGE_REQUESTS)) {
                 return next({
@@ -4936,47 +5022,6 @@ requestRoutes.post<{
                 });
               }
 
-              let officialSeasons;
-              try {
-                officialSeasons = await (
-                  await Tvdb.getInstance()
-                ).getOfficialSeasons(manualSeasonMapping.tvdbId);
-              } catch {
-                officialSeasons = null;
-              }
-              if (!officialSeasons) {
-                return next({
-                  status: 502,
-                  message: 'Unable to verify official TVDB season data.',
-                });
-              }
-              const officialSeasonNumbers = new Set(
-                officialSeasons.map(({ seasonNumber }) => seasonNumber)
-              );
-              if (
-                manualSeasonMapping.mappings.some(
-                  ({ externalSeasonNumber }) =>
-                    !officialSeasonNumbers.has(externalSeasonNumber)
-                )
-              ) {
-                return next({
-                  status: 400,
-                  message:
-                    'Every mapped TVDB season must exist in the official season list.',
-                });
-              }
-            }
-
-            // this also triggers updating the parent media's status & sending to *arr
-            validateExternalServiceConfiguration(
-              request.type,
-              request.serverId,
-              request.bookFormat,
-              request.is4k
-            );
-
-            let mappingSonarrServerId: number | undefined;
-            if (manualSeasonMapping) {
               const settings = getExternalRuntimeConfig();
               const hasExplicitSonarrServer =
                 request.serverId !== null &&
@@ -5000,7 +5045,81 @@ requestRoutes.post<{
                 });
               }
               mappingSonarrServerId = mappingSonarrServer.id;
+
+              let validSeasonNumbers: Set<number> | undefined;
+              if (manualSeasonMapping.seasonType === 'standard') {
+                let officialSeasons;
+                try {
+                  officialSeasons = await (
+                    await Tvdb.getInstance()
+                  ).getOfficialSeasons(manualSeasonMapping.tvdbId);
+                } catch {
+                  officialSeasons = null;
+                }
+                if (!officialSeasons) {
+                  return next({
+                    status: 502,
+                    message: 'Unable to verify official TVDB season data.',
+                  });
+                }
+                validSeasonNumbers = new Set(
+                  officialSeasons.map(({ seasonNumber }) => seasonNumber)
+                );
+              } else {
+                let selectedSonarrSeries;
+                try {
+                  selectedSonarrSeries = await runWithCurrentServarrService(
+                    'sonarr',
+                    mappingSonarrServer.id,
+                    async (currentSettings) =>
+                      new SonarrAPI({
+                        apiKey: currentSettings.apiKey,
+                        url: SonarrAPI.buildUrl(currentSettings, '/api/v3'),
+                      }).getSeriesByTvdbId(manualSeasonMapping.tvdbId)
+                  );
+                } catch {
+                  selectedSonarrSeries = null;
+                }
+                const selectedOrder = selectedSonarrSeries?.seasonTypes?.find(
+                  (order) => order.type === manualSeasonMapping!.seasonType
+                );
+                if (
+                  !selectedSonarrSeries ||
+                  selectedSonarrSeries.tvdbId !== manualSeasonMapping.tvdbId ||
+                  !selectedOrder?.seasonNumbers.length
+                ) {
+                  return next({
+                    status: 400,
+                    message:
+                      'The selected Sonarr order is unavailable for this series.',
+                  });
+                }
+                validSeasonNumbers = new Set(selectedOrder.seasonNumbers);
+              }
+
+              const allowedSeasonNumbers = validSeasonNumbers;
+              if (
+                !allowedSeasonNumbers ||
+                manualSeasonMapping.mappings.some(
+                  ({ externalSeasonNumber }) =>
+                    !allowedSeasonNumbers.has(externalSeasonNumber)
+                )
+              ) {
+                return next({
+                  status: 400,
+                  message:
+                    'Every mapped season must exist in the selected series order.',
+                });
+              }
             }
+
+            // this also triggers updating the parent media's status & sending to *arr
+            validateExternalServiceConfiguration(
+              request.type,
+              request.serverId,
+              request.bookFormat,
+              request.is4k
+            );
 
             const active = !REQUEST_STATUS_TERMINAL_STAGES.includes(
               currentStatus.stage
@@ -5022,6 +5141,7 @@ requestRoutes.post<{
             request.modifiedBy = actor;
             if (manualSeasonMapping) {
               request.overrideTvdbId = manualSeasonMapping.tvdbId;
+              request.sonarrSeasonType = manualSeasonMapping.seasonType;
               await dataSource.transaction(async (manager) => {
                 await persistTvdbSeasonMappings(
                   manager,
@@ -5029,7 +5149,8 @@ requestRoutes.post<{
                   manualSeasonMapping!.tvdbId,
                   mappingSonarrServerId!,
                   request.is4k,
-                  manualSeasonMapping!.mappings
+                  manualSeasonMapping!.mappings,
+                  manualSeasonMapping!.seasonType
                 );
                 await manager.getRepository(MediaRequest).save(request);
               });

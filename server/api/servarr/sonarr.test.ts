@@ -242,6 +242,54 @@ describe('Sonarr response normalization', () => {
     assert.ok(!('providerSecret' in (series.seasons[0].statistics ?? {})));
   });
 
+  it('keeps bounded Sonarr v5 metadata and identity fields', () => {
+    const series = sanitizeSonarrSeries({
+      id: 7,
+      title: 'Example Anime',
+      tvdbId: 99,
+      language: { id: 4, name: 'Japanese', ignored: true },
+      originalLanguage: { id: 4, name: 'Japanese' },
+      seasonType: 'absolute',
+      seasonTypes: [
+        {
+          name: 'Absolute',
+          type: 'absolute',
+          seasonNumbers: [1, 'invalid', 2],
+          ignored: true,
+        },
+      ],
+      malIds: [12, 'invalid', -1],
+      aniListIds: [34],
+      originalCountry: 'JP',
+      originalTitle: '例',
+      alternateTitles: [{ title: 'Alt' }, { title: '' }, null],
+      statistics: {
+        monitoredEpisodeCount: 2,
+        releaseTypes: ['WEB-DL', 1],
+        episodeFileQualities: [
+          { quality: { name: 'WEB-1080p', id: 3 } },
+          { quality: { id: 4 } },
+        ],
+      },
+    });
+
+    assert.ok(series);
+    assert.deepEqual(series.language, { id: 4, name: 'Japanese' });
+    assert.deepEqual(series.originalLanguage, { id: 4, name: 'Japanese' });
+    assert.equal(series.seasonType, 'absolute');
+    assert.deepEqual(series.seasonTypes, [
+      { name: 'Absolute', type: 'absolute', seasonNumbers: [1, 2] },
+    ]);
+    assert.deepEqual(series.malIds, [12]);
+    assert.deepEqual(series.aniListIds, [34]);
+    assert.equal(series.originalCountry, 'JP');
+    assert.equal(series.originalTitle, '例');
+    assert.deepEqual(series.alternateTitles, ['Alt']);
+    assert.equal(series.statistics.monitoredEpisodeCount, 2);
+    assert.deepEqual(series.statistics.releaseTypes, ['WEB-DL']);
+    assert.deepEqual(series.statistics.episodeFileQualities, ['WEB-1080p']);
+  });
+
   it('rejects unusable series identities and bounds text', () => {
     assert.strictEqual(sanitizeSonarrSeries({ title: 'No ID' }), undefined);
     assert.strictEqual(
@@ -497,6 +545,97 @@ describe('SonarrAPI getSeriesByTmdbId', () => {
   });
 });
 
+describe('Sonarr v5 metadata and history APIs', () => {
+  afterEach(() => mock.restoreAll());
+
+  it('passes a selected language to metadata lookup', async () => {
+    const api = buildSonarr('v5');
+    const get = mock.method(getAxios(api), 'get', async () => ({
+      data: [{ id: 10, title: 'Series', tvdbId: 100 }],
+    }));
+
+    await api.getSeriesByTitle('Series', 4);
+
+    assert.deepEqual(
+      (get.mock.calls[0].arguments[1] as { params?: unknown }).params,
+      { term: 'Series', language: 4 }
+    );
+  });
+
+  it('does not send v5 language parameters to Sonarr v3', async () => {
+    const api = buildSonarr('v3');
+    const get = mock.method(getAxios(api), 'get', async () => ({
+      data: [{ id: 10, title: 'Series', tvdbId: 100 }],
+    }));
+
+    await api.getSeriesByTitle('Series', 4);
+
+    assert.deepEqual(
+      (get.mock.calls[0].arguments[1] as { params?: unknown }).params,
+      { term: 'Series' }
+    );
+  });
+
+  it('returns bounded metadata languages and newest series history', async () => {
+    const api = buildSonarr('v5');
+    const get = mock.method(getAxios(api), 'get', async (url: string) => {
+      if (url.endsWith('/api/v5/language')) {
+        return {
+          data: [
+            { id: 4, name: 'Japanese', ignored: true },
+            { id: 'bad', name: 'Invalid' },
+          ],
+        };
+      }
+      if (url.endsWith('/api/v5/history/series')) {
+        return {
+          data: [
+            {
+              id: 1,
+              date: '2026-01-01T00:00:00Z',
+              eventType: 'grabbed',
+              sourceTitle: 'Older release',
+              episode: { seasonNumber: 1, episodeNumber: 1, title: 'First' },
+            },
+            {
+              id: 2,
+              date: '2026-02-01T00:00:00Z',
+              eventType: 'downloadFolderImported',
+              sourceTitle: 'Newer release',
+              episode: { seasonNumber: 1, episodeNumber: 2, title: 'Second' },
+            },
+            { id: 0, date: '2026-03-01T00:00:00Z' },
+          ],
+        };
+      }
+      throw new Error(`Unexpected Sonarr request: ${url}`);
+    });
+
+    assert.deepEqual(await api.getMetadataLanguages(), [
+      { id: 4, name: 'Japanese' },
+    ]);
+    assert.deepEqual(await api.getSeriesHistory(42, 1), [
+      {
+        id: 2,
+        date: '2026-02-01T00:00:00Z',
+        eventType: 'downloadFolderImported',
+        sourceTitle: 'Newer release',
+        seasonNumber: 1,
+        episodeNumber: 2,
+        episodeTitle: 'Second',
+      },
+    ]);
+    const historyRequest = get.mock.calls.find((call) =>
+      String(call.arguments[0]).endsWith('/api/v5/history/series')
+    );
+    assert.ok(historyRequest);
+    assert.deepEqual(
+      (historyRequest.arguments[1] as { params?: unknown }).params,
+      { seriesId: 42 }
+    );
+  });
+});
+
 const series = (overrides: Partial<SonarrSeries> = {}): SonarrSeries => ({
   id: 42,
   title: 'Test Series',
@@ -747,6 +886,114 @@ describe('SonarrAPI exact episode requests', () => {
       unknown
     >;
     assert.ok(!('languageProfileId' in createPayload));
+  });
+
+  it('adds v5 metadata language and season order to a new series', async () => {
+    const api = buildSonarr('v5');
+    mock.method(api, 'getSeriesByTvdbId', async () =>
+      series({
+        id: undefined,
+        seasonTypes: [
+          { name: 'Standard', type: 'standard', seasonNumbers: [1] },
+          { name: 'Absolute', type: 'absolute', seasonNumbers: [1] },
+        ],
+      })
+    );
+    mock.method(api, 'getMetadataLanguages', async () => [
+      { id: 4, name: 'Japanese' },
+    ]);
+    const post = mock.method(getAxios(api), 'post', async () => ({
+      data: { id: 99, title: 'Test Series', tvdbId: 100 },
+    }));
+
+    await api.addSeries({
+      tvdbid: 100,
+      title: 'Test Series',
+      profileId: 1,
+      metadataLanguageId: 4,
+      seasonType: 'absolute',
+      seasons: [],
+      seasonFolder: true,
+      rootFolderPath: '/tv',
+      seriesType: 'standard',
+    });
+
+    const createPayload = post.mock.calls[0].arguments[1] as Record<
+      string,
+      unknown
+    >;
+    assert.deepEqual(createPayload.language, { id: 4, name: 'Japanese' });
+    assert.equal(createPayload.seasonType, 'absolute');
+    assert.ok(!('languageProfileId' in createPayload));
+  });
+
+  it('updates only requested metadata while preserving Sonarr-owned series fields', async () => {
+    const api = buildSonarr('v5');
+    mock.method(api, 'getSeriesByTvdbId', async () =>
+      series({
+        seasonType: 'standard',
+        seasonTypes: [
+          { name: 'Standard', type: 'standard', seasonNumbers: [1] },
+          { name: 'Absolute', type: 'absolute', seasonNumbers: [1] },
+        ],
+        language: { id: 1, name: 'English' },
+      })
+    );
+    mock.method(api, 'getMetadataLanguages', async () => [
+      { id: 4, name: 'Japanese' },
+    ]);
+    const currentResource = {
+      id: 42,
+      tvdbId: 100,
+      title: 'Test Series',
+      path: '/tv/Test Series',
+      qualityProfileId: 9,
+      language: { id: 1, name: 'English' },
+      seasonType: 'standard',
+      seasonTypes: [
+        { name: 'Standard', type: 'standard', seasonNumbers: [1] },
+        { name: 'Absolute', type: 'absolute', seasonNumbers: [1] },
+      ],
+      providerOwnedValue: 'keep me',
+    };
+    const get = mock.method(getAxios(api), 'get', async () => ({
+      data: currentResource,
+    }));
+    const put = mock.method(
+      getAxios(api),
+      'put',
+      async (_url: string, payload: Record<string, unknown>) => ({
+        data: payload,
+      })
+    );
+
+    await api.addSeries({
+      tvdbid: 100,
+      title: 'Test Series',
+      profileId: 1,
+      metadataLanguageId: 4,
+      seasonType: 'absolute',
+      seasons: [],
+      seasonFolder: true,
+      rootFolderPath: '/tv',
+      seriesType: 'standard',
+    });
+
+    const metadataUpdate = put.mock.calls.find((call) =>
+      String(call.arguments[0]).endsWith('/api/v5/series/42')
+    );
+    assert.ok(metadataUpdate);
+    assert.deepEqual(metadataUpdate.arguments[1], {
+      ...currentResource,
+      language: { id: 4, name: 'Japanese' },
+      seasonType: 'absolute',
+    });
+    assert.equal(get.mock.callCount(), 2);
+    assert.ok(
+      !put.mock.calls.some((call) =>
+        String(call.arguments[0]).endsWith('/api/v5/series/editor')
+      )
+    );
   });
 
   it('keeps legacy language profiles when adding a series through v3', async () => {

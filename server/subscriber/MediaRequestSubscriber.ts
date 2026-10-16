@@ -1380,11 +1380,30 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           },
           relations: { seasonMappings: true },
         });
+        let sonarrSeasonType = entity.sonarrSeasonType ?? 'standard';
+        const hasAlternateSeasonMapping =
+          !entity.sonarrSeasonType &&
+          tvdbIdentifier?.seasonMappings?.some(
+            (mapping) =>
+              mapping.sonarrServerId === sonarrSettings.id &&
+              mapping.is4k === entity.is4k &&
+              mapping.seasonType !== 'standard'
+          );
+        if (hasAlternateSeasonMapping) {
+          const existingSonarrSeries = await sonarr
+            .getLibrarySeriesByTvdbId(tvdbId)
+            .catch(() => []);
+          sonarrSeasonType =
+            existingSonarrSeries.find((item) => item.tvdbId === tvdbId)
+              ?.seasonType ?? 'standard';
+        }
+
         const seasonNumberMappings =
           tvdbIdentifier?.seasonMappings?.filter(
             (mapping) =>
               mapping.sonarrServerId === sonarrSettings.id &&
-              mapping.is4k === entity.is4k
+              mapping.is4k === entity.is4k &&
+              mapping.seasonType === sonarrSeasonType
           ) ?? [];
 
         if (
@@ -1594,6 +1613,8 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         const sonarrSeriesOptions: AddSeriesOptions = {
           profileId: qualityProfile,
           languageProfileId: languageProfile,
+          metadataLanguageId: entity.metadataLanguageId ?? undefined,
+          seasonType: entity.sonarrSeasonType ?? undefined,
           rootFolderPath: rootFolder,
           title: series.name,
           tvdbid: tvdbId,

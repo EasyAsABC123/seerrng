@@ -3771,8 +3771,8 @@ const validateCurrentBatchContract = (files) => {
   requireCount(
     advancedRequester,
     '<RequestListboxControl',
-    5,
-    'Destination Server, Metadata Profile, Quality Profile, Root Folder, and Language must all use the shared request listbox'
+    7,
+    'Destination Server, Metadata Profile, Quality Profile, Root Folder, Language, Metadata Language, and Series Order must all use the shared request listbox'
   );
   requireText(
     advancedRequester,

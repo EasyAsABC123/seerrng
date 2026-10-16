@@ -10,6 +10,7 @@ import defineMessages from '@app/utils/defineMessages';
 import { formatBytes } from '@app/utils/numberHelpers';
 import { Listbox, Transition } from '@headlessui/react';
 import { CheckIcon, ChevronDownIcon } from '@heroicons/react/24/solid';
+import type { SonarrSeries } from '@server/api/servarr/sonarr';
 import type { PaginatedResponse } from '@server/interfaces/api/common';
 import type {
   ServiceCommonServer,
@@ -149,6 +150,9 @@ const messages = defineMessages('components.RequestModal.AdvancedRequester', {
   folder: '{path} ({space})',
   requestedBy: 'Requested By',
   languageprofile: 'Language Profile',
+  metadataLanguage: 'Series metadata language',
+  seasonOrder: 'Series order',
+  sonarrDefault: 'Sonarr default',
   tags: 'Tags',
   selecttags: 'Select tags',
   notagoptions: 'No tags',
@@ -165,6 +169,8 @@ export type RequestOverrides = {
   folder?: string;
   tags?: number[];
   language?: number;
+  metadataLanguage?: number | null;
+  sonarrSeasonType?: string | null;
   user?: RequestUser;
   ignoreQuota?: boolean;
 };
@@ -181,6 +187,7 @@ type ClientUserResultsResponse = PaginatedResponse & {
 interface AdvancedRequesterProps {
   type: 'movie' | 'tv' | 'music' | 'book';
   tmdbId?: number;
+  tvdbId?: number;
   musicId?: string;
   bookId?: string;
   is4k: boolean;
@@ -210,6 +217,7 @@ interface AdvancedRequesterProps {
 const AdvancedRequester = ({
   type,
   tmdbId,
+  tvdbId,
   musicId,
   bookId,
   is4k = false,
@@ -268,6 +276,10 @@ const AdvancedRequester = ({
   const [selectedLanguage, setSelectedLanguage] = useState<number>(
     defaultOverrides?.language ?? -1
   );
+  const [selectedMetadataLanguage, setSelectedMetadataLanguage] =
+    useState<number>(defaultOverrides?.metadataLanguage ?? -1);
+  const [selectedSonarrSeasonType, setSelectedSonarrSeasonType] =
+    useState<string>(defaultOverrides?.sonarrSeasonType ?? '');
   const profileManuallySelected = useRef(false);
   const languageManuallySelected = useRef(false);
 
@@ -346,6 +358,21 @@ const AdvancedRequester = ({
   const selectedIs4k = allow4kServerSelection
     ? (selectedServerDetails?.is4k ?? is4k)
     : is4k;
+  const sonarrLookupUrl =
+    type === 'tv' && tmdbId && selectedServer !== null
+      ? `/api/v1/service/sonarr/lookup/${tmdbId}?${new URLSearchParams({
+          is4k: String(selectedIs4k),
+          serverId: String(selectedServer),
+          ...(selectedMetadataLanguage !== -1
+            ? { language: String(selectedMetadataLanguage) }
+            : {}),
+        }).toString()}`
+      : null;
+  const { data: sonarrLookupResults } = useSWR<SonarrSeries[]>(sonarrLookupUrl);
+  const selectedSonarrSeries = sonarrLookupResults?.find(
+    (series) => series.tvdbId === tvdbId
+  );
+  const availableSeasonTypes = selectedSonarrSeries?.seasonTypes ?? [];
   const availableServers = serviceServers;
   const selectedUserId = selectedUser?.id;
   const previousSelectedUserIdRef = useRef<number | undefined>(selectedUserId);
@@ -596,6 +623,14 @@ const AdvancedRequester = ({
       setSelectedLanguage(defaultOverrides.language);
     }
 
+    if (defaultOverrides && defaultOverrides.metadataLanguage != null) {
+      setSelectedMetadataLanguage(defaultOverrides.metadataLanguage);
+    }
+
+    if (defaultOverrides && defaultOverrides.sonarrSeasonType != null) {
+      setSelectedSonarrSeasonType(defaultOverrides.sonarrSeasonType);
+    }
+
     if (defaultOverrides && defaultOverrides.tags != null) {
       setSelectedTags(defaultOverrides.tags);
     }
@@ -609,6 +644,8 @@ const AdvancedRequester = ({
     defaultOverrides?.profile,
     defaultOverrides?.metadataProfile,
     defaultOverrides?.language,
+    defaultOverrides?.metadataLanguage,
+    defaultOverrides?.sonarrSeasonType,
     defaultOverrides?.tags,
     defaultOverrides?.ignoreQuota,
   ]);
@@ -651,6 +688,22 @@ const AdvancedRequester = ({
           serviceOverridesEnabled && selectedLanguage !== -1
             ? selectedLanguage
             : undefined,
+        metadataLanguage:
+          type !== 'tv'
+            ? undefined
+            : selectedMetadataLanguage !== -1
+              ? selectedMetadataLanguage
+              : defaultOverrides?.metadataLanguage != null
+                ? null
+                : undefined,
+        sonarrSeasonType:
+          type !== 'tv'
+            ? undefined
+            : selectedSonarrSeasonType
+              ? selectedSonarrSeasonType
+              : defaultOverrides?.sonarrSeasonType
+                ? null
+                : undefined,
         tags: serviceOverridesEnabled ? selectedTags : undefined,
         ignoreQuota: isIgnoreQuotaVisible && ignoreQuota ? true : undefined,
       });
@@ -663,10 +716,15 @@ const AdvancedRequester = ({
     selectedMetadataProfile,
     selectedUser,
     selectedLanguage,
+    selectedMetadataLanguage,
+    selectedSonarrSeasonType,
     selectedTags,
     serviceOverridesEnabled,
     ignoreQuota,
     isIgnoreQuotaVisible,
+    defaultOverrides?.metadataLanguage,
+    defaultOverrides?.sonarrSeasonType,
+    type,
   ]);
 
   useEffect(() => {
@@ -766,6 +824,8 @@ const AdvancedRequester = ({
           (serverData.metadataProfiles ?? []).length < 2 &&
           serverData.rootFolders.length < 2 &&
           (serverData.languageProfiles ?? []).length < 2 &&
+          (serverData.metadataLanguages ?? []).length === 0 &&
+          availableSeasonTypes.length < 2 &&
           !serverData.tags?.length)));
   const selectedService = serviceServers.find(
     (server) => server.id === selectedServer
@@ -968,6 +1028,8 @@ const AdvancedRequester = ({
                   onChange={(serverId) => {
                     profileManuallySelected.current = false;
                     languageManuallySelected.current = false;
+                    setSelectedMetadataLanguage(-1);
+                    setSelectedSonarrSeasonType('');
                     setSelectedServer(serverId);
                   }}
                   active={
@@ -1085,6 +1147,58 @@ const AdvancedRequester = ({
                     loadingLabel={intl.formatMessage(globalMessages.loading)}
                   />
                 )}
+              {type === 'tv' &&
+                (isValidating ||
+                  !serverData ||
+                  (serverData.metadataLanguages ?? []).length > 0) && (
+                  <RequestListboxControl
+                    id="metadataLanguage"
+                    label={intl.formatMessage(messages.metadataLanguage)}
+                    value={selectedMetadataLanguage}
+                    options={[
+                      {
+                        value: -1,
+                        label: intl.formatMessage(messages.sonarrDefault),
+                      },
+                      ...(serverData?.metadataLanguages ?? []).map(
+                        (language) => ({
+                          value: language.id,
+                          label: language.name,
+                        })
+                      ),
+                    ]}
+                    onChange={setSelectedMetadataLanguage}
+                    active={selectedMetadataLanguage !== -1}
+                    disabled={isValidating || !serverData}
+                    loadingLabel={intl.formatMessage(globalMessages.loading)}
+                  />
+                )}
+              {type === 'tv' && availableSeasonTypes.length > 1 && (
+                <RequestListboxControl<string>
+                  id="seasonOrder"
+                  label={intl.formatMessage(messages.seasonOrder)}
+                  value={selectedSonarrSeasonType}
+                  options={[
+                    {
+                      value: '',
+                      label: intl.formatMessage(messages.sonarrDefault),
+                    },
+                    ...availableSeasonTypes.map((seasonType) => ({
+                      value: seasonType.type,
+                      label:
+                        seasonType.name === seasonType.type
+                          ? seasonType.name
+                          : `${seasonType.name} (${seasonType.type})`,
+                    })),
+                  ]}
+                  onChange={(seasonType) => {
+                    setSelectedSonarrSeasonType(seasonType);
+                  }}
+                  active={selectedSonarrSeasonType !== ''}
+                  disabled={!selectedSonarrSeries}
+                  loadingLabel={intl.formatMessage(globalMessages.loading)}
+                />
+              )}
             </div>
           )}
           {rootFolderTable && (

@@ -19,6 +19,8 @@ export enum MediaIdentifierProvider {
   TMDB = 'tmdb',
   TVDB = 'tvdb',
   IMDB = 'imdb',
+  MAL = 'mal',
+  ANILIST = 'anilist',
   MUSICBRAINZ = 'musicbrainz',
   LISTENBRAINZ = 'listenbrainz',
   HARDCOVER = 'hardcover',

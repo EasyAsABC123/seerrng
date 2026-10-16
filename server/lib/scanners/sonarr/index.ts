@@ -16,6 +16,9 @@ import {
 } from '@server/constants/media';
 import dataSource, { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
+import MediaIdentifier, {
+  MediaIdentifierProvider,
+} from '@server/entity/MediaIdentifier';
 import MediaRequest from '@server/entity/MediaRequest';
 import Season from '@server/entity/Season';
 import SeasonRequest, {
@@ -304,14 +307,18 @@ class SonarrScanner
       this.currentServiceTmdbIds.add(tmdbId);
     }
     (server4k ? this.scanned4kTmdbIds : this.scannedTmdbIds).add(tmdbId);
-    tvShow = await this.applyMetadataProvider(tvShow);
+    tvShow = await this.applyMetadataProvider(
+      tvShow,
+      this.isAnimeSeries(sonarrSeries)
+    );
     const settings = getExternalRuntimeConfig();
     const seasonMappings = media
       ? getSeasonMappingsForTvdbIdentifier(
           media,
           sonarrSeries.tvdbId,
           this.currentServer.id,
-          Boolean(this.currentServer.is4k)
+          Boolean(this.currentServer.is4k),
+          sonarrSeries.seasonType ?? 'standard'
         )
       : [];
 
@@ -360,6 +367,9 @@ class SonarrScanner
       tmdbId,
       mediaType: MediaType.TV,
     });
+    if (updatedMedia && this.isAnimeSeries(sonarrSeries)) {
+      await this.persistAnimeIdentifiers(updatedMedia, sonarrSeries);
+    }
     await upsertMediaSearchMetadata(updatedMedia?.id, {
       title: tvShow.name,
       alternateTitle: tvShow.original_name,
@@ -375,7 +385,13 @@ class SonarrScanner
       network: tvShow.networks.map((network) => network.name).join(', '),
       format: 'Series',
       provider: this.currentServer.name,
-      externalIds: [tmdbId, sonarrSeries.tvdbId, sonarrSeries.imdbId]
+      externalIds: [
+        tmdbId,
+        sonarrSeries.tvdbId,
+        sonarrSeries.imdbId,
+        ...(sonarrSeries.malIds ?? []).map((id) => `mal:${id}`),
+        ...(sonarrSeries.aniListIds ?? []).map((id) => `anilist:${id}`),
+      ]
         .filter(Boolean)
         .join(' '),
     });
@@ -384,17 +400,64 @@ class SonarrScanner
   }
 
   private async applyMetadataProvider(
-    tvShow: TmdbTvScanDetails | TmdbTvDetails
+    tvShow: TmdbTvScanDetails | TmdbTvDetails,
+    sonarrIdentifiesAnime = false
   ): Promise<TmdbTvScanDetails | TmdbTvDetails> {
-    const metadataProvider = tvShow.keywords.results.some(
-      (keyword) => keyword.id === ANIME_KEYWORD_ID
-    )
-      ? await getMetadataProvider('anime')
-      : await getMetadataProvider('tv');
+    const metadataProvider =
+      sonarrIdentifiesAnime ||
+      tvShow.keywords.results.some((keyword) => keyword.id === ANIME_KEYWORD_ID)
+        ? await getMetadataProvider('anime')
+        : await getMetadataProvider('tv');
 
     return isTheMovieDbProvider(metadataProvider)
       ? tvShow
       : metadataProvider.getTvShow({ tvId: tvShow.id });
+  }
+
+  private isAnimeSeries(series: SonarrSeries): boolean {
+    return (
+      series.seriesType === 'anime' ||
+      (series.malIds?.length ?? 0) > 0 ||
+      (series.aniListIds?.length ?? 0) > 0
+    );
+  }
+
+  private async persistAnimeIdentifiers(
+    media: Media,
+    series: SonarrSeries
+  ): Promise<void> {
+    const candidates = [
+      ...(series.malIds ?? []).map((id) => ({
+        provider: MediaIdentifierProvider.MAL,
+        value: String(id),
+      })),
+      ...(series.aniListIds ?? []).map((id) => ({
+        provider: MediaIdentifierProvider.ANILIST,
+        value: String(id),
+      })),
+    ];
+    const repository = getRepository(MediaIdentifier);
+
+    for (const candidate of candidates) {
+      const matching = await repository.find({
+        where: candidate,
+        relations: { media: true },
+      });
+      if (matching.some((identifier) => identifier.media?.id !== media.id)) {
+        continue;
+      }
+      if (matching.some((identifier) => identifier.media?.id === media.id)) {
+        continue;
+      }
+      await repository.save(
+        new MediaIdentifier({
+          media,
+          provider: candidate.provider,
+          value: candidate.value,
+          canonical: false,
+        })
+      );
+    }
   }
 
   private async existsInAnyServer(

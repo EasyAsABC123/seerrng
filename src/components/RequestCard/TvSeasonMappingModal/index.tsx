@@ -20,19 +20,28 @@ const messages = defineMessages('components.RequestCard.TvSeasonMappingModal', {
     'Season numbering can differ between TMDB and TVDB. SeerrNG will use only the mappings you select here.',
   series: 'Sonarr series',
   selectSeries: 'Choose a Sonarr series',
+  order: 'Sonarr series order',
+  sonarrSeason: 'Sonarr season {season}',
+  seriesProgress: '{files} of {total} episodes downloaded ({percent}%)',
+  originalCountry: 'Original country: {country}',
+  animeIdentifiers: 'Anime IDs: MAL {malIds}; AniList {aniListIds}',
+  recentHistory: 'Recent Sonarr activity',
+  noHistory: 'No recent Sonarr activity was returned.',
+  historyItem: '{event} · {date}',
   noSeries: 'No matching Sonarr series was found for this request destination.',
   lookupFailed: 'Unable to load Sonarr series for this request destination.',
   seasonLoading: 'Loading official TVDB seasons…',
   seasonLoadFailed: 'Unable to verify the official TVDB season list.',
   season: 'TMDB season {season}',
   selectSeason: 'Choose a TVDB season',
+  selectSonarrSeason: 'Choose a Sonarr season',
   specials: 'Season 0 (Specials)',
   numberedSeason: 'Season {season}',
   seasonYear: '{season} ({year})',
   mapAndRetry: 'Map seasons and retry',
   failed: 'Unable to save the season mapping or retry the request.',
   description:
-    'Map every requested season. SeerrNG verifies your choices against the official TVDB season list before retrying.',
+    'Map every requested season. SeerrNG checks standard-order choices against TVDB and alternate-order choices against the selected Sonarr series.',
 });
 
 type MappingSelection = number | '';
@@ -51,6 +60,7 @@ const TvSeasonMappingModal = ({
   const intl = useIntl();
   const { addToast } = useToasts();
   const [tvdbId, setTvdbId] = useState<number | null>(null);
+  const [seasonType, setSeasonType] = useState('');
   const [seasonSelections, setSeasonSelections] = useState<
     Record<number, MappingSelection>
   >({});
@@ -76,8 +86,16 @@ const TvSeasonMappingModal = ({
     ) {
       params.set('serverId', String(request.serverId));
     }
+    if (request.metadataLanguageId != null) {
+      params.set('language', String(request.metadataLanguageId));
+    }
     return `/api/v1/service/sonarr/lookup/${request.media.tmdbId}?${params.toString()}`;
-  }, [request.is4k, request.media.tmdbId, request.serverId]);
+  }, [
+    request.is4k,
+    request.media.tmdbId,
+    request.metadataLanguageId,
+    request.serverId,
+  ]);
   const {
     data: seriesResults,
     error: seriesError,
@@ -96,6 +114,31 @@ const TvSeasonMappingModal = ({
     [seriesResults]
   );
   const selectedSeries = series.find((item) => item.tvdbId === tvdbId);
+  const activeSeasonType =
+    seasonType || selectedSeries?.seasonType || 'standard';
+  const selectedSeasonOrder = selectedSeries?.seasonTypes?.find(
+    (item) => item.type === activeSeasonType
+  );
+  const useSonarrSeasonNumbers =
+    activeSeasonType !== 'standard' &&
+    (selectedSeasonOrder?.seasonNumbers.length ?? 0) > 0;
+  const selectedSeriesHistoryUrl =
+    selectedSeries &&
+    selectedSeries.tvdbId > 0 &&
+    selectedSeries.sonarrServerId !== undefined
+      ? `/api/v1/service/sonarr/${selectedSeries.sonarrServerId}/series/by-tvdb/${selectedSeries.tvdbId}/history`
+      : null;
+  const { data: seriesHistory } = useSWR<{
+    statistics?: SonarrSeries['statistics'];
+    history?: {
+      id: number;
+      date: string;
+      eventType: string;
+      sourceTitle: string;
+    }[];
+  }>(selectedSeriesHistoryUrl);
+  const seriesStatistics =
+    seriesHistory?.statistics ?? selectedSeries?.statistics;
   const {
     data: officialSeasons,
     error: seasonError,
@@ -146,6 +189,7 @@ const TvSeasonMappingModal = ({
     try {
       await axios.post(`/api/v1/request/${request.id}/retry`, {
         tvdbId: selectedSeries.tvdbId,
+        seasonType: activeSeasonType,
         seasonMappings: activeSeasons.map((seasonNumber) => ({
           seasonNumber,
           externalSeasonNumber: seasonSelections[seasonNumber],
@@ -208,6 +252,7 @@ const TvSeasonMappingModal = ({
             onChange={(value) => {
               const nextId = typeof value === 'number' ? value : null;
               setTvdbId(nextId);
+              setSeasonType('');
               setSeasonSelections({});
             }}
           />
@@ -215,15 +260,87 @@ const TvSeasonMappingModal = ({
 
         {selectedSeries && (
           <>
+            {(selectedSeries.seasonTypes?.length ?? 0) > 1 && (
+              <RequestListboxControl<string>
+                id={`sonarr-order-${request.id}`}
+                label={intl.formatMessage(messages.order)}
+                value={activeSeasonType}
+                options={(selectedSeries.seasonTypes ?? []).map((item) => ({
+                  value: item.type,
+                  label:
+                    item.name === item.type
+                      ? item.name
+                      : `${item.name} (${item.type})`,
+                }))}
+                loadingLabel={intl.formatMessage(messages.order)}
+                onChange={(value) => {
+                  setSeasonType(value);
+                  setSeasonSelections({});
+                }}
+              />
+            )}
+            {selectedSeries.originalCountry && (
+              <p className="request-tvdb-mapping__description">
+                {intl.formatMessage(messages.originalCountry, {
+                  country: selectedSeries.originalCountry,
+                })}
+              </p>
+            )}
+            {((selectedSeries.malIds?.length ?? 0) > 0 ||
+              (selectedSeries.aniListIds?.length ?? 0) > 0) && (
+              <p className="request-tvdb-mapping__description">
+                {intl.formatMessage(messages.animeIdentifiers, {
+                  malIds: (selectedSeries.malIds ?? []).join(', ') || '—',
+                  aniListIds:
+                    (selectedSeries.aniListIds ?? []).join(', ') || '—',
+                })}
+              </p>
+            )}
+            {seriesStatistics && seriesStatistics.totalEpisodeCount > 0 && (
+              <p className="request-tvdb-mapping__description">
+                {intl.formatMessage(messages.seriesProgress, {
+                  files: seriesStatistics.episodeFileCount,
+                  total: seriesStatistics.totalEpisodeCount,
+                  percent: seriesStatistics.percentOfEpisodes,
+                })}
+              </p>
+            )}
+            {seriesHistory?.history && (
+              <div>
+                <h4 className="request-tvdb-mapping__description">
+                  {intl.formatMessage(messages.recentHistory)}
+                </h4>
+                {(seriesHistory.history ?? []).length > 0 ? (
+                  <ul className="request-tvdb-mapping__description">
+                    {seriesHistory.history.slice(0, 5).map((event) => (
+                      <li key={event.id}>
+                        {intl.formatMessage(messages.historyItem, {
+                          event: event.sourceTitle || event.eventType,
+                          date: new Date(event.date).toLocaleString(
+                            intl.locale
+                          ),
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="request-tvdb-mapping__description">
+                    {intl.formatMessage(messages.noHistory)}
+                  </p>
+                )}
+              </div>
+            )}
             <p className="request-tvdb-mapping__description">
               {intl.formatMessage(messages.description)}
             </p>
-            {seasonError ? (
+            {seasonError && !useSonarrSeasonNumbers ? (
               <Alert
                 type="error"
                 title={intl.formatMessage(messages.seasonLoadFailed)}
               />
-            ) : officialSeasons && uniqueOfficialSeasons.length === 0 ? (
+            ) : !useSonarrSeasonNumbers &&
+              officialSeasons &&
+              uniqueOfficialSeasons.length === 0 ? (
               <Alert
                 type="error"
                 title={intl.formatMessage(messages.seasonLoadFailed)}
@@ -239,7 +356,12 @@ const TvSeasonMappingModal = ({
                         (item): item is number => typeof item === 'number'
                       )
                   );
-                  const options = uniqueOfficialSeasons
+                  const candidateSeasons = useSonarrSeasonNumbers
+                    ? (selectedSeasonOrder?.seasonNumbers ?? []).map(
+                        (number) => ({ seasonNumber: number, year: null })
+                      )
+                    : uniqueOfficialSeasons;
+                  const options = candidateSeasons
                     .filter(
                       (season) =>
                         !selectedByOtherSeason.has(season.seasonNumber) ||
@@ -247,7 +369,11 @@ const TvSeasonMappingModal = ({
                     )
                     .map((season) => ({
                       value: season.seasonNumber,
-                      label: seasonLabel(season),
+                      label: useSonarrSeasonNumbers
+                        ? intl.formatMessage(messages.sonarrSeason, {
+                            season: season.seasonNumber,
+                          })
+                        : seasonLabel(season),
                     }));
 
                   return (
@@ -268,9 +394,15 @@ const TvSeasonMappingModal = ({
                       loadingLabel={intl.formatMessage(
                         isLoadingSeasons
                           ? messages.seasonLoading
-                          : messages.selectSeason
+                          : useSonarrSeasonNumbers
+                            ? messages.selectSonarrSeason
+                            : messages.selectSeason
                       )}
-                      disabled={!officialSeasons || isLoadingSeasons}
+                      disabled={
+                        useSonarrSeasonNumbers
+                          ? !selectedSeasonOrder
+                          : !officialSeasons || isLoadingSeasons
+                      }
                       onChange={(value) =>
                         setSeasonSelections((current) => ({
                           ...current,

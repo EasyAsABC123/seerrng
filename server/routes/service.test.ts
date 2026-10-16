@@ -114,11 +114,14 @@ function createApp(permissions = Permission.REQUEST_ADVANCED) {
   return app;
 }
 
-function createOpenApiApp() {
+function createOpenApiApp(includeOperationalPermissions = false) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.user = { id: 1 } as Express.Request['user'];
+    req.user = {
+      id: 1,
+      ...(includeOperationalPermissions ? { hasPermission: () => true } : {}),
+    } as Express.Request['user'];
     next();
   });
   app.use(
@@ -386,6 +389,18 @@ describe('Sonarr lookup response filtering', () => {
         year: 2026,
         overview: 'Overview',
         remotePoster: 'https://artworks.thetvdb.com/example.jpg',
+        seasonType: 'absolute',
+        seasonTypes: [
+          { name: 'Absolute', type: 'absolute', seasonNumbers: [1, 2] },
+        ],
+        language: { id: 4, name: 'Japanese' },
+        originalCountry: 'JP',
+        malIds: [12],
+        aniListIds: [34],
+        statistics: {
+          monitoredEpisodeCount: 2,
+          episodeFileCount: 1,
+        },
         path: '/private/media/path',
         profileId: 42,
         tags: [7],
@@ -399,6 +414,18 @@ describe('Sonarr lookup response filtering', () => {
         year: 2026,
         overview: 'Overview',
         remotePoster: 'https://artworks.thetvdb.com/example.jpg',
+        seasonType: 'absolute',
+        seasonTypes: [
+          { name: 'Absolute', type: 'absolute', seasonNumbers: [1, 2] },
+        ],
+        language: { id: 4, name: 'Japanese' },
+        originalCountry: 'JP',
+        malIds: [12],
+        aniListIds: [34],
+        statistics: {
+          monitoredEpisodeCount: 2,
+          episodeFileCount: 1,
+        },
       },
     ]);
   });
@@ -447,6 +474,96 @@ describe('Sonarr lookup response filtering', () => {
 
     assert.strictEqual(response.status, 200, JSON.stringify(response.body));
     assert.match(selectedBaseUrl ?? '', /selected\.local/);
+  });
+
+  it('returns bounded history for the selected installed Sonarr series', async () => {
+    getSettings().sonarr = [makeSonarr({ id: 7 })];
+    mock.method(
+      SonarrAPI.prototype,
+      'getLibrarySeriesByTvdbId',
+      async () =>
+        [
+          {
+            id: 42,
+            tvdbId: 184_871,
+            title: 'Example Series',
+            seriesType: 'anime',
+            seasonType: 'absolute',
+            malIds: [12],
+            aniListIds: [34],
+            statistics: {
+              monitoredEpisodeCount: 20,
+              episodeFileCount: 18,
+              percentOfEpisodes: 90,
+            },
+          },
+        ] as never
+    );
+    mock.method(SonarrAPI.prototype, 'getSeriesHistory', async () => [
+      {
+        id: 8,
+        date: '2026-02-01T00:00:00Z',
+        eventType: 'downloadFolderImported',
+        sourceTitle: 'Example.S01E02.mkv',
+        seasonNumber: 1,
+        episodeNumber: 2,
+        episodeTitle: 'Second Episode',
+      },
+    ]);
+
+    const response = await request(createOpenApiApp(true)).get(
+      '/api/v1/service/sonarr/7/series/by-tvdb/184871/history'
+    );
+
+    assert.strictEqual(response.status, 200, JSON.stringify(response.body));
+    assert.deepStrictEqual(response.body, {
+      seriesId: 42,
+      statistics: {
+        monitoredEpisodeCount: 20,
+        episodeFileCount: 18,
+        percentOfEpisodes: 90,
+      },
+      seriesType: 'anime',
+      seasonType: 'absolute',
+      malIds: [12],
+      aniListIds: [34],
+      history: [
+        {
+          id: 8,
+          date: '2026-02-01T00:00:00Z',
+          eventType: 'downloadFolderImported',
+          sourceTitle: 'Example.S01E02.mkv',
+          seasonNumber: 1,
+          episodeNumber: 2,
+          episodeTitle: 'Second Episode',
+        },
+      ],
+    });
+  });
+
+  it('returns metadata language options for Sonarr v5 service details', async () => {
+    getSettings().sonarr = [makeSonarr({ id: 7 })];
+    mockSonarrApiVersion('v5');
+    mock.method(SonarrAPI.prototype, 'getSystemStatus', async () => ({
+      appName: 'Sonarr',
+      version: '5.0.0.2608',
+      urlBase: '',
+    }));
+    mock.method(SonarrAPI.prototype, 'getProfiles', async () => []);
+    mock.method(SonarrAPI.prototype, 'getRootFolders', async () => []);
+    mock.method(SonarrAPI.prototype, 'getMetadataLanguages', async () => [
+      { id: 4, name: 'Japanese' },
+    ]);
+    mockServarrTagsEndpoint([]);
+
+    const response = await request(createOpenApiApp(true)).get(
+      '/api/v1/service/sonarr/7'
+    );
+
+    assert.strictEqual(response.status, 200, JSON.stringify(response.body));
+    assert.deepStrictEqual(response.body.metadataLanguages, [
+      { id: 4, name: 'Japanese' },
+    ]);
   });
 
   it('returns official TVDB seasons including season zero through the API contract', async () => {

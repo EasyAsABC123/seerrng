@@ -32,20 +32,30 @@ test('selects season maps for one Sonarr service and quality tier', () => {
           {
             sonarrServerId: 32,
             is4k: false,
+            seasonType: 'standard',
             seasonNumber: 1,
             externalSeasonNumber: 4,
           },
           {
             sonarrServerId: 31,
             is4k: true,
+            seasonType: 'standard',
             seasonNumber: 1,
             externalSeasonNumber: 5,
           },
           {
             sonarrServerId: 31,
             is4k: false,
+            seasonType: 'standard',
             seasonNumber: 1,
             externalSeasonNumber: 2,
+          },
+          {
+            sonarrServerId: 31,
+            is4k: false,
+            seasonType: 'absolute',
+            seasonNumber: 1,
+            externalSeasonNumber: 27,
           },
         ],
       },
@@ -63,5 +73,9 @@ test('selects season maps for one Sonarr service and quality tier', () => {
   assert.deepStrictEqual(
     getSeasonMappingsForTvdbIdentifier(media, 184_871, 31, true),
     [{ seasonNumber: 1, externalSeasonNumber: 5 }]
+  );
+  assert.deepStrictEqual(
+    getSeasonMappingsForTvdbIdentifier(media, 184_871, 31, false, 'absolute'),
+    [{ seasonNumber: 1, externalSeasonNumber: 27 }]
   );
 });

@@ -32,7 +32,8 @@ export const getSeasonMappingsForTvdbIdentifier = (
   media: Pick<Media, 'identifiers'>,
   tvdbId: number,
   sonarrServerId: number,
-  is4k: boolean
+  is4k: boolean,
+  seasonType = 'standard'
 ): SeasonNumberMapping[] => {
   const identifier = media.identifiers?.find(
     (candidate) =>
@@ -43,7 +44,9 @@ export const getSeasonMappingsForTvdbIdentifier = (
     identifier?.seasonMappings
       ?.filter(
         (mapping) =>
-          mapping.sonarrServerId === sonarrServerId && mapping.is4k === is4k
+          mapping.sonarrServerId === sonarrServerId &&
+          mapping.is4k === is4k &&
+          mapping.seasonType === seasonType
       )
       .map(({ seasonNumber, externalSeasonNumber }) => ({
         seasonNumber,
@@ -93,7 +96,8 @@ export const findTvdbSeasonMappings = async (
   mediaId: number,
   tvdbId: number,
   sonarrServerId: number,
-  is4k: boolean
+  is4k: boolean,
+  seasonType = 'standard'
 ): Promise<SeasonNumberMapping[]> => {
   const identifier = await manager.getRepository(MediaIdentifier).findOne({
     where: {
@@ -107,7 +111,9 @@ export const findTvdbSeasonMappings = async (
     identifier?.seasonMappings
       ?.filter(
         (mapping) =>
-          mapping.sonarrServerId === sonarrServerId && mapping.is4k === is4k
+          mapping.sonarrServerId === sonarrServerId &&
+          mapping.is4k === is4k &&
+          mapping.seasonType === seasonType
       )
       .map(({ seasonNumber, externalSeasonNumber }) => ({
         seasonNumber,
@@ -135,7 +141,8 @@ export const persistTvdbSeasonMappings = async (
   tvdbId: number,
   sonarrServerId: number,
   is4k: boolean,
-  mappings: readonly SeasonNumberMapping[]
+  mappings: readonly SeasonNumberMapping[],
+  seasonType = 'standard'
 ): Promise<void> => {
   const mediaRepository = manager.getRepository(Media);
   const identifierRepository = manager.getRepository(MediaIdentifier);
@@ -170,6 +177,7 @@ export const persistTvdbSeasonMappings = async (
       mediaIdentifier: { id: identifier.id },
       sonarrServerId,
       is4k,
+      seasonType,
     },
   });
   const mergedMappings = new Map<number, SeasonNumberMapping>(
@@ -199,6 +207,7 @@ export const persistTvdbSeasonMappings = async (
     mediaIdentifier: { id: identifier.id },
     sonarrServerId,
     is4k,
+    seasonType,
   });
   if (mergedMappings.size > 0) {
     await mappingRepository.save(
@@ -208,6 +217,7 @@ export const persistTvdbSeasonMappings = async (
             mediaIdentifier: identifier!,
             sonarrServerId,
             is4k,
+            seasonType,
             seasonNumber,
             externalSeasonNumber,
           })

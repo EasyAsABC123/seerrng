@@ -5312,6 +5312,15 @@ components:
           nullable: true
           description: TVDB series selected by the requester when manually resolving TV season numbering.
           readOnly: true
+        metadataLanguageId:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Sonarr v5 metadata language selected for this TV request. Requires advanced request permission.
+        sonarrSeasonType:
+          type: string
+          nullable: true
+          description: Sonarr v5 series order selected for this TV request and its season mappings. Requires advanced request permission.
         media:
           $ref: '#/components/schemas/MediaInfo'
         createdAt:
@@ -6375,6 +6384,60 @@ components:
     SonarrSeries:
       type: object
       properties:
+        sonarrServerId:
+          type: integer
+          minimum: 0
+        seasonType:
+          type: string
+        seasonTypes:
+          type: array
+          items:
+            type: object
+            required: [name, type, seasonNumbers]
+            properties:
+              name:
+                type: string
+              type:
+                type: string
+              seasonNumbers:
+                type: array
+                items:
+                  type: integer
+                  minimum: 0
+        language:
+          type: object
+          properties:
+            id:
+              type: integer
+              minimum: 0
+            name:
+              type: string
+        originalLanguage:
+          type: object
+          properties:
+            id:
+              type: integer
+              minimum: 0
+            name:
+              type: string
+        originalCountry:
+          type: string
+        originalTitle:
+          type: string
+        alternateTitles:
+          type: array
+          items:
+            type: string
+        malIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+        aniListIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
         title:
           type: string
           example: COVID-25
@@ -6484,6 +6547,42 @@ components:
         id:
           type: number
           nullable: true
+        statistics:
+          type: object
+          properties:
+            seasonCount:
+              type: integer
+              minimum: 0
+            episodeFileCount:
+              type: integer
+              minimum: 0
+            episodeCount:
+              type: integer
+              minimum: 0
+            totalEpisodeCount:
+              type: integer
+              minimum: 0
+            monitoredEpisodeCount:
+              type: integer
+              minimum: 0
+            sizeOnDisk:
+              type: number
+              minimum: 0
+            releaseGroups:
+              type: array
+              items:
+                type: string
+            releaseTypes:
+              type: array
+              items:
+                type: string
+            episodeFileQualities:
+              type: array
+              items:
+                type: string
+            percentOfEpisodes:
+              type: number
+              minimum: 0
         rootFolderPath:
           type: string
           nullable: true
@@ -17696,6 +17795,17 @@ paths:
                   description: For an advanced Kapowarr comic request, choose a path returned by /service/comic/{id}/rootfolders. If omitted, the service's configured default is used.
                 languageProfileId:
                   type: number
+                metadataLanguageId:
+                  type: integer
+                  minimum: 0
+                  nullable: true
+                  description: Sonarr v5 metadata language ID. Requires advanced request permission.
+                sonarrSeasonType:
+                  type: string
+                  maxLength: 100
+                  pattern: '^[A-Za-z0-9._-]+$'
+                  nullable: true
+                  description: Sonarr v5 series order. Requires advanced request permission.
                 metadataProfileId:
                   type: number
                 tags:
@@ -19285,6 +19395,17 @@ paths:
                   type: string
                 languageProfileId:
                   type: number
+                metadataLanguageId:
+                  type: integer
+                  minimum: 0
+                  nullable: true
+                  description: Sonarr v5 metadata language ID. Requires advanced request permission.
+                sonarrSeasonType:
+                  type: string
+                  maxLength: 100
+                  pattern: '^[A-Za-z0-9._-]+$'
+                  nullable: true
+                  description: Sonarr v5 series order. Requires advanced request permission.
                 metadataProfileId:
                   type: number
                 tags:
@@ -19425,7 +19546,7 @@ paths:
     post:
       summary: Retry failed or unavailable request
       description: |
-        Retries a failed or unavailable request by returning it to the normal dispatch/search flow. For eligible failed TV requests, an optional body can record a TVDB series and an explicit mapping for every active requested season. The server verifies those season numbers against official TVDB data before saving the mapping and retrying. The request owner may retry their own request when they still have permission to request that media; users with `MANAGE_REQUESTS` or `ADMIN` may retry any request.
+        Retries a failed or unavailable request by returning it to the normal dispatch/search flow. For eligible failed TV requests, an optional body can record a TVDB series and an explicit mapping for every active requested season. Standard-order season numbers are checked against official TVDB data; alternate Sonarr v5 orders are checked against the selected series' available season numbers. The request owner may retry their own request when they still have permission to request that media; users with `MANAGE_REQUESTS` or `ADMIN` may retry any request.
 
         Season mappings are scoped to the request's selected Sonarr instance and quality tier, so another destination can retain a different season layout for the same TVDB series.
 
@@ -19457,6 +19578,11 @@ paths:
                     tvdbId:
                       type: integer
                       minimum: 1
+                    seasonType:
+                      type: string
+                      maxLength: 100
+                      pattern: '^[A-Za-z0-9._-]+$'
+                      default: standard
                     seasonMappings:
                       type: array
                       minItems: 1
@@ -21147,6 +21273,17 @@ paths:
                     $ref: '#/components/schemas/SonarrSettings'
                   profiles:
                     $ref: '#/components/schemas/ServiceProfile'
+                  metadataLanguages:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name]
+                      properties:
+                        id:
+                          type: integer
+                          minimum: 0
+                        name:
+                          type: string
   /service/sonarr/lookup/{tmdbId}:
     get:
       summary: Get series from Sonarr
@@ -21173,6 +21310,13 @@ paths:
           schema:
             type: integer
             minimum: 0
+        - in: query
+          name: language
+          required: false
+          description: Sonarr v5 metadata language ID for its series lookup.
+          schema:
+            type: integer
+            minimum: 0
       responses:
         '200':
           description: Request successful
@@ -21182,6 +21326,131 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/SonarrSeries'
+  /service/sonarr/{sonarrId}/series/by-tvdb/{tvdbId}/history:
+    get:
+      summary: Get Sonarr series status and recent history
+      description: Returns bounded progress, identity, and recent history for a series installed on the selected Sonarr server. Requires `REQUEST_ADVANCED` or `MANAGE_REQUESTS` permission.
+      tags:
+        - service
+      parameters:
+        - in: path
+          name: sonarrId
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+        - in: path
+          name: tvdbId
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Installed Sonarr series details returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  seriesId:
+                    type: integer
+                    minimum: 1
+                  seriesType:
+                    type: string
+                    enum: [standard, daily, anime]
+                  seasonType:
+                    type: string
+                    nullable: true
+                  language:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: integer
+                        minimum: 0
+                      name:
+                        type: string
+                  originalLanguage:
+                    type: object
+                    nullable: true
+                    properties:
+                      id:
+                        type: integer
+                        minimum: 0
+                      name:
+                        type: string
+                  originalCountry:
+                    type: string
+                    nullable: true
+                  malIds:
+                    type: array
+                    items:
+                      type: integer
+                  aniListIds:
+                    type: array
+                    items:
+                      type: integer
+                  statistics:
+                    type: object
+                    properties:
+                      seasonCount:
+                        type: integer
+                      episodeFileCount:
+                        type: integer
+                      episodeCount:
+                        type: integer
+                      totalEpisodeCount:
+                        type: integer
+                      monitoredEpisodeCount:
+                        type: integer
+                      percentOfEpisodes:
+                        type: number
+                      sizeOnDisk:
+                        type: number
+                      releaseGroups:
+                        type: array
+                        items:
+                          type: string
+                      releaseTypes:
+                        type: array
+                        items:
+                          type: string
+                      episodeFileQualities:
+                        type: array
+                        items:
+                          type: string
+                  history:
+                    type: array
+                    description: Omitted when the selected Sonarr server does not support the v5 history endpoint.
+                    items:
+                      type: object
+                      required: [id, date, eventType, sourceTitle]
+                      properties:
+                        id:
+                          type: integer
+                          minimum: 1
+                        date:
+                          type: string
+                          format: date-time
+                        eventType:
+                          type: string
+                        sourceTitle:
+                          type: string
+                        seasonNumber:
+                          type: integer
+                          minimum: 0
+                        episodeNumber:
+                          type: integer
+                          minimum: 1
+                        episodeTitle:
+                          type: string
+        '403':
+          description: Caller lacks advanced service details permission
+        '404':
+          description: Sonarr server or installed series was not found
+        '502':
+          description: Sonarr could not return series details
   /service/tvdb/seasons/{tvdbId}:
     get:
       summary: Get official TVDB seasons

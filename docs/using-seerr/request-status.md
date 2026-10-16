@@ -44,13 +44,13 @@ the request stays visible as failed with its media record intact. Correct the
 provider or metadata issue before retrying. For an unresolved TVDB identity or
 season-numbering mismatch, choose **Map TV seasons** on the failed request to
 repair it directly. Select the intended Sonarr series, then map every requested
-TMDB season to one distinct official TVDB season. SeerrNG verifies your choices
-with TVDB and keeps the request's selected Sonarr server, quality, requested
-seasons, and permissions when it retries. No series or season mapping is
-selected automatically.
-Translations are kept separate for each Sonarr destination and quality, so a
-repair for one configured instance does not change how another instance maps
-the same TVDB series.
+TMDB season to one distinct season in the selected Sonarr order. The standard
+order is verified against official TVDB data; alternate Sonarr v5 orders are
+verified against the selected series. SeerrNG keeps the request's selected
+Sonarr server, quality, requested seasons, and permissions when it retries. No
+series or season mapping is selected automatically. Mappings are separate for
+each Sonarr destination, quality, and season order, so repairing one request
+does not change how another instance or order maps the same TVDB series.
 
 Request API responses include a stable `failureReason` code when a movie or TV
 dispatch failure can be classified. The code distinguishes an unavailable

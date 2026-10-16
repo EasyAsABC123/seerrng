@@ -125,13 +125,45 @@ const parsePositiveServiceRouteId = (id: unknown): number | undefined =>
   parsePositiveRouteId(id, maxServiceRouteId);
 
 export const filterSonarrLookupResults = (results: SonarrSeries[]) =>
-  results.map(({ tvdbId, title, year, overview, remotePoster }) => ({
-    tvdbId,
-    title,
-    year,
-    overview,
-    remotePoster,
-  }));
+  results.map(
+    ({
+      id,
+      tvdbId,
+      title,
+      year,
+      overview,
+      remotePoster,
+      seasonType,
+      seasonTypes,
+      language,
+      originalLanguage,
+      originalCountry,
+      originalTitle,
+      alternateTitles,
+      seriesType,
+      malIds,
+      aniListIds,
+      statistics,
+    }) => ({
+      ...(id !== undefined ? { id } : {}),
+      tvdbId,
+      title,
+      year,
+      overview,
+      remotePoster,
+      ...(seasonType ? { seasonType } : {}),
+      ...(seasonTypes?.length ? { seasonTypes } : {}),
+      ...(language ? { language } : {}),
+      ...(originalLanguage ? { originalLanguage } : {}),
+      ...(originalCountry ? { originalCountry } : {}),
+      ...(originalTitle ? { originalTitle } : {}),
+      ...(alternateTitles?.length ? { alternateTitles } : {}),
+      ...(seriesType ? { seriesType } : {}),
+      ...(malIds?.length ? { malIds } : {}),
+      ...(aniListIds?.length ? { aniListIds } : {}),
+      ...(statistics ? { statistics } : {}),
+    })
+  );
 
 const filterServiceServer = (
   server: ServiceCommonServer,
@@ -306,15 +338,23 @@ serviceRoutes.get<{ sonarrId: string }>(
             const sonarrMajorVersion = Number(
               systemStatus.version.split('.')[0]
             );
-            const [profiles, rootFolders, languageProfiles, tags] =
-              await Promise.all([
-                sonarr.getProfiles(),
-                sonarr.getRootFolders(),
-                sonarrMajorVersion <= 3
-                  ? sonarr.getLanguageProfiles()
-                  : Promise.resolve(null),
-                sonarr.getTags(),
-              ]);
+            const [
+              profiles,
+              rootFolders,
+              languageProfiles,
+              metadataLanguages,
+              tags,
+            ] = await Promise.all([
+              sonarr.getProfiles(),
+              sonarr.getRootFolders(),
+              sonarrMajorVersion <= 3
+                ? sonarr.getLanguageProfiles()
+                : Promise.resolve(null),
+              sonarrMajorVersion >= 5
+                ? sonarr.getMetadataLanguages()
+                : Promise.resolve([]),
+              sonarr.getTags(),
+            ]);
             return {
               server: {
                 id: sonarrSettings.id,
@@ -343,6 +383,7 @@ serviceRoutes.get<{ sonarrId: string }>(
                 totalSpace: folder.totalSpace,
               })),
               languageProfiles,
+              metadataLanguages,
               tags,
             } as ServiceCommonServerWithDetails;
           }
@@ -742,6 +783,13 @@ serviceRoutes.get<{ tmdbId: string }>(
     if (req.query.serverId !== undefined && requestedServerId === undefined) {
       return next({ status: 400, message: 'serverId must be a valid ID.' });
     }
+    const languageId =
+      req.query.language === undefined
+        ? undefined
+        : parseNonNegativeRouteId(req.query.language, maxServiceRouteId);
+    if (req.query.language !== undefined && languageId === undefined) {
+      return next({ status: 400, message: 'language must be a valid ID.' });
+    }
 
     try {
       return await runUserSecurityMutation(req.user!.id, async () => {
@@ -784,11 +832,47 @@ serviceRoutes.get<{ tmdbId: string }>(
         const response = await runWithCurrentServarrService(
           'sonarr',
           sonarrServer.id,
-          async (currentSettings) =>
-            new SonarrAPI({
+          async (currentSettings) => {
+            const sonarr = new SonarrAPI({
               apiKey: currentSettings.apiKey,
               url: SonarrAPI.buildUrl(currentSettings, '/api/v3'),
-            }).getSeriesByTitle(tv.name)
+            });
+            const lookupResults = await sonarr.getSeriesByTitle(
+              tv.name,
+              languageId
+            );
+            const tvdbId = tv.external_ids?.tvdb_id;
+            if (!Number.isSafeInteger(tvdbId) || !tvdbId || tvdbId < 1) {
+              return lookupResults;
+            }
+            const installedSeries = await sonarr
+              .getLibrarySeriesByTvdbId(tvdbId)
+              .catch(() => []);
+            const installed = installedSeries.find(
+              (item) => item.id && item.tvdbId === tvdbId
+            );
+            if (!installed) return lookupResults;
+
+            return lookupResults.map((item) =>
+              item.tvdbId === tvdbId
+                ? {
+                    ...item,
+                    id: installed.id,
+                    seasonType: installed.seasonType,
+                    seasonTypes: installed.seasonTypes,
+                    language: installed.language,
+                    originalLanguage: installed.originalLanguage,
+                    originalCountry: installed.originalCountry,
+                    originalTitle: installed.originalTitle,
+                    alternateTitles: installed.alternateTitles,
+                    seriesType: installed.seriesType,
+                    malIds: installed.malIds,
+                    aniListIds: installed.aniListIds,
+                    statistics: installed.statistics,
+                  }
+                : item
+            );
+          }
         );
         if (!response) {
           return next({
@@ -797,7 +881,12 @@ serviceRoutes.get<{ tmdbId: string }>(
           });
         }
 
-        return res.status(200).json(filterSonarrLookupResults(response));
+        return res.status(200).json(
+          filterSonarrLookupResults(response).map((series) => ({
+            ...series,
+            sonarrServerId: sonarrServer.id,
+          }))
+        );
       });
     } catch (e) {
       if (e instanceof UserMutationActorUnauthorizedError) {
@@ -814,6 +903,61 @@ serviceRoutes.get<{ tmdbId: string }>(
       });
     }
   }
+);
+
+serviceRoutes.get<{ sonarrId: string; tvdbId: string }>(
+  '/sonarr/:sonarrId/series/by-tvdb/:tvdbId/history',
+  isAuthenticated(SERVICE_DETAILS_PERMISSIONS, { type: 'or' }),
+  authorizedMutation<{ sonarrId: string; tvdbId: string }>(
+    SERVICE_DETAILS_PERMISSIONS,
+    async (req, res, next) => {
+      const sonarrId = parseServiceRouteId(req.params.sonarrId);
+      const tvdbId = parsePositiveServiceRouteId(req.params.tvdbId);
+      if (sonarrId === undefined || tvdbId === undefined) {
+        return next({ status: 404, message: 'Sonarr series was not found.' });
+      }
+
+      try {
+        const details = await runWithCurrentServarrService(
+          'sonarr',
+          sonarrId,
+          async (sonarrSettings) => {
+            const sonarr = new SonarrAPI({
+              apiKey: sonarrSettings.apiKey,
+              url: SonarrAPI.buildUrl(sonarrSettings, '/api/v3'),
+            });
+            const installedSeries =
+              await sonarr.getLibrarySeriesByTvdbId(tvdbId);
+            const series = installedSeries.find(
+              (candidate) => candidate.tvdbId === tvdbId && candidate.id
+            );
+            if (!series?.id) return null;
+            const history = await sonarr.getSeriesHistory(series.id, 20);
+            return {
+              seriesId: series.id,
+              statistics: series.statistics,
+              seriesType: series.seriesType,
+              seasonType: series.seasonType,
+              language: series.language,
+              originalLanguage: series.originalLanguage,
+              originalCountry: series.originalCountry,
+              malIds: series.malIds ?? [],
+              aniListIds: series.aniListIds ?? [],
+              ...(history !== undefined ? { history } : {}),
+            };
+          }
+        );
+        return details
+          ? res.status(200).json(details)
+          : next({ status: 404, message: 'Sonarr series was not found.' });
+      } catch {
+        return next({
+          status: 502,
+          message: 'Unable to load Sonarr series details.',
+        });
+      }
+    }
+  )
 );
 
 serviceRoutes.get<{ tvdbId: string }>(

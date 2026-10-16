@@ -1,5 +1,8 @@
 import type { QualityProfile, RootFolder, Tag } from '@server/api/servarr/base';
-import type { LanguageProfile } from '@server/api/servarr/sonarr';
+import type {
+  LanguageProfile,
+  SonarrMetadataLanguage,
+} from '@server/api/servarr/sonarr';
 import type { BookshelfProvider } from '@server/utils/bookshelfProvider';
 
 export interface ServiceCommonServer {
@@ -33,6 +36,7 @@ export interface ServiceCommonServerWithDetails {
   metadataProfiles?: QualityProfile[];
   rootFolders: Partial<RootFolder>[];
   languageProfiles?: LanguageProfile[];
+  metadataLanguages?: SonarrMetadataLanguage[];
   tags: Tag[];
 }
 

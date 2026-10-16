@@ -7920,6 +7920,75 @@ describe('POST /request/:requestId/retry', () => {
     );
   });
 
+  it('validates and stores a manual map in the selected Sonarr v5 order', async () => {
+    configureSonarr([createSonarrSettings(31)]);
+    mock.method(
+      SonarrAPI.prototype,
+      'getSeriesByTvdbId',
+      async () =>
+        ({
+          tvdbId: 184_871,
+          seasonTypes: [
+            { name: 'Absolute', type: 'absolute', seasonNumbers: [12, 13] },
+          ],
+        }) as never
+    );
+    const failed = await seedFailedTvRequest([1, 2]);
+    const admin = await loginAs('admin@seerr.dev', 'test1234');
+
+    const invalid = await admin.post(`/request/${failed.id}/retry`).send({
+      tvdbId: 184_871,
+      seasonType: 'absolute',
+      seasonMappings: [
+        { seasonNumber: 1, externalSeasonNumber: 12 },
+        { seasonNumber: 2, externalSeasonNumber: 99 },
+      ],
+    });
+    assert.strictEqual(invalid.status, 400);
+    assert.strictEqual(
+      await getRepository(MediaIdentifier).countBy({
+        provider: MediaIdentifierProvider.TVDB,
+        value: '184871',
+      }),
+      0
+    );
+
+    const valid = await admin.post(`/request/${failed.id}/retry`).send({
+      tvdbId: 184_871,
+      seasonType: 'absolute',
+      seasonMappings: [
+        { seasonNumber: 1, externalSeasonNumber: 12 },
+        { seasonNumber: 2, externalSeasonNumber: 13 },
+      ],
+    });
+    assert.strictEqual(valid.status, 200, JSON.stringify(valid.body));
+    const savedRequest = await getRepository(MediaRequest).findOneByOrFail({
+      id: failed.id,
+    });
+    assert.strictEqual(savedRequest.sonarrSeasonType, 'absolute');
+    const identifier = await getRepository(MediaIdentifier).findOneOrFail({
+      where: {
+        media: { id: failed.media.id },
+        provider: MediaIdentifierProvider.TVDB,
+        value: '184871',
+      },
+      relations: { seasonMappings: true },
+    });
+    assert.deepStrictEqual(
+      identifier.seasonMappings
+        .map(({ seasonType, seasonNumber, externalSeasonNumber }) => [
+          seasonType,
+          seasonNumber,
+          externalSeasonNumber,
+        ])
+        .sort((left, right) => Number(left[1]) - Number(right[1])),
+      [
+        ['absolute', 1, 12],
+        ['absolute', 2, 13],
+      ]
+    );
+  });
+
   it('rejects incomplete or unrequested source-season mappings', async () => {
     configureSonarr([createSonarrSettings(31)]);
     const failed = await seedFailedTvRequest([1, 2]);

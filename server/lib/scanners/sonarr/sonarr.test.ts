@@ -216,6 +216,46 @@ describe('Sonarr Scanner', () => {
   });
 
   describe('per-instance availability', () => {
+    it('persists anime identifiers from Sonarr on the matched TV media', async () => {
+      const tvdbId = 1053;
+      configureSonarr([{ syncEnabled: true, id: 42 }]);
+      getShowByTvdbIdImpl = async () => fakeTmdbShow(tvdbId);
+      getSeriesImpl = async () => [
+        fakeSonarrSeries({
+          tvdbId,
+          seriesType: 'anime',
+          malIds: [1234],
+          aniListIds: [4321],
+        }),
+      ];
+
+      await runWithMockTimers(() => sonarrScanner.run());
+
+      const media = await getRepository(Media).findOneByOrFail({
+        tmdbId: tvdbId,
+        mediaType: MediaType.TV,
+      });
+      const identifiers = await getRepository(MediaIdentifier).find({
+        where: [
+          { media: { id: media.id }, provider: MediaIdentifierProvider.MAL },
+          {
+            media: { id: media.id },
+            provider: MediaIdentifierProvider.ANILIST,
+          },
+        ],
+      });
+
+      assert.deepStrictEqual(
+        identifiers
+          .map(({ provider, value }) => [provider, value])
+          .sort(([left], [right]) => String(left).localeCompare(String(right))),
+        [
+          [MediaIdentifierProvider.ANILIST, '4321'],
+          [MediaIdentifierProvider.MAL, '1234'],
+        ]
+      );
+    });
+
     it('records partial and per-season availability for the exact Sonarr instance', async () => {
       const firstSeason = fakeTmdbShow(1052).seasons[0];
       getShowByTvdbIdImpl = async () =>
