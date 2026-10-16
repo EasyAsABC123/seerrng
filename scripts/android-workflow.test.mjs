@@ -37,7 +37,10 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   assert.match(kvm.run, /-r \/dev\/kvm/u);
   assert.match(kvm.run, /-w \/dev\/kvm/u);
   assert.match(kvm.run, /GitHub runner does not expose \/dev\/kvm/u);
-  assert.match(kvm.run, /cannot read and write \/dev\/kvm after permissions were updated/u);
+  assert.match(
+    kvm.run,
+    /cannot read and write \/dev\/kvm after permissions were updated/u
+  );
   assert.ok(job.steps.indexOf(kvm) < job.steps.indexOf(build));
   assert.match(build.run, /:app:testDebugUnitTest/u);
   assert.match(build.run, /-p android/u);
