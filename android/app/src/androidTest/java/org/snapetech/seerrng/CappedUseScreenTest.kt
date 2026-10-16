@@ -123,9 +123,10 @@ class CappedUseScreenTest {
         scenario = ActivityScenario.launch(MainActivity::class.java)
         onView(withId(R.id.trialUsageStatus)).check(matches(withText(containsString("free sessions are used"))))
         connectServerNamed("Local test")
+        onView(withText(R.string.trial_complete_title)).inRoot(isDialog()).check(matches(isDisplayed()))
+        onView(withText(R.string.later)).inRoot(isDialog()).perform(click())
         onView(withId(R.id.serverPicker)).check(matches(isDisplayed()))
         onView(withId(R.id.browserScreen)).check(matches(withEffectiveVisibility(Visibility.GONE)))
-        onView(withText("Later")).perform(click())
     }
 
     @Test
