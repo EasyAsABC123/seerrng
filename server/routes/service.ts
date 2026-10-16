@@ -13,6 +13,7 @@ import type {
   MagazineServiceOption,
   ServiceCommonServer,
   ServiceCommonServerWithDetails,
+  WhisparrServiceOption,
 } from '@server/interfaces/api/serviceInterfaces';
 import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { getMusicQualityFromLabels } from '@server/lib/musicQuality';
@@ -536,6 +537,23 @@ serviceRoutes.get('/sportarr', async (req, res, next) => {
       );
 
       return res.status(200).json(sportarrServices);
+    });
+  } catch (error) {
+    return reportServiceSummaryReadError(error, next);
+  }
+});
+
+serviceRoutes.get('/whisparr', async (req, res, next) => {
+  try {
+    return await runServiceSummaryRead(req, () => {
+      const whisparrServices: WhisparrServiceOption[] =
+        getExternalRuntimeConfig().whisparr.map((service) => ({
+          id: service.id,
+          name: service.name,
+          isDefault: service.isDefault,
+        }));
+
+      return res.status(200).json(whisparrServices);
     });
   } catch (error) {
     return reportServiceSummaryReadError(error, next);

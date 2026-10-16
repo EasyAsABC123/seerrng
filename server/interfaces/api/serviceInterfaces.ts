@@ -56,6 +56,12 @@ export interface MagazineServiceOption {
   isDefault: boolean;
 }
 
+export interface WhisparrServiceOption {
+  id: number;
+  name: string;
+  isDefault: boolean;
+}
+
 export interface SportarrServiceOption {
   id: number;
   name: string;

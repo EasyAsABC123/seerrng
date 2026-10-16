@@ -1,17 +1,15 @@
 import Alert from '@app/components/Common/Alert';
 import Button from '@app/components/Common/Button';
 import Header from '@app/components/Common/Header';
-import MediaTypeBadge from '@app/components/Common/MediaTypeBadge';
 import PageTitle from '@app/components/Common/PageTitle';
+import AdultSceneCard from '@app/components/Discover/DiscoverAdult/AdultSceneCard';
 import useDiscover from '@app/hooks/useDiscover';
 import useDiscoverScrollRestoration from '@app/hooks/useDiscoverScrollRestoration';
 import { useSearchActivityReporter } from '@app/hooks/useSearchActivity';
 import { useBatchUpdateQueryParams } from '@app/hooks/useUpdateQueryParams';
-import { encodeApiPathSegment } from '@app/utils/apiPath';
 import defineMessages from '@app/utils/defineMessages';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/solid';
 import type { AdultResult } from '@server/models/Adult';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
@@ -20,16 +18,18 @@ const messages = defineMessages('components.Discover.DiscoverAdult', {
   title: 'Adult',
   search: 'Search adult scenes',
   searchPlaceholder: 'Title, performer, or studio',
-  searchHint: 'Search scenes indexed by your configured Whisparr servers.',
+  searchHint:
+    'Browse scenes in your Whisparr libraries or search by title, performer, or studio.',
+  recentScenes: 'Recently added scenes',
+  searchResults: 'Search results',
+  resultCount: '{count, plural, one {# scene} other {# scenes}}',
   partialResults:
     'Some Whisparr servers could not be searched. Results may be incomplete.',
   unavailable: 'Adult scene search is unavailable right now.',
   noResults: 'No scenes match this search.',
-  searchToBegin: 'Search for a scene to browse the Adult catalog.',
+  noLibraryScenes:
+    'No scenes are in your Whisparr libraries yet. Search above to browse the scene catalog.',
   loadMore: 'Load more scenes',
-  year: '({year})',
-  studio: 'Studio: {studio}',
-  requestStatus: 'You have an active request for this scene.',
 });
 
 const DiscoverAdult = () => {
@@ -73,6 +73,7 @@ const DiscoverAdult = () => {
   const providerMessage = (
     discover.error as { response?: { data?: { message?: string } } } | undefined
   )?.response?.data?.message;
+  const resultCount = discover.firstResultData?.totalResults ?? 0;
 
   return (
     <>
@@ -123,49 +124,63 @@ const DiscoverAdult = () => {
       {discover.firstResultData?.partial && (
         <Alert type="info">{intl.formatMessage(messages.partialResults)}</Alert>
       )}
-      {!query.trim() && !discover.isLoadingInitialData && (
-        <Alert type="info">{intl.formatMessage(messages.searchToBegin)}</Alert>
-      )}
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold text-white">
+          {intl.formatMessage(
+            query.trim() ? messages.searchResults : messages.recentScenes
+          )}
+        </h2>
+        {!discover.isLoadingInitialData && resultCount > 0 && (
+          <span className="text-sm text-gray-400">
+            {intl.formatMessage(messages.resultCount, { count: resultCount })}
+          </span>
+        )}
+      </div>
       {query.trim() &&
         !discover.error &&
         !discover.isLoadingInitialData &&
         discover.isEmpty && (
           <Alert type="info">{intl.formatMessage(messages.noResults)}</Alert>
         )}
-      {discover.titles.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {discover.titles.map((scene) => (
-            <Link
-              key={scene.id}
-              href={`/adult/${encodeApiPathSegment(scene.id)}`}
-              className="app-card-main refreshed-card-surface flex min-h-36 flex-col gap-3 rounded-lg border border-gray-700 p-4 transition hover:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400"
+      {!query.trim() &&
+        !discover.error &&
+        !discover.isLoadingInitialData &&
+        discover.isEmpty && (
+          <Alert type="info">
+            {intl.formatMessage(messages.noLibraryScenes)}
+          </Alert>
+        )}
+      {discover.isLoadingInitialData && discover.titles.length === 0 && (
+        <div
+          aria-label={intl.formatMessage(messages.recentScenes)}
+          aria-busy="true"
+          className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+        >
+          {Array.from({ length: 10 }, (_, index) => (
+            <div
+              key={index}
+              className="animate-pulse overflow-hidden rounded-lg border border-gray-700 bg-gray-900/60"
             >
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="line-clamp-2 text-lg font-semibold text-white">
-                  {scene.title}
-                  {scene.year
-                    ? ` ${intl.formatMessage(messages.year, { year: scene.year })}`
-                    : ''}
-                </h2>
-                <MediaTypeBadge mediaType="adult" variant="compact" />
+              <div className="aspect-[2/3] bg-gray-800" />
+              <div className="space-y-2 p-4">
+                <div className="h-4 w-3/4 rounded bg-gray-800" />
+                <div className="h-3 w-1/2 rounded bg-gray-800" />
               </div>
-              {scene.studio && (
-                <p className="text-sm text-gray-300">
-                  {intl.formatMessage(messages.studio, {
-                    studio: scene.studio,
-                  })}
-                </p>
-              )}
-              {scene.mediaInfo?.requestStatus && (
-                <p className="mt-auto text-sm text-indigo-200">
-                  {intl.formatMessage(messages.requestStatus)}
-                </p>
-              )}
-            </Link>
+            </div>
           ))}
         </div>
       )}
-      {query.trim() && !discover.isReachingEnd && (
+      {discover.titles.length > 0 && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {discover.titles.map((scene) => (
+            <AdultSceneCard
+              key={`${scene.serviceId}:${scene.id}`}
+              scene={scene}
+            />
+          ))}
+        </div>
+      )}
+      {discover.titles.length > 0 && !discover.isReachingEnd && (
         <div className="mt-6 flex justify-center">
           <Button
             buttonType="default"

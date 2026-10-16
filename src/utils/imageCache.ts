@@ -3,7 +3,8 @@ import {
   TMDB_POSTER_WIDTHS,
 } from '@server/constants/images';
 
-export type CacheableImageType = 'tmdb' | 'avatar' | 'tvdb' | 'music' | 'book';
+export type CacheableImageType =
+  'tmdb' | 'avatar' | 'tvdb' | 'music' | 'book' | 'adult';
 
 export const AVATAR_FALLBACK_IMAGE = '/user-icon-192x192.png';
 

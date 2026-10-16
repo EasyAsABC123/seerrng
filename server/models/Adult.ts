@@ -8,11 +8,15 @@ export interface AdultResult {
   year?: number;
   overview?: string;
   studio?: string;
-  posterPath?: undefined;
+  performers: string[];
+  posterPath?: string;
   backdropPath?: undefined;
+  serviceId: number;
+  serviceName: string;
   mediaInfo?: {
     id: number;
     status: MediaStatus;
+    serviceId: number;
     requestStatus?: MediaRequestStatus;
     requestId?: number;
   };
