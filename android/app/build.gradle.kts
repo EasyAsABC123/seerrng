@@ -27,7 +27,7 @@ android {
     signingConfigs {
         create("release") {
             storeFile = releaseStorePath.orNull?.let(::file)
-            storeType = "JKS"
+            storeType = "PKCS12"
             storePassword = releaseStorePassword.orNull
             keyAlias = releaseKeyAlias.orNull
             keyPassword = releaseKeyPassword.orNull

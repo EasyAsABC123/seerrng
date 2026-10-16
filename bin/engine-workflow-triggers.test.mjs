@@ -82,7 +82,7 @@ test('the existing CI workflow invokes the engine plan and reconciler around nat
   );
 });
 
-test('image publishing and deployment require reconciled validation and a clean image scan', () => {
+test('image publishing and scanning require reconciled validation', () => {
   const jobs = ci.workflow.jobs;
   assert.deepEqual(needs(jobs.publish), new Set(['engine-reconcile']));
   assert.match(jobs.publish.if, /needs\.engine-reconcile\.result == 'success'/);
@@ -90,35 +90,17 @@ test('image publishing and deployment require reconciled validation and a clean 
     needs(jobs['scan-main-image']),
     new Set(['publish', 'engine-reconcile'])
   );
-  assert.deepEqual(
-    needs(jobs['deploy-main']),
-    new Set([
-      'publish',
-      'preflight-deploy',
-      'engine-reconcile',
-      'scan-main-image',
-    ])
+  assert.match(
+    jobs['scan-main-image'].if,
+    /needs\.publish\.result == 'success'/
   );
-  for (const dependency of ['publish', 'engine-reconcile', 'scan-main-image'])
-    assert.match(
-      jobs['deploy-main'].if,
-      new RegExp(`needs\\.${dependency}\\.result == 'success'`)
-    );
 });
 
-test('Seerr deployment jobs target the restricted kspls0 runner with available labels', () => {
+test('main image publishing uses hosted runners without a live deployment job', () => {
   const jobs = ci.workflow.jobs;
-  const expectedRunner =
-    '{"group":"trusted-main","labels":["self-hosted","Linux","X64","host","kspls0","linux-build"]}';
-
-  for (const jobId of ['preflight-deploy', 'deploy-main']) {
-    assert.match(
-      jobs[jobId]['runs-on'],
-      /TRUSTED_MAIN_RUNNERS_ENABLED == 'true'/
-    );
-    assert.ok(jobs[jobId]['runs-on'].includes(expectedRunner));
-    assert.doesNotMatch(jobs[jobId]['runs-on'], /"seerrng"/);
-  }
+  assert.equal(jobs.publish['runs-on'], 'ubuntu-latest');
+  assert.equal(Object.hasOwn(jobs, 'preflight-deploy'), false);
+  assert.equal(Object.hasOwn(jobs, 'deploy-main'), false);
 });
 
 test('manual main runs execute the full validation plan before any privileged job', () => {
@@ -158,10 +140,7 @@ test('GitHub fans every independent validation job out from the engine plan', ()
   );
   assert.deepEqual(jobs['unit-test'].strategy, {
     'fail-fast': false,
-    'max-parallel':
-      "${{ (((github.event_name == 'push' && github.ref == 'refs/heads/main') || " +
-      "(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) && " +
-      "vars.TRUSTED_MAIN_RUNNERS_ENABLED == 'true' && 1) || 4 }}",
+    'max-parallel': 4,
     matrix: '${{ fromJSON(needs.engine-plan.outputs.unitMatrix) }}',
   });
   assert.deepEqual(jobs.cypress.strategy, {
@@ -174,21 +153,9 @@ test('GitHub fans every independent validation job out from the engine plan', ()
   assert.match(jobs.playwright.if, /outputs\.playwright == 'true'/);
 });
 
-test('unit-test shards use kspls0 in the shared org pool only for main pushes and manual runs', () => {
+test('unit-test shards use GitHub-hosted runners', () => {
   const runner = ci.workflow.jobs['unit-test']['runs-on'];
-  const mainRunnerCondition =
-    "((github.event_name == 'push' && github.ref == 'refs/heads/main') || " +
-    "(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))";
-  const trustedRunnerJson =
-    '{"group":"trusted-main","labels":["self-hosted","Linux","X64","host","kspls0"]}';
-  const expectedRunner =
-    '$' +
-    '{{ (' +
-    mainRunnerCondition +
-    " && vars.TRUSTED_MAIN_RUNNERS_ENABLED == 'true') && fromJSON('" +
-    trustedRunnerJson +
-    "') || 'ubuntu-latest' }}";
-  assert.equal(runner, expectedRunner);
+  assert.equal(runner, 'ubuntu-latest');
 });
 
 test('native workflow bodies are reused without duplicate PR or push launches', () => {

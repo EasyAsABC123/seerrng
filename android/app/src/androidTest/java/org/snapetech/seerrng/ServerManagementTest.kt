@@ -2,7 +2,10 @@ package org.snapetech.seerrng
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.view.View
+import android.webkit.WebView
+import android.widget.FrameLayout
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
@@ -27,6 +30,11 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class ServerManagementTest {
@@ -164,6 +172,53 @@ class ServerManagementTest {
     }
 
     @Test
+    fun acknowledgedHttpConnectionLoadsAReverseProxyPathInTheWebView() {
+        LocalHttpServer().use { server ->
+            addServer("Local SeerrNG", "http://127.0.0.1:${server.port}/seerrng/")
+            onView(
+                allOf(
+                    withId(R.id.rowConnect),
+                    isDescendantOfA(
+                        allOf(
+                            withId(R.id.serverRow),
+                            androidx.test.espresso.matcher.ViewMatchers.hasDescendant(withText("Local SeerrNG")),
+                        ),
+                    ),
+                ),
+            ).perform(click())
+
+            onView(withText(R.string.use_http)).inRoot(isDialog()).perform(click())
+            onView(withId(R.id.httpBadge)).check(matches(isDisplayed()))
+
+            val pageText = AtomicReference<String?>(null)
+            val pageLoaded = CountDownLatch(1)
+            scenario.onActivity { activity ->
+                val view = activity.findViewById<FrameLayout>(R.id.webViewContainer)
+                    .let { it.getChildAt(0) as WebView }
+                val deadline = SystemClock.uptimeMillis() + TimeUnit.SECONDS.toMillis(15)
+                fun readPage() {
+                    if (view.progress == 100 && view.url?.endsWith("/seerrng") == true) {
+                        view.evaluateJavascript("document.body.innerText") {
+                            pageText.set(it)
+                            pageLoaded.countDown()
+                        }
+                    } else if (SystemClock.uptimeMillis() < deadline) {
+                        view.postDelayed(::readPage, 50)
+                    } else {
+                        pageLoaded.countDown()
+                    }
+                }
+                view.post(::readPage)
+            }
+
+            assertTrue("The local SeerrNG page did not finish loading", pageLoaded.await(20, TimeUnit.SECONDS))
+            assertTrue("The WebView did not render the local server response: ${pageText.get()}",
+                pageText.get()?.contains("SeerrNG Android E2E ready") == true)
+            assertEquals("/seerrng", server.requestPath.get())
+        }
+    }
+
+    @Test
     fun removingOneServerLeavesTheOtherSaved() {
         addServer("Home", "home.example")
         addServer("Remote", "remote.example")
@@ -203,4 +258,43 @@ class ServerManagementTest {
                 ),
             ),
         )
+
+    private class LocalHttpServer : AutoCloseable {
+        private val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val requestPath = AtomicReference<String?>(null)
+        val port: Int = server.localPort
+
+        init {
+            Thread {
+                try {
+                    server.accept().use { socket ->
+                        socket.soTimeout = 5_000
+                        val reader = socket.getInputStream().bufferedReader(Charsets.US_ASCII)
+                        val requestLine = reader.readLine()
+                        requestPath.set(requestLine?.split(' ')?.getOrNull(1))
+                        while (reader.readLine()?.isNotEmpty() == true) Unit
+                        val body = "<!doctype html><html><body>SeerrNG Android E2E ready</body></html>"
+                        val response = listOf(
+                            "HTTP/1.1 200 OK",
+                            "Content-Type: text/html; charset=utf-8",
+                            "Content-Length: ${body.toByteArray(Charsets.UTF_8).size}",
+                            "Connection: close",
+                            "",
+                            body,
+                        ).joinToString("\r\n") + "\r\n"
+                        socket.getOutputStream().write(response.toByteArray(Charsets.UTF_8))
+                        socket.getOutputStream().flush()
+                    }
+                } catch (_: Exception) { }
+            }.apply {
+                name = "seerrng-android-e2e-http"
+                isDaemon = true
+                start()
+            }
+        }
+
+        override fun close() {
+            server.close()
+        }
+    }
 }

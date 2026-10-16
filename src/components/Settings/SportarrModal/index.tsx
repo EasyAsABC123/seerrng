@@ -137,6 +137,12 @@ const SportarrModal = ({ settings, onClose, onSave }: SportarrModalProps) => {
           baseUrl: values.baseUrl,
           apiKey: values.apiKey,
         };
+        const canTestConnection =
+          values.hostname.trim().length > 0 &&
+          Number.isInteger(connectionPayload.port) &&
+          connectionPayload.port >= 1 &&
+          connectionPayload.port <= 65535 &&
+          values.apiKey.trim().length > 0;
         const testConnection = async () => {
           setIsTesting(true);
           try {
@@ -187,7 +193,9 @@ const SportarrModal = ({ settings, onClose, onSave }: SportarrModalProps) => {
                 : intl.formatMessage(messages.test)
             }
             onSecondary={() => void testConnection()}
-            secondaryDisabled={isSubmitting || isTesting || !isValid}
+            secondaryDisabled={
+              isSubmitting || isTesting || !canTestConnection
+            }
           >
             <Form>
               <p className="description">

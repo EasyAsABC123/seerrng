@@ -221,9 +221,7 @@ test('the weighted Unit and Cypress shard matrices consume the sealed plan outpu
   assert.equal(unit.strategy['fail-fast'], false);
   assert.equal(
     unit.strategy['max-parallel'],
-    "${{ (((github.event_name == 'push' && github.ref == 'refs/heads/main') || " +
-      "(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) && " +
-      "vars.TRUSTED_MAIN_RUNNERS_ENABLED == 'true' && 1) || 4 }}"
+    4
   );
   assert.equal(
     unit.strategy.matrix,
@@ -616,10 +614,7 @@ test('native environments, commands, permissions, and action pins are preserved'
   assert.equal(jobs.test.container.image, alpine);
   assert.equal(jobs['unit-test'].container.image, alpine);
   assert.equal(jobs.test['runs-on'], 'ubuntu-latest');
-  assert.equal(
-    jobs['unit-test']['runs-on'],
-    '${{ (((github.event_name == \'push\' && github.ref == \'refs/heads/main\') || (github.event_name == \'workflow_dispatch\' && github.ref == \'refs/heads/main\')) && vars.TRUSTED_MAIN_RUNNERS_ENABLED == \'true\') && fromJSON(\'{"group":"trusted-main","labels":["self-hosted","Linux","X64","host","kspls0"]}\') || \'ubuntu-latest\' }}'
-  );
+  assert.equal(jobs['unit-test']['runs-on'], 'ubuntu-latest');
   assert.equal(jobs.codeql.permissions['security-events'], 'write');
 
   for (const fragment of [
