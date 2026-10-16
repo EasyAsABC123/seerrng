@@ -59,7 +59,11 @@ jobs:
             -gpu swiftshader_indirect > "$RUNNER_TEMP/android-emulator.log" 2>&1 &
           emulator_pid=$!
           trap 'adb emu kill >/dev/null 2>&1 || true; wait "$emulator_pid" 2>/dev/null || true' EXIT
-          adb wait-for-device
+          timeout 300s adb wait-for-device || {
+            cat "$RUNNER_TEMP/android-emulator.log" >&2
+            echo 'Android emulator did not register with ADB.' >&2
+            exit 1
+          }
           for attempt in {1..120}; do
             if [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == '1' ]]; then
               break
