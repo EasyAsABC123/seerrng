@@ -16,7 +16,7 @@ test('ordinary operators default to one fewer worker than effective logical CPUs
   assert.equal(result.operatorGithubLogin, null);
 });
 
-test('GitHub Actions uses all effective CPUs regardless of the triggering operator', () => {
+test('GitHub Actions caps workers at eight regardless of the triggering operator', () => {
   for (const operatorGithubLogin of [null, 'snapetech', 'JohnCronk79']) {
     const result = selectWorkerCapacity({
       availableLogicalCpus: 32,
@@ -26,11 +26,13 @@ test('GitHub Actions uses all effective CPUs regardless of the triggering operat
       githubActions: true,
     });
     assert.equal(result.configuredWorkers, 4);
-    assert.equal(
-      result.policy,
-      'one-worker-per-effective-logical-cpu-on-github-actions'
-    );
+    assert.equal(result.policy, 'up-to-eight-workers-on-github-actions');
   }
+  assert.equal(
+    selectWorkerCapacity({ availableLogicalCpus: 32, githubActions: true })
+      .configuredWorkers,
+    8
+  );
   assert.equal(
     selectWorkerCapacity({ availableLogicalCpus: 8, githubActions: true })
       .configuredWorkers,
@@ -48,7 +50,10 @@ test('GitHub Actions discovery takes precedence over John local identity, not ex
     environment: { GITHUB_ACTIONS: 'true', GITHUB_ACTOR: 'JohnCronk79' },
   };
   const detected = detectWorkerCapacity(options);
-  assert.equal(detected.configuredWorkers, detected.effectiveLogicalCpus);
+  assert.equal(
+    detected.configuredWorkers,
+    Math.min(detected.effectiveLogicalCpus, 8)
+  );
   assert.equal(
     detectWorkerCapacity({ ...options, override: 3 }).configuredWorkers,
     3

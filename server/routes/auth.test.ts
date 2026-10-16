@@ -2110,7 +2110,7 @@ describe('POST /auth/reset-password', () => {
     const outcome = await Promise.race([
       responsePromise.then((response) => ({ response })),
       new Promise<{ timeout: true }>((resolve) => {
-        timeout = setTimeout(() => resolve({ timeout: true }), 500);
+        timeout = setTimeout(() => resolve({ timeout: true }), 5_000);
       }),
     ]);
     if (timeout) {

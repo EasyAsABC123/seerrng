@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { availableParallelism, cpus } from 'node:os';
 
 const HIGH_THROUGHPUT_GITHUB_LOGINS = new Map([['johncronk79', 'JohnCronk79']]);
+export const GITHUB_ACTIONS_WORKER_CAP = 8;
 export const REQUIRED_WORKER_CAPACITY_PROOF_SCHEMA =
   'seerrng-required-worker-capacity-proof/v1';
 
@@ -96,7 +97,7 @@ export function selectWorkerCapacity({
   const approvedOperatorGithubLogin = approvedGithubLogin(operatorGithubLogin);
   const highThroughput = approvedOperatorGithubLogin !== null;
   const automaticWorkers = githubActions
-    ? effectiveLogicalCpus
+    ? Math.min(effectiveLogicalCpus, GITHUB_ACTIONS_WORKER_CAP)
     : highThroughput
       ? effectiveLogicalCpus * 2
       : Math.max(1, effectiveLogicalCpus - 1);
@@ -111,7 +112,7 @@ export function selectWorkerCapacity({
       override !== null
         ? 'explicit-worker-override'
         : githubActions
-          ? 'one-worker-per-effective-logical-cpu-on-github-actions'
+          ? 'up-to-eight-workers-on-github-actions'
           : highThroughput
             ? 'two-workers-per-effective-logical-cpu-for-approved-operator'
             : 'one-worker-less-than-effective-logical-cpus',

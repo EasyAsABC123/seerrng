@@ -25,7 +25,10 @@ import {
   vitestConfigSource,
 } from '../../../bin/local-validation.mjs';
 import { acceptNativeCypressResults } from './build-browser-stage.mjs';
-import { detectWorkerCapacity } from './cpu-capacity.mjs';
+import {
+  detectWorkerCapacity,
+  GITHUB_ACTIONS_WORKER_CAP,
+} from './cpu-capacity.mjs';
 import {
   assertHostedGithubPlan,
   reconcileHostedGithubNeeds,
@@ -2197,9 +2200,10 @@ export function materializeHostedVitestLane({
   const capacity = detectWorkerCapacity({ sourceRoot: root, environment });
   if (
     capacity.githubActions !== true ||
-    capacity.configuredWorkers !== capacity.effectiveLogicalCpus
+    capacity.configuredWorkers !==
+      Math.min(capacity.effectiveLogicalCpus, GITHUB_ACTIONS_WORKER_CAP)
   )
-    throw new Error('GitHub Vitest shard must use exactly N effective workers');
+    throw new Error('GitHub Vitest shard exceeds its worker-capacity policy');
   const runnerTemp = environment.RUNNER_TEMP;
   if (typeof runnerTemp !== 'string' || !path.isAbsolute(runnerTemp))
     throw new Error('Hosted Vitest requires an absolute GitHub runner temp');
@@ -2289,9 +2293,10 @@ export async function executeHostedTestLane({
   const capacity = detectWorkerCapacity({ sourceRoot: root, environment });
   if (
     capacity.githubActions !== true ||
-    capacity.configuredWorkers !== capacity.effectiveLogicalCpus
+    capacity.configuredWorkers !==
+      Math.min(capacity.effectiveLogicalCpus, GITHUB_ACTIONS_WORKER_CAP)
   )
-    throw new Error('GitHub test lane must use exactly N effective workers');
+    throw new Error('GitHub test lane exceeds its worker-capacity policy');
   const expectedCommand = {
     program: 'node',
     args: [

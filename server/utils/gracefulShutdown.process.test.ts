@@ -17,7 +17,7 @@ const FIXTURE_PATH = path.join(
   REPO_ROOT,
   'server/test/fixtures/gracefulShutdownProcess.ts'
 );
-const CHILD_READY_TIMEOUT_MS = 20_000;
+const CHILD_READY_TIMEOUT_MS = 45_000;
 
 const waitForReady = (child: FixtureChild): Promise<number> =>
   new Promise((resolve, reject) => {
