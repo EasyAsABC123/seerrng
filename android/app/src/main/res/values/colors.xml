@@ -1,0 +1,10 @@
+<resources>
+    <color name="brand_blue">#2B5C9A</color>
+    <color name="brand_blue_dark">#193B66</color>
+    <color name="ink">#17212F</color>
+    <color name="muted">#526274</color>
+    <color name="paper">#F5F7FA</color>
+    <color name="white">#FFFFFF</color>
+    <color name="warning">#9C3D22</color>
+    <color name="line">#D7DEE8</color>
+</resources>

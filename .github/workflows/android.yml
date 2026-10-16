@@ -1,0 +1,77 @@
+name: Android APK
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'scripts/build-android-release.sh'
+      - '.github/workflows/android.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - 'scripts/build-android-release.sh'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Build and test Android app
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+
+      - name: Install Android SDK and emulator
+        run: |
+          sdkmanager \
+            'platform-tools' \
+            'platforms;android-36' \
+            'build-tools;36.0.0' \
+            'emulator' \
+            'system-images;android-36;google_apis;x86_64'
+          echo no | avdmanager create avd \
+            --name seerrng-api36 \
+            --package 'system-images;android-36;google_apis;x86_64' \
+            --device pixel_2 \
+            --force
+
+      - name: Run unit and emulator tests, then build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          emulator -avd seerrng-api36 \
+            -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect > "$RUNNER_TEMP/android-emulator.log" 2>&1 &
+          emulator_pid=$!
+          trap 'adb emu kill >/dev/null 2>&1 || true; wait "$emulator_pid" 2>/dev/null || true' EXIT
+          adb wait-for-device
+          for attempt in {1..120}; do
+            if [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == '1' ]]; then
+              break
+            fi
+            sleep 2
+          done
+          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == '1' ]] || {
+            cat "$RUNNER_TEMP/android-emulator.log" >&2
+            echo 'Android emulator did not finish booting.' >&2
+            exit 1
+          }
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          ./android/gradlew --no-daemon -p android \
+            :app:testDebugUnitTest \
+            :app:connectedDebugAndroidTest \
+            :app:assembleDebug

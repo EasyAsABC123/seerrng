@@ -42,6 +42,12 @@ test('release assets build while image verification runs, then package channels 
   assert.equal(assetBuild.needs.includes('verify'), false);
   assert.equal(assetBuild.with.tag, '${{ inputs.tag || github.ref_name }}');
   assert.equal(assetBuild.permissions.actions, 'read');
+  assert.deepEqual(assetBuild.secrets, {
+    ANDROID_KEYSTORE_BASE64: '${{ secrets.ANDROID_KEYSTORE_BASE64 }}',
+    ANDROID_KEYSTORE_PASSWORD: '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}',
+    ANDROID_KEY_ALIAS: '${{ secrets.ANDROID_KEY_ALIAS }}',
+    ANDROID_KEY_PASSWORD: '${{ secrets.ANDROID_KEY_PASSWORD }}',
+  });
   assert.deepEqual(packageDispatch.needs, ['verify', 'build-release-assets']);
   assert.equal(packageDispatch['timeout-minutes'], 360);
   assert.match(dispatchScript, /--ref main/u);
@@ -502,6 +508,14 @@ test('release assets support trusted reuse and main-only manual dispatch', () =>
     'boolean'
   );
   assert.equal(workflowCall.inputs.reuse_windows_arm64_artifact.default, false);
+  for (const name of [
+    'ANDROID_KEYSTORE_BASE64',
+    'ANDROID_KEYSTORE_PASSWORD',
+    'ANDROID_KEY_ALIAS',
+    'ANDROID_KEY_PASSWORD',
+  ]) {
+    assert.equal(workflowCall.secrets[name].required, false);
+  }
   assert.match(
     resolve.steps.find((step) => step.name === 'Resolve version').env
       .RELEASE_TAG,
@@ -549,6 +563,16 @@ test('release recovery validates reusable artifacts and repairs the failed relea
   );
   assert.match(
     recoveryValidation.run,
+    /Build release assets \/ Build Android APK/u,
+    'recovery must validate that the signed Android artifact was built'
+  );
+  assert.match(
+    recoveryValidation.run,
+    /"seerrng-android"/u,
+    'recovery must require the Android artifact before reusing release assets'
+  );
+  assert.match(
+    recoveryValidation.run,
     /Build release assets \/ Upload release assets/u
   );
   assert.match(
@@ -571,6 +595,12 @@ test('release recovery validates reusable artifacts and repairs the failed relea
     'validate-main-tag',
     'create-draft-release',
   ]);
+  assert.deepEqual(assetBuild.secrets, {
+    ANDROID_KEYSTORE_BASE64: '${{ secrets.ANDROID_KEYSTORE_BASE64 }}',
+    ANDROID_KEYSTORE_PASSWORD: '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}',
+    ANDROID_KEY_ALIAS: '${{ secrets.ANDROID_KEY_ALIAS }}',
+    ANDROID_KEY_PASSWORD: '${{ secrets.ANDROID_KEY_PASSWORD }}',
+  });
   assert.match(
     assetBuild.with.reuse_windows_x64_artifact,
     /needs\.validate-main-tag\.outputs\.reuse_windows_x64_artifact/u
@@ -698,8 +728,23 @@ test('release assets build supported native archive platforms', () => {
   assert.deepEqual(publish.needs, [
     'resolve',
     'build',
+    'build-android',
     'build-jellyfin-plugin',
   ]);
+  const androidBuild = assets.jobs['build-android'];
+  assert.equal(androidBuild.needs, 'resolve');
+  assert.equal(
+    androidBuild.steps.find(
+      (step) => step.name === 'Build, sign, and checksum the Android APK'
+    ).run,
+    "bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release"
+  );
+  assert.equal(
+    androidBuild.steps.find((step) =>
+      step.uses?.startsWith('actions/upload-artifact@')
+    ).with.name,
+    'seerrng-android'
+  );
   assert.equal(downloadAssets.with.path, 'dist-release/downloaded');
   assert.equal(downloadAssets.with['merge-multiple'], undefined);
   assert.match(flattenAssets.run, /Unexpected file in release artifact/u);
@@ -722,6 +767,7 @@ test('release assets build supported native archive platforms', () => {
   for (const archive of [
     'seerrng-${TAG}-macos-x64.tar.gz',
     'seerrng-${TAG}-windows-arm64.zip',
+    'seerrng-${TAG}-android.apk',
   ]) {
     assert.ok(
       verifyInventory.includes(`"${archive}"`),
@@ -736,6 +782,8 @@ test('release assets build supported native archive platforms', () => {
   for (const archive of [
     'seerrng-${TAG}-macos-x64.tar.gz',
     'seerrng-${TAG}-windows-arm64.zip',
+    'seerrng-${TAG}-android.apk',
+    'seerrng-${TAG}-android.sha256',
   ]) {
     assert.ok(
       requiredAssets.includes(`"${archive}"`),
@@ -884,6 +932,11 @@ test('release asset checksums match the builder sidecar names', () => {
   );
   assert.match(assetsText, /archive_base="\$\{archive%\.tar\.gz\}"/u);
   assert.match(assetsText, /archive_base="\$\{archive_base%\.zip\}"/u);
+  assert.match(assetsText, /archive_base="\$\{archive_base%\.apk\}"/u);
+  assert.match(
+    assetsText,
+    /expected_checksum="\$\{expected_checksum%\.apk\}\.sha256"/u
+  );
 });
 
 test('pull-request CI publishes the exact release-note preview', () => {

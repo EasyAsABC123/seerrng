@@ -13,6 +13,8 @@ connects to.
 ## Start here
 - [Localization coverage and roadmap](/localization-roadmap): current supported locales, catalog coverage, and remaining translation work.
 
+- [SeerrNG Android app](/getting-started/android-app): install the APK and add or switch between servers.
+
 - [Getting started](/getting-started/): choose an installation method and
   connect SeerrNG to your media server.
 - [Docker installation](/getting-started/docker/)

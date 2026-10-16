@@ -27,6 +27,15 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
 
 permissions:
   contents: read
@@ -241,6 +250,45 @@ jobs:
           name: seerrng-${{ matrix.os }}-${{ matrix.arch }}
           path: dist-release/seerrng-*
 
+  build-android:
+    name: Build Android APK
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+
+      - name: Install Android SDK packages
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Build, sign, and checksum the Android APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: seerrng-android
+          path: dist-release/seerrng-*-android.*
+          if-no-files-found: error
+
   build-jellyfin-plugin:
     name: Build optional Jellyfin plugin
     needs: resolve
@@ -337,7 +385,7 @@ jobs:
 
   publish:
     name: Upload release assets
-    needs: [resolve, build, build-jellyfin-plugin]
+    needs: [resolve, build, build-android, build-jellyfin-plugin]
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -368,11 +416,13 @@ jobs:
               seerrng-macos-arm64) expected_archive="seerrng-${TAG}-macos-arm64.tar.gz" ;;
               seerrng-windows-x64) expected_archive="seerrng-${TAG}-windows-x64.zip" ;;
               seerrng-windows-arm64) expected_archive="seerrng-${TAG}-windows-arm64.zip" ;;
+              seerrng-android) expected_archive="seerrng-${TAG}-android.apk" ;;
               seerrng-jellyfin-plugin) expected_archive="seerrng-jellyfin-bridge-${TAG}.zip" ;;
               *) echo "Unexpected release artifact directory: $artifact" >&2; exit 1 ;;
             esac
             expected_checksum="${expected_archive%.tar.gz}"
-            expected_checksum="${expected_checksum%.zip}.sha256"
+            expected_checksum="${expected_checksum%.zip}"
+            expected_checksum="${expected_checksum%.apk}.sha256"
             expected_manifest=""
             [[ "$artifact" != 'seerrng-jellyfin-plugin' ]] || expected_manifest='seerrng-jellyfin-plugin-manifest.json'
             if [[ "$filename" != "$expected_archive" && "$filename" != "$expected_checksum" && "$filename" != "$expected_manifest" ]]; then
@@ -400,12 +450,14 @@ jobs:
             "seerrng-${TAG}-macos-x64.tar.gz"
             "seerrng-${TAG}-windows-x64.zip"
             "seerrng-${TAG}-windows-arm64.zip"
+            "seerrng-${TAG}-android.apk"
             "seerrng-jellyfin-bridge-${TAG}.zip"
           )
           for archive in "${expected[@]}"; do
             test -f "dist-release/$archive"
             archive_base="${archive%.tar.gz}"
             archive_base="${archive_base%.zip}"
+            archive_base="${archive_base%.apk}"
             checksum="dist-release/$archive_base.sha256"
             test -f "$checksum"
             (
@@ -413,7 +465,7 @@ jobs:
               sha256sum -c "$(basename "$checksum")"
             )
           done
-          mapfile -t archives < <(find dist-release -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) -printf '%f\n' | sort)
+          mapfile -t archives < <(find dist-release -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.apk' \) -printf '%f\n' | sort)
           printf '%s\n' "${archives[@]}"
           diff -u <(printf '%s\n' "${expected[@]}" | sort) <(printf '%s\n' "${archives[@]}")
 

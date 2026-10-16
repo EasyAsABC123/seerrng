@@ -24,6 +24,7 @@ SeerrNG is maintained by snapetech as a separate fork so we can move quickly on 
 - [What SeerrNG Does](#what-seerrng-does)
 - [Project Status](#project-status)
 - [Documentation and feature guides](#documentation)
+  - [SeerrNG Android app](./docs/getting-started/android-app.md)
   - [Choose available media categories](./docs/using-seerr/settings/media-categories.md)
   - [Software requests: ROMs and PC games](./docs/using-seerr/software-acquisition.md)
   - [Request Status and Download copy](./docs/using-seerr/request-status.md)
@@ -55,6 +56,7 @@ SeerrNG is maintained by snapetech as a separate fork so we can move quickly on 
   - [Docker Compose](#docker-compose)
   - [Unraid](#unraid)
   - [Linux packages](#linux-packages)
+- [Android APK](#android-apk)
 - [Required Setup](#required-setup)
 - [Bookshelf and Hardcover](#bookshelf-and-hardcover)
 - [Environment Variables](#environment-variables)
@@ -69,6 +71,7 @@ SeerrNG is maintained by snapetech as a separate fork so we can move quickly on 
 ## What SeerrNG Does
 
 - Requests and approvals for movies, shows, music, ebooks, audiobooks, comics, magazines, emulation ROMs, and PC games.
+- A companion Android APK client for connecting to one or more self-hosted SeerrNG servers.
 - Movie and series Discover filters with 0.1-point TMDB rating thresholds and streaming-service availability filters by region.
 - Media-server integration with Plex, Jellyfin, and Emby, including watch-state-aware My Library views scoped to each linked account.
 - Optional Jellyfin and Emby profile sync during user imports, refreshing linked provider names and avatars while preserving SeerrNG email addresses, local passwords, and permissions.
@@ -263,6 +266,13 @@ Install SeerrNG from Community Applications with the [Unraid template](https://r
 ### Linux Packages
 
 This repo includes release workflows and packaging metadata for tarball, Debian, RPM, AppImage, Flatpak, Snap, AUR, PPA, and COPR style distribution. These packages install SeerrNG as a standalone service; Lidarr, Bookshelf, and other automation/media servers are optional external services configured inside SeerrNG. Use the GitHub releases for generated artifacts when available.
+
+### Android APK
+
+The Android app is a client for servers you already run. Its signed APK and
+SHA-256 checksum are attached to GitHub Releases. See the
+[Android app guide](./docs/getting-started/android-app.md) for setup,
+installation, and connection details.
 
 ## Required Setup
 
