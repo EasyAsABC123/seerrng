@@ -169,6 +169,7 @@ describe('manual TV season mapping', () => {
         .its('request.body')
         .should('deep.equal', {
           tvdbId: 321,
+          seasonType: 'standard',
           seasonMappings: [
             { seasonNumber: 0, externalSeasonNumber: 0 },
             { seasonNumber: 2, externalSeasonNumber: 1 },
