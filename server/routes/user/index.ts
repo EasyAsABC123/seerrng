@@ -4,6 +4,7 @@ import PlexTvAPI, {
   plexUserHasServerAccess,
 } from '@server/api/plextv';
 import TautulliAPI, { isTautulliNoDataError } from '@server/api/tautulli';
+import TheMovieDb from '@server/api/themoviedb';
 import {
   MediaRequestStatus,
   MediaStatus,
@@ -67,6 +68,7 @@ import {
   runUserSecurityMutationWithActor,
   runUserSecurityReadWithActor,
 } from '@server/lib/userSecurityMutation';
+import { filterVideoItemsForUser } from '@server/lib/videoMaturityPolicy';
 import { getCombinedWatchlist } from '@server/lib/watchlist';
 import { watchlistFiltersSchema } from '@server/lib/watchlistFilters';
 import logger from '@server/logger';
@@ -2808,15 +2810,42 @@ router.get<{ id: string }, WatchlistResponse>(
             select: { id: true, plexToken: true },
           });
 
-          return res.json(
-            await getCombinedWatchlist({
-              userId: user.id,
-              plexToken: user.plexToken,
-              page,
-              itemsPerPage,
-              filters: filters.data,
-            })
+          const watchlist = await getCombinedWatchlist({
+            userId: user.id,
+            plexToken: user.plexToken,
+            page,
+            itemsPerPage,
+            filters: filters.data,
+          });
+          const videoItems = watchlist.results.flatMap((item) =>
+            item.mediaType === MediaType.MOVIE ||
+            item.mediaType === MediaType.TV
+              ? [
+                  {
+                    id: item.tmdbId ?? item.id,
+                    mediaType: item.mediaType as MediaType.MOVIE | MediaType.TV,
+                  },
+                ]
+              : []
           );
+          const allowedVideoItems = await filterVideoItemsForUser(
+            new TheMovieDb(),
+            userId,
+            videoItems
+          );
+          const allowedVideoKeys = new Set(
+            allowedVideoItems.map((item) => `${item.mediaType}:${item.id}`)
+          );
+          watchlist.results = watchlist.results.filter(
+            (item) =>
+              (item.mediaType !== MediaType.MOVIE &&
+                item.mediaType !== MediaType.TV) ||
+              allowedVideoKeys.has(
+                `${item.mediaType}:${item.tmdbId ?? item.id}`
+              )
+          );
+
+          return res.json(watchlist);
         }
       );
     } catch (error) {

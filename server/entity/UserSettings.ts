@@ -1,7 +1,9 @@
 import type {
   BookHomeSectionPreference,
   CardTextVisibility,
+  MovieMaturityLimit,
   NotificationAgentTypes,
+  TvMaturityLimit,
   UserMediaFilterPins,
   UserPreferredLanguages,
   UserRequestRootFolders,
@@ -211,6 +213,12 @@ export class UserSettings {
 
   @Column({ type: 'varchar', nullable: true })
   public cardTextVisibilityBook?: CardTextVisibility;
+
+  @Column({ type: 'varchar', nullable: true })
+  public movieMaturityRatingLimit?: MovieMaturityLimit | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  public tvMaturityRatingLimit?: TvMaturityLimit | null;
 
   @Column({ default: false })
   public detailDisclosureCastPinned: boolean;

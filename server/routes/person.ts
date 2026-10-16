@@ -1,6 +1,11 @@
 import TheMovieDb from '@server/api/themoviedb';
+import { MediaType } from '@server/constants/media';
 import Media from '@server/entity/Media';
 import { rankTmdbPersonCredits } from '@server/lib/tmdbRank';
+import {
+  filterVideoItemsByMaturityPolicy,
+  getUserVideoMaturityPolicy,
+} from '@server/lib/videoMaturityPolicy';
 import logger from '@server/logger';
 import {
   mapCastCredits,
@@ -13,6 +18,7 @@ import { Router } from 'express';
 
 const personRoutes = Router();
 const maxTmdbPersonId = 1_000_000_000;
+const maxMaturityCheckedCredits = 50;
 
 const parsePersonRouteId = (id: unknown): number | undefined =>
   parsePositiveRouteId(id, maxTmdbPersonId);
@@ -67,10 +73,64 @@ personRoutes.get('/:id/combined_credits', async (req, res, next) => {
     });
     const rankedCast = rankTmdbPersonCredits(combinedCredits.cast);
     const rankedCrew = rankTmdbPersonCredits(combinedCredits.crew);
+    const maturityPolicy = req.user
+      ? await getUserVideoMaturityPolicy(req.user.id)
+      : { movie: null, tv: null };
+    const filterCreditsByMaturity = async <
+      T extends (typeof rankedCast)[number] | (typeof rankedCrew)[number],
+    >(
+      credits: T[]
+    ): Promise<T[]> => {
+      const restrictedCredits = credits.filter(
+        (credit) =>
+          (credit.media_type === MediaType.MOVIE &&
+            maturityPolicy.movie !== null) ||
+          (credit.media_type === MediaType.TV && maturityPolicy.tv !== null)
+      );
+      // Person credits have no server pagination. Bound metadata lookups and
+      // withhold the unchecked tail whenever that media type has a cap.
+      const checkedCredits = restrictedCredits.slice(
+        0,
+        maxMaturityCheckedCredits
+      );
+      const allowedCredits = await filterVideoItemsByMaturityPolicy(
+        tmdb,
+        maturityPolicy,
+        checkedCredits.map((credit) => ({
+          id: credit.id,
+          mediaType: credit.media_type as MediaType.MOVIE | MediaType.TV,
+        })),
+        language
+      );
+      const allowedKeys = new Set(
+        allowedCredits.map((credit) => `${credit.mediaType}:${credit.id}`)
+      );
+      const checkedKeys = new Set(
+        checkedCredits.map((credit) => `${credit.media_type}:${credit.id}`)
+      );
+
+      return credits.filter((credit) => {
+        if (
+          credit.media_type !== MediaType.MOVIE &&
+          credit.media_type !== MediaType.TV
+        ) {
+          return true;
+        }
+        const limit =
+          credit.media_type === MediaType.MOVIE
+            ? maturityPolicy.movie
+            : maturityPolicy.tv;
+        if (limit === null) return true;
+        const key = `${credit.media_type}:${credit.id}`;
+        return checkedKeys.has(key) && allowedKeys.has(key);
+      });
+    };
+    const maturityFilteredCast = await filterCreditsByMaturity(rankedCast);
+    const maturityFilteredCrew = await filterCreditsByMaturity(rankedCrew);
 
     const castMedia = await Media.getRelatedMedia(
       req.user,
-      rankedCast
+      maturityFilteredCast
         .filter((result) => result.media_type)
         .map((result) => ({
           tmdbId: result.id,
@@ -80,7 +140,7 @@ personRoutes.get('/:id/combined_credits', async (req, res, next) => {
 
     const crewMedia = await Media.getRelatedMedia(
       req.user,
-      rankedCrew
+      maturityFilteredCrew
         .filter((result) => result.media_type)
         .map((result) => ({
           tmdbId: result.id,
@@ -89,7 +149,7 @@ personRoutes.get('/:id/combined_credits', async (req, res, next) => {
     );
 
     return res.status(200).json({
-      cast: rankedCast
+      cast: maturityFilteredCast
         .map((result) =>
           mapCastCredits(
             result,
@@ -100,7 +160,7 @@ personRoutes.get('/:id/combined_credits', async (req, res, next) => {
           )
         )
         .filter((item) => !item.adult && item.character !== 'Thanks'),
-      crew: rankedCrew
+      crew: maturityFilteredCrew
         .map((result) =>
           mapCrewCredits(
             result,

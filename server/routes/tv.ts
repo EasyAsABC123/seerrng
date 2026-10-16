@@ -23,6 +23,11 @@ import {
 } from '@server/lib/settings';
 import { rankTmdbTvResults } from '@server/lib/tmdbRank';
 import {
+  filterVideoResultsByMaturityPolicy,
+  getUserVideoMaturityPolicy,
+  isVideoWithinMaturityLimit,
+} from '@server/lib/videoMaturityPolicy';
+import {
   getAggregatedTvMetadata,
   VideoMetadataNotFoundError,
 } from '@server/lib/videoMetadataCatalog';
@@ -194,6 +199,16 @@ tvRoutes.get('/:id', async (req, res, next) => {
       tvId,
       language
     );
+    if (
+      req.user &&
+      !isVideoWithinMaturityLimit(
+        tmdbTv,
+        MediaType.TV,
+        (await getUserVideoMaturityPolicy(req.user.id)).tv
+      )
+    ) {
+      return next({ status: 404, message: 'Series not found.' });
+    }
     const isAnime = tmdbTv.keywords.results.some(
       (keyword: TmdbKeyword) => keyword.id === ANIME_KEYWORD_ID
     );
@@ -387,6 +402,16 @@ tvRoutes.get('/:id/season/:seasonNumber', async (req, res, next) => {
     const tmdbTv = await tmdb.getTvShow({
       tvId,
     });
+    if (
+      req.user &&
+      !isVideoWithinMaturityLimit(
+        tmdbTv,
+        MediaType.TV,
+        (await getUserVideoMaturityPolicy(req.user.id)).tv
+      )
+    ) {
+      return next({ status: 404, message: 'Season not found.' });
+    }
     const metadataProvider = tmdbTv.keywords.results.some(
       (keyword: TmdbKeyword) => keyword.id === ANIME_KEYWORD_ID
     )
@@ -441,8 +466,18 @@ tvRoutes.get('/:id/recommendations', async (req, res, next) => {
       page: parsePositiveInt(req.query.page, 1, 500),
       language,
     });
-    const rankedResults = rankTmdbTvResults(
+    const maturityPolicy = req.user
+      ? await getUserVideoMaturityPolicy(req.user.id)
+      : { movie: null, tv: null };
+    const maturityFilteredResults = await filterVideoResultsByMaturityPolicy(
+      tmdb,
+      maturityPolicy,
+      MediaType.TV,
       results.results,
+      language
+    );
+    const rankedResults = rankTmdbTvResults(
+      maturityFilteredResults,
       parsedShuffleSeed.value
     );
 
@@ -508,8 +543,18 @@ tvRoutes.get('/:id/similar', async (req, res, next) => {
       page: parsePositiveInt(req.query.page, 1, 500),
       language,
     });
-    const rankedResults = rankTmdbTvResults(
+    const maturityPolicy = req.user
+      ? await getUserVideoMaturityPolicy(req.user.id)
+      : { movie: null, tv: null };
+    const maturityFilteredResults = await filterVideoResultsByMaturityPolicy(
+      tmdb,
+      maturityPolicy,
+      MediaType.TV,
       results.results,
+      language
+    );
+    const rankedResults = rankTmdbTvResults(
+      maturityFilteredResults,
       parsedShuffleSeed.value
     );
 
@@ -560,6 +605,16 @@ tvRoutes.get('/:id/ratings', async (req, res, next) => {
     const tv = await tmdb.getTvShow({
       tvId,
     });
+    if (
+      req.user &&
+      !isVideoWithinMaturityLimit(
+        tv,
+        MediaType.TV,
+        (await getUserVideoMaturityPolicy(req.user.id)).tv
+      )
+    ) {
+      return next({ status: 404, message: 'Series not found.' });
+    }
 
     const rtratings = await rtapi.getTVRatings(
       tv.name,
@@ -598,6 +653,16 @@ tvRoutes.get('/:id/ratingscombined', async (req, res, next) => {
 
   try {
     const tv = await tmdb.getTvShow({ tvId });
+    if (
+      req.user &&
+      !isVideoWithinMaturityLimit(
+        tv,
+        MediaType.TV,
+        (await getUserVideoMaturityPolicy(req.user.id)).tv
+      )
+    ) {
+      return next({ status: 404, message: 'Series not found.' });
+    }
     const [rtResult, mdblistResult] = await Promise.allSettled([
       rtapi.getTVRatings(
         tv.name,

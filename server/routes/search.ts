@@ -9,6 +9,7 @@ import OpenLibraryAPI from '@server/api/openlibrary';
 import TheAudioDb from '@server/api/theaudiodb';
 import TheMovieDb from '@server/api/themoviedb';
 import TmdbPersonMapper from '@server/api/themoviedb/personMapper';
+import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import MetadataAlbum from '@server/entity/MetadataAlbum';
@@ -36,6 +37,10 @@ import {
 } from '@server/lib/search';
 import { runWithServarrServiceSnapshot } from '@server/lib/serviceAdmission';
 import { getSettings } from '@server/lib/settings';
+import {
+  filterVideoResultsByMaturityPolicy,
+  getUserVideoMaturityPolicy,
+} from '@server/lib/videoMaturityPolicy';
 import logger from '@server/logger';
 import {
   mapOpenLibraryAuthorSearchDoc,
@@ -1298,6 +1303,33 @@ searchRoutes.get('/', async (req, res, next) => {
           )
         : qualityEnrichedResults;
 
+    const hasVideoResults = qualityEnrichedResults.some(
+      (result) => result.mediaType === 'movie' || result.mediaType === 'tv'
+    );
+    const maturityPolicy =
+      req.user && hasVideoResults
+        ? await getUserVideoMaturityPolicy(req.user.id)
+        : { movie: null, tv: null };
+    const [allowedMovieResults, allowedTvResults] = await Promise.all([
+      filterVideoResultsByMaturityPolicy(
+        tmdb,
+        maturityPolicy,
+        MediaType.MOVIE,
+        qualityEnrichedResults.filter((result) => result.mediaType === 'movie'),
+        language
+      ),
+      filterVideoResultsByMaturityPolicy(
+        tmdb,
+        maturityPolicy,
+        MediaType.TV,
+        qualityEnrichedResults.filter((result) => result.mediaType === 'tv'),
+        language
+      ),
+    ]);
+    const allowedVideoKeys = new Set([
+      ...allowedMovieResults.map((result) => `${MediaType.MOVIE}:${result.id}`),
+      ...allowedTvResults.map((result) => `${MediaType.TV}:${result.id}`),
+    ]);
     const capabilityResults = creditEnrichedResults.filter(
       (result) =>
         !('mediaType' in result) ||
@@ -1310,18 +1342,25 @@ searchRoutes.get('/', async (req, res, next) => {
           (result.mediaType !== 'magazine' || magazinesEnabled))
     );
 
+    const maturityFilteredResults = capabilityResults.filter(
+      (result) =>
+        (result.mediaType !== 'movie' && result.mediaType !== 'tv') ||
+        allowedVideoKeys.has(`${result.mediaType}:${result.id}`)
+    );
+
     const filteredResults = typeFilter
-      ? capabilityResults.filter(
+      ? maturityFilteredResults.filter(
           (result) =>
             'mediaType' in result &&
             (typeFilter === 'music'
               ? result.mediaType === 'album' || result.mediaType === 'artist'
               : result.mediaType === typeFilter)
         )
-      : capabilityResults;
+      : maturityFilteredResults;
 
     const capabilityFiltered =
-      capabilityResults.length !== creditEnrichedResults.length;
+      capabilityResults.length !== creditEnrichedResults.length ||
+      maturityFilteredResults.length !== capabilityResults.length;
 
     return res.status(200).json({
       page: results.page,

@@ -95,6 +95,11 @@ import {
   runUserSecurityMutation,
 } from '@server/lib/userSecurityMutation';
 import {
+  filterVideoItemsForUser,
+  filterVideoResultsByMaturityPolicy,
+  getUserVideoMaturityPolicy,
+} from '@server/lib/videoMaturityPolicy';
+import {
   filterVideoSearchResults,
   matchesVideoListFilter,
 } from '@server/lib/videoSearchFilters';
@@ -187,6 +192,27 @@ export const createTmdbWithBlocklistSettings = (): TheMovieDb => {
 };
 
 const discoverRoutes = Router();
+
+const filterRequestVideoResults = async <T extends { id: number }>(
+  tmdb: TheMovieDb,
+  userId: number | undefined,
+  mediaType: MediaType.MOVIE | MediaType.TV,
+  results: T[],
+  language?: string
+): Promise<T[]> => {
+  if (!userId || results.length === 0) {
+    return results;
+  }
+
+  const policy = await getUserVideoMaturityPolicy(userId);
+  return filterVideoResultsByMaturityPolicy(
+    tmdb,
+    policy,
+    mediaType,
+    results,
+    language
+  );
+};
 const MAX_DISCOVER_QUERY_LENGTH = 256;
 const MAX_DISCOVER_FILTER_LENGTH = 512;
 const MAGAZINE_CATALOG_LOOKUP_TIMEOUT_MS = 20_000;
@@ -1700,15 +1726,21 @@ discoverRoutes.get('/movies', async (req, res, next) => {
 
     const page = parsePositiveInt(query.page, 1, 500);
     if (query.availability) {
-      return res.status(200).json(
-        await getLocalAvailableVideoDiscoverResponse({
-          mediaType: MediaType.MOVIE,
-          quality: query.availability,
-          page,
-          query,
-          user: req.user,
-        })
+      const localResults = await getLocalAvailableVideoDiscoverResponse({
+        mediaType: MediaType.MOVIE,
+        quality: query.availability,
+        page,
+        query,
+        user: req.user,
+      });
+      localResults.results = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.MOVIE,
+        localResults.results,
+        req.locale
       );
+      return res.status(200).json(localResults);
     }
     const feedShelf = getMovieFeedShelf(query);
     const settings = getSettings();
@@ -1908,6 +1940,14 @@ discoverRoutes.get('/movies', async (req, res, next) => {
       }
     }
 
+    rankedResults = await filterRequestVideoResults(
+      tmdb,
+      req.user?.id,
+      MediaType.MOVIE,
+      rankedResults,
+      req.locale
+    );
+
     const media = await Media.getRelatedMedia(
       req.user,
       rankedResults.map((result) => ({
@@ -1975,7 +2015,14 @@ discoverRoutes.get<{ language: string }>(
         language: parsedLanguage.value,
         originalLanguage: req.params.language,
       });
-      const rankedResults = rankTmdbMovieResults(data.results);
+      let rankedResults = rankTmdbMovieResults(data.results);
+      rankedResults = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.MOVIE,
+        rankedResults,
+        parsedLanguage.value
+      );
 
       const media = await Media.getRelatedMedia(
         req.user,
@@ -2047,7 +2094,14 @@ discoverRoutes.get<{ genreId: string }>(
         language: parsedLanguage.value,
         genre: genreId.toString(),
       });
-      const rankedResults = rankTmdbMovieResults(data.results);
+      let rankedResults = rankTmdbMovieResults(data.results);
+      rankedResults = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.MOVIE,
+        rankedResults,
+        parsedLanguage.value
+      );
 
       const media = await Media.getRelatedMedia(
         req.user,
@@ -2111,7 +2165,14 @@ discoverRoutes.get<{ studioId: string }>(
         language: parsedLanguage.value,
         studio: studioId.toString(),
       });
-      const rankedResults = rankTmdbMovieResults(data.results);
+      let rankedResults = rankTmdbMovieResults(data.results);
+      rankedResults = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.MOVIE,
+        rankedResults,
+        parsedLanguage.value
+      );
 
       const media = await Media.getRelatedMedia(
         req.user,
@@ -2175,10 +2236,17 @@ discoverRoutes.get('/movies/upcoming', async (req, res, next) => {
       language: parsedLanguage.value,
       primaryReleaseDateGte: date,
     });
+    const maturityFilteredResults = await filterRequestVideoResults(
+      tmdb,
+      req.user?.id,
+      MediaType.MOVIE,
+      data.results,
+      parsedLanguage.value
+    );
 
     const media = await Media.getRelatedMedia(
       req.user,
-      data.results.map((result) => ({
+      maturityFilteredResults.map((result) => ({
         tmdbId: result.id,
         mediaType: MediaType.MOVIE,
       })),
@@ -2189,7 +2257,7 @@ discoverRoutes.get('/movies/upcoming', async (req, res, next) => {
       page: data.page,
       totalPages: data.total_pages,
       totalResults: data.total_results,
-      results: data.results.map((result) =>
+      results: maturityFilteredResults.map((result) =>
         mapMovieResult(
           result,
           media.find(
@@ -2269,15 +2337,21 @@ discoverRoutes.get('/tv', async (req, res, next) => {
 
     const page = parsePositiveInt(query.page, 1, 500);
     if (query.availability) {
-      return res.status(200).json(
-        await getLocalAvailableVideoDiscoverResponse({
-          mediaType: MediaType.TV,
-          quality: query.availability,
-          page,
-          query,
-          user: req.user,
-        })
+      const localResults = await getLocalAvailableVideoDiscoverResponse({
+        mediaType: MediaType.TV,
+        quality: query.availability,
+        page,
+        query,
+        user: req.user,
+      });
+      localResults.results = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.TV,
+        localResults.results,
+        req.locale
       );
+      return res.status(200).json(localResults);
     }
     const matchingKeywordIdsPromise = query.search
       ? findMatchingVideoKeywordIds(tmdb, query.search)
@@ -2369,9 +2443,17 @@ discoverRoutes.get('/tv', async (req, res, next) => {
         )
       : providerResults;
 
+    const maturityFilteredResults = await filterRequestVideoResults(
+      tmdb,
+      req.user?.id,
+      MediaType.TV,
+      rankedResults,
+      req.locale
+    );
+
     const media = await Media.getRelatedMedia(
       req.user,
-      rankedResults.map((result) => ({
+      maturityFilteredResults.map((result) => ({
         tmdbId: result.id,
         mediaType: MediaType.TV,
       })),
@@ -2396,7 +2478,7 @@ discoverRoutes.get('/tv', async (req, res, next) => {
       totalPages: Math.max(data.total_pages, taggedData?.total_pages ?? 0),
       totalResults: data.total_results + (taggedData?.total_results ?? 0),
       keywords: keywordData,
-      results: rankedResults.map((result) =>
+      results: maturityFilteredResults.map((result) =>
         mapTvResult(
           result,
           media.find(
@@ -2446,7 +2528,14 @@ discoverRoutes.get<{ language: string }>(
         language: parsedLanguage.value,
         originalLanguage: req.params.language,
       });
-      const rankedResults = rankTmdbTvResults(data.results);
+      let rankedResults = rankTmdbTvResults(data.results);
+      rankedResults = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.TV,
+        rankedResults,
+        parsedLanguage.value
+      );
 
       const media = await Media.getRelatedMedia(
         req.user,
@@ -2520,7 +2609,14 @@ discoverRoutes.get<{ genreId: string }>(
         language: parsedLanguage.value,
         genre: genreId.toString(),
       });
-      const rankedResults = rankTmdbTvResults(data.results);
+      let rankedResults = rankTmdbTvResults(data.results);
+      rankedResults = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.TV,
+        rankedResults,
+        parsedLanguage.value
+      );
 
       const media = await Media.getRelatedMedia(
         req.user,
@@ -2586,7 +2682,14 @@ discoverRoutes.get<{ networkId: string }>(
         language: parsedLanguage.value,
         network: networkId,
       });
-      const rankedResults = rankTmdbTvResults(data.results);
+      let rankedResults = rankTmdbTvResults(data.results);
+      rankedResults = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.TV,
+        rankedResults,
+        parsedLanguage.value
+      );
 
       const media = await Media.getRelatedMedia(
         req.user,
@@ -2650,10 +2753,17 @@ discoverRoutes.get('/tv/upcoming', async (req, res, next) => {
       language: parsedLanguage.value,
       firstAirDateGte: date,
     });
+    const maturityFilteredResults = await filterRequestVideoResults(
+      tmdb,
+      req.user?.id,
+      MediaType.TV,
+      data.results,
+      parsedLanguage.value
+    );
 
     const media = await Media.getRelatedMedia(
       req.user,
-      data.results.map((result) => ({
+      maturityFilteredResults.map((result) => ({
         tmdbId: result.id,
         mediaType: MediaType.TV,
       })),
@@ -2664,7 +2774,7 @@ discoverRoutes.get('/tv/upcoming', async (req, res, next) => {
       page: data.page,
       totalPages: data.total_pages,
       totalResults: data.total_results,
-      results: data.results.map((result) =>
+      results: maturityFilteredResults.map((result) =>
         mapTvResult(
           result,
           media.find(
@@ -2771,12 +2881,48 @@ discoverRoutes.get('/trending', async (req, res, next) => {
           : isMediaCategoryEnabled('tv')
     );
 
+    const maturityPolicy = req.user
+      ? await getUserVideoMaturityPolicy(req.user.id)
+      : { movie: null, tv: null };
+    const movieTrendingResults = await filterVideoResultsByMaturityPolicy(
+      tmdb,
+      maturityPolicy,
+      MediaType.MOVIE,
+      availableTrendingResults.filter(isMovie),
+      language
+    );
+    const tvTrendingResults = await filterVideoResultsByMaturityPolicy(
+      tmdb,
+      maturityPolicy,
+      MediaType.TV,
+      availableTrendingResults.filter(
+        (result) =>
+          !isMovie(result) && !isPerson(result) && !isCollection(result)
+      ),
+      language
+    );
+    const allowedMovieIds = new Set(movieTrendingResults.map(({ id }) => id));
+    const allowedTvIds = new Set(tvTrendingResults.map(({ id }) => id));
+    const maturityFilteredTrendingResults = availableTrendingResults.filter(
+      (result) =>
+        isMovie(result)
+          ? allowedMovieIds.has(result.id)
+          : isPerson(result) || isCollection(result)
+            ? true
+            : allowedTvIds.has(result.id)
+    );
+
     const media = await Media.getRelatedMedia(
       req.user,
-      availableTrendingResults.map((result) => ({
-        tmdbId: result.id,
-        mediaType: isMovie(result) ? MediaType.MOVIE : MediaType.TV,
-      })),
+      maturityFilteredTrendingResults
+        .filter(
+          (result) =>
+            isMovie(result) || (!isPerson(result) && !isCollection(result))
+        )
+        .map((result) => ({
+          tmdbId: result.id,
+          mediaType: isMovie(result) ? MediaType.MOVIE : MediaType.TV,
+        })),
       { includeActiveRequest: true }
     );
 
@@ -2784,7 +2930,7 @@ discoverRoutes.get('/trending', async (req, res, next) => {
       page: data.page,
       totalPages: data.total_pages,
       totalResults: data.total_results,
-      results: availableTrendingResults.map((result) => {
+      results: maturityFilteredTrendingResults.map((result) => {
         // - If "type" is set (case: "movie" or "tv"), the mediaType must also match.
         // - If "type" is not set (case: "all"), only filter by tmdbId.
         const selectedMedia = media.find(
@@ -2842,9 +2988,33 @@ discoverRoutes.get<{ listId: string }>(
           ? isMediaCategoryEnabled('movie')
           : isMediaCategoryEnabled('tv')
       );
+      const maturityPolicy = req.user
+        ? await getUserVideoMaturityPolicy(req.user.id)
+        : { movie: null, tv: null };
+      const movieListResults = await filterVideoResultsByMaturityPolicy(
+        tmdb,
+        maturityPolicy,
+        MediaType.MOVIE,
+        results.filter((item) => item.media_type === 'movie'),
+        parsedLanguage.value
+      );
+      const tvListResults = await filterVideoResultsByMaturityPolicy(
+        tmdb,
+        maturityPolicy,
+        MediaType.TV,
+        results.filter((item) => item.media_type === 'tv'),
+        parsedLanguage.value
+      );
+      const allowedMovieIds = new Set(movieListResults.map(({ id }) => id));
+      const allowedTvIds = new Set(tvListResults.map(({ id }) => id));
+      const maturityFilteredResults = results.filter((item) =>
+        item.media_type === 'movie'
+          ? allowedMovieIds.has(item.id)
+          : allowedTvIds.has(item.id)
+      );
       const relatedMedia = await Media.getRelatedMedia(
         req.user,
-        results.map((item) => ({
+        maturityFilteredResults.map((item) => ({
           tmdbId: item.id,
           mediaType:
             item.media_type === 'movie' ? MediaType.MOVIE : MediaType.TV,
@@ -2860,7 +3030,7 @@ discoverRoutes.get<{ listId: string }>(
           name: list.name,
           description: list.description,
         },
-        results: results.map((item) => {
+        results: maturityFilteredResults.map((item) => {
           const type =
             item.media_type === 'movie' ? MediaType.MOVIE : MediaType.TV;
           const media = relatedMedia.find(
@@ -2916,7 +3086,14 @@ discoverRoutes.get<{ keywordId: string }>(
         page: parsePositiveInt(req.query.page, 1, 500),
         language: parsedLanguage.value,
       });
-      const rankedResults = rankTmdbMovieResults(data.results);
+      let rankedResults = rankTmdbMovieResults(data.results);
+      rankedResults = await filterRequestVideoResults(
+        tmdb,
+        req.user?.id,
+        MediaType.MOVIE,
+        rankedResults,
+        parsedLanguage.value
+      );
 
       const media = await Media.getRelatedMedia(
         req.user,
@@ -2980,7 +3157,13 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
           const genreData = await tmdb.getDiscoverMovies({
             genre: genre.id.toString(),
           });
-          const rankedResults = rankTmdbMovieResults(genreData.results);
+          const rankedResults = await filterRequestVideoResults(
+            tmdb,
+            req.user?.id,
+            MediaType.MOVIE,
+            rankTmdbMovieResults(genreData.results),
+            parsedLanguage.value
+          );
 
           return {
             id: genre.id,
@@ -3034,7 +3217,13 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
           const genreData = await tmdb.getDiscoverTv({
             genre: genre.id.toString(),
           });
-          const rankedResults = rankTmdbTvResults(genreData.results);
+          const rankedResults = await filterRequestVideoResults(
+            tmdb,
+            req.user?.id,
+            MediaType.TV,
+            rankTmdbTvResults(genreData.results),
+            parsedLanguage.value
+          );
 
           return {
             id: genre.id,
@@ -4810,15 +4999,39 @@ discoverRoutes.get<Record<string, unknown>, WatchlistResponse>(
           throw new UserMutationActorUnauthorizedError();
         }
 
-        return res.json(
-          await getCombinedWatchlist({
-            userId: activeUser.id,
-            plexToken: activeUser.plexToken,
-            page,
-            itemsPerPage,
-            filters: filters.data,
-          })
+        const watchlist = await getCombinedWatchlist({
+          userId: activeUser.id,
+          plexToken: activeUser.plexToken,
+          page,
+          itemsPerPage,
+          filters: filters.data,
+        });
+        const videoItems = watchlist.results.flatMap((item) =>
+          item.mediaType === MediaType.MOVIE || item.mediaType === MediaType.TV
+            ? [
+                {
+                  id: item.tmdbId ?? item.id,
+                  mediaType: item.mediaType as MediaType.MOVIE | MediaType.TV,
+                },
+              ]
+            : []
         );
+        const allowedVideoItems = await filterVideoItemsForUser(
+          new TheMovieDb(),
+          activeUser.id,
+          videoItems
+        );
+        const allowedVideoKeys = new Set(
+          allowedVideoItems.map((item) => `${item.mediaType}:${item.id}`)
+        );
+        watchlist.results = watchlist.results.filter(
+          (item) =>
+            (item.mediaType !== MediaType.MOVIE &&
+              item.mediaType !== MediaType.TV) ||
+            allowedVideoKeys.has(`${item.mediaType}:${item.tmdbId ?? item.id}`)
+        );
+
+        return res.json(watchlist);
       });
     } catch (error) {
       if (error instanceof UserMutationActorUnauthorizedError) {

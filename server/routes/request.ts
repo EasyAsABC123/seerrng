@@ -110,6 +110,7 @@ import {
   runUserSecurityReadWithActor,
   type AuthorizedUserSecurityMutationLease,
 } from '@server/lib/userSecurityMutation';
+import { doesUserAllowVideo } from '@server/lib/videoMaturityPolicy';
 import { hasWatchAheadMediaServerLink } from '@server/lib/watchAheadEligibility';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
@@ -4087,6 +4088,24 @@ requestRoutes.put<{ requestId: string }>(
                       status: 403,
                       message:
                         'The selected user does not have permission to request this media.',
+                    });
+                  }
+
+                  if (
+                    (request.type === MediaType.MOVIE ||
+                      request.type === MediaType.TV) &&
+                    request.media?.tmdbId &&
+                    !(await doesUserAllowVideo(
+                      new TheMovieDb(),
+                      requestUser.id,
+                      request.type,
+                      request.media.tmdbId
+                    ))
+                  ) {
+                    return next({
+                      status: 403,
+                      message:
+                        'This title exceeds the selected user’s maturity limit or has no recognized US rating.',
                     });
                   }
 

@@ -5,6 +5,7 @@ import type {
   TmdbMovieResult,
   TmdbTvResult,
 } from '@server/api/themoviedb/interfaces';
+import { MediaType } from '@server/constants/media';
 import type { MediaCategoryKey } from '@server/constants/mediaCategories';
 import dataSource, { getRepository } from '@server/datasource';
 import DiscoverSlider from '@server/entity/DiscoverSlider';
@@ -17,6 +18,7 @@ import {
   UserMutationActorUnauthorizedError,
   runUserSecurityReadWithActor,
 } from '@server/lib/userSecurityMutation';
+import { filterVideoItemsForUser } from '@server/lib/videoMaturityPolicy';
 import logger from '@server/logger';
 import { apiResponseCache } from '@server/middleware/apiResponseCache';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
@@ -742,8 +744,32 @@ router.get('/backdrops', publicBackdropsRateLimit, async (req, res, next) => {
       (result) => result.media_type === 'movie' || result.media_type === 'tv'
     ) as (TmdbMovieResult | TmdbTvResult)[];
 
+    const allowedItems = req.user
+      ? await filterVideoItemsForUser(
+          new TheMovieDb(),
+          req.user.id,
+          data.map((result) => ({
+            id: result.id,
+            mediaType:
+              result.media_type === 'movie' ? MediaType.MOVIE : MediaType.TV,
+          }))
+        )
+      : data.map((result) => ({
+          id: result.id,
+          mediaType:
+            result.media_type === 'movie' ? MediaType.MOVIE : MediaType.TV,
+        }));
+    const allowedKeys = new Set(
+      allowedItems.map((item) => `${item.mediaType}:${item.id}`)
+    );
+
     return res.status(200).json(
       data
+        .filter((result) =>
+          allowedKeys.has(
+            `${result.media_type === 'movie' ? MediaType.MOVIE : MediaType.TV}:${result.id}`
+          )
+        )
         .filter((result) => !!result.backdrop_path)
         .slice(0, 8)
         .map((result) => ({

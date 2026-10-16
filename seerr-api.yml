@@ -2347,6 +2347,21 @@ components:
               items:
                 type: string
                 enum: [cast, crew, subjectTags, details, mediaServer, overview]
+    UserVideoMaturityPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - movieMaturityRatingLimit
+        - tvMaturityRatingLimit
+      properties:
+        movieMaturityRatingLimit:
+          type: string
+          nullable: true
+          enum: [G, PG, PG-13, R, NC-17]
+        tvMaturityRatingLimit:
+          type: string
+          nullable: true
+          enum: [TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA]
     CardTextVisibilitySettings:
       type: object
       properties:
@@ -13246,6 +13261,70 @@ paths:
                   book:
                     type: string
                     nullable: true
+  /user/{userId}/settings/maturity:
+    get:
+      summary: Get movie and TV maturity limits for a user
+      description: Returns the administrator-managed US rating limits for a specific user. Requires `MANAGE_USERS` permission.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: User maturity limits returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserVideoMaturityPolicy'
+        '403':
+          description: Caller may not view maturity limits
+        '404':
+          description: User not found
+    post:
+      summary: Update movie and TV maturity limits for a user
+      description: Saves administrator-managed US rating limits for a specific user. Requires `MANAGE_USERS` permission.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                movieMaturityRatingLimit:
+                  type: string
+                  nullable: true
+                  enum: [G, PG, PG-13, R, NC-17]
+                tvMaturityRatingLimit:
+                  type: string
+                  nullable: true
+                  enum: [TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA]
+      responses:
+        '200':
+          description: Updated user maturity limits returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserVideoMaturityPolicy'
+        '400':
+          description: Invalid rating limit
+        '403':
+          description: Caller may not update maturity limits
+        '404':
+          description: User not found
   /user/{userId}/settings/card-text:
     get:
       summary: Get card text visibility settings for a user

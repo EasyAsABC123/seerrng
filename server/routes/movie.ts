@@ -17,6 +17,11 @@ import { upsertMediaSearchMetadata } from '@server/lib/mediaSearchMetadata';
 import { getSettings, type RadarrSettings } from '@server/lib/settings';
 import { rankTmdbMovieResults } from '@server/lib/tmdbRank';
 import {
+  filterVideoResultsByMaturityPolicy,
+  getUserVideoMaturityPolicy,
+  isVideoWithinMaturityLimit,
+} from '@server/lib/videoMaturityPolicy';
+import {
   getAggregatedMovieMetadata,
   VideoMetadataNotFoundError,
 } from '@server/lib/videoMetadataCatalog';
@@ -175,6 +180,17 @@ movieRoutes.get('/:id', async (req, res, next) => {
       movieId,
       language
     );
+
+    if (
+      req.user &&
+      !isVideoWithinMaturityLimit(
+        tmdbMovie,
+        MediaType.MOVIE,
+        (await getUserVideoMaturityPolicy(req.user.id)).movie
+      )
+    ) {
+      return next({ status: 404, message: 'Movie not found.' });
+    }
 
     const media = await Media.getMedia(tmdbMovie.id, MediaType.MOVIE, req.user);
 
@@ -357,8 +373,18 @@ movieRoutes.get('/:id/recommendations', async (req, res, next) => {
       page: parsePositiveInt(req.query.page, 1, 500),
       language,
     });
-    const rankedResults = rankTmdbMovieResults(
+    const maturityPolicy = req.user
+      ? await getUserVideoMaturityPolicy(req.user.id)
+      : { movie: null, tv: null };
+    const maturityFilteredResults = await filterVideoResultsByMaturityPolicy(
+      tmdb,
+      maturityPolicy,
+      MediaType.MOVIE,
       results.results,
+      language
+    );
+    const rankedResults = rankTmdbMovieResults(
+      maturityFilteredResults,
       parsedShuffleSeed.value
     );
 
@@ -425,8 +451,18 @@ movieRoutes.get('/:id/similar', async (req, res, next) => {
       page: parsePositiveInt(req.query.page, 1, 500),
       language,
     });
-    const rankedResults = rankTmdbMovieResults(
+    const maturityPolicy = req.user
+      ? await getUserVideoMaturityPolicy(req.user.id)
+      : { movie: null, tv: null };
+    const maturityFilteredResults = await filterVideoResultsByMaturityPolicy(
+      tmdb,
+      maturityPolicy,
+      MediaType.MOVIE,
       results.results,
+      language
+    );
+    const rankedResults = rankTmdbMovieResults(
+      maturityFilteredResults,
       parsedShuffleSeed.value
     );
 
@@ -481,6 +517,16 @@ movieRoutes.get('/:id/ratings', async (req, res, next) => {
     const movie = await tmdb.getMovie({
       movieId,
     });
+    if (
+      req.user &&
+      !isVideoWithinMaturityLimit(
+        movie,
+        MediaType.MOVIE,
+        (await getUserVideoMaturityPolicy(req.user.id)).movie
+      )
+    ) {
+      return next({ status: 404, message: 'Movie not found.' });
+    }
 
     const rtratings = await rtapi.getMovieRatings(
       movie.title,
@@ -525,6 +571,16 @@ movieRoutes.get('/:id/ratingscombined', async (req, res, next) => {
     const movie = await tmdb.getMovie({
       movieId,
     });
+    if (
+      req.user &&
+      !isVideoWithinMaturityLimit(
+        movie,
+        MediaType.MOVIE,
+        (await getUserVideoMaturityPolicy(req.user.id)).movie
+      )
+    ) {
+      return next({ status: 404, message: 'Movie not found.' });
+    }
 
     const [rtResult, imdbResult, mdblistResult] = await Promise.allSettled([
       rtapi.getMovieRatings(

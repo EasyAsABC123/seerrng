@@ -9,6 +9,11 @@ import { isValidMusicBrainzResourceId } from '@server/lib/externalIds';
 import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { getAvailableMusicQualities } from '@server/lib/musicQualityAvailability';
 import { Permission } from '@server/lib/permissions';
+import {
+  filterVideoResultsByMaturityPolicy,
+  getUserVideoMaturityPolicy,
+  isVideoWithinMaturityLimit,
+} from '@server/lib/videoMaturityPolicy';
 import { isAuthenticated } from '@server/middleware/auth';
 import { Router } from 'express';
 
@@ -20,6 +25,16 @@ router.get('/tv/for-series/:id', async (req, res, next) => {
     const show = await new TheMovieDb().getTvShow({
       tvId: Number(req.params.id),
     });
+    if (
+      req.user &&
+      !isVideoWithinMaturityLimit(
+        show,
+        MediaType.TV,
+        (await getUserVideoMaturityPolicy(req.user.id)).tv
+      )
+    ) {
+      return res.sendStatus(404);
+    }
     const tvdbId = show.external_ids?.tvdb_id;
     return res.json({
       collections: tvdbId
@@ -57,6 +72,19 @@ for (const method of ['get', 'post'] as const) {
       try {
         const kind = req.params.kind as 'tv' | 'music';
         const collection = await getCuratedCollection(kind, req.params.id);
+        if (method === 'get' && kind === 'tv' && req.user) {
+          const policy = await getUserVideoMaturityPolicy(req.user.id);
+          const allowed = await filterVideoResultsByMaturityPolicy(
+            new TheMovieDb(),
+            policy,
+            MediaType.TV,
+            collection.parts.map((part) => ({ id: Number(part.id) }))
+          );
+          const allowedIds = new Set(allowed.map((part) => String(part.id)));
+          collection.parts = collection.parts.filter((part) =>
+            allowedIds.has(part.id)
+          );
+        }
         const sync =
           method === 'post'
             ? await checkCollection(req.params.id, undefined, undefined, {

@@ -82,6 +82,10 @@ import {
   isUserCredentialVersionCurrent,
   runUserSecurityMutation,
 } from '@server/lib/userSecurityMutation';
+import {
+  getUserVideoMaturityPolicy,
+  isVideoWithinMaturityLimit,
+} from '@server/lib/videoMaturityPolicy';
 import { hasWatchAheadMediaServerLink } from '@server/lib/watchAheadEligibility';
 import logger from '@server/logger';
 import AsyncLock from '@server/utils/asyncLock';
@@ -2215,6 +2219,24 @@ export class MediaRequest {
       requestBody.mediaType === MediaType.MOVIE
         ? await tmdb.getMovie({ movieId: requestBody.mediaId as number })
         : await tmdb.getTvShow({ tvId: requestBody.mediaId as number });
+
+    if (
+      requestBody.mediaType === MediaType.MOVIE ||
+      requestBody.mediaType === MediaType.TV
+    ) {
+      const maturityPolicy = await getUserVideoMaturityPolicy(requestUser.id);
+      const limit =
+        requestBody.mediaType === MediaType.MOVIE
+          ? maturityPolicy.movie
+          : maturityPolicy.tv;
+      if (
+        !isVideoWithinMaturityLimit(tmdbMedia, requestBody.mediaType, limit)
+      ) {
+        throw new RequestPermissionError(
+          'This title exceeds the selected user’s maturity limit or has no recognized US rating.'
+        );
+      }
+    }
 
     const serviceRequestServerId = requestBody.requestServiceServerId;
     if (serviceRequestServerId !== undefined) {

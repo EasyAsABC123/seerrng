@@ -22,6 +22,7 @@ const messages = defineMessages('components.UserProfile.UserSettings', {
   menuLinkedAccounts: 'Linked Accounts',
   menuNotifications: 'Notifications',
   menuPermissions: 'Permissions',
+  menuMaturityControls: 'Maturity Controls',
   menuAdvancedTheme: 'Advanced Theme',
   unauthorizedDescription:
     "You do not have permission to modify this user's settings.",
@@ -91,6 +92,12 @@ const UserSettings = ({ children }: UserSettingsProps) => {
       hidden: currentUser?.id !== 1 && currentUser?.id === user.id,
     },
     {
+      text: intl.formatMessage(messages.menuMaturityControls),
+      route: '/settings/maturity',
+      regex: /\/settings\/maturity/,
+      requiredPermission: Permission.MANAGE_USERS,
+    },
+    {
       text: intl.formatMessage(messages.menuAdvancedTheme),
       route: '/advanced-theme',
       regex: /\/profile\/advanced-theme$/,
@@ -120,6 +127,11 @@ const UserSettings = ({ children }: UserSettingsProps) => {
   }
 
   settingsRoutes.forEach((settingsRoute) => {
+    if (settingsRoute.route === '/settings/maturity') {
+      settingsRoute.route = `/users/${user.id}${settingsRoute.route}`;
+      return;
+    }
+
     if (settingsRoute.route === '/advanced-theme') {
       settingsRoute.route = '/profile/advanced-theme';
       return;

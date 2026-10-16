@@ -7,6 +7,7 @@ import { MediaServerType } from '@server/constants/server';
 import { UserType } from '@server/constants/user';
 import { getRepository } from '@server/datasource';
 import { User } from '@server/entity/User';
+import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
 import authRoutes from '@server/routes/auth';
@@ -318,6 +319,105 @@ describe('POST /user/:id/settings/theme', () => {
       .set('Cookie', sessionCookie)
       .send({ palette: 'classic' });
     assert.equal(response.status, 403);
+  });
+});
+
+describe('user maturity rating limits', () => {
+  it('saves independent limits for a managed profile without adding them to auth payloads', async () => {
+    const { sessionCookie } = await loginAs('admin@seerr.dev', 'test1234');
+    const user = await getRepository(User).findOneOrFail({
+      where: { email: 'friend@seerr.dev' },
+      relations: { settings: true },
+    });
+    const userId = user.id;
+    const actor = await getRepository(User).findOneOrFail({
+      where: { email: 'admin@seerr.dev' },
+    });
+    assert.equal(actor.hasPermission(Permission.MANAGE_USERS), true);
+
+    const route = `/user/${userId}/settings/maturity`;
+    const initial = await request(app)
+      .get(route)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', sessionCookie);
+    assert.equal(initial.status, 200, JSON.stringify(initial.body));
+    assert.deepEqual(initial.body, {
+      movieMaturityRatingLimit: null,
+      tvMaturityRatingLimit: null,
+    });
+
+    const saved = await request(app)
+      .post(route)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', sessionCookie)
+      .send({
+        movieMaturityRatingLimit: 'PG',
+        tvMaturityRatingLimit: 'TV-PG',
+      });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.deepEqual(saved.body, {
+      movieMaturityRatingLimit: 'PG',
+      tvMaturityRatingLimit: 'TV-PG',
+    });
+
+    const partialSave = await request(app)
+      .post(route)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', sessionCookie)
+      .send({ movieMaturityRatingLimit: 'G' });
+    assert.equal(partialSave.status, 200, JSON.stringify(partialSave.body));
+    assert.deepEqual(partialSave.body, {
+      movieMaturityRatingLimit: 'G',
+      tvMaturityRatingLimit: 'TV-PG',
+    });
+
+    const auth = await request(app)
+      .get('/auth/me')
+      .set('X-Forwarded-Proto', 'https')
+      .set(
+        'Cookie',
+        (await loginAs('friend@seerr.dev', 'test1234')).sessionCookie
+      );
+    assert.equal(auth.status, 200);
+    assert.equal(
+      Object.hasOwn(auth.body.settings, 'movieMaturityRatingLimit'),
+      false
+    );
+    assert.equal(
+      Object.hasOwn(auth.body.settings, 'tvMaturityRatingLimit'),
+      false
+    );
+  });
+
+  it('rejects unsupported ratings without changing a saved limit', async () => {
+    const { sessionCookie } = await loginAs('admin@seerr.dev', 'test1234');
+    const target = await getRepository(User).findOneOrFail({
+      where: { email: 'friend@seerr.dev' },
+    });
+    const route = `/user/${target.id}/settings/maturity`;
+
+    for (const body of [
+      {},
+      { movieMaturityRatingLimit: 'NC-18' },
+      { tvMaturityRatingLimit: 'TV-15' },
+      { movieMaturityRatingLimit: 'PG', extra: true },
+    ]) {
+      const response = await request(app)
+        .post(route)
+        .set('X-Forwarded-Proto', 'https')
+        .set('Cookie', sessionCookie)
+        .send(body);
+      assert.equal(response.status, 400, JSON.stringify(response.body));
+    }
+
+    const current = await request(app)
+      .get(route)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', sessionCookie);
+    assert.deepEqual(current.body, {
+      movieMaturityRatingLimit: null,
+      tvMaturityRatingLimit: null,
+    });
   });
 });
 
