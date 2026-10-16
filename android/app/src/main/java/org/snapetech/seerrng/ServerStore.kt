@@ -31,7 +31,17 @@ class ServerStore(context: Context) {
     }
 
     fun save(server: SavedServer) {
-        val servers = all().filterNot { it.id == server.id } + server
+        val servers = all()
+        val existingIndex = servers.indexOfFirst { it.id == server.id }
+        val updatedServers = if (existingIndex < 0) {
+            servers + server
+        } else {
+            servers.toMutableList().apply { set(existingIndex, server) }
+        }
+        persist(updatedServers)
+    }
+
+    private fun persist(servers: List<SavedServer>) {
         val array = JSONArray()
         servers.forEach { saved ->
             array.put(
@@ -57,20 +67,6 @@ class ServerStore(context: Context) {
     fun updateHttpWarningAccepted(id: String) {
         val server = get(id) ?: return
         save(server.copy(httpWarningAccepted = true))
-    }
-
-    private fun persist(servers: List<SavedServer>) {
-        val array = JSONArray()
-        servers.forEach { saved ->
-            array.put(
-                JSONObject()
-                    .put("id", saved.id)
-                    .put("name", saved.name)
-                    .put("url", saved.url)
-                    .put("httpWarningAccepted", saved.httpWarningAccepted),
-            )
-        }
-        preferences.edit().putString(SERVERS_KEY, array.toString()).apply()
     }
 
     private companion object {

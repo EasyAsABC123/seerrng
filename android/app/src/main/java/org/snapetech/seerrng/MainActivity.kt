@@ -66,6 +66,7 @@ class MainActivity : Activity() {
     private lateinit var monetization: MonetizationManager
     private lateinit var trialUsageStore: TrialUsageStore
     private var trialSessionStartedThisLaunch = false
+    private var mainFrameLoadFailed = false
 
     private var editingServerId: String? = null
     private var activeServer: SavedServer? = null
@@ -319,6 +320,7 @@ class MainActivity : Activity() {
     }
 
     private fun startBrowser(server: SavedServer, address: ParsedServerAddress) {
+        mainFrameLoadFailed = false
         val cappedMode = BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE
         if (!CappedUsePolicy.canStartServerSession(
                 cappedMode = cappedMode,
@@ -504,6 +506,7 @@ class MainActivity : Activity() {
                 BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE &&
                 !monetization.isLifetimeUnlocked &&
                 !trialSessionStartedThisLaunch &&
+                !mainFrameLoadFailed &&
                 trialUsageStore.consumeSession()
             ) {
                 trialSessionStartedThisLaunch = true
@@ -517,12 +520,18 @@ class MainActivity : Activity() {
             error: WebResourceError,
         ) {
             super.onReceivedError(view, request, error)
-            if (view == webView && request.isForMainFrame) showError(getString(R.string.connection_error))
+            if (view == webView && request.isForMainFrame) {
+                mainFrameLoadFailed = true
+                showError(getString(R.string.connection_error))
+            }
         }
 
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
             handler.cancel()
-            if (view == webView) showError(getString(R.string.secure_connection_error))
+            if (view == webView) {
+                mainFrameLoadFailed = true
+                showError(getString(R.string.secure_connection_error))
+            }
         }
     }
 
