@@ -23,13 +23,15 @@ Configure these GitHub Actions repository secrets for signed builds:
 
 The app shows one non-personalized adaptive banner below the server WebView. It only appears while viewing a saved server, never over sign-in or setup controls. Google UMP handles consent and privacy choices. Debug builds use Google's test app and banner IDs; they never request live ads.
 
+The [SeerrNG Android privacy policy](https://snapetech-org.github.io/seerrng-android-privacy/) is public, hosted over HTTPS, and linked from the app's first-launch setup and server list. Use this same URL in Play Console and AdMob.
+
 To enable ads and the optional Google Play no-ads purchase in release APKs, configure these repository variables:
 
 - `ENABLE_PLAY_BILLING`: `true`
 - `ADMOB_APP_ID`: the app ID from AdMob
 - `ADMOB_BANNER_AD_UNIT_ID`: the banner ad unit ID from AdMob
 
-Create a one-time Google Play product with ID `no_ads_lifetime`; Play Console supplies the localized price shown in the app. Configure an AdMob consent message and publish an app privacy policy before setting the variables. Release monetization stays disabled unless Play Billing and both AdMob IDs are configured.
+Create a one-time Google Play product with ID `no_ads_lifetime`; Play Console supplies the localized price shown in the app. Create and publish an AdMob UMP consent message before setting the variables. Release monetization stays disabled unless Play Billing and both AdMob IDs are configured.
 
 Google Play Billing requires the package and product to be set up in Play Console. Google documents that billing is blocked for apps not signed and uploaded to Play; registered license testers can sideload for testing. A direct APK download therefore does not provide a separate checkout path.
 

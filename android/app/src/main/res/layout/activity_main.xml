@@ -31,6 +31,20 @@
             android:textColor="@color/muted"
             android:textSize="15sp" />
 
+        <TextView
+            android:id="@+id/pickerPrivacyPolicyLink"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/privacy_policy"
+            android:textColor="@color/brand_blue_dark"
+            android:textSize="14sp" />
+
         <Button
             android:id="@+id/addServerButton"
             style="@style/PrimaryButton"
@@ -141,6 +155,21 @@
             android:layout_marginTop="8dp"
             android:text="@string/url_help"
             android:textColor="@color/muted"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/editorPrivacyPolicyLink"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:layout_marginTop="4dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/privacy_policy"
+            android:textColor="@color/brand_blue_dark"
             android:textSize="14sp" />
 
         <EditText

@@ -2,6 +2,9 @@
     <string name="app_name">SeerrNG</string>
     <string name="picker_title">Your SeerrNG servers</string>
     <string name="picker_subtitle">Add a server you already use in your browser. Your saved sign-ins stay separate.</string>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="privacy_policy_url">https://snapetech-org.github.io/seerrng-android-privacy/</string>
+    <string name="privacy_policy_open_error">Could not open the privacy policy.</string>
     <string name="empty_servers">No servers yet. Add your SeerrNG address to get started.</string>
     <string name="add_server">Add Server</string>
     <string name="server_name_hint">Server name (optional)</string>

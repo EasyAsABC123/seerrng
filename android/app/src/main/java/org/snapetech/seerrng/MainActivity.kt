@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.app.Dialog
 import android.app.DownloadManager
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.Intent
 import android.content.res.Configuration
@@ -125,6 +126,8 @@ class MainActivity : Activity() {
         removeAdsButton.setOnClickListener { monetization.purchaseNoAds() }
         restorePurchasesButton.setOnClickListener { monetization.restoreNoAds() }
         adPrivacyOptionsButton.setOnClickListener { monetization.showPrivacyOptions() }
+        findViewById<TextView>(R.id.pickerPrivacyPolicyLink).setOnClickListener { openPrivacyPolicy() }
+        findViewById<TextView>(R.id.editorPrivacyPolicyLink).setOnClickListener { openPrivacyPolicy() }
 
         renderServers()
         monetization.start()
@@ -134,6 +137,14 @@ class MainActivity : Activity() {
             showServerPicker()
         }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+    }
+
+    private fun openPrivacyPolicy() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.privacy_policy_url))))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.privacy_policy_open_error, Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onResume() {
