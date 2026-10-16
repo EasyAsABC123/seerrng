@@ -54,7 +54,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["admobAppId"] = googleTestAdmobAppId
         buildConfigField("String", "MONETIZATION_MODE", asBuildConfigString(androidMonetizationMode))
-        buildConfigField("Int", "FREE_SESSION_LIMIT", freeSessionLimit.toString())
+        buildConfigField("int", "FREE_SESSION_LIMIT", freeSessionLimit.toString())
     }
 
     signingConfigs {
