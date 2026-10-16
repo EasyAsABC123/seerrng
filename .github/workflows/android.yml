@@ -59,6 +59,19 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fxq 'seerrng-api36'
           echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
 
+      - name: Enable KVM for Android emulator
+        run: |
+          if [[ ! -e /dev/kvm ]]; then
+            echo 'GitHub runner does not expose /dev/kvm; hardware-accelerated emulator tests cannot run.' >&2
+            exit 1
+          fi
+          sudo chmod 0666 /dev/kvm
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo 'Runner cannot read and write /dev/kvm after permissions were updated.' >&2
+            ls -l /dev/kvm >&2
+            exit 1
+          fi
+
       - name: Run unit and emulator tests, then build debug APK
         shell: bash
         run: |
