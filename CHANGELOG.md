@@ -198,6 +198,41 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.60.0](https://github.com/snapetech-org/seerrng/compare/v3.59.0..v3.60.0) - 2026-10-16
+
+### User-facing changes
+
+#### Added
+
+- **Sonarr:** Sonarr 5 beta requests can choose a metadata language and series order. SeerrNG also uses Sonarr's anime identifiers, progress, and history to make season recovery clearer, while keeping mappings separate by server, quality, and order.
+
+#### Fixed
+
+- **Discover:** Returning from a title's details now waits for Discover slider cards to load before restoring each carousel's previous horizontal position.
+- **Sonarr:** Fixed the Sonarr 5 beta SQLite migration so adding request metadata options preserves existing request fields, including pending quota-exception approvals.
+
+### 🚀 Features
+- *(sonarr)* Support v5 metadata and alternate season orders - ([4e549fd](https://github.com/snapetech-org/seerrng/commit/4e549fdfd6d0c63dbb05e21444db939c687773ca))
+
+### 🐛 Bug Fixes
+- *(ci)* Skip Cypress download during dependency installs - ([1b01d73](https://github.com/snapetech-org/seerrng/commit/1b01d7300a46f8896f874bde2f7cadaa24bb753a))
+- *(deps)* Sync Nodemailer workspace override - ([50481e3](https://github.com/snapetech-org/seerrng/commit/50481e3b9ed5a927085d311b9e676efa1b49c0ca))
+- *(discover)* Restore carousel position after cards load - ([272ed6d](https://github.com/snapetech-org/seerrng/commit/272ed6de2b127bdbe670c6b64425271c204db0dd))
+- *(sonarr)* Preserve request columns in SQLite migration - ([a25aecd](https://github.com/snapetech-org/seerrng/commit/a25aecdcda2d7b00a8a5dedf681d9458ef057fb5))
+
+### 📖 Documentation
+- *(release)* Document Sonarr v5 migration fix - ([503e521](https://github.com/snapetech-org/seerrng/commit/503e5215d55e0b868d48ab8fd39e162f6ec1e876))
+
+### 🧪 Testing
+- *(ci)* Track updated chart-testing action pin - ([6ee02c3](https://github.com/snapetech-org/seerrng/commit/6ee02c3ded45c4eecf0a85324c07754bb5934c2e))
+- *(discover)* Capture actual carousel offset before navigation - ([2c69a71](https://github.com/snapetech-org/seerrng/commit/2c69a714ff63d177bc58acc235fec565bbbe67d2))
+- *(settings)* Align Chaptarr API key help expectation - ([0a6612d](https://github.com/snapetech-org/seerrng/commit/0a6612d70cb922fa890bfd6a41334ce3d5ea410c))
+
+### ⚙️ Miscellaneous Tasks
+- *(ci)* Correct artifact action version comment - ([6f81814](https://github.com/snapetech-org/seerrng/commit/6f8181441e9ead0d373f0ca52562d420bba5db49))
+
 ## [3.59.0](https://github.com/snapetech-org/seerrng/compare/v3.58.0..v3.59.0) - 2026-10-16
 
 ### User-facing changes
