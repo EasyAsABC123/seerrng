@@ -25,6 +25,13 @@ connects to.
 ## Use SeerrNG
 
 - [Filter movie and series discovery by rating or streaming service](/using-seerr/movie-series-discovery-filters/)
+- [Customize Discover shelves and navigation](/using-seerr/discover/)
+- [Filter and sort local watchlists](/using-seerr/plex/watchlist-auto-request/#find-items-in-your-watchlist)
+- [Follow another user's active request](/using-seerr/notifications/#follow-a-movie-or-series-request)
+- [Approve or decline requests from Slack](/using-seerr/notifications/slack/#approve-or-decline-requests-from-slack)
+- [Hide Subject Tags on movie and series pages](/using-seerr/media-details-and-playback/#hide-subject-tags)
+- [Require previous-season watch progress](/using-seerr/settings/general/#require-the-previous-season-to-be-watched)
+- [Choose how other users' movie and TV availability appears](/using-seerr/settings/general/#other-users-availability)
 - [Find books, authors, and series](/using-seerr/books-and-series/)
 - [Browse, request, and track sports leagues with Sportarr](/using-seerr/sportarr/)
 - [Follow requests and status history](/using-seerr/request-status/)
@@ -46,12 +53,17 @@ connects to.
 ## Configure and operate
 
 - [Choose metadata providers and configure music request limits](/using-seerr/settings/metadata/)
+- [Check MusicBrainz and Cover Art Archive connectivity](/using-seerr/settings/metadata/#music-metadata-providers)
 - [Configure media and automation services](/using-seerr/settings/services/)
+- [Set up labeled movie and TV request destinations](/using-seerr/settings/services/#request-destination-label-optional)
+- [Configure Sonarr v5 and alternate season orders](/using-seerr/settings/services/)
+- [Configure request-limit exceptions](/using-seerr/settings/users/)
 - [Choose available media categories](/using-seerr/settings/media-categories/)
 - [Configure media-server libraries](/using-seerr/settings/mediaserver)
 - [Choose and configure companion services](/using-seerr/companion-services)
 - [Companion service integrations](/using-seerr/dependency-forks/)
 - [Configure ChaptarrNG and its SeerrNG service key](/using-seerr/bookshelf-backend/#chaptarrng)
+- [Preview a BookshelfNG-to-ChaptarrNG migration](/using-seerr/bookshelf-backend/#installer-script)
 - [Connect read-only Audiobookshelf availability](/using-seerr/bookshelf-backend/#audiobookshelf-availability)
 - [Enable built-in HTTPS](/using-seerr/advanced/built-in-tls)
 - [Create override rules](/using-seerr/override-rules/)
@@ -64,6 +76,7 @@ connects to.
 
 ## Integrate and contribute
 
+- [Why SeerrNG maintains a fork and what a replacement must provide](/fork-rationale/)
 - [REST API reference](/api/seerr-api/)
 - [Third-party client compatibility](/using-seerr/third-party-client-compatibility/)
 - [Contribution guidelines](https://github.com/snapetech-org/seerrng/blob/main/CONTRIBUTING.md)

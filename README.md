@@ -34,10 +34,14 @@ SeerrNG is maintained by snapetech as a separate fork so we can move quickly on 
   - [Configure comics](./docs/using-seerr/comics-backend.md)
   - [Configure magazines](./docs/using-seerr/magazines-backend.md)
   - [Movie and series Discover filters](./docs/using-seerr/movie-series-discovery-filters.md)
+  - [Choose request destinations](./docs/using-seerr/settings/services.md#request-destination-label-optional)
+  - [Require previous-season watch progress](./docs/using-seerr/settings/general.md#require-the-previous-season-to-be-watched)
+  - [Hide subject tags](./docs/using-seerr/media-details-and-playback.md#hide-subject-tags)
+  - [Filter and sort local watchlists](./docs/using-seerr/plex/watchlist-auto-request.md#find-items-in-your-watchlist)
+  - [Follow another user's request](./docs/using-seerr/notifications/index.mdx#follow-a-movie-or-series-request)
   - [Companion services and SeerrNG NG forks](./docs/using-seerr/companion-services.md)
   - [Add and import users](./docs/using-seerr/users/adding-users.mdx)
   - [Why SeerrNG is a fork and what could retire it](./docs/fork-rationale.md)
-  - [Current SeerrNG changes in review](./docs/upstream-review-status.md)
   - [Cross-platform setup assistant](./docs/using-seerr/setup-assistant.md)
   - [Indexer searches by media category](./docs/using-seerr/indexer-searches.md)
   - [Configure services](./docs/using-seerr/settings/services.md)
@@ -68,9 +72,14 @@ SeerrNG is maintained by snapetech as a separate fork so we can move quickly on 
 - Movie and series Discover filters with 0.1-point TMDB rating thresholds and streaming-service availability filters by region.
 - Media-server integration with Plex, Jellyfin, and Emby, including watch-state-aware My Library views scoped to each linked account.
 - Optional Jellyfin and Emby profile sync during user imports, refreshing linked provider names and avatars while preserving SeerrNG email addresses, local passwords, and permissions.
+- Labeled movie and TV request destinations across multiple Radarr and Sonarr instances, with per-user access and availability tracked for each destination.
+- Managers can approve a one-time movie or TV request exception when a user's quota is full; optional Slack actions use a mapped account and the same request permissions as the web app.
 - Automation service integration with Radarr, Sonarr, Lidarr, and Bookshelf/Readarr-compatible APIs.
+- Sonarr v5 support alongside v3/v4, including metadata-language and season-order options with explicit season mapping for recovery.
+- An optional TV request gate that checks whether the previous regular season was watched through a linked Plex, Jellyfin, or Emby account.
 - Admin-configured Prowlarr connection, per-indexer diagnostics, category coverage, and format-aware manual search across movies, TV, music, books, comics, magazines, ROMs, and PC games, with title-prefilled search links from media details; approved requests still go through their configured acquisition providers.
 - Music discovery and metadata through MusicBrainz, ListenBrainz, Cover Art Archive, TheAudioDB, and archive-backed artwork sources.
+- Administrators can test MusicBrainz and Cover Art Archive connectivity and set bounded Cover Art Archive request limits.
 - Book discovery and identity matching through Open Library, ISBN-10/ISBN-13 normalization, foreign book IDs, and edition IDs.
 - Audiobook discovery from connected audiobook catalogs, with author and narrator filtering and no ebook-only search results.
 - Comic discovery through ComicVine and magazine discovery through Google Books or LazyLibrarian. For new comic automation setups, SeerrNG recommends [Issuarr](https://github.com/issuarr/issuarr), the actively developed successor to [Mylar3](https://github.com/MylarComics/mylar3); existing Mylar3 connections remain supported through the same service type. Kapowarr and BackIssue are also supported comic backends, and LazyLibrarian handles magazines.
@@ -96,9 +105,13 @@ SeerrNG is maintained by snapetech as a separate fork so we can move quickly on 
 - Administrator-controlled availability switches for each supported category, including separate ebook, audiobook, Retro, Modern, and PC Games controls.
 - Bookshelf backend diagnostics that classify Hardcover, softcover/Goodreads, and unknown metadata providers.
 - Hardcover-first Bookshelf deployment and migration tooling for existing Readarr or softcover libraries.
+- A [preview-first BookshelfNG-to-ChaptarrNG database migration helper](./docs/using-seerr/bookshelf-backend.md#installer-script) for single-database installations, with an independent backup before applying the conversion.
 - Admin-only Bookshelf path moves with a conflict and disk-space preview, confirmation, API access, and a dry-run-first CLI. The mover works inside one BookshelfNG database; consolidate an old split deployment before using it.
 - Resumable, layered Readarr/softcover-to-Hardcover migration with strict matching, softcover metadata recovery, validation, cutover checks, and an opt-in deterministic local-record fallback for books Hardcover cannot import.
 - Per-user cross-media watchlists; local-only lists support title search, media-type filters, and stable sorting, while combined Plex lists preserve Plex ordering. The request workflow also includes blocklists, quotas, override rules, permissions, notifications, issue reporting, and request management.
+- Users can choose whether movie and TV copies requested by someone else appear as shared or stay hidden; this changes the availability display, not media-server access.
+- Discover shelves can be reordered and customized; movie and series filters include fractional ratings, streaming-service inclusion or exclusion, and category exclusions. Discover detail navigation keeps the selected result context, and rating details work on touch screens.
+- Movie and Series Subject Tags can be hidden with a browser-saved preference shared across both detail pages.
 - Authenticated **Download copy** links in Request Status for verified movie, TV, book, comic, magazine, ROM, and PC game files.
 - Request lifecycle tracking and availability notifications link users back to the matching Request Status item, where available files can be selected and saved.
 - Signed-in household members can follow another user's active movie or series request for a one-time availability notice through their own configured notification channels.
@@ -108,126 +121,34 @@ SeerrNG is maintained by snapetech as a separate fork so we can move quickly on 
 
 SeerrNG is active fork work. Movie and TV behavior is inherited and generally stable. Music and book support is usable but should still be treated as evolving, especially around provider matching and real-world Bookshelf/Readarr edge cases.
 
-Current focus:
+Recent repository updates include:
 
-- Stabilizing Lidarr request, scan, retry, and removal flows.
-- Stabilizing Bookshelf ebook, audiobook, and both-format request flows.
-- Making the Bookshelf Hardcover migration path safe, repeatable, and visible to administrators.
-- Keeping image/API caching fast without blocking the visible page during refreshes.
-- Replacing upstream branding and docs with SeerrNG-owned assets and guidance.
-- Hardening request validation, notification settings, permission bounds, and service inputs.
-- Supporting ROM and PC game catalog, acquisition, status tracking, notifications, and download delivery through QuestarrNG and ROMarrNG. SeerrNG does not install, launch, or play games; general desktop applications remain outside the supported catalog.
+- **Discover:** editable shared shelves; more precise rating and streaming
+  filters; category exclusions; detail navigation through the current result
+  list; and restored carousel position when returning from a title.
+- **Requests:** per-user access to labeled Radarr/Sonarr destinations, quota
+  exception approvals, optional Slack approval actions, an optional
+  previous-season watch gate, and Sonarr monitoring for future seasons when
+  the latest regular season was requested. Failed TV requests retain their
+  context and support verified season mapping; bounded failure explanations
+  and request history are localized.
+- **User workflows:** local watchlist filters, a browser-saved Subject Tags
+  visibility preference, private one-time availability notices for followed
+  requests, per-user shared-availability display choices, and opt-in
+  Jellyfin/Emby profile refresh during imports.
+- **Sonarr:** v5 API support alongside v3/v4, metadata-language and season-order
+  choices, and request recovery scoped to the selected service, quality, and
+  season order.
+- **Integrations:** MusicBrainz and Cover Art Archive connectivity checks with
+  bounded artwork traffic controls, plus a preview-first BookshelfNG to
+  ChaptarrNG database migration helper for single-database setups.
 
-Upstream-informed changes are reviewed in separate, attributed pull requests.
-The [current review index](./docs/upstream-review-status.md) links each open
-SeerrNG proposal to its public source context. Open proposals are not released
-features; check the release notes and the relevant pull request for current
-availability. Recent drafts cover bounded season loading in request detail and
-status ([#258](https://github.com/snapetech/seerrng/pull/258)), current
-Jellyfin authorization with Emby compatibility ([#259](https://github.com/snapetech/seerrng/pull/259)),
-selected Jellyfin and Emby account refresh ([#261](https://github.com/snapetech/seerrng/pull/261)),
-and safe recovery for TV requests with missing TVDB identifiers
-([#262](https://github.com/snapetech/seerrng/pull/262)), plus bounded request
-failure categories that avoid storing raw provider messages
-([#263](https://github.com/snapetech/seerrng/pull/263)), and visible failure
-guidance with an alternate TV listing search for season-number mismatches
-([#264](https://github.com/snapetech/seerrng/pull/264)). The review index also
-covers bounded Node test workers in hosted validation
-([#265](https://github.com/snapetech/seerrng/pull/265)) and a proposed manual
-TVDB season-mapping recovery path for selected Sonarr destinations
-([#276](https://github.com/snapetech-org/seerrng/pull/276)). Its upstream
-source, along with the sources for the other proposals, is linked in the
-review index. These open proposals are not released features.
-
-The current review period also includes an open proposal to continue
-Radarr/Sonarr dispatch when optional requester-tag lookup or creation fails
-([#277](https://github.com/snapetech-org/seerrng/pull/277)); its upstream
-source is linked in the review index. It is not a released feature.
-
-A further open proposal adds a browser-saved choice to hide or show subject
-tags on both Movie and Series detail pages
-([#279](https://github.com/snapetech-org/seerrng/pull/279)). Its public source
-context and the evidence an upstream replacement would need are linked from the
-review index and [fork-retirement matrix](./docs/fork-rationale.md). It is not
-a released feature.
-
-Another open proposal lets household members follow an active movie or series
-request made by someone else and receive a private, one-time availability
-notice ([#282](https://github.com/snapetech-org/seerrng/pull/282)). The review
-index links its Seerr issue context, and the
-[fork-retirement matrix](./docs/fork-rationale.md) records the notification,
-privacy, cancellation, and request-lifecycle behavior an upstream replacement
-would need. It is not a released feature.
-
-The open metadata proposal ([#283](https://github.com/snapetech-org/seerrng/pull/283))
-adds MusicBrainz and Cover Art Archive connectivity checks and configurable,
-bounded Cover Art Archive traffic limits. Its operator guide and API reference
-are part of that PR; the review index links the upstream Seerr PRs that informed
-the adaptation, and the [fork-retirement matrix](./docs/fork-rationale.md)
-records the provider status, rate, concurrency, cache, and redirect behavior a
-supported replacement would need. This proposal is not a released feature.
-
-The open Web Push proposal ([#284](https://github.com/snapetech-org/seerrng/pull/284))
-keeps subscriptions from devices with matching browser signatures and replaces
-stale endpoints by subscription identity. The
-[review index](./docs/upstream-review-status.md) links the upstream issue and
-merged fix, while the [fork-retirement matrix](./docs/fork-rationale.md)
-records the device-isolation, endpoint-rotation, and shared-browser evidence an
-upstream replacement would need. SeerrNG already has account-scoped logout
-cleanup; this proposal covers the missing registration behavior. It is not a
-released feature.
-
-The open Discover proposal
-([#287](https://github.com/snapetech-org/seerrng/pull/287)) adds previous and
-next controls to Movie and Series details opened from a loaded result list,
-following its visible filtered order. The [review index](./docs/upstream-review-status.md)
-links Seerr issue #3015 and PR #3122; the [fork-retirement matrix](./docs/fork-rationale.md)
-records the replacement behavior and evidence. This proposal is not released.
-
-The open Sonarr proposal ([#288](https://github.com/snapetech-org/seerrng/pull/288))
-recovers anime requests when their configured quality profile is missing or
-cannot be checked, and shows the selected anime profile on the Services card.
-Its upstream context—Seerr issue #3159 and closed PR #3160—is linked in the
-[review index](./docs/upstream-review-status.md). The
-[fork-retirement matrix](./docs/fork-rationale.md) records the equivalent
-profile recovery and compatibility evidence a supported replacement would
-need. This proposal is not released.
-
-The open Sonarr proposal ([#290](https://github.com/snapetech-org/seerrng/pull/290))
-adds a **Latest Season Requested** monitoring mode. It enables future-season
-monitoring only when the request includes the latest regular season in the
-series metadata; specials, older-only requests, and unavailable season metadata
-do not enable it. Automatic search remains a separate setting. Its Seerr source
-context—issue #3152 and open PR #3157—is linked in the
-[review index](./docs/upstream-review-status.md), and the
-[fork-retirement matrix](./docs/fork-rationale.md) records the replacement
-behavior and compatibility evidence. This proposal is not released.
-
-The open Discover proposal ([#291](https://github.com/snapetech-org/seerrng/pull/291))
-adds genre exclusions to Movie and Series Discover, plus movie-studio and
-series-status exclusions. It builds on [#281](https://github.com/snapetech-org/seerrng/pull/281),
-which already proposes tenth-point ratings and region-aware streaming-service
-exclusion. The public review index links open Seerr [PR #3166](https://github.com/seerr-team/seerr/pull/3166)
-and its related closed [issue #3090](https://github.com/seerr-team/seerr/issues/3090).
-The current proposal does not include PR #3166's original-language and country
-post-filters or its bounded result-page backfill with estimated pagination;
-those remain a separately reviewed follow-up. These changes are not released.
-
-The open title-card ratings proposal ([#292](https://github.com/snapetech-org/seerrng/pull/292))
-extends SeerrNG's existing rating popover to touch users and waits for a
-sustained desktop hover before looking up Movie or Series provider ratings. The
-provider row remains within narrow viewports. Its public review entry links
-upstream [Seerr PR #3154](https://github.com/seerr-team/seerr/pull/3154) and
-[issue #1269](https://github.com/seerr-team/seerr/issues/1269). This proposal is
-not released.
-
-The open availability cleanup ([#293](https://github.com/snapetech-org/seerrng/pull/293))
-removes Plex, Jellyfin, and Sonarr season lookups whose results no longer feed
-SeerrNG's removal decisions. The existing orphaned-unknown-season rollup guard
-is already present in [commit `784faa9`](https://github.com/snapetech-org/seerrng/commit/784faa9f84542dc32fa06150d49761b46be76efe);
-the proposal adds direct regression coverage and removes leftover metadata
-work identified while reviewing [Seerr PR #3148](https://github.com/seerr-team/seerr/pull/3148).
-The cleanup is not released.
+These changes are in the repository; use the [release notes](./CHANGELOG.md)
+to confirm which ones are included in a published build. SeerrNG continues to
+adapt selected upstream work in attributed, reviewable changes. The
+[fork-retirement matrix](./docs/fork-rationale.md) describes the behavior and
+upgrade evidence a supported replacement would need before the core fork could
+be retired.
 
 Release notes are maintained in [`CHANGELOG.md`](./CHANGELOG.md). User-facing
 pull requests add a concise release-note fragment under
@@ -249,9 +170,15 @@ SeerrNG documentation is maintained in the [docs folder](https://github.com/snap
 - [Install on Unraid](./docs/getting-started/third-parties/unraid.mdx)
 - [Find books, authors, and series](./docs/using-seerr/books-and-series.md)
 - [Create custom Discover sliders](./docs/using-seerr/custom-discover-sliders.md)
+- [Filter movie and series Discover results](./docs/using-seerr/movie-series-discovery-filters.md)
+- [Configure Sonarr v5 and season orders](./docs/using-seerr/settings/services.md)
+- [Require previous-season watch progress](./docs/using-seerr/settings/general.md#require-the-previous-season-to-be-watched)
+- [Choose movie and TV request destinations](./docs/using-seerr/settings/services.md#request-destination-label-optional)
+- [Filter and sort local watchlists](./docs/using-seerr/plex/watchlist-auto-request.md#find-items-in-your-watchlist)
+- [Follow another user's request](./docs/using-seerr/notifications/index.mdx#follow-a-movie-or-series-request)
+- [Hide Subject Tags](./docs/using-seerr/media-details-and-playback.md#hide-subject-tags)
 - [Why SeerrNG maintains companion forks](./docs/using-seerr/dependency-forks.md)
 - [Why SeerrNG is a fork and what could retire it](./docs/fork-rationale.md)
-- [Current SeerrNG changes in review](./docs/upstream-review-status.md)
 - [ChaptarrNG fork changes and capabilities](https://github.com/snapetech-org/chaptarrng/blob/main/docs/FORK_FEATURES.md)
 - [Discover and request comics](./docs/using-seerr/comics-backend.md)
 - [Discover and request magazines](./docs/using-seerr/magazines-backend.md)
