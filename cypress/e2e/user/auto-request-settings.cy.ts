@@ -174,20 +174,34 @@ describe('Auto Request Settings', () => {
     cy.get('#autorequestmovies').should('be.checked');
     cy.get('#autorequesttv').should('be.checked');
 
-    cy.request('POST', `/api/v1/user/${userId}/settings/main`, {
-      watchlistSyncMovies: false,
-      watchlistSyncTv: false,
-    })
-      .its('status')
-      .should('eq', 200);
-    cy.intercept('GET', `/api/v1/user/${userId}/settings/main`).as(
-      'fixtureMainSettings'
-    );
-    cy.visit(`/users/${userId}/settings/main`);
-    cy.location('pathname').should('eq', `/users/${userId}/settings/main`);
-    cy.wait('@fixtureMainSettings')
-      .its('response.body.watchlistSyncMovies')
-      .should('eq', false);
+    cy.then(() => {
+      const userId = fixtureUserId;
+      if (userId === null) {
+        throw new Error('No fixture user ID was recorded for settings checks.');
+      }
+
+      return cy
+        .request('POST', `/api/v1/user/${userId}/settings/main`, {
+          watchlistSyncMovies: false,
+          watchlistSyncTv: false,
+        })
+        .its('status')
+        .should('eq', 200)
+        .then(() => {
+          cy.intercept('GET', `/api/v1/user/${userId}/settings/main`).as(
+            'fixtureMainSettings'
+          );
+          cy.visit(`/users/${userId}/settings/main`);
+          cy.location('pathname').should(
+            'eq',
+            `/users/${userId}/settings/main`
+          );
+          return cy
+            .wait('@fixtureMainSettings')
+            .its('response.body.watchlistSyncMovies')
+            .should('eq', false);
+        });
+    });
     cy.get('#watchlistSyncMovies').should('not.be.checked');
     cy.get('#watchlistSyncTv').should('not.be.checked');
 
