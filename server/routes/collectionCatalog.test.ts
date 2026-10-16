@@ -4,6 +4,7 @@ import * as catalogs from '@server/lib/collectionCatalog';
 import * as sync from '@server/lib/collectionSync';
 import * as runtimeConfig from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
+import * as maturityPolicy from '@server/lib/videoMaturityPolicy';
 import express from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
 import path from 'node:path';
@@ -43,6 +44,10 @@ const app = (admin: boolean) => {
 };
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.spyOn(maturityPolicy, 'getUserVideoMaturityPolicy').mockResolvedValue({
+    movie: null,
+    tv: null,
+  });
   vi.spyOn(catalogs, 'getCuratedCollection').mockResolvedValue({
     id: '55',
     kind: 'tv',
