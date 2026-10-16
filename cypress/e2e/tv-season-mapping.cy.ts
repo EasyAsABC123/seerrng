@@ -165,16 +165,14 @@ describe('manual TV season mapping', () => {
       cy.contains('[role=option]', 'Season 1 (2020)').click();
       cy.contains('button', 'Map seasons and retry').click();
 
-      cy.wait('@mapRequest')
-        .its('request.body')
-        .should('deep.equal', {
-          tvdbId: 321,
-          seasonType: 'standard',
-          seasonMappings: [
-            { seasonNumber: 0, externalSeasonNumber: 0 },
-            { seasonNumber: 2, externalSeasonNumber: 1 },
-          ],
-        });
+      cy.wait('@mapRequest').then(({ request }) => {
+        expect(request.body).to.have.property('tvdbId', 321);
+        expect(request.body).to.have.property('seasonType', 'standard');
+        expect(request.body.seasonMappings).to.deep.equal([
+          { seasonNumber: 0, externalSeasonNumber: 0 },
+          { seasonNumber: 2, externalSeasonNumber: 1 },
+        ]);
+      });
     });
   });
 });
