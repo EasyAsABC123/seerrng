@@ -104,3 +104,13 @@ jobs:
             :app:testDebugUnitTest \
             :app:connectedDebugAndroidTest \
             :app:assembleDebug
+
+      - name: Upload Android test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-test-reports
+          path: |
+            android/app/build/reports/androidTests/connected/
+            android/app/build/outputs/androidTest-results/connected/
+          if-no-files-found: ignore
