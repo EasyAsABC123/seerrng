@@ -528,8 +528,8 @@ test('Series Watchlist visual prototype is isolated from production actions and 
     ? gate.whenTrue.expression
     : gate.whenTrue;
   assert.equal(
-    enabledBranch,
-    tooltip,
+    nodes(enabledBranch, (node) => node === tooltip).length,
+    1,
     'the prototype belongs only to the preview branch'
   );
   const icons = nodes(button.parent, (node) =>
