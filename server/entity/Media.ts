@@ -7,6 +7,7 @@ import LidarrAPI from '@server/api/servarr/lidarr';
 import RadarrAPI from '@server/api/servarr/radarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
+import WhisparrAPI from '@server/api/servarr/whisparr';
 import {
   MediaRequestStatus,
   MediaStatus,
@@ -666,6 +667,21 @@ class Media {
           server.externalUrl ?? LazyLibrarianAPI.buildUrl(server);
       }
     }
+
+    if (
+      this.mediaType === MediaType.ADULT &&
+      this.serviceId != null &&
+      this.externalServiceId != null
+    ) {
+      const server = getSettings().whisparr.find(
+        (whisparr) => whisparr.id === this.serviceId
+      );
+      if (server) {
+        this.serviceUrl = server.externalUrl
+          ? `${server.externalUrl}/movie/${this.externalServiceId}`
+          : WhisparrAPI.buildUrl(server, `/movie/${this.externalServiceId}`);
+      }
+    }
   }
 
   @AfterLoad()
@@ -718,6 +734,20 @@ class Media {
         this.downloadStatus4k = downloadTracker.getSeriesProgress(
           this.serviceId4k,
           this.externalServiceId4k
+        );
+      }
+    }
+
+    if (this.mediaType === MediaType.ADULT) {
+      if (
+        this.externalServiceId !== undefined &&
+        this.externalServiceId !== null &&
+        this.serviceId !== undefined &&
+        this.serviceId !== null
+      ) {
+        this.downloadStatus = downloadTracker.getAdultProgress(
+          this.serviceId,
+          this.externalServiceId
         );
       }
     }

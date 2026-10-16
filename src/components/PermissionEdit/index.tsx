@@ -40,6 +40,9 @@ export const messages = defineMessages('components.PermissionEdit', {
   requestSports: 'Request Sports',
   requestSportsDescription:
     'Grant permission to submit sports league requests through Sportarr.',
+  requestAdult: 'Request Adult Media',
+  requestAdultDescription:
+    'Explicitly grant this user access to discover and request adult scenes through Whisparr.',
   autoapprove: 'Auto-Approve',
   autoapproveDescription:
     'Grant automatic approval for all non-4K media requests.',
@@ -61,6 +64,9 @@ export const messages = defineMessages('components.PermissionEdit', {
   autoapproveSports: 'Auto-Approve Sports',
   autoapproveSportsDescription:
     'Grant automatic approval for sports league requests.',
+  autoapproveAdult: 'Auto-Approve Adult Media',
+  autoapproveAdultDescription:
+    'Grant automatic approval for adult scene requests. This is separate from general auto-approval.',
   autoapprove4k: 'Auto-Approve 4K',
   autoapprove4kDescription:
     'Grant automatic approval for all 4K media requests.',
@@ -361,6 +367,19 @@ export const PermissionEdit = ({
           ],
         },
       ],
+    },
+    {
+      id: 'request-adult',
+      name: intl.formatMessage(messages.requestAdult),
+      description: intl.formatMessage(messages.requestAdultDescription),
+      permission: Permission.REQUEST_ADULT,
+    },
+    {
+      id: 'autoapprove-adult',
+      name: intl.formatMessage(messages.autoapproveAdult),
+      description: intl.formatMessage(messages.autoapproveAdultDescription),
+      permission: Permission.AUTO_APPROVE_ADULT,
+      requires: [{ permissions: [Permission.REQUEST_ADULT] }],
     },
     {
       id: 'autorequest',

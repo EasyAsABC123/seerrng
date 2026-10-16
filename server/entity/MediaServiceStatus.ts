@@ -11,8 +11,8 @@ import {
 } from 'typeorm';
 import Media from './Media';
 
-export type VideoRequestServiceType = 'radarr' | 'sonarr';
-export type VideoRequestFormat = 'standard' | '4k';
+export type VideoRequestServiceType = 'radarr' | 'sonarr' | 'whisparr';
+export type VideoRequestFormat = 'standard' | '4k' | 'adult';
 
 @Entity('media_service_status')
 @Index(

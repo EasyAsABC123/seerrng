@@ -2,6 +2,7 @@ import Tooltip from '@app/components/Common/Tooltip';
 import globalMessages from '@app/i18n/globalMessages';
 import {
   BookOpenIcon,
+  EyeSlashIcon,
   FilmIcon,
   MusicalNoteIcon,
   NewspaperIcon,
@@ -22,6 +23,7 @@ export type MediaTypeBadgeType =
   | 'book'
   | 'comic'
   | 'magazine'
+  | 'adult'
   | 'sports';
 
 export const mediaTypeBadgeTone: Record<MediaTypeBadgeType, string> = {
@@ -33,6 +35,7 @@ export const mediaTypeBadgeTone: Record<MediaTypeBadgeType, string> = {
   book: 'media-type-badge-tone-book',
   comic: 'media-type-badge-tone-comic',
   magazine: 'media-type-badge-tone-magazine',
+  adult: 'media-type-badge-tone-magazine',
   sports: 'media-type-badge-tone-tv',
 };
 
@@ -52,6 +55,7 @@ export const getMediaTypeBadgeType = (
     mediaType === 'book' ||
     mediaType === 'comic' ||
     mediaType === 'magazine' ||
+    mediaType === 'adult' ||
     mediaType === 'sports'
   ) {
     return mediaType;
@@ -115,6 +119,11 @@ const badgeConfig = {
     icon: NewspaperIcon,
     tone: mediaTypeBadgeTone.magazine,
   },
+  adult: {
+    message: globalMessages.adult,
+    icon: EyeSlashIcon,
+    tone: mediaTypeBadgeTone.adult,
+  },
   sports: {
     message: globalMessages.sports,
     icon: TrophyIcon,
@@ -145,6 +154,7 @@ const posterToneClass: Record<MediaTypeBadgeType, string> = {
   book: 'poster-control-type-book',
   comic: 'poster-control-type-comic',
   magazine: 'poster-control-type-magazine',
+  adult: 'poster-control-type-magazine',
   sports: 'poster-control-type-tv',
 };
 
@@ -157,6 +167,7 @@ const buttonToneClass: Record<MediaTypeBadgeType, string> = {
   book: 'app-button-media-type-book',
   comic: 'app-button-media-type-comic',
   magazine: 'app-button-media-type-magazine',
+  adult: 'app-button-media-type-magazine',
   sports: 'app-button-media-type-tv',
 };
 

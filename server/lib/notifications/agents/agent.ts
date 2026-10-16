@@ -12,6 +12,7 @@ import {
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
 import type { NotificationAgentConfig } from '@server/lib/settings';
+import { normalizeStashDbId } from '@server/lib/stashdbIdentity';
 import { createSafeHttpRequestOptions } from '@server/utils/security';
 import type { Notification } from '..';
 
@@ -139,6 +140,8 @@ export const getMediaTypeLabel = (
       return intl.formatMessage(globalMessages.comic);
     case MediaType.MAGAZINE:
       return intl.formatMessage(globalMessages.magazine);
+    case MediaType.ADULT:
+      return intl.formatMessage(globalMessages.adult);
     default:
       return intl.formatMessage(globalMessages.series);
   }
@@ -199,6 +202,15 @@ export const getNotificationMediaUrl = (
     return magazineId
       ? `/magazine/${encodeURIComponent(magazineId)}`
       : undefined;
+  }
+
+  if (payload.media.mediaType === 'adult') {
+    const stashDbId = normalizeStashDbId(
+      payload.media.identifiers?.find(
+        (identifier) => identifier.provider === 'stashdb'
+      )?.value
+    );
+    return stashDbId ? `/adult/${encodeURIComponent(stashDbId)}` : undefined;
   }
 
   return `/${payload.media.mediaType}/${payload.media.tmdbId}`;

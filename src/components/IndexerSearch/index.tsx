@@ -3,6 +3,7 @@ import Button from '@app/components/Common/Button';
 import Header from '@app/components/Common/Header';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
+import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
 import defineMessages from '@app/utils/defineMessages';
 import { getSafeHref } from '@app/utils/safeUrl';
@@ -35,6 +36,7 @@ const messages = defineMessages('components.IndexerSearch', {
   categoryAudiobook: 'Audiobooks',
   categoryComic: 'Comics',
   categoryMagazine: 'Magazines',
+  categoryAdult: 'Adult',
   categoryRetro: 'Retro ROMs',
   categoryModern: 'Modern ROMs',
   categoryGame: 'PC games',
@@ -83,6 +85,7 @@ const categories: {
   { key: 'audiobook', label: 'categoryAudiobook' },
   { key: 'comic', label: 'categoryComic' },
   { key: 'magazine', label: 'categoryMagazine' },
+  { key: 'adult', label: 'categoryAdult' },
   { key: 'retro', label: 'categoryRetro' },
   { key: 'modern', label: 'categoryModern' },
   { key: 'game', label: 'categoryGame' },
@@ -180,7 +183,14 @@ const ResultCard = ({
 const IndexerSearch = () => {
   const intl = useIntl();
   const router = useRouter();
+  const { currentSettings } = useSettings();
   const { hasPermission } = useUser();
+  const adultCategoryEnabled =
+    currentSettings.adultEnabled &&
+    currentSettings.enabledMediaCategories?.adult !== false;
+  const visibleCategories = categories.filter(
+    (item) => item.key !== 'adult' || adultCategoryEnabled
+  );
   const {
     data: configuration,
     error: configurationError,
@@ -206,7 +216,8 @@ const IndexerSearch = () => {
     const linkedCategory = router.query.category;
     if (
       typeof linkedCategory === 'string' &&
-      categories.some((item) => item.key === linkedCategory)
+      categories.some((item) => item.key === linkedCategory) &&
+      (linkedCategory !== 'adult' || adultCategoryEnabled)
     ) {
       setCategory(linkedCategory as MediaCategoryKey);
     }
@@ -215,7 +226,12 @@ const IndexerSearch = () => {
     if (typeof linkedQuery === 'string') {
       setQuery(linkedQuery.slice(0, 256));
     }
-  }, [router.isReady, router.query.category, router.query.query]);
+  }, [
+    adultCategoryEnabled,
+    router.isReady,
+    router.query.category,
+    router.query.query,
+  ]);
 
   const runSearch = async (nextOffset = 0, append = false) => {
     const searchText = (append ? submittedQuery : query).trim();
@@ -320,7 +336,7 @@ const IndexerSearch = () => {
                     setErrorMessage('');
                   }}
                 >
-                  {categories.map((item) => (
+                  {visibleCategories.map((item) => (
                     <option key={item.key} value={item.key}>
                       {intl.formatMessage(messages[item.label])}
                     </option>

@@ -189,6 +189,22 @@ export const validateExternalServiceConfiguration = (
       );
     }
   }
+
+  if (requestType === MediaType.ADULT) {
+    if (serverId === undefined || serverId === null) {
+      if (!settings.whisparr.some((service) => service.isDefault)) {
+        throw new ServiceConfigurationError(
+          'No default Whisparr server is configured for adult requests.'
+        );
+      }
+      return;
+    }
+    if (!settings.whisparr.some((service) => service.id === serverId)) {
+      throw new ServiceConfigurationError(
+        'The selected Whisparr server no longer exists.'
+      );
+    }
+  }
 };
 
 export const transitionPendingMediaRequest = (

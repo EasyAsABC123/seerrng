@@ -43,6 +43,7 @@ const globalMessages = defineMessages('notifications.common', {
   book: 'book',
   comic: 'comic',
   magazine: 'magazine',
+  adult: 'adult scene',
   issue: 'issue',
   issueTypeName: '{type} issue',
 });

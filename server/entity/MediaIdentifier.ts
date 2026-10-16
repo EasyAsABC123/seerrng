@@ -32,6 +32,7 @@ export enum MediaIdentifierProvider {
   BOOKSHELF = 'bookshelf',
   AUDIOBOOKSHELF = 'audiobookshelf',
   COMICVINE = 'comicvine',
+  STASHDB = 'stashdb',
   MYLAR = 'mylar',
   KAPOWARR = 'kapowarr',
   LAZYLIBRARIAN = 'lazylibrarian',
@@ -56,6 +57,10 @@ export enum MediaIdentifierProvider {
 @Index('UQ_media_identifier_canonical_sportarr', ['provider', 'value'], {
   unique: true,
   where: `"provider" = 'sportarr'`,
+})
+@Index('UQ_media_identifier_canonical_adult', ['provider', 'value'], {
+  unique: true,
+  where: `"provider" = 'stashdb'`,
 })
 class MediaIdentifier {
   @PrimaryGeneratedColumn()

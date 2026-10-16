@@ -18,6 +18,10 @@ const MagazineRequestModal = dynamic(
   () => import('@app/components/RequestModal/MagazineRequestModal'),
   { ssr: false }
 );
+const AdultRequestModal = dynamic(
+  () => import('@app/components/RequestModal/AdultRequestModal'),
+  { ssr: false }
+);
 const SportarrRequestModal = dynamic(
   () => import('@app/components/RequestModal/SportarrRequestModal'),
   { ssr: false }
@@ -49,12 +53,15 @@ interface RequestModalProps {
     | 'book'
     | 'comic'
     | 'magazine'
+    | 'adult'
     | 'sports';
   tmdbId?: number;
   mbId?: string;
   bookId?: string;
   comicId?: string;
   magazineTitle?: string;
+  adultId?: string;
+  adultRequestId?: number;
   sportarrLeagueId?: string;
   sportarrTitle?: string;
   initialBookFormat?: 'ebook' | 'audiobook' | 'both';
@@ -76,6 +83,8 @@ const RequestModal = ({
   bookId,
   comicId,
   magazineTitle,
+  adultId,
+  adultRequestId,
   sportarrLeagueId,
   sportarrTitle,
   initialBookFormat,
@@ -155,6 +164,15 @@ const RequestModal = ({
       ) : type === 'magazine' && magazineTitle ? (
         <MagazineRequestModal
           magazineTitle={magazineTitle}
+          onComplete={onComplete}
+          onCancel={onCancel}
+          onUpdating={onUpdating}
+          editRequest={editRequest}
+        />
+      ) : type === 'adult' && adultId ? (
+        <AdultRequestModal
+          adultId={adultId}
+          adultRequestId={adultRequestId}
           onComplete={onComplete}
           onCancel={onCancel}
           onUpdating={onUpdating}

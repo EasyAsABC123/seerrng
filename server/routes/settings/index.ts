@@ -136,6 +136,7 @@ import sonarrRoutes from './sonarr';
 import sportarrRoutes from './sportarr';
 import swipeSettingsRoutes from './swipe';
 import tunerrRoutes from './tunerr';
+import whisparrRoutes from './whisparr';
 
 const settingsRoutes = Router();
 settingsRoutes.use(authorizedRouteAccess(Permission.ADMIN));
@@ -1177,6 +1178,7 @@ const parseMainSettingsBody = (
       'book',
       'comic',
       'magazine',
+      'adult',
       'software',
     ] as const) {
       if (incomingDefaultQuotas[mediaType] === undefined) {
@@ -1445,6 +1447,7 @@ export const parseLogMessages = (
 
 settingsRoutes.use('/notifications', notificationRoutes);
 settingsRoutes.use('/radarr', radarrRoutes);
+settingsRoutes.use('/whisparr', whisparrRoutes);
 settingsRoutes.use('/sonarr', sonarrRoutes);
 settingsRoutes.use('/sportarr', sportarrRoutes);
 settingsRoutes.use('/lidarr', lidarrRoutes);

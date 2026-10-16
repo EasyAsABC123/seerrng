@@ -18,6 +18,7 @@ import type {
 } from '@server/api/servarr/sonarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
 import SportarrAPI from '@server/api/servarr/sportarr';
+import WhisparrAPI from '@server/api/servarr/whisparr';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import Tvdb from '@server/api/tvdb';
@@ -43,6 +44,7 @@ import {
 } from '@server/entity/MediaRequest';
 import MediaRequestStatusEvent from '@server/entity/MediaRequestStatusEvent';
 import { MediaSearchMetadata } from '@server/entity/MediaSearchMetadata';
+import MediaServiceStatus from '@server/entity/MediaServiceStatus';
 import { RequestDispatchOutbox } from '@server/entity/RequestDispatchOutbox';
 import Season from '@server/entity/Season';
 import SeasonRequest, {
@@ -60,6 +62,7 @@ import {
   normalizeMagazineTitle,
 } from '@server/lib/magazineIdentity';
 import { runMediaEntityMutation } from '@server/lib/mediaMutation';
+import { upsertMediaServiceStatus } from '@server/lib/mediaServiceStatus';
 import { getLidarrAlbumMediaStatus } from '@server/lib/musicAvailability';
 import notificationManager, { Notification } from '@server/lib/notifications';
 import requestDispatchManager, {
@@ -254,6 +257,13 @@ const getRequestDispatchServiceSelection = (
       serviceType: 'lazylibrarian',
       serviceIds: uniqueIds([selected?.id]),
     };
+  }
+  if (request.type === MediaType.ADULT) {
+    const selected =
+      request.serverId !== null && request.serverId >= 0
+        ? settings.whisparr.find(({ id }) => id === request.serverId)
+        : settings.whisparr.find(({ isDefault }) => isDefault);
+    return { serviceType: 'whisparr', serviceIds: uniqueIds([selected?.id]) };
   }
   if (request.type === MediaType.SPORTS) {
     const selected =
@@ -832,6 +842,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           (request?.type === MediaType.BOOK ||
             request?.type === MediaType.COMIC ||
             request?.type === MediaType.MAGAZINE ||
+            request?.type === MediaType.ADULT ||
             request?.type === MediaType.SPORTS) &&
           request.status === MediaRequestStatus.FAILED;
         if (
@@ -946,6 +957,16 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       if (retryAfterMs !== undefined) {
         return { delivered: false, retryAfterMs };
       }
+    } else if (request.type === MediaType.ADULT) {
+      const delivered = await this.sendToWhisparr(request);
+      if (!delivered) {
+        await recordRequestStatusOverride(
+          request.id,
+          RequestStatusStage.UNAVAILABLE,
+          'Whisparr has not found a usable release for this adult scene yet.'
+        );
+      }
+      return { delivered };
     } else if (request.type === MediaType.SPORTS) {
       const retryAfterMs = await this.sendToSportarr(request);
       if (retryAfterMs !== undefined) {
@@ -2871,6 +2892,140 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       }
 
       return READARR_FAILED_RETRY_DELAY_MS;
+    }
+  }
+
+  public async sendToWhisparr(entity: MediaRequest): Promise<boolean> {
+    if (
+      entity.type !== MediaType.ADULT ||
+      (entity.status !== MediaRequestStatus.APPROVED &&
+        entity.status !== MediaRequestStatus.FAILED)
+    ) {
+      return true;
+    }
+
+    const mediaRepository = getRepository(Media);
+    const requestRepository = getRepository(MediaRequest);
+    const media = await mediaRepository.findOne({
+      where: { id: entity.media.id },
+      relations: { identifiers: true },
+    });
+    if (!media) return false;
+
+    try {
+      const settings = getExternalRuntimeConfig();
+      const selectedServer =
+        entity.serverId !== null && entity.serverId >= 0
+          ? settings.whisparr.find(({ id }) => id === entity.serverId)
+          : settings.whisparr.find(({ isDefault }) => isDefault);
+      if (!selectedServer) {
+        throw new Error(
+          entity.serverId !== null && entity.serverId >= 0
+            ? 'The selected Whisparr server no longer exists.'
+            : 'No default Whisparr server is configured.'
+        );
+      }
+
+      const stashDbId = media.identifiers?.find(
+        (identifier) => identifier.provider === MediaIdentifierProvider.STASHDB
+      )?.value;
+      if (!stashDbId) {
+        throw new Error('Adult request is missing its StashDB scene ID.');
+      }
+      const api = new WhisparrAPI({
+        apiKey: selectedServer.apiKey,
+        url: WhisparrAPI.buildUrl(selectedServer, '/api/v3'),
+      });
+      const scene = await api.getSceneByStashDbId(stashDbId);
+      if (!scene) {
+        throw new Error(
+          'Whisparr could not resolve the requested StashDB scene.'
+        );
+      }
+
+      const qualityProfileId =
+        entity.profileId ?? selectedServer.activeProfileId;
+      const rootFolderPath =
+        entity.rootFolder ?? selectedServer.activeDirectory;
+      const tags = [...new Set(entity.tags ?? selectedServer.tags ?? [])];
+      const addedScene = await api.addScene({
+        foreignId: stashDbId,
+        title: scene.title,
+        year: scene.year,
+        qualityProfileId,
+        rootFolderPath,
+        tags,
+        monitored: true,
+        searchNow: !selectedServer.preventSearch,
+      });
+
+      const freshMedia = await mediaRepository.findOne({
+        where: { id: entity.media.id },
+      });
+      if (!freshMedia) throw new Error('Media data not found.');
+      const serviceStatus = addedScene.hasFile
+        ? MediaStatus.AVAILABLE
+        : MediaStatus.PROCESSING;
+      const preferredServerId =
+        settings.whisparr.find(({ isDefault }) => isDefault)?.id ??
+        settings.whisparr[0]?.id;
+      if (selectedServer.id === preferredServerId) {
+        freshMedia.mediaType = MediaType.ADULT;
+        freshMedia.externalServiceId = addedScene.id;
+        freshMedia.externalServiceSlug = addedScene.title;
+        freshMedia.serviceId = selectedServer.id;
+        freshMedia.status = serviceStatus;
+        await mediaRepository.save(freshMedia);
+      }
+      await upsertMediaServiceStatus(getRepository(MediaServiceStatus), {
+        mediaId: freshMedia.id,
+        serviceType: 'whisparr',
+        serverId: selectedServer.id,
+        format: 'adult',
+        status: serviceStatus,
+        externalServiceId: addedScene.id,
+        externalServiceSlug: addedScene.title,
+      });
+      await saveRequestServiceTarget(entity, {
+        serviceType: 'whisparr',
+        format: 'adult',
+        serverId: selectedServer.id,
+        profileId: qualityProfileId,
+        rootFolder: rootFolderPath,
+        tags,
+        externalServiceId: addedScene.id,
+        externalServiceSlug: addedScene.title,
+        status: serviceStatus,
+      });
+
+      entity.failureReason = null;
+      if (addedScene.hasFile) {
+        entity.status = MediaRequestStatus.COMPLETED;
+        await requestRepository.save(entity);
+      }
+      logger.info('Sent adult scene request to Whisparr', {
+        label: 'Media Request',
+        requestId: entity.id,
+        mediaId: entity.media.id,
+        serviceId: selectedServer.id,
+      });
+      return true;
+    } catch (error) {
+      entity.status = MediaRequestStatus.FAILED;
+      entity.failureReason = MediaRequestFailureReason.DISPATCH_FAILED;
+      await requestRepository.save(entity);
+      logger.warn('Failed to send adult scene request to Whisparr', {
+        label: 'Media Request',
+        requestId: entity.id,
+        mediaId: entity.media.id,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      await MediaRequest.sendNotification(
+        entity,
+        media,
+        Notification.MEDIA_FAILED
+      );
+      return true;
     }
   }
 

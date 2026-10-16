@@ -8,8 +8,9 @@ description: Connect Prowlarr to SeerrNG for manual category-aware indexer searc
 Administrators can connect one Prowlarr instance under **Settings > Services >
 Prowlarr indexers**. SeerrNG then provides **Indexer Search** for users with
 **Manage Requests** permission. The page searches Prowlarr directly across
-movies, TV, music, ebooks, audiobooks, comics, magazines, retro ROMs, modern
-ROMs, and PC games.
+movies, TV, music, ebooks, audiobooks, comics, magazines, adult scenes, retro
+ROMs, modern ROMs, and PC games. Adult search appears only when the Adult
+category is enabled and Whisparr is configured.
 
 This is a manual search for inspecting available releases. SeerrNG does not
 grab a result, send it to a download client, or add it to a media library from
@@ -25,6 +26,7 @@ software provider, which owns acquisition, import, and progress tracking.
 | Audiobooks | Book metadata catalogs and configured Bookshelf catalogs | Configured audiobook/audio category IDs | BookshelfNG, Chaptarr, or another configured book service |
 | Comics | ComicVine | Configured comic/book category IDs | Mylar3 or API-compatible Issuarr, Kapowarr, or BackIssue using its configured sources |
 | Magazines | Google Books public catalog or titles tracked by LazyLibrarian | Configured magazine/book category IDs | LazyLibrarian |
+| Adult scenes | Whisparr scene lookup | Configured XXX category IDs | Whisparr |
 | Retro and Modern ROMs | IGDB through the selected catalog provider (QuestarrNG by default, or ROMarrNG), matched to ROMarrNG systems | Configured console/game category IDs | ROMarrNG |
 | PC games | IGDB through QuestarrNG | Configured PC/game category IDs | QuestarrNG |
 
@@ -89,6 +91,10 @@ Searches are limited to 50 results per page and 12 searches per minute per
 client IP. **Load more results** requests another page. Search results are
 informational; SeerrNG does not expose download or magnet URLs from the search
 API.
+
+For Adult scenes, SeerrNG uses Prowlarr's standard XXX category (`6000`) for
+manual searches. These results are informational; approved Adult requests are
+sent to Whisparr. See [Adult media](./adult-media.md) for setup.
 
 ## Keep request acquisition separate
 

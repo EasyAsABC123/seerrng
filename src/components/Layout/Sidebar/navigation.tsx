@@ -59,6 +59,7 @@ export const menuMessages = defineMessages('components.Layout.Sidebar', {
   browsesoftware: 'Software',
   browsecomics: 'Comics',
   browsemagazines: 'Magazines',
+  browseadult: 'Adult',
   browsesports: 'Sports',
   browsetv: 'Series',
   requests: 'Requests',
@@ -176,6 +177,20 @@ export const navigationSections: NavigationSection[] = [
         svgIcon: <NewspaperIcon aria-hidden="true" />,
         svgIconSelected: <FilledNewspaperIcon aria-hidden="true" />,
         activeRegExp: /^\/(?:discover\/magazines(?:\/.*)?|magazine\/)/,
+      },
+      {
+        id: 'adult',
+        href: '/discover/adult',
+        messagesKey: 'browseadult',
+        svgIcon: <EyeSlashIcon aria-hidden="true" />,
+        svgIconSelected: <FilledEyeSlashIcon aria-hidden="true" />,
+        activeRegExp: /^\/(?:discover\/adult(?:\/.*)?|adult\/)/,
+        requiredPermission: [
+          Permission.ADMIN,
+          Permission.MANAGE_REQUESTS,
+          Permission.REQUEST_ADULT,
+        ],
+        permissionType: 'or',
       },
       {
         id: 'sports',

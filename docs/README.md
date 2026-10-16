@@ -5,8 +5,8 @@ sidebar_position: 1
 
 # SeerrNG Documentation
 
-SeerrNG brings movie, television, music, book, comic, magazine, emulation, and
-PC game requests into one self-hosted app. These guides cover installation,
+SeerrNG brings movie, television, music, book, comic, magazine, adult-scene,
+emulation, and PC game requests into one self-hosted app. These guides cover installation,
 request workflows, download copies, user settings, and the services SeerrNG
 connects to.
 
@@ -39,6 +39,7 @@ connects to.
 - [Follow requests and status history](/using-seerr/request-status/)
 - [Opt in to the TV episode queue with Plex, Jellyfin, or Emby playback](/using-seerr/jellyfin-watch-ahead/)
 - [Browse and request ROMs and PC games](/using-seerr/software-acquisition/)
+- [Discover and request adult scenes with Whisparr](/using-seerr/adult-media/)
 - [Track games and find household overlaps](/using-seerr/game-library/)
 - [See where indexer searches run by media category](/using-seerr/indexer-searches/)
 - [Download verified files from Request Status](/using-seerr/request-status/)

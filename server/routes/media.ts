@@ -99,6 +99,7 @@ const mediaTypeCategories: Record<
   [MediaType.BOOK]: { categories: ['ebook', 'audiobook'], mode: 'any' },
   [MediaType.COMIC]: { categories: ['comic'] },
   [MediaType.MAGAZINE]: { categories: ['magazine'] },
+  [MediaType.ADULT]: { categories: ['adult'] },
   [MediaType.SPORTS]: { categories: ['sports'] },
 };
 const isMediaTypeCategoryEnabled = (mediaType: MediaType): boolean => {

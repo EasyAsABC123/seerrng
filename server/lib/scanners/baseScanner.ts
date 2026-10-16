@@ -26,10 +26,11 @@ import {
 } from '@server/lib/externalIds';
 import { upsertMediaServiceStatus } from '@server/lib/mediaServiceStatus';
 import { getSettings } from '@server/lib/settings';
+import { normalizeStashDbId } from '@server/lib/stashdbIdentity';
 import logger from '@server/logger';
 import AsyncLock from '@server/utils/asyncLock';
 import { randomUUID } from 'crypto';
-import type { Repository } from 'typeorm';
+import { In, type Repository } from 'typeorm';
 
 // Default scan rates (can be overidden)
 const BUNDLE_SIZE = 20;
@@ -1516,6 +1517,296 @@ class BaseScanner<T> {
           )
       )
     );
+  }
+
+  protected async processAdult(
+    value: string,
+    {
+      serviceId,
+      externalServiceId,
+      externalServiceSlug,
+      processing = false,
+      title = 'Unknown Adult Scene',
+      hasFile = false,
+      mutationGuard,
+      outerMutationGuard,
+    }: ProcessOptions = {}
+  ): Promise<void> {
+    const stashDbId = normalizeStashDbId(value);
+    if (!stashDbId) return;
+    const provider = MediaIdentifierProvider.STASHDB;
+    const lockKey = `${provider}:${stashDbId}`;
+
+    await this.runProcessMutation(outerMutationGuard, () =>
+      runWithRequestAdmission(
+        [`request-canonical:adult:${provider}:${stashDbId}`],
+        () =>
+          this.asyncLock.dispatch(lockKey, () =>
+            this.runProcessMutation(mutationGuard, () =>
+              dataSource.transaction(async (manager) => {
+                const mediaRepository = manager.getRepository(Media);
+                const identifierRepository =
+                  manager.getRepository(MediaIdentifier);
+                const existingIdentifier = await identifierRepository.findOne({
+                  where: { provider, value: stashDbId },
+                  relations: { media: { requests: true } },
+                });
+                const existing =
+                  existingIdentifier?.media?.mediaType === MediaType.ADULT
+                    ? existingIdentifier.media
+                    : undefined;
+                const serviceStatusRepository =
+                  manager.getRepository(MediaServiceStatus);
+                const serviceStatus = hasFile
+                  ? MediaStatus.AVAILABLE
+                  : processing
+                    ? MediaStatus.PROCESSING
+                    : MediaStatus.UNKNOWN;
+
+                if (existing) {
+                  let changed = false;
+                  if (serviceId !== undefined) {
+                    await upsertMediaServiceStatus(serviceStatusRepository, {
+                      mediaId: existing.id,
+                      serviceType: 'whisparr',
+                      serverId: serviceId,
+                      format: 'adult',
+                      status: serviceStatus,
+                      externalServiceId,
+                      externalServiceSlug,
+                    });
+                    await this.updateAdultRequestTargets(
+                      existing.requests ?? [],
+                      manager.getRepository(MediaRequest),
+                      serviceId,
+                      serviceStatus,
+                      externalServiceId,
+                      externalServiceSlug
+                    );
+
+                    const preferredServerId =
+                      getSettings().whisparr.find(({ isDefault }) => isDefault)
+                        ?.id ?? getSettings().whisparr[0]?.id;
+                    if (serviceId === preferredServerId) {
+                      if (existing.status !== serviceStatus) {
+                        existing.status = serviceStatus;
+                        changed = true;
+                      }
+                      if (existing.serviceId !== serviceId) {
+                        existing.serviceId = serviceId;
+                        changed = true;
+                      }
+                      if (
+                        externalServiceId !== undefined &&
+                        existing.externalServiceId !== externalServiceId
+                      ) {
+                        existing.externalServiceId = externalServiceId;
+                        changed = true;
+                      }
+                      if (
+                        externalServiceSlug !== undefined &&
+                        existing.externalServiceSlug !== externalServiceSlug
+                      ) {
+                        existing.externalServiceSlug = externalServiceSlug;
+                        changed = true;
+                      }
+                    }
+                  }
+                  if (changed) {
+                    await mediaRepository.save(existing);
+                    this.log(`Updated adult scene availability: ${title}`);
+                  }
+                } else if (processing || hasFile) {
+                  const media = await mediaRepository.save(
+                    new Media({
+                      tmdbId: 0,
+                      mediaType: MediaType.ADULT,
+                      serviceId,
+                      externalServiceId,
+                      externalServiceSlug,
+                      status: serviceStatus,
+                      status4k: MediaStatus.UNKNOWN,
+                    })
+                  );
+                  await identifierRepository.save(
+                    new MediaIdentifier({
+                      media,
+                      provider,
+                      value: stashDbId,
+                      canonical: true,
+                    })
+                  );
+                  if (serviceId !== undefined) {
+                    await upsertMediaServiceStatus(serviceStatusRepository, {
+                      mediaId: media.id,
+                      serviceType: 'whisparr',
+                      serverId: serviceId,
+                      format: 'adult',
+                      status: serviceStatus,
+                      externalServiceId,
+                      externalServiceSlug,
+                    });
+                  }
+                  this.log(`Saved adult scene availability: ${title}`);
+                }
+              })
+            )
+          )
+      )
+    );
+  }
+
+  protected async markMissingAdultServiceStatusesUnknown(
+    serverId: number,
+    scanStartedAt: Date
+  ): Promise<void> {
+    const serviceStatusRepository = getRepository(MediaServiceStatus);
+    const staleStatuses = serviceStatusRepository
+      .createQueryBuilder('serviceStatus')
+      .select('serviceStatus.mediaId', 'mediaId')
+      .where('serviceStatus.serviceType = :serviceType', {
+        serviceType: 'whisparr',
+      })
+      .andWhere('serviceStatus.serverId = :serverId', { serverId })
+      .andWhere('serviceStatus.format = :format', { format: 'adult' })
+      .andWhere('serviceStatus.status IN (:...statuses)', {
+        statuses: [MediaStatus.AVAILABLE, MediaStatus.PROCESSING],
+      })
+      .andWhere('serviceStatus.updatedAt < :scanStartedAt', { scanStartedAt });
+    const staleMediaIds = [
+      ...new Set(
+        (await staleStatuses.getRawMany<{ mediaId: number | string }>()).map(
+          ({ mediaId }) => Number(mediaId)
+        )
+      ),
+    ].filter((mediaId) => Number.isSafeInteger(mediaId) && mediaId > 0);
+
+    await getRepository(Media)
+      .createQueryBuilder()
+      .update(Media)
+      .set({
+        status: MediaStatus.UNKNOWN,
+        externalServiceId: null,
+        externalServiceSlug: null,
+      })
+      .where('mediaType = :mediaType', { mediaType: MediaType.ADULT })
+      .andWhere('serviceId = :serverId', { serverId })
+      .andWhere('status IN (:...statuses)', {
+        statuses: [MediaStatus.AVAILABLE, MediaStatus.PROCESSING],
+      })
+      .andWhere(`id IN (${staleStatuses.getQuery()})`)
+      .setParameters(staleStatuses.getParameters())
+      .execute();
+
+    await serviceStatusRepository
+      .createQueryBuilder()
+      .update(MediaServiceStatus)
+      .set({
+        status: MediaStatus.UNKNOWN,
+        externalServiceId: null,
+        externalServiceSlug: null,
+      })
+      .where('serviceType = :serviceType', { serviceType: 'whisparr' })
+      .andWhere('serverId = :serverId', { serverId })
+      .andWhere('format = :format', { format: 'adult' })
+      .andWhere('updatedAt < :scanStartedAt', { scanStartedAt })
+      .execute();
+
+    const requestRepository = getRepository(MediaRequest);
+    for (let offset = 0; offset < staleMediaIds.length; offset += 500) {
+      const requests = await requestRepository.find({
+        where: {
+          media: { id: In(staleMediaIds.slice(offset, offset + 500)) },
+          type: MediaType.ADULT,
+          status: In([
+            MediaRequestStatus.PENDING,
+            MediaRequestStatus.APPROVED,
+            MediaRequestStatus.FAILED,
+          ]),
+        },
+      });
+      await this.updateAdultRequestTargets(
+        requests,
+        requestRepository,
+        serverId,
+        MediaStatus.UNKNOWN
+      );
+    }
+  }
+
+  private async updateAdultRequestTargets(
+    requests: MediaRequest[],
+    requestRepository: Repository<MediaRequest>,
+    serverId: number,
+    status: MediaStatus,
+    externalServiceId?: number,
+    externalServiceSlug?: string
+  ): Promise<void> {
+    const changedRequests: MediaRequest[] = [];
+    for (const request of requests) {
+      if (
+        request.type !== MediaType.ADULT ||
+        (request.status !== MediaRequestStatus.PENDING &&
+          request.status !== MediaRequestStatus.APPROVED &&
+          request.status !== MediaRequestStatus.FAILED)
+      ) {
+        continue;
+      }
+
+      const targets = [...(request.serviceTargets ?? [])];
+      let target = targets.find(
+        (candidate) =>
+          candidate.serviceType === 'whisparr' &&
+          candidate.format === 'adult' &&
+          candidate.serverId === serverId
+      );
+      if (!target) {
+        if (targets.length > 0 || request.serverId !== serverId) continue;
+        target = {
+          serviceType: 'whisparr',
+          format: 'adult',
+          serverId,
+          profileId: request.profileId,
+          rootFolder: request.rootFolder,
+          status,
+        };
+        targets.push(target);
+      }
+
+      const nextExternalServiceId =
+        status === MediaStatus.UNKNOWN ? null : (externalServiceId ?? null);
+      const nextExternalServiceSlug =
+        status === MediaStatus.UNKNOWN ? null : (externalServiceSlug ?? null);
+      let changed = false;
+      if (target.status !== status) {
+        target.status = status;
+        changed = true;
+      }
+      if (target.externalServiceId !== nextExternalServiceId) {
+        target.externalServiceId = nextExternalServiceId;
+        changed = true;
+      }
+      if (target.externalServiceSlug !== nextExternalServiceSlug) {
+        target.externalServiceSlug = nextExternalServiceSlug;
+        changed = true;
+      }
+      if (
+        status === MediaStatus.AVAILABLE &&
+        request.status !== MediaRequestStatus.PENDING
+      ) {
+        request.status = MediaRequestStatus.COMPLETED;
+        request.failureReason = null;
+        changed = true;
+      }
+      if (changed) {
+        request.serviceTargets = targets;
+        changedRequests.push(request);
+      }
+    }
+
+    if (changedRequests.length > 0) {
+      await requestRepository.save(changedRequests);
+    }
   }
 
   /**

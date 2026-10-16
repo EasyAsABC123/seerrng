@@ -29,6 +29,7 @@ const defaultSettings: PublicSettingsResponse = {
   audiobookServiceEnabled: false,
   comicsEnabled: false,
   magazinesEnabled: false,
+  adultEnabled: false,
   sportsEnabled: false,
   softwareEnabled: false,
   romarrEnabled: false,

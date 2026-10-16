@@ -265,6 +265,12 @@ export class User {
   public magazineQuotaDays?: number;
 
   @Column({ nullable: true })
+  public adultQuotaLimit?: number;
+
+  @Column({ nullable: true })
+  public adultQuotaDays?: number;
+
+  @Column({ nullable: true })
   public softwareQuotaLimit?: number;
 
   @Column({ nullable: true })
@@ -743,6 +749,28 @@ export class User {
         })
       : 0;
 
+    const adultQuotaLimit = !canBypass
+      ? (this.adultQuotaLimit ?? defaultQuotas.adult.quotaLimit)
+      : 0;
+    const adultQuotaDays = this.adultQuotaDays ?? defaultQuotas.adult.quotaDays;
+    const adultDate = new Date();
+    if (adultQuotaDays) {
+      adultDate.setDate(adultDate.getDate() - adultQuotaDays);
+    }
+    const adultQuotaUsed = adultQuotaLimit
+      ? await requestRepository.count({
+          where: {
+            requestedBy: { id: this.id },
+            ...(adultQuotaDays ? { createdAt: AfterDate(adultDate) } : {}),
+            type: MediaType.ADULT,
+            status: Not(
+              In([MediaRequestStatus.DECLINED, MediaRequestStatus.FAILED])
+            ),
+            ignoreQuota: false,
+          },
+        })
+      : 0;
+
     const softwareQuotaLimit = !canBypass
       ? (this.softwareQuotaLimit ?? defaultQuotas.software.quotaLimit)
       : 0;
@@ -825,6 +853,17 @@ export class User {
           : undefined,
         restricted: !!(
           magazineQuotaLimit && magazineQuotaLimit - magazineQuotaUsed <= 0
+        ),
+      },
+      adult: {
+        days: adultQuotaDays,
+        limit: adultQuotaLimit,
+        used: adultQuotaUsed,
+        remaining: adultQuotaLimit
+          ? Math.max(0, adultQuotaLimit - adultQuotaUsed)
+          : undefined,
+        restricted: !!(
+          adultQuotaLimit && adultQuotaLimit - adultQuotaUsed <= 0
         ),
       },
       software: {

@@ -18,6 +18,7 @@ import {
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
 import { Permission } from '@server/lib/permissions';
+import { normalizeStashDbId } from '@server/lib/stashdbIdentity';
 import { parseBookshelfBookId } from '@server/utils/bookshelfCatalog';
 import { sortBy, truncate } from 'lodash';
 import { Notification } from '.';
@@ -130,7 +131,9 @@ export const buildMediaRequestNotificationPayload = async (
             ? 'Comic'
             : entity.type === MediaType.MAGAZINE
               ? 'Magazine'
-              : 'Book';
+              : entity.type === MediaType.ADULT
+                ? 'Adult Scene'
+                : 'Book';
   let event: string | undefined;
   let notifyAdmin = true;
   let notifySystem = true;
@@ -333,6 +336,22 @@ export const buildMediaRequestNotificationPayload = async (
       subject: title,
       message: `${mediaType} request details are available in SeerrNG.`,
       image,
+    };
+  }
+  if (entity.type === MediaType.ADULT) {
+    const stashDbId = normalizeStashDbId(
+      media.identifiers?.find(
+        (identifier) => identifier.provider === MediaIdentifierProvider.STASHDB
+      )?.value
+    );
+    return {
+      ...base,
+      mediaUrl: stashDbId
+        ? notificationMediaUrl(`/adult/${encodeURIComponent(stashDbId)}`)
+        : undefined,
+      subject: media.externalServiceSlug ?? stashDbId ?? 'Adult scene request',
+      message: `${mediaType} request details are available in SeerrNG.`,
+      image: undefined,
     };
   }
   throw new Error(`Unsupported media notification request ${entity.id}.`);

@@ -47,6 +47,7 @@ export interface PublicSettingsResponse {
   readmeabookEnabled?: boolean;
   comicsEnabled: boolean;
   magazinesEnabled: boolean;
+  adultEnabled: boolean;
   sportsEnabled: boolean;
   softwareEnabled: boolean;
   romarrEnabled?: boolean;

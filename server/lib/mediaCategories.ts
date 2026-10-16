@@ -2,8 +2,16 @@ import type { MediaCategoryKey } from '@server/constants/mediaCategories';
 import { getSettings } from '@server/lib/settings';
 
 /** Existing settings files without category flags keep every category enabled. */
-export const isMediaCategoryEnabled = (category: MediaCategoryKey): boolean =>
-  getSettings().main.enabledMediaCategories?.[category] !== false;
+export const isMediaCategoryEnabled = (category: MediaCategoryKey): boolean => {
+  const settings = getSettings();
+  if (category === 'adult') {
+    return (
+      settings.whisparr.length > 0 &&
+      settings.main.enabledMediaCategories?.adult === true
+    );
+  }
+  return settings.main.enabledMediaCategories?.[category] !== false;
+};
 
 export const areMediaCategoriesEnabled = (
   categories: readonly MediaCategoryKey[],

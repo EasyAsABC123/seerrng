@@ -32,6 +32,7 @@ import { plexFullScanner, plexRecentScanner } from '@server/lib/scanners/plex';
 import { radarrScanner } from '@server/lib/scanners/radarr';
 import { readarrScanner } from '@server/lib/scanners/readarr';
 import { sonarrScanner } from '@server/lib/scanners/sonarr';
+import { whisparrScanner } from '@server/lib/scanners/whisparr';
 import type { JobId } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import { refreshTrackedSoftwareRequests } from '@server/lib/softwareRequests';
@@ -519,6 +520,24 @@ export const startJobs = (): void => {
     }),
     running: () => lazyLibrarianScanner.status().running,
     cancelFn: () => lazyLibrarianScanner.cancel(),
+  });
+
+  scheduledJobs.push({
+    id: 'adult-scan',
+    name: 'Whisparr Adult Scene Scan',
+    type: 'process',
+    interval: 'hours',
+    cronSchedule: jobs['adult-scan'].schedule,
+    job: schedule.scheduleJob(jobs['adult-scan'].schedule, () => {
+      logger.info('Starting scheduled job: Whisparr Adult Scene Scan', {
+        label: 'Jobs',
+      });
+      return runTrackedJob('Whisparr Adult Scene Scan', () =>
+        whisparrScanner.run()
+      );
+    }),
+    running: () => whisparrScanner.status().running,
+    cancelFn: () => whisparrScanner.cancel(),
   });
 
   // Checks if media is still available in plex/sonarr/radarr libs

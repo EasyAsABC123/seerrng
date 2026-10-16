@@ -10,6 +10,7 @@ import type {
   ReadarrSettings,
   SonarrSettings,
   SportarrSettings,
+  WhisparrSettings,
 } from '@server/lib/settings';
 import {
   normalizeServiceHostname,
@@ -336,6 +337,24 @@ const parseDvrSettings = (
       overrideRule: overrideRule.value,
     },
   };
+};
+
+export const parseWhisparrSettings = (
+  body: unknown,
+  current?: WhisparrSettings
+): { value: WhisparrSettings } | { error: string } => {
+  if (
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    (body as Partial<DVRSettings>).is4k === true
+  ) {
+    return { error: 'Whisparr does not support a 4K service type.' };
+  }
+
+  const parsed = parseDvrSettings(body, current);
+  if ('error' in parsed) return parsed;
+  return { value: { ...parsed.value, is4k: false } };
 };
 
 const parseServiceRequestButtonSettings = (

@@ -74,6 +74,9 @@ export type RequestStatusMessageKey =
   | 'comicUnavailable'
   | 'comicQueueFailed'
   | 'comicCouldNotAccept'
+  | 'adultUnavailable'
+  | 'adultQueueFailed'
+  | 'adultCouldNotAccept'
   | 'waitingForApproval'
   | 'approvedWaitingDispatch'
   | 'searching'
@@ -323,6 +326,26 @@ const getMusicTarget = (
     : undefined;
 };
 
+const getAdultTarget = (
+  request: RequestLike
+): MediaRequestServiceTarget | undefined => {
+  const savedTarget = getTarget(request, 'whisparr', 'adult');
+  if (savedTarget) return savedTarget;
+
+  const serverId = request.serverId ?? request.media.serviceId;
+  return serverId != null &&
+    request.media.serviceId === serverId &&
+    request.media.externalServiceId != null
+    ? {
+        serviceType: 'whisparr',
+        format: 'adult',
+        serverId,
+        externalServiceId: request.media.externalServiceId,
+        status: request.media.status,
+      }
+    : undefined;
+};
+
 const hasRequestedServiceLink = (request: RequestLike): boolean => {
   if (request.type === MediaType.BOOK) {
     if (request.bookFormat === 'audiobook') {
@@ -347,18 +370,25 @@ const hasRequestedServiceLink = (request: RequestLike): boolean => {
       : hasLink(request.media.serviceId, request.media.externalServiceId);
   }
 
+  if (request.type === MediaType.ADULT) {
+    const target = getAdultTarget(request);
+    return hasLink(target?.serverId, target?.externalServiceId);
+  }
+
   const musicTarget = getMusicTarget(request);
   return hasLink(musicTarget?.serverId, musicTarget?.externalServiceId);
 };
 
-const getRequestedMediaStatus = (request: RequestLike): MediaStatus =>
-  request.type === MediaType.MUSIC
-    ? (getMusicTarget(request)?.status ?? request.media.status)
-    : request.type === MediaType.BOOK
-      ? request.media.status
-      : request.is4k
-        ? request.media.status4k
-        : request.media.status;
+const getRequestedMediaStatus = (request: RequestLike): MediaStatus => {
+  if (request.type === MediaType.MUSIC) {
+    return getMusicTarget(request)?.status ?? request.media.status;
+  }
+  if (request.type === MediaType.ADULT) {
+    return getAdultTarget(request)?.status ?? request.media.status;
+  }
+  if (request.type === MediaType.BOOK) return request.media.status;
+  return request.is4k ? request.media.status4k : request.media.status;
+};
 
 const isRequestSatisfied = (request: RequestLike): boolean => {
   const mediaStatus = getRequestedMediaStatus(request);
@@ -589,6 +619,15 @@ const getDownloadItems = (request: RequestLike): DownloadingItem[] => {
         )
       : [];
   }
+  if (request.type === MediaType.ADULT) {
+    const target = getAdultTarget(request);
+    return target?.serverId != null && target.externalServiceId != null
+      ? downloadTracker.getAdultProgress(
+          target.serverId,
+          target.externalServiceId
+        )
+      : [];
+  }
 
   const ebookDownloads =
     media.serviceId !== null &&
@@ -624,6 +663,16 @@ const getServarrHistoryEvidence = (
   request: RequestLike
 ): ServarrHistoryEvidence | undefined => {
   const { media } = request;
+  if (request.type === MediaType.ADULT) {
+    const target = getAdultTarget(request);
+    return target?.serverId != null && target.externalServiceId != null
+      ? downloadTracker.getAdultHistoryEvidence(
+          target.serverId,
+          target.externalServiceId,
+          request.createdAt
+        )
+      : undefined;
+  }
   const musicTarget =
     request.type === MediaType.MUSIC ? getMusicTarget(request) : undefined;
   const serverId =
@@ -710,6 +759,12 @@ const getServiceName = (request: RequestLike): string | null => {
       comicServices.find((server) => server.id === request.media.serviceId)
         ?.name
     );
+  } else if (request.type === MediaType.ADULT) {
+    add(
+      settings.whisparr.find(
+        (server) => server.id === getAdultTarget(request)?.serverId
+      )?.name
+    );
   } else {
     const formats =
       request.bookFormat === 'both'
@@ -760,6 +815,17 @@ const getMessage = (
       return queueFailure
         ? 'The connected comics service reported a download or import failure. Check its queue or logs for the cause, fix it there, then retry here.'
         : 'The connected comics service could not accept this request. Check its connection and ComicVine metadata settings, then retry.';
+    }
+  }
+
+  if (mediaType === MediaType.ADULT) {
+    if (stage === RequestStatusStage.UNAVAILABLE) {
+      return 'Whisparr has not found a usable release for this adult scene yet. Check its indexer categories and acquisition settings, then retry.';
+    }
+    if (stage === RequestStatusStage.FAILED) {
+      return queueFailure
+        ? 'Whisparr reported a download or import failure. Check its queue and logs, fix the issue there, then retry.'
+        : 'Whisparr could not accept this scene request. Check the connection and scene metadata, then retry.';
     }
   }
 
@@ -815,6 +881,18 @@ const REQUEST_STATUS_MESSAGE_KEYS = new Map<string, RequestStatusMessageKey>([
   [
     'The connected comics service could not accept this request. Check its connection and ComicVine metadata settings, then retry.',
     'comicCouldNotAccept',
+  ],
+  [
+    'Whisparr has not found a usable release for this adult scene yet. Check its indexer categories and acquisition settings, then retry.',
+    'adultUnavailable',
+  ],
+  [
+    'Whisparr reported a download or import failure. Check its queue and logs, fix the issue there, then retry.',
+    'adultQueueFailed',
+  ],
+  [
+    'Whisparr could not accept this scene request. Check the connection and scene metadata, then retry.',
+    'adultCouldNotAccept',
   ],
   ['Your request is waiting for approval.', 'waitingForApproval'],
   [

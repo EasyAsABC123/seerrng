@@ -15,6 +15,7 @@ const messages = defineMessages('components.RequestModal.QuotaDisplay', {
   booklimit: '{limit, plural, one {book} other {books}}',
   comiclimit: '{limit, plural, one {comic} other {comics}}',
   magazinelimit: '{limit, plural, one {magazine} other {magazines}}',
+  adultlimit: '{limit, plural, one {adult scene} other {adult scenes}}',
   softwarelimit:
     '{limit, plural, one {software request} other {software requests}}',
   softwareRequestsRemaining:
@@ -33,6 +34,7 @@ const messages = defineMessages('components.RequestModal.QuotaDisplay', {
   book: 'book',
   comic: 'comic',
   magazine: 'magazine',
+  adult: 'adult scene',
   software: 'software',
   notenoughseasonrequests: 'Not enough season requests remaining',
   requiredquota:
@@ -44,7 +46,14 @@ const messages = defineMessages('components.RequestModal.QuotaDisplay', {
 interface QuotaDisplayProps {
   quota?: QuotaStatus;
   mediaType:
-    'movie' | 'tv' | 'music' | 'book' | 'comic' | 'magazine' | 'software';
+    | 'movie'
+    | 'tv'
+    | 'music'
+    | 'book'
+    | 'comic'
+    | 'magazine'
+    | 'adult'
+    | 'software';
   userOverride?: number | null;
   remaining?: number;
   overLimit?: number;
@@ -106,7 +115,9 @@ const QuotaDisplay = ({
                               ? messages.comic
                               : mediaType === 'magazine'
                                 ? messages.magazine
-                                : messages.season
+                                : mediaType === 'adult'
+                                  ? messages.adult
+                                  : messages.season
                     ),
                     strong: (msg: React.ReactNode) => <strong>{msg}</strong>,
                   })}
@@ -154,7 +165,9 @@ const QuotaDisplay = ({
                           ? messages.comiclimit
                           : mediaType === 'software'
                             ? messages.softwarelimit
-                            : messages.seasonlimit,
+                            : mediaType === 'adult'
+                              ? messages.adultlimit
+                              : messages.seasonlimit,
                   { limit: quota?.limit }
                 ),
                 strong: (msg: React.ReactNode) => <strong>{msg}</strong>,

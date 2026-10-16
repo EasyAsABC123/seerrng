@@ -44,6 +44,7 @@ const messages = defineMessages('components.Settings.SettingsUsers', {
   bookRequestLimitLabel: 'Global Book Request Limit',
   comicRequestLimitLabel: 'Global Comic Request Limit',
   magazineRequestLimitLabel: 'Global Magazine Request Limit',
+  adultRequestLimitLabel: 'Global Adult Request Limit',
   softwareRequestLimitLabel: 'Global Software Request Limit',
   defaultPermissions: 'Default Permissions',
   defaultPermissionsTip: 'Initial permissions assigned to new users',
@@ -129,6 +130,8 @@ const SettingsUsers = () => {
             comicQuotaDays: data?.defaultQuotas.comic.quotaDays ?? 7,
             magazineQuotaLimit: data?.defaultQuotas.magazine.quotaLimit ?? 0,
             magazineQuotaDays: data?.defaultQuotas.magazine.quotaDays ?? 7,
+            adultQuotaLimit: data?.defaultQuotas.adult.quotaLimit ?? 0,
+            adultQuotaDays: data?.defaultQuotas.adult.quotaDays ?? 7,
             softwareQuotaLimit: data?.defaultQuotas.software.quotaLimit ?? 0,
             softwareQuotaDays: data?.defaultQuotas.software.quotaDays ?? 7,
             defaultPermissions: data?.defaultPermissions ?? 0,
@@ -165,6 +168,10 @@ const SettingsUsers = () => {
                   magazine: {
                     quotaLimit: values.magazineQuotaLimit,
                     quotaDays: values.magazineQuotaDays,
+                  },
+                  adult: {
+                    quotaLimit: values.adultQuotaLimit,
+                    quotaDays: values.adultQuotaDays,
                   },
                   software: {
                     quotaLimit: values.softwareQuotaLimit,
@@ -204,6 +211,21 @@ const SettingsUsers = () => {
                       mediaType="magazine"
                       defaultDays={values.magazineQuotaDays}
                       defaultLimit={values.magazineQuotaLimit}
+                    />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="adultRequestLimit" className="text-label">
+                    {intl.formatMessage(messages.adultRequestLimitLabel)}
+                  </label>
+                  <div className="form-input-area">
+                    <QuotaSelector
+                      onChange={setFieldValue}
+                      dayFieldName="adultQuotaDays"
+                      limitFieldName="adultQuotaLimit"
+                      mediaType="adult"
+                      defaultDays={values.adultQuotaDays}
+                      defaultLimit={values.adultQuotaLimit}
                     />
                   </div>
                 </div>

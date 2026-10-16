@@ -341,6 +341,9 @@ export interface RadarrSettings
   minimumAvailability: string;
 }
 
+/** Whisparr's scene-focused v3 API uses Radarr-shaped service settings. */
+export type WhisparrSettings = DVRSettings;
+
 export interface SonarrSettings
   extends DVRSettings, ServiceRequestButtonSettings {
   seriesType: 'standard' | 'daily' | 'anime';
@@ -505,6 +508,7 @@ export interface MainSettings {
     book: Quota;
     comic: Quota;
     magazine: Quota;
+    adult: Quota;
     software: Quota;
   };
   enabledMediaCategories: EnabledMediaCategories;
@@ -589,6 +593,7 @@ interface FullPublicSettings extends PublicSettings {
   readmeabookEnabled: boolean;
   comicsEnabled: boolean;
   magazinesEnabled: boolean;
+  adultEnabled: boolean;
   sportsEnabled: boolean;
   softwareEnabled: boolean;
   romarrEnabled: boolean;
@@ -794,6 +799,7 @@ export type JobId =
   | 'kapowarr-scan'
   | 'backissue-scan'
   | 'magazine-scan'
+  | 'adult-scan'
   | 'download-sync'
   | 'software-request-reconciliation'
   | 'live-tv-sync'
@@ -835,6 +841,7 @@ export interface AllSettings {
   oidc: OidcSettings;
   tautulli: TautulliSettings;
   radarr: RadarrSettings[];
+  whisparr: WhisparrSettings[];
   sonarr: SonarrSettings[];
   sportarr: SportarrSettings[];
   lidarr: LidarrSettings[];
@@ -902,6 +909,7 @@ class Settings {
           book: {},
           comic: {},
           magazine: {},
+          adult: {},
           software: {},
         },
         enabledMediaCategories: { ...DEFAULT_ENABLED_MEDIA_CATEGORIES },
@@ -966,6 +974,7 @@ class Settings {
       },
       musicMetadataSettings: structuredClone(DEFAULT_MUSIC_METADATA_SETTINGS),
       radarr: [],
+      whisparr: [],
       sonarr: [],
       sportarr: [],
       lidarr: [],
@@ -1183,6 +1192,9 @@ class Settings {
         },
         'magazine-scan': {
           schedule: '0 30 5 * * *',
+        },
+        'adult-scan': {
+          schedule: '0 45 5 * * *',
         },
         'availability-sync': {
           schedule: '0 0 5 * * *',
@@ -1479,6 +1491,14 @@ class Settings {
     this.data.radarr = data;
   }
 
+  get whisparr(): WhisparrSettings[] {
+    return this.data.whisparr;
+  }
+
+  set whisparr(data: WhisparrSettings[]) {
+    this.data.whisparr = data;
+  }
+
   get lidarr(): LidarrSettings[] {
     return this.data.lidarr;
   }
@@ -1679,6 +1699,7 @@ class Settings {
         this.data.kapowarr.length > 0 ||
         this.data.backissue.length > 0,
       magazinesEnabled: this.data.lazylibrarian.length > 0,
+      adultEnabled: this.data.whisparr.length > 0,
       sportsEnabled: this.data.sportarr.length > 0,
       softwareEnabled: Boolean(
         this.data.softwareAcquisition.questarr.hostname &&
@@ -1921,6 +1942,7 @@ class Settings {
           book: {},
           comic: {},
           magazine: {},
+          adult: {},
           software: {},
         },
         enabledMediaCategories: { ...DEFAULT_ENABLED_MEDIA_CATEGORIES },
@@ -1979,6 +2001,7 @@ class Settings {
       },
       musicMetadataSettings: structuredClone(DEFAULT_MUSIC_METADATA_SETTINGS),
       radarr: [],
+      whisparr: [],
       sonarr: [],
       sportarr: [],
       lidarr: [],
@@ -2195,6 +2218,9 @@ class Settings {
         },
         'magazine-scan': {
           schedule: '0 30 5 * * *',
+        },
+        'adult-scan': {
+          schedule: '0 45 5 * * *',
         },
         'availability-sync': {
           schedule: '0 0 5 * * *',

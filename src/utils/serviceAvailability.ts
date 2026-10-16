@@ -8,6 +8,7 @@ export interface OptionalServiceAvailability {
   readmeabookEnabled?: boolean;
   comicsEnabled: boolean;
   magazinesEnabled?: boolean;
+  adultEnabled?: boolean;
   sportsEnabled?: boolean;
   softwareEnabled?: boolean;
   romarrEnabled?: boolean;
@@ -173,6 +174,17 @@ export const isOptionalCatalogPathEnabled = (
     return (
       Boolean(availability.sportsEnabled) &&
       isConfiguredMediaCategoryEnabled('sports', availability)
+    );
+  }
+
+  if (
+    path === '/discover/adult' ||
+    path.startsWith('/discover/adult/') ||
+    path.startsWith('/adult/')
+  ) {
+    return (
+      Boolean(availability.adultEnabled) &&
+      isConfiguredMediaCategoryEnabled('adult', availability)
     );
   }
 

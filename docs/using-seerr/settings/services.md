@@ -14,6 +14,16 @@ Seerr checks these linked servers to determine whether or not media has already 
 **If you only maintain one copy of media, you can instead simply set up one server and set the "Quality Profile" setting on a per-request basis.**
 :::
 
+### Whisparr Settings
+
+SeerrNG supports the scene-focused [Whisparr Eros v3 API](https://github.com/Whisparr/Whisparr-Eros).
+Connect Whisparr to enable the opt-in Adult category. Configure its indexers,
+download client, and acquisition settings in Whisparr; SeerrNG sends approved
+scene requests there and reads the queue and library when **Enable Library
+Scan** is selected. See [Adult media](../adult-media.md) for setup,
+permissions, and request quotas. The studio-focused Whisparr v2 API is not
+supported.
+
 ### Radarr/Sonarr Settings
 
 :::warning

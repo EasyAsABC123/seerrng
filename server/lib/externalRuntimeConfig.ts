@@ -26,6 +26,7 @@ export type ExternalRuntimeConfig = Pick<
   | 'oidc'
   | 'tautulli'
   | 'radarr'
+  | 'whisparr'
   | 'sonarr'
   | 'sportarr'
   | 'lidarr'
@@ -170,6 +171,10 @@ const validate = (value: unknown): ExternalRuntimeConfig => {
       ),
     },
     radarr: normalizeServarrServices(root.radarr, 'radarr'),
+    whisparr:
+      root.whisparr === undefined
+        ? []
+        : normalizeServarrServices(root.whisparr, 'whisparr'),
     sonarr: normalizeServarrServices(root.sonarr, 'sonarr'),
     sportarr:
       root.sportarr === undefined
@@ -227,6 +232,7 @@ const loadFromSettingsFile = (): ExternalRuntimeConfig | undefined => {
       oidc: settings.oidc ?? { providers: [] },
       tautulli: settings.tautulli,
       radarr: settings.radarr ?? [],
+      whisparr: settings.whisparr ?? [],
       sonarr: settings.sonarr ?? [],
       sportarr: settings.sportarr ?? [],
       lidarr: settings.lidarr ?? [],

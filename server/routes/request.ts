@@ -97,6 +97,7 @@ import {
 import { runWithCurrentServarrService } from '@server/lib/serviceAdmission';
 import { getSettings } from '@server/lib/settings';
 import { isSportarrLeagueExternalId } from '@server/lib/sportarrIdentity';
+import { normalizeStashDbId } from '@server/lib/stashdbIdentity';
 import {
   TvSeasonWatchGateError,
   enforceTvSeasonWatchGate,
@@ -296,6 +297,7 @@ const requestMediaTypeFilters = [
   'book',
   'comic',
   'magazine',
+  'adult',
   'sports',
 ] as const;
 const requestStatusFilters = [
@@ -453,11 +455,13 @@ const getDisabledCategoryForRequest = (
             ? ['comic']
             : mediaType === MediaType.MAGAZINE
               ? ['magazine']
-              : mediaType === MediaType.SPORTS
-                ? ['sports']
-                : format === 'both'
-                  ? ['ebook', 'audiobook']
-                  : [format === 'audiobook' ? 'audiobook' : 'ebook'];
+              : mediaType === MediaType.ADULT
+                ? ['adult']
+                : mediaType === MediaType.SPORTS
+                  ? ['sports']
+                  : format === 'both'
+                    ? ['ebook', 'audiobook']
+                    : [format === 'audiobook' ? 'audiobook' : 'ebook'];
 
   return categories.find((category) => !isMediaCategoryEnabled(category));
 };
@@ -471,6 +475,7 @@ const getMediaCategoryLabel = (category: MediaCategoryKey): string => {
     audiobook: 'Audiobook',
     comic: 'Comic',
     magazine: 'Magazine',
+    adult: 'Adult',
     sports: 'Sports',
     retro: 'Retro emulation',
     modern: 'Modern emulation',
@@ -1256,6 +1261,27 @@ const sanitizeMediaRequestBody = (
     if (externalId) bodyObject.mediaId = externalId;
   }
 
+  if (mediaType === MediaType.ADULT) {
+    const stashDbId = normalizeStashDbId(bodyObject.mediaId);
+    if (bodyObject.mediaId !== undefined && !stashDbId) {
+      return {
+        error: {
+          status: 400,
+          message: 'mediaId must be a canonical StashDB scene ID.',
+        },
+      };
+    }
+    if (options.requireCreateIdentity && !stashDbId) {
+      return {
+        error: {
+          status: 400,
+          message: 'mediaId is required for adult requests.',
+        },
+      };
+    }
+    if (stashDbId) bodyObject.mediaId = stashDbId;
+  }
+
   const serverId = parseOptionalRequestOptionId(
     bodyObject.serverId,
     'serverId',
@@ -2026,6 +2052,11 @@ requestRoutes.get<
       case 'magazine':
         query = query.andWhere('request.type = :type', {
           type: MediaType.MAGAZINE,
+        });
+        break;
+      case 'adult':
+        query = query.andWhere('request.type = :type', {
+          type: MediaType.ADULT,
         });
         break;
       case 'sports':
@@ -3056,6 +3087,10 @@ requestRoutes.get('/count', async (req, res, next) => {
           'magazine'
         )
         .addSelect(
+          'SUM(CASE WHEN request.type = :adult THEN 1 ELSE 0 END)',
+          'adult'
+        )
+        .addSelect(
           'SUM(CASE WHEN request.type = :sports THEN 1 ELSE 0 END)',
           'sports'
         )
@@ -3104,6 +3139,7 @@ requestRoutes.get('/count', async (req, res, next) => {
           book: MediaType.BOOK,
           comic: MediaType.COMIC,
           magazine: MediaType.MAGAZINE,
+          adult: MediaType.ADULT,
           sports: MediaType.SPORTS,
           pending: MediaRequestStatus.PENDING,
           approved: MediaRequestStatus.APPROVED,
@@ -3141,6 +3177,7 @@ requestRoutes.get('/count', async (req, res, next) => {
         book: count('book'),
         comic: count('comic'),
         magazine: count('magazine'),
+        adult: count('adult'),
         sports: count('sports'),
         pending: count('pending'),
         approved: count('approved'),

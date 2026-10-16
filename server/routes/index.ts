@@ -53,6 +53,7 @@ import {
 import { Router, type RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import semver from 'semver';
+import adultRoutes from './adult';
 import artistRoutes from './artist';
 import associationRoutes from './association';
 import authRoutes from './auth';
@@ -115,6 +116,21 @@ const categoryAvailabilityGuard =
     }
     return next();
   };
+
+const adultContentPermissionGuard: RequestHandler = (req, res, next) => {
+  if (
+    !req.user?.hasPermission(
+      [Permission.ADMIN, Permission.MANAGE_REQUESTS, Permission.REQUEST_ADULT],
+      { type: 'or' }
+    )
+  ) {
+    return res.status(403).json({
+      status: 403,
+      message: 'You do not have permission to access adult media.',
+    });
+  }
+  return next();
+};
 
 const parseTmdbRouteId = (id: unknown): number | undefined =>
   parsePositiveRouteId(id, maxTmdbId);
@@ -519,6 +535,13 @@ router.use(
   isAuthenticated(),
   categoryAvailabilityGuard(['comic']),
   comicRoutes
+);
+router.use(
+  '/adult',
+  isAuthenticated(),
+  categoryAvailabilityGuard(['adult']),
+  adultContentPermissionGuard,
+  adultRoutes
 );
 router.use(
   '/magazine',

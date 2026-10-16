@@ -14,7 +14,7 @@ The switches cover:
 - Movies and Series
 - Music
 - Books and Audiobooks
-- Comics and Magazines
+- Comics, Magazines, and Adult scenes
 - Emulation (Retro) and Emulation (Modern)
 - PC Games
 
@@ -36,6 +36,8 @@ follow previously submitted work and download files that SeerrNG has already
 verified. Turning the category back on restores its browse and request entry
 points without deleting its saved request history.
 
-All categories are enabled by default, including for existing installations.
+All existing categories remain enabled by default for existing installations.
+Adult starts disabled and requires a configured Whisparr service and
+adult-specific user permission. See [Adult media](../adult-media.md) for setup.
 General desktop applications are not included; they remain a future wishlist
 item.

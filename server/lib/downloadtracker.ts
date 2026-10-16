@@ -5,6 +5,7 @@ import LidarrAPI from '@server/api/servarr/lidarr';
 import RadarrAPI from '@server/api/servarr/radarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
+import WhisparrAPI from '@server/api/servarr/whisparr';
 import { MediaType } from '@server/constants/media';
 import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import {
@@ -107,6 +108,8 @@ export class DownloadTracker {
 
   private radarrServers: Record<number, DownloadingItem[]> = {};
   private radarrHistory: Record<number, ServarrHistoryItem[]> = {};
+  private whisparrServers: Record<number, DownloadingItem[]> = {};
+  private whisparrHistory: Record<number, ServarrHistoryItem[]> = {};
   private sonarrServers: Record<number, DownloadingItem[]> = {};
   private sonarrHistory: Record<number, ServarrHistoryItem[]> = {};
   private lidarrServers: Record<number, DownloadingItem[]> = {};
@@ -332,6 +335,20 @@ export class DownloadTracker {
     );
   }
 
+  public getAdultHistoryEvidence(
+    serverId: number,
+    externalServiceId: number,
+    since: Date
+  ): ServarrHistoryEvidence | undefined {
+    return this.getHistoryEvidence(
+      this.whisparrHistory,
+      'movieId',
+      serverId,
+      externalServiceId,
+      since
+    );
+  }
+
   public getMusicHistoryEvidence(
     serverId: number,
     externalServiceId: number,
@@ -369,6 +386,15 @@ export class DownloadTracker {
     ].filter((item) => item.externalId === externalServiceId);
   }
 
+  public getAdultProgress(
+    serverId: number,
+    externalServiceId: number
+  ): DownloadingItem[] {
+    return (this.whisparrServers[serverId] ?? []).filter(
+      (item) => item.externalId === externalServiceId
+    );
+  }
+
   public async resetDownloadTracker() {
     // A reset that races an update can otherwise be undone when the older
     // queue fetch writes its results after the reset. Drain that local update
@@ -376,6 +402,8 @@ export class DownloadTracker {
     await this.activeUpdate?.catch(() => undefined);
     this.radarrServers = {};
     this.radarrHistory = {};
+    this.whisparrServers = {};
+    this.whisparrHistory = {};
     this.sonarrServers = {};
     this.sonarrHistory = {};
     this.lidarrServers = {};
@@ -393,6 +421,7 @@ export class DownloadTracker {
 
     const update = Promise.all([
       this.updateRadarrDownloads(),
+      this.updateWhisparrDownloads(),
       this.updateSonarrDownloads(),
       this.updateLidarrDownloads(),
       this.updateReadarrDownloads(),
@@ -508,6 +537,94 @@ export class DownloadTracker {
               this.radarrHistory[ms.id] = this.radarrHistory[server.id];
             }
           });
+        }
+      }
+    );
+  }
+
+  private async updateWhisparrDownloads() {
+    const settings = getExternalRuntimeConfig();
+    const filteredServers = uniqWith(
+      settings.whisparr.slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      (left, right) =>
+        left.hostname === right.hostname &&
+        left.port === right.port &&
+        left.baseUrl === right.baseUrl
+    );
+
+    await mapWithConcurrency(
+      filteredServers,
+      DOWNLOAD_TRACKER_SERVER_CONCURRENCY,
+      async (server) => {
+        if (!server.syncEnabled) return;
+        const whisparr = new WhisparrAPI({
+          apiKey: server.apiKey,
+          url: WhisparrAPI.buildUrl(server, '/api/v3'),
+        });
+
+        try {
+          this.refreshMonitoredDownloads(
+            `whisparr:${server.id}`,
+            'whisparr',
+            server,
+            () => whisparr.refreshMonitoredDownloads(),
+            server.name
+          );
+          const [queueItems, historyItems] = await Promise.all([
+            this.runWithCurrentServarrDownloadServer('whisparr', server, () =>
+              whisparr.getQueue()
+            ),
+            this.loadHistory('whisparr', server, whisparr, server.name),
+          ]);
+          if (!queueItems) {
+            delete this.whisparrServers[server.id];
+            delete this.whisparrHistory[server.id];
+            return;
+          }
+          if (historyItems) this.whisparrHistory[server.id] = historyItems;
+          this.whisparrServers[server.id] = queueItems.flatMap((item) =>
+            item.movieId === undefined
+              ? []
+              : [
+                  {
+                    externalId: item.movieId,
+                    estimatedCompletionTime: new Date(
+                      item.estimatedCompletionTime
+                    ),
+                    mediaType: MediaType.ADULT,
+                    size: item.size,
+                    sizeLeft: item.sizeleft,
+                    status: item.status,
+                    timeLeft: item.timeleft,
+                    title: item.title,
+                    downloadId: item.downloadId,
+                    ...getQueueState(item),
+                  },
+                ]
+          );
+        } catch (error) {
+          logger.error(
+            `Unable to get queue from Whisparr server: ${server.name}`,
+            {
+              errorMessage:
+                error instanceof Error ? error.message : String(error),
+              label: 'Download Tracker',
+            }
+          );
+        }
+
+        for (const matching of settings.whisparr.filter(
+          (candidate) =>
+            candidate.id !== server.id &&
+            candidate.syncEnabled &&
+            candidate.hostname === server.hostname &&
+            candidate.port === server.port &&
+            candidate.baseUrl === server.baseUrl
+        )) {
+          this.whisparrServers[matching.id] =
+            this.whisparrServers[server.id] ?? [];
+          this.whisparrHistory[matching.id] =
+            this.whisparrHistory[server.id] ?? [];
         }
       }
     );

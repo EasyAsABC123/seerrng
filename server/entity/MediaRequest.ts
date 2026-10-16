@@ -5,6 +5,7 @@ import OpenLibraryAPI from '@server/api/openlibrary';
 import RadarrAPI from '@server/api/servarr/radarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
 import SportarrAPI from '@server/api/servarr/sportarr';
+import WhisparrAPI from '@server/api/servarr/whisparr';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import type { TmdbKeyword } from '@server/api/themoviedb/interfaces';
@@ -19,6 +20,7 @@ import { Blocklist } from '@server/entity/Blocklist';
 import MediaIdentifier, {
   MediaIdentifierProvider,
 } from '@server/entity/MediaIdentifier';
+import MediaServiceStatus from '@server/entity/MediaServiceStatus';
 import OverrideRule from '@server/entity/OverrideRule';
 import type { MediaRequestBody } from '@server/interfaces/api/requestInterfaces';
 import type { SeasonEpisodeSelection } from '@server/interfaces/api/seasonInterfaces';
@@ -62,6 +64,7 @@ import {
 } from '@server/lib/requestServices';
 import {
   runWithServarrServiceAdmission,
+  runWithServarrServiceSnapshot,
   type ServarrServiceType,
 } from '@server/lib/serviceAdmission';
 import {
@@ -74,6 +77,7 @@ import {
   type SonarrSettings,
 } from '@server/lib/settings';
 import { isSportarrLeagueExternalId } from '@server/lib/sportarrIdentity';
+import { normalizeStashDbId } from '@server/lib/stashdbIdentity';
 import {
   enforceTvSeasonWatchGate,
   filterTvSeasonSelectionsByWatchGate,
@@ -131,7 +135,8 @@ export type MediaRequestServiceTarget = {
     | 'audiobook'
     | 'comic'
     | 'magazine'
-    | 'sports';
+    | 'sports'
+    | 'adult';
   serverId: number;
   profileId?: number | null;
   metadataProfileId?: number | null;
@@ -261,6 +266,8 @@ export const hasMediaRequestPermission = (
         [Permission.REQUEST, Permission.REQUEST_SPORTS],
         { type: 'or' }
       );
+    case MediaType.ADULT:
+      return user.hasPermission(Permission.REQUEST_ADULT);
   }
 };
 
@@ -416,6 +423,15 @@ export class MediaRequest {
     options: InternalMediaRequestOptions = {}
   ): Promise<MediaRequest> {
     requestBody = { ...requestBody, is4k: requestBody.is4k ?? false };
+    if (requestBody.mediaType === MediaType.ADULT) {
+      const stashDbId = normalizeStashDbId(String(requestBody.mediaId ?? ''));
+      if (!stashDbId) {
+        return Promise.reject(
+          new RequestPermissionError('A valid StashDB scene ID is required.')
+        );
+      }
+      requestBody.mediaId = stashDbId;
+    }
 
     // Lock the requested target even when the actor's loaded permission snapshot
     // says they cannot select it. Permissions are reloaded under the security
@@ -648,6 +664,14 @@ export class MediaRequest {
       throw new RequestPermissionError(
         'You do not have permission to make sports requests.'
       );
+    } else if (
+      requestBody.mediaType === MediaType.ADULT &&
+      !isManagedRequestForAnotherUser &&
+      !hasMediaRequestPermission(requestUser, requestBody.mediaType)
+    ) {
+      throw new RequestPermissionError(
+        'You do not have permission to make adult media requests.'
+      );
     }
 
     if (requestBody.mediaType === MediaType.MAGAZINE) {
@@ -663,7 +687,8 @@ export class MediaRequest {
       requestBody.serverId != null &&
       requestBody.mediaType !== MediaType.COMIC &&
       requestBody.mediaType !== MediaType.MAGAZINE &&
-      requestBody.mediaType !== MediaType.SPORTS
+      requestBody.mediaType !== MediaType.SPORTS &&
+      requestBody.mediaType !== MediaType.ADULT
     ) {
       const serviceName =
         requestBody.mediaType === MediaType.MOVIE
@@ -706,6 +731,17 @@ export class MediaRequest {
           }.`
         );
       }
+    }
+
+    if (
+      requestBody.mediaType === MediaType.ADULT &&
+      canUseAdvancedRequestOptions(user) &&
+      requestBody.serverId != null &&
+      !settings.whisparr.some(({ id }) => id === requestBody.serverId)
+    ) {
+      throw new ServiceConfigurationError(
+        'Selected Whisparr server does not exist.'
+      );
     }
 
     const quotas = await requestUser.getQuota();
@@ -758,6 +794,8 @@ export class MediaRequest {
           return quotas.comic;
         case MediaType.MAGAZINE:
           return quotas.magazine;
+        case MediaType.ADULT:
+          return quotas.adult;
         case MediaType.SPORTS:
           return quotas.tv;
         default:
@@ -810,6 +848,11 @@ export class MediaRequest {
         quotas.magazine.restricted
       ) {
         throw new QuotaRestrictedError('Magazine Quota exceeded.');
+      } else if (
+        requestBody.mediaType === MediaType.ADULT &&
+        quotas.adult.restricted
+      ) {
+        throw new QuotaRestrictedError('Adult media request quota exceeded.');
       } else if (
         requestBody.mediaType === MediaType.SPORTS &&
         quotas.tv.restricted
@@ -991,6 +1034,13 @@ export class MediaRequest {
           useAdvancedOptions && requestBody.serverId != null
             ? requestBody.serverId
             : settings.lidarr.find(({ isDefault }) => isDefault)?.id
+        );
+      } else if (requestBody.mediaType === MediaType.ADULT) {
+        addService(
+          'whisparr',
+          useAdvancedOptions && requestBody.serverId != null
+            ? requestBody.serverId
+            : settings.whisparr.find(({ isDefault }) => isDefault)?.id
         );
       } else if (requestBody.mediaType === MediaType.COMIC) {
         const requestedServerId =
@@ -2019,6 +2069,208 @@ export class MediaRequest {
               media: savedMedia,
               provider: MediaIdentifierProvider.LAZYLIBRARIAN,
               value: normalizedTitle,
+              canonical: true,
+            })
+          );
+        }
+        request.media = savedMedia;
+        return saveRequestWithFreshMedia(manager, request);
+      });
+    }
+
+    if (requestBody.mediaType === MediaType.ADULT) {
+      const stashDbId = normalizeStashDbId(String(requestBody.mediaId ?? ''));
+      if (!stashDbId) {
+        throw new RequestPermissionError(
+          'A valid StashDB scene ID is required.'
+        );
+      }
+      const blocked = await getRepository(Blocklist).findOne({
+        where: { externalId: stashDbId, mediaType: MediaType.ADULT },
+      });
+      if (blocked) {
+        throw new BlocklistedMediaError('This adult scene is blocklisted.');
+      }
+
+      const useAdvancedOptions = canUseAdvancedRequestOptions(user);
+      const requestedServerId = useAdvancedOptions
+        ? requestBody.serverId
+        : undefined;
+      const selectedServer =
+        requestedServerId == null
+          ? settings.whisparr.find(({ isDefault }) => isDefault)
+          : settings.whisparr.find(({ id }) => id === requestedServerId);
+      if (!selectedServer) {
+        throw new ServiceConfigurationError(
+          requestedServerId == null
+            ? 'No default Whisparr server is configured for adult requests.'
+            : 'Selected Whisparr server does not exist.'
+        );
+      }
+
+      const { scene, requestServer } = await runWithServarrServiceSnapshot(
+        'whisparr',
+        selectedServer,
+        async (currentServer) => {
+          const whisparr = new WhisparrAPI({
+            apiKey: currentServer.apiKey,
+            url: WhisparrAPI.buildUrl(currentServer, '/api/v3'),
+          });
+          return {
+            scene: await whisparr.getSceneByStashDbId(stashDbId),
+            requestServer: currentServer,
+          };
+        }
+      );
+      if (!scene) {
+        throw new ServiceConfigurationError(
+          'Whisparr could not resolve this StashDB scene. Try searching again.'
+        );
+      }
+
+      const existingIdentifier = await mediaIdentifierRepository.findOne({
+        where: {
+          provider: MediaIdentifierProvider.STASHDB,
+          value: stashDbId,
+        },
+        relations: { media: true },
+        relationLoadStrategy: 'query',
+      });
+      let media = existingIdentifier?.media;
+      if (!media) {
+        media = new Media({
+          tmdbId: 0,
+          status: MediaStatus.PENDING,
+          status4k: MediaStatus.UNKNOWN,
+          mediaType: MediaType.ADULT,
+          externalServiceSlug: scene.title,
+        });
+      } else if (media.status === MediaStatus.BLOCKLISTED) {
+        throw new BlocklistedMediaError('This adult scene is blocklisted.');
+      } else if (
+        media.status === MediaStatus.UNKNOWN ||
+        media.status === MediaStatus.DELETED
+      ) {
+        media.status = MediaStatus.PENDING;
+      }
+
+      const selectedDestination: RequestDestination = {
+        serviceType: 'whisparr',
+        format: 'adult',
+        serverId: requestServer.id,
+        profileId: requestServer.activeProfileId,
+        rootFolder: requestServer.activeDirectory,
+      };
+      const destinationRequests = media.id
+        ? await requestRepository
+            .createQueryBuilder('request')
+            .leftJoinAndSelect('request.requestedBy', 'requestedBy')
+            .where('request.media = :mediaId', { mediaId: media.id })
+            .getMany()
+        : [];
+      const destinationLibraryStatus = media.id
+        ? await getRepository(MediaServiceStatus).findOne({
+            where: {
+              mediaId: media.id,
+              serviceType: 'whisparr',
+              serverId: requestServer.id,
+              format: 'adult',
+            },
+          })
+        : undefined;
+      const isLegacyDestinationAvailable =
+        !hasTrackedAvailableDestination(
+          destinationRequests,
+          selectedDestination
+        ) &&
+        !destinationLibraryStatus &&
+        media.status === MediaStatus.AVAILABLE &&
+        media.serviceId === requestServer.id;
+      const isLegacyDestinationProcessing =
+        !destinationLibraryStatus &&
+        media.status === MediaStatus.PROCESSING &&
+        media.serviceId === requestServer.id;
+      const isDestinationLibraryAvailable =
+        destinationLibraryStatus?.status === MediaStatus.AVAILABLE;
+      const isDestinationLibraryProcessing =
+        destinationLibraryStatus?.status === MediaStatus.PROCESSING;
+      const isDestinationProcessing = destinationRequests.some((request) =>
+        (request.serviceTargets ?? []).some(
+          (target) =>
+            target.serviceType === 'whisparr' &&
+            target.format === 'adult' &&
+            target.serverId === requestServer.id &&
+            target.status === MediaStatus.PROCESSING
+        )
+      );
+      if (
+        isLegacyDestinationAvailable ||
+        isLegacyDestinationProcessing ||
+        isDestinationLibraryAvailable ||
+        isDestinationLibraryProcessing ||
+        isDestinationProcessing ||
+        isDestinationAvailableInTargets(
+          destinationRequests,
+          selectedDestination
+        )
+      ) {
+        throw new DuplicateMediaRequestError(
+          'This adult scene is already available or being processed on the selected Whisparr server.'
+        );
+      }
+      if (
+        isDestinationCoveredByActiveRequest(
+          destinationRequests,
+          selectedDestination
+        )
+      ) {
+        const promotable = findPromotablePendingRequest(
+          destinationRequests,
+          [selectedDestination],
+          user,
+          MediaType.ADULT
+        );
+        if (promotable) return promotePendingRequest(promotable, user);
+        throw new DuplicateMediaRequestError(
+          'A request for this adult scene already exists on the selected Whisparr server.'
+        );
+      }
+
+      media.externalServiceSlug = scene.title;
+      const autoApproved = hasAutoApprovePermission(
+        requestUser.permissions,
+        'adult'
+      );
+      const request = new MediaRequest({
+        type: MediaType.ADULT,
+        media,
+        requestedBy: requestUser,
+        status: autoApproved
+          ? MediaRequestStatus.APPROVED
+          : MediaRequestStatus.PENDING,
+        modifiedBy: autoApproved ? user : undefined,
+        is4k: false,
+        serverId: requestServer.id,
+        rootFolder: requestServer.activeDirectory,
+        profileId: requestServer.activeProfileId,
+        serviceTargets: [
+          {
+            ...selectedDestination,
+            status: MediaStatus.PENDING,
+          },
+        ],
+        isAutoRequest: options.isAutoRequest ?? false,
+        ignoreQuota,
+      });
+
+      return dataSource.transaction(async (manager) => {
+        const savedMedia = await manager.getRepository(Media).save(media!);
+        if (!existingIdentifier) {
+          await manager.getRepository(MediaIdentifier).save(
+            new MediaIdentifier({
+              media: savedMedia,
+              provider: MediaIdentifierProvider.STASHDB,
+              value: stashDbId,
               canonical: true,
             })
           );

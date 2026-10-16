@@ -5,6 +5,7 @@ import {
 } from '@server/constants/mediaCategories';
 import { PROWLARR_SEARCH_TYPE_BY_CATEGORY } from '@server/constants/prowlarr';
 import type { ProwlarrSearchResultsResponse } from '@server/interfaces/api/prowlarrInterfaces';
+import { isMediaCategoryEnabled } from '@server/lib/mediaCategories';
 import { sanitizeProwlarrSearchResource } from '@server/lib/prowlarr';
 import { getSettings } from '@server/lib/settings';
 import {
@@ -78,6 +79,11 @@ indexerSearchRoutes.post('/search', searchRateLimit, async (req, res) => {
     return res
       .status(400)
       .json({ error: 'Choose a supported media category.' });
+  }
+  if (!isMediaCategoryEnabled(category)) {
+    return res
+      .status(404)
+      .json({ error: 'This media category is not available.' });
   }
   const query = parseQuery(req.body.query);
   if (!query) {

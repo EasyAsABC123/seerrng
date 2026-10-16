@@ -24,6 +24,7 @@ import { getSafeHref } from '@app/utils/safeUrl';
 import { Transition } from '@headlessui/react';
 import {
   BookOpenIcon,
+  FilmIcon,
   MusicalNoteIcon,
   NewspaperIcon,
   PencilIcon,
@@ -47,6 +48,7 @@ import type {
   ReadarrSettings,
   SonarrSettings,
   SportarrSettings,
+  WhisparrSettings,
 } from '@server/lib/settings';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
@@ -91,6 +93,9 @@ const SonarrModal = dynamic(
 const SportarrModal = dynamic(
   () => import('@app/components/Settings/SportarrModal')
 );
+const WhisparrModal = dynamic(
+  () => import('@app/components/Settings/WhisparrModal')
+);
 
 const messages = defineMessages('components.Settings', {
   services: 'Services',
@@ -100,6 +105,7 @@ const messages = defineMessages('components.Settings', {
   setupAssistantGuide: 'Open the setup guide',
   radarrsettings: 'Radarr Settings',
   sonarrsettings: 'Sonarr Settings',
+  whisparrsettings: 'Whisparr Settings',
   sportarrsettings: 'Sportarr Settings',
   lidarrsettings: 'Lidarr Settings',
   readarrsettings: 'Bookshelf Settings',
@@ -143,6 +149,9 @@ const messages = defineMessages('components.Settings', {
   activeAnimeProfile: 'Active Anime Profile',
   addradarr: 'Add Radarr Server',
   addsonarr: 'Add Sonarr Server',
+  addWhisparr: 'Connect Whisparr Server',
+  adultServiceSettingsDescription:
+    'Connect the scene-focused Whisparr v3 Eros branch. Adult media uses its own request permission and stays out of ordinary movie discovery.',
   addSportarr: 'Connect Sportarr Server',
   sportarrDescription:
     'Search and request sports leagues in Sportarr. Sportarr uses its own root folder and monitoring defaults when SeerrNG adds a league.',
@@ -171,6 +180,7 @@ const messages = defineMessages('components.Settings', {
   noDefault4kServer:
     'A 4K {serverType} server must be marked as default in order to enable users to submit 4K {mediaType} requests.',
   mediaTypeMovie: 'movie',
+  mediaTypeAdult: 'adult',
   mediaTypeSeries: 'series',
   mediaTypeMusic: 'music',
   mediaTypeBook: 'book',
@@ -200,6 +210,7 @@ interface ServerInstanceProps {
   isAudiobookshelf?: boolean;
   isComics?: boolean;
   isMagazines?: boolean;
+  isAdult?: boolean;
   serviceFormat?: 'ebook' | 'audiobook';
   onEdit: () => void;
   onDelete: () => void;
@@ -247,6 +258,7 @@ const ServerInstance = ({
   isAudiobookshelf = false,
   isComics = false,
   isMagazines = false,
+  isAdult = false,
   serviceFormat,
   externalUrl,
   animeProfileName,
@@ -279,6 +291,8 @@ const ServerInstance = ({
             <BookOpenIcon className="h-10 w-10 flex-shrink-0 text-gray-300" />
           ) : isAudiobookshelf ? (
             <MusicalNoteIcon className="h-10 w-10 flex-shrink-0 text-gray-300" />
+          ) : isAdult ? (
+            <FilmIcon className="h-10 w-10 flex-shrink-0 text-fuchsia-300" />
           ) : isComics ? (
             <Square3Stack3DIcon className="h-10 w-10 flex-shrink-0 text-gray-300" />
           ) : isMagazines ? (
@@ -397,6 +411,11 @@ const SettingsServices = () => {
     mutate: revalidateSonarr,
   } = useSWR<SonarrSettings[]>('/api/v1/settings/sonarr');
   const {
+    data: whisparrData,
+    error: whisparrError,
+    mutate: revalidateWhisparr,
+  } = useSWR<WhisparrSettings[]>('/api/v1/settings/whisparr');
+  const {
     data: sportarrData,
     error: sportarrError,
     mutate: revalidateSportarr,
@@ -453,6 +472,10 @@ const SettingsServices = () => {
     open: false,
     sonarr: null,
   });
+  const [editWhisparrModal, setEditWhisparrModal] = useState<{
+    open: boolean;
+    whisparr: WhisparrSettings | null;
+  }>({ open: false, whisparr: null });
   const [editSportarrModal, setEditSportarrModal] = useState<{
     open: boolean;
     sportarr: SportarrSettings | null;
@@ -505,6 +528,7 @@ const SettingsServices = () => {
     open: boolean;
     type:
       | 'radarr'
+      | 'whisparr'
       | 'sonarr'
       | 'sportarr'
       | 'lidarr'
@@ -596,6 +620,7 @@ const SettingsServices = () => {
     }
     setDeleteServerModal({ open: false, serverId: null, type: 'radarr' });
     revalidateRadarr();
+    revalidateWhisparr();
     revalidateSonarr();
     revalidateSportarr();
     revalidateLidarr();
@@ -672,6 +697,17 @@ const SettingsServices = () => {
             revalidateSonarr();
             mutate('/api/v1/settings/public');
             setEditSonarrModal({ open: false, sonarr: null });
+          }}
+        />
+      )}
+      {editWhisparrModal.open && (
+        <WhisparrModal
+          whisparr={editWhisparrModal.whisparr}
+          onClose={() => setEditWhisparrModal({ open: false, whisparr: null })}
+          onSave={() => {
+            revalidateWhisparr();
+            mutate('/api/v1/settings/public');
+            setEditWhisparrModal({ open: false, whisparr: null });
           }}
         />
       )}
@@ -812,21 +848,23 @@ const SettingsServices = () => {
             serverType:
               deleteServerModal.type === 'radarr'
                 ? 'Radarr'
-                : deleteServerModal.type === 'sonarr'
-                  ? 'Sonarr'
-                  : deleteServerModal.type === 'sportarr'
-                    ? 'Sportarr'
-                    : deleteServerModal.type === 'lidarr'
-                      ? 'Lidarr'
-                      : deleteServerModal.type === 'backissue'
-                        ? 'BackIssue'
-                        : deleteServerModal.type === 'audiobookshelf'
-                          ? 'Audiobookshelf'
-                          : deleteServerModal.type === 'navidrome'
-                            ? 'Navidrome'
-                            : deleteServerModal.type === 'jellystat'
-                              ? 'Jellystat'
-                              : 'Bookshelf',
+                : deleteServerModal.type === 'whisparr'
+                  ? 'Whisparr'
+                  : deleteServerModal.type === 'sonarr'
+                    ? 'Sonarr'
+                    : deleteServerModal.type === 'sportarr'
+                      ? 'Sportarr'
+                      : deleteServerModal.type === 'lidarr'
+                        ? 'Lidarr'
+                        : deleteServerModal.type === 'backissue'
+                          ? 'BackIssue'
+                          : deleteServerModal.type === 'audiobookshelf'
+                            ? 'Audiobookshelf'
+                            : deleteServerModal.type === 'navidrome'
+                              ? 'Navidrome'
+                              : deleteServerModal.type === 'jellystat'
+                                ? 'Jellystat'
+                                : 'Bookshelf',
           })}
         >
           {intl.formatMessage(messages.deleteserverconfirm)}
@@ -904,6 +942,70 @@ const SettingsServices = () => {
                   >
                     <PlusIcon />
                     <span>{intl.formatMessage(messages.addradarr)}</span>
+                  </Button>
+                </div>
+              </li>
+            </ul>
+          </>
+        )}
+      </div>
+      <div className="mt-10 mb-6">
+        <h3 className="heading">
+          {intl.formatMessage(messages.whisparrsettings)}
+        </h3>
+        <p className="description">
+          {intl.formatMessage(messages.adultServiceSettingsDescription)}
+        </p>
+      </div>
+      <div className="app-card-sub section settings-service-section">
+        {!whisparrData && !whisparrError && <LoadingSpinner />}
+        {whisparrData && !whisparrError && (
+          <>
+            {whisparrData.length > 0 &&
+              !whisparrData.some((service) => service.isDefault) && (
+                <Alert
+                  title={intl.formatMessage(messages.noDefaultServer, {
+                    serverType: 'Whisparr',
+                    mediaType: intl.formatMessage(messages.mediaTypeAdult),
+                  })}
+                />
+              )}
+            <ul className="settings-service-grid">
+              {whisparrData.map((service) => (
+                <ServerInstance
+                  key={`whisparr-config-${service.id}`}
+                  name={service.name}
+                  hostname={service.hostname}
+                  port={service.port}
+                  profileName={service.activeProfileName}
+                  isSSL={service.useSsl}
+                  isDefault={service.isDefault}
+                  isAdult
+                  externalUrl={service.externalUrl}
+                  onEdit={() =>
+                    setEditWhisparrModal({ open: true, whisparr: service })
+                  }
+                  onDelete={() =>
+                    setDeleteServerModal({
+                      open: true,
+                      serverId: service.id,
+                      type: 'whisparr',
+                    })
+                  }
+                />
+              ))}
+              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                <div className="flex h-full w-full items-center justify-center">
+                  <Button
+                    buttonType="success"
+                    buttonSize="standard"
+                    className="mt-3 mb-3"
+                    onClick={() =>
+                      setEditWhisparrModal({ open: true, whisparr: null })
+                    }
+                  >
+                    <PlusIcon />
+                    <span>{intl.formatMessage(messages.addWhisparr)}</span>
                   </Button>
                 </div>
               </li>

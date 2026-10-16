@@ -11,6 +11,7 @@ import {
   type ReadarrSettings,
   type SonarrSettings,
   type SportarrSettings,
+  type WhisparrSettings,
 } from '@server/lib/settings';
 import AsyncLock from '@server/utils/asyncLock';
 
@@ -23,9 +24,16 @@ export type ServarrServiceType =
   | 'mylar'
   | 'kapowarr'
   | 'backissue'
-  | 'lazylibrarian';
+  | 'lazylibrarian'
+  | 'whisparr';
 export type ServarrDownloadServiceType =
-  'radarr' | 'sonarr' | 'lidarr' | 'readarr' | 'kapowarr' | 'backissue';
+  | 'radarr'
+  | 'sonarr'
+  | 'lidarr'
+  | 'readarr'
+  | 'kapowarr'
+  | 'backissue'
+  | 'whisparr';
 export interface ServarrServiceSettingsByType {
   radarr: RadarrSettings;
   sonarr: SonarrSettings;
@@ -36,6 +44,7 @@ export interface ServarrServiceSettingsByType {
   kapowarr: KapowarrSettings;
   backissue: BackIssueSettings;
   lazylibrarian: LazyLibrarianSettings;
+  whisparr: WhisparrSettings;
 }
 // Picked down to the fields Servarr-family services (which fully satisfy
 // DVRSettings) share with the non-Servarr comics backends (Mylar/Kapowarr/BackIssue,
