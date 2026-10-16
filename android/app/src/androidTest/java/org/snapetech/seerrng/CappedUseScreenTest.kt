@@ -3,8 +3,6 @@ package org.snapetech.seerrng
 import android.content.Context
 import android.os.SystemClock
 import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
@@ -12,6 +10,7 @@ import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.closeSoftKeyboard
 import androidx.test.espresso.action.ViewActions.replaceText
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.matcher.ViewMatchers.Visibility
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withEffectiveVisibility
@@ -19,6 +18,8 @@ import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.webkit.WebViewFeature
+import androidx.test.espresso.matcher.ViewMatchers.hasDescendant
+import androidx.test.espresso.matcher.ViewMatchers.isDescendantOfA
 import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
@@ -26,6 +27,7 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.SocketException
 import java.util.concurrent.atomic.AtomicInteger
+import org.hamcrest.CoreMatchers.allOf
 import org.hamcrest.CoreMatchers.containsString
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -93,17 +95,17 @@ class CappedUseScreenTest {
         )
 
         repeat(BuildConfig.FREE_SESSION_LIMIT) { sessionIndex ->
-            connectServerAt(0)
-            if (sessionIndex == 0) onView(withText("Connect over HTTP")).perform(click())
+            connectServerNamed("Local test")
+            if (sessionIndex == 0) onView(withText(R.string.use_http)).inRoot(isDialog()).perform(click())
             onView(withId(R.id.browserScreen)).check(matches(isDisplayed()))
             waitForUsedSessions(sessionIndex + 1)
             onView(withId(R.id.backToServersButton)).perform(click())
             if (sessionIndex == 0) {
                 rootRequests.set(0)
-                connectServerAt(1)
-                onView(withText("Connect over HTTP")).perform(click())
+                connectServerNamed("Second local test")
+                onView(withText(R.string.use_http)).inRoot(isDialog()).perform(click())
                 if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-                    onView(withText("Connect anyway")).perform(click())
+                    onView(withText(R.string.connect_anyway)).inRoot(isDialog()).perform(click())
                 }
                 waitForRootRequests(1)
                 SystemClock.sleep(300)
@@ -120,7 +122,7 @@ class CappedUseScreenTest {
         scenario.close()
         scenario = ActivityScenario.launch(MainActivity::class.java)
         onView(withId(R.id.trialUsageStatus)).check(matches(withText(containsString("free sessions are used"))))
-        connectServerAt(0)
+        connectServerNamed("Local test")
         onView(withId(R.id.serverPicker)).check(matches(isDisplayed()))
         onView(withId(R.id.browserScreen)).check(matches(withEffectiveVisibility(Visibility.GONE)))
         onView(withText("Later")).perform(click())
@@ -137,8 +139,8 @@ class CappedUseScreenTest {
             closeSoftKeyboard(),
         )
         onView(withId(R.id.saveServerButton)).perform(click())
-        onView(withId(R.id.rowConnect)).perform(click())
-        onView(withText("Connect over HTTP")).perform(click())
+        connectServerNamed("Offline test")
+        onView(withText(R.string.use_http)).inRoot(isDialog()).perform(click())
         waitForVisibility(R.id.webErrorPanel, View.VISIBLE)
         assertEquals(0, currentUsedSessions())
     }
@@ -175,11 +177,13 @@ class CappedUseScreenTest {
         assertEquals(expectedVisibility, visibility)
     }
 
-    private fun connectServerAt(index: Int) {
-        scenario.onActivity { activity ->
-            val rows = activity.findViewById<LinearLayout>(R.id.serverRows)
-            rows.getChildAt(index).findViewById<Button>(R.id.rowConnect).performClick()
-        }
+    private fun connectServerNamed(name: String) {
+        onView(
+            allOf(
+                withId(R.id.rowConnect),
+                isDescendantOfA(allOf(withId(R.id.serverRow), hasDescendant(withText(name)))),
+            ),
+        ).perform(click())
     }
 
     private fun respondToRequest(socket: java.net.Socket) {

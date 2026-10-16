@@ -36,7 +36,7 @@ A capped release is for QA only until Play Billing is enabled and the lifetime p
 ### How the capped preview behaves
 
 - The default limit is 20; `FREE_SESSION_LIMIT` or `-PfreeSessionLimit` can change it for a build. The value must be a positive integer.
-- A session is counted after the first server page successfully commits in the app's main screen. A bad URL, an offline server, or a failed page load does not consume a session.
+- A session is counted after the first server page successfully finishes loading in the app's main screen. A bad URL, an offline server, an HTTP error page, or a failed page load does not consume a session.
 - Only the first successful server connection in that open app screen counts. Going back to the server list, switching among saved servers, backgrounding, and resuming do not charge additional sessions for that screen.
 - The counter is stored in private app preferences on the device. It applies across all servers saved in that installation. It does not count clicks, searches, requests, or other actions inside the SeerrNG web app.
 - An already-open session remains usable after its final free session is counted. After that app screen is closed and the app is opened again, connecting is blocked until the lifetime unlock is found or restored.
