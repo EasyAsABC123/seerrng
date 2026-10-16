@@ -49,12 +49,13 @@ jobs:
             --package 'system-images;android-36;google_apis;x86_64' \
             --device pixel_2 \
             --force
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
 
       - name: Run unit and emulator tests, then build debug APK
         shell: bash
         run: |
           set -euo pipefail
-          emulator -avd seerrng-api36 \
+          "$ANDROID_SDK_ROOT/emulator/emulator" -avd seerrng-api36 \
             -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect > "$RUNNER_TEMP/android-emulator.log" 2>&1 &
           emulator_pid=$!
@@ -79,6 +80,12 @@ jobs:
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
           ./android/gradlew --no-daemon -p android \
+            :app:testDebugUnitTest \
+            :app:connectedDebugAndroidTest \
+            :app:assembleDebug
+          ./android/gradlew --no-daemon -p android \
+            -PandroidMonetizationMode=capped \
+            -PfreeSessionLimit=2 \
             :app:testDebugUnitTest \
             :app:connectedDebugAndroidTest \
             :app:assembleDebug

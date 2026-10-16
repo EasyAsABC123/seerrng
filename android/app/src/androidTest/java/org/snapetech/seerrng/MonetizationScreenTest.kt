@@ -40,14 +40,27 @@ class MonetizationScreenTest {
     @Test
     fun serverListShowsLifetimeUnlockAndRestoreAndHandlesMissingPlayStore() {
         onView(withId(R.id.serverUrlInput)).check(matches(isDisplayed()))
-        onView(withId(R.id.removeAdsButton)).check(matches(withEffectiveVisibility(Visibility.GONE)))
+        onView(withId(R.id.lifetimeUnlockButton)).check(matches(withEffectiveVisibility(Visibility.GONE)))
 
         onView(withId(R.id.serverNameInput)).perform(replaceText("Home"), closeSoftKeyboard())
         onView(withId(R.id.serverUrlInput)).perform(replaceText("home.example"), closeSoftKeyboard())
         onView(withId(R.id.saveServerButton)).perform(click())
 
-        onView(withId(R.id.removeAdsButton)).check(matches(isDisplayed()))
-        onView(withId(R.id.removeAdsButton)).check(matches(withText(containsString("Remove Ads"))))
+        onView(withId(R.id.lifetimeUnlockButton)).check(matches(isDisplayed()))
+        onView(withId(R.id.lifetimeUnlockButton)).check(
+            matches(
+                withText(
+                    containsString(
+                        if (BuildConfig.MONETIZATION_MODE == "capped") "Unlock Lifetime Access" else "Remove Ads",
+                    ),
+                ),
+            ),
+        )
+        if (BuildConfig.MONETIZATION_MODE == "capped") {
+            onView(withId(R.id.trialUsageStatus)).check(matches(withText(containsString("free server sessions"))))
+        } else {
+            onView(withId(R.id.trialUsageStatus)).check(matches(withEffectiveVisibility(Visibility.GONE)))
+        }
         onView(withId(R.id.restorePurchasesButton)).check(matches(isDisplayed()))
         onView(withId(R.id.adViewContainer)).check(matches(withEffectiveVisibility(Visibility.GONE)))
 

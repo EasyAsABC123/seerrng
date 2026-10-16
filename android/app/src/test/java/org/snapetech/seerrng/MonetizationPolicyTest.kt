@@ -6,53 +6,111 @@ import org.junit.Test
 
 class MonetizationPolicyTest {
     @Test
-    fun onlyPurchasedNoAdsProductGrantsEntitlement() {
+    fun onlyPurchasedLifetimeProductGrantsEntitlement() {
         assertTrue(
-            MonetizationPolicy.ownsNoAds(
-                listOf(purchase(MonetizationPolicy.NO_ADS_PRODUCT_ID, StorePurchaseState.PURCHASED)),
+            MonetizationPolicy.ownsLifetimeUnlock(
+                listOf(purchase(MonetizationPolicy.LIFETIME_UNLOCK_PRODUCT_ID, StorePurchaseState.PURCHASED)),
             ),
         )
         assertFalse(
-            MonetizationPolicy.ownsNoAds(
-                listOf(purchase(MonetizationPolicy.NO_ADS_PRODUCT_ID, StorePurchaseState.PENDING)),
+            MonetizationPolicy.ownsLifetimeUnlock(
+                listOf(purchase(MonetizationPolicy.LIFETIME_UNLOCK_PRODUCT_ID, StorePurchaseState.PENDING)),
             ),
         )
     }
 
     @Test
-    fun unrelatedProductsDoNotGrantNoAds() {
+    fun unrelatedProductsDoNotGrantLifetimeUnlock() {
         assertFalse(
-            MonetizationPolicy.ownsNoAds(
+            MonetizationPolicy.ownsLifetimeUnlock(
                 listOf(purchase("other_product", StorePurchaseState.PURCHASED)),
             ),
         )
     }
 
     @Test
-    fun purchasedNoAdsProductNeedsAcknowledgementOnlyOnce() {
+    fun purchasedLifetimeProductNeedsAcknowledgementOnlyOnce() {
         assertTrue(
             MonetizationPolicy.shouldAcknowledge(
-                purchase(MonetizationPolicy.NO_ADS_PRODUCT_ID, StorePurchaseState.PURCHASED, acknowledged = false),
+                purchase(MonetizationPolicy.LIFETIME_UNLOCK_PRODUCT_ID, StorePurchaseState.PURCHASED, acknowledged = false),
             ),
         )
         assertFalse(
             MonetizationPolicy.shouldAcknowledge(
-                purchase(MonetizationPolicy.NO_ADS_PRODUCT_ID, StorePurchaseState.PURCHASED, acknowledged = true),
+                purchase(MonetizationPolicy.LIFETIME_UNLOCK_PRODUCT_ID, StorePurchaseState.PURCHASED, acknowledged = true),
             ),
         )
         assertFalse(
             MonetizationPolicy.shouldAcknowledge(
-                purchase(MonetizationPolicy.NO_ADS_PRODUCT_ID, StorePurchaseState.PENDING, acknowledged = false),
+                purchase(MonetizationPolicy.LIFETIME_UNLOCK_PRODUCT_ID, StorePurchaseState.PENDING, acknowledged = false),
             ),
         )
     }
 
     @Test
-    fun bannerAppearsOnlyWhenConfiguredWhileBrowsingWithoutUnlock() {
-        assertTrue(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = true, noAdsUnlocked = false))
-        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = false, browsingServer = true, noAdsUnlocked = false))
-        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = false, noAdsUnlocked = false))
-        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = true, noAdsUnlocked = true))
+    fun bannerAppearsOnlyWhenConfiguredWhileBrowsingWithoutLifetimeUnlock() {
+        assertTrue(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = true, lifetimeUnlocked = false))
+        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = false, browsingServer = true, lifetimeUnlocked = false))
+        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = false, lifetimeUnlocked = false))
+        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = true, lifetimeUnlocked = true))
+    }
+
+    @Test
+    fun cappedUseAllowsOneSessionPerLaunchUntilLifetimeUnlock() {
+        assertTrue(
+            CappedUsePolicy.canStartServerSession(
+                cappedMode = true,
+                lifetimeUnlocked = false,
+                sessionAlreadyStartedThisLaunch = false,
+                usedSessions = 19,
+                sessionLimit = 20,
+            ),
+        )
+        assertTrue(
+            CappedUsePolicy.canStartServerSession(
+                cappedMode = true,
+                lifetimeUnlocked = false,
+                sessionAlreadyStartedThisLaunch = true,
+                usedSessions = 20,
+                sessionLimit = 20,
+            ),
+        )
+        assertFalse(
+            CappedUsePolicy.canStartServerSession(
+                cappedMode = true,
+                lifetimeUnlocked = false,
+                sessionAlreadyStartedThisLaunch = false,
+                usedSessions = 20,
+                sessionLimit = 20,
+            ),
+        )
+        assertTrue(
+            CappedUsePolicy.canStartServerSession(
+                cappedMode = true,
+                lifetimeUnlocked = true,
+                sessionAlreadyStartedThisLaunch = false,
+                usedSessions = 20,
+                sessionLimit = 20,
+            ),
+        )
+        assertTrue(
+            CappedUsePolicy.canStartServerSession(
+                cappedMode = false,
+                lifetimeUnlocked = false,
+                sessionAlreadyStartedThisLaunch = false,
+                usedSessions = 20,
+                sessionLimit = 20,
+            ),
+        )
+    }
+
+    @Test
+    fun legacyNoAdsPurchaseIdRemainsRestorable() {
+        assertTrue(
+            MonetizationPolicy.ownsLifetimeUnlock(
+                listOf(purchase("no_ads_lifetime", StorePurchaseState.PURCHASED)),
+            ),
+        )
     }
 
     private fun purchase(

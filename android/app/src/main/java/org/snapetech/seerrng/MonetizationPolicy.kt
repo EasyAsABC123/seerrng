@@ -13,18 +13,29 @@ internal data class StorePurchase(
 )
 
 internal object MonetizationPolicy {
-    const val NO_ADS_PRODUCT_ID = "no_ads_lifetime"
+    const val LIFETIME_UNLOCK_PRODUCT_ID = "lifetime_unlock"
+    private const val LEGACY_NO_ADS_PRODUCT_ID = "no_ads_lifetime"
 
-    fun ownsNoAds(purchases: Iterable<StorePurchase>): Boolean =
-        purchases.any { purchase ->
-            NO_ADS_PRODUCT_ID in purchase.productIds && purchase.state == StorePurchaseState.PURCHASED
-        }
+    private fun StorePurchase.isLifetimeUnlock(): Boolean =
+        LIFETIME_UNLOCK_PRODUCT_ID in productIds || LEGACY_NO_ADS_PRODUCT_ID in productIds
+
+    fun ownsLifetimeUnlock(purchases: Iterable<StorePurchase>): Boolean =
+        purchases.any { purchase -> purchase.isLifetimeUnlock() && purchase.state == StorePurchaseState.PURCHASED }
 
     fun shouldAcknowledge(purchase: StorePurchase): Boolean =
-        NO_ADS_PRODUCT_ID in purchase.productIds &&
-            purchase.state == StorePurchaseState.PURCHASED &&
-            !purchase.acknowledged
+        purchase.isLifetimeUnlock() && purchase.state == StorePurchaseState.PURCHASED && !purchase.acknowledged
 
-    fun shouldShowBanner(adsEnabled: Boolean, browsingServer: Boolean, noAdsUnlocked: Boolean): Boolean =
-        adsEnabled && browsingServer && !noAdsUnlocked
+    fun shouldShowBanner(adsEnabled: Boolean, browsingServer: Boolean, lifetimeUnlocked: Boolean): Boolean =
+        adsEnabled && browsingServer && !lifetimeUnlocked
+}
+
+internal object CappedUsePolicy {
+    fun canStartServerSession(
+        cappedMode: Boolean,
+        lifetimeUnlocked: Boolean,
+        sessionAlreadyStartedThisLaunch: Boolean,
+        usedSessions: Int,
+        sessionLimit: Int,
+    ): Boolean =
+        !cappedMode || lifetimeUnlocked || sessionAlreadyStartedThisLaunch || usedSessions < sessionLimit
 }
