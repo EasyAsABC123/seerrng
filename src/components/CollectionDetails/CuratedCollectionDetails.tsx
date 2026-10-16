@@ -35,6 +35,7 @@ import {
   type MusicCollectionFilters,
 } from '@app/utils/musicCollectionFilters';
 import { averageMusicRatings } from '@app/utils/musicRatings';
+import { isMusicServiceForQuality } from '@app/utils/musicService';
 import { getSafeHref } from '@app/utils/safeUrl';
 import { getViewerAvailabilityPresentation } from '@app/utils/viewerAvailabilityPresentation';
 import {
@@ -293,7 +294,7 @@ export default function CuratedCollectionDetails({
   );
   const startMusicRequests = (format: 'mp3' | 'flac') => {
     const service = musicServices?.find((candidate) =>
-      candidate.name.toLocaleLowerCase().includes(format)
+      isMusicServiceForQuality(candidate, format)
     );
     if (!service || requestableMusicIds.length === 0) return;
     setMusicRequestFormat(format);
@@ -301,7 +302,7 @@ export default function CuratedCollectionDetails({
   const musicRequestOptions = canRequestMusic
     ? (['mp3', 'flac'] as const).map((format) => {
         const service = musicServices?.find((candidate) =>
-          candidate.name.toLocaleLowerCase().includes(format)
+          isMusicServiceForQuality(candidate, format)
         );
         return {
           id: format,

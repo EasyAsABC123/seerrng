@@ -3,6 +3,7 @@ import FormatRequestControl from '@app/components/Common/FormatRequestControl';
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import { isMusicServiceForQuality } from '@app/utils/musicService';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import type { BulkMediaRequestResponse } from '@server/interfaces/api/requestInterfaces';
 import type { ServiceCommonServer } from '@server/interfaces/api/serviceInterfaces';
@@ -111,7 +112,7 @@ export default function DiscographyRequestActions({
         <FormatRequestControl
           options={(['mp3', 'flac'] as const).map((format) => {
             const service = services?.find((candidate) =>
-              candidate.name.toLocaleLowerCase().includes(format)
+              isMusicServiceForQuality(candidate, format)
             );
             return {
               id: format,
