@@ -174,8 +174,22 @@ describe('Auto Request Settings', () => {
     cy.get('#autorequestmovies').should('be.checked');
     cy.get('#autorequesttv').should('be.checked');
 
-    cy.get('[data-testid="settings-nav-desktop"]').contains('General').click();
-    cy.location('pathname').should('match', /\/settings\/main$/);
+    cy.request('POST', `/api/v1/user/${userId}/settings/main`, {
+      watchlistSyncMovies: false,
+      watchlistSyncTv: false,
+    })
+      .its('status')
+      .should('eq', 200);
+    cy.intercept('GET', `/api/v1/user/${userId}/settings/main`).as(
+      'fixtureMainSettings'
+    );
+    cy.visit(`/users/${userId}/settings/main`);
+    cy.location('pathname').should('eq', `/users/${userId}/settings/main`);
+    cy.wait('@fixtureMainSettings')
+      .its('response.body.watchlistSyncMovies')
+      .should('eq', false);
+    cy.get('#watchlistSyncMovies').should('not.be.checked');
+    cy.get('#watchlistSyncTv').should('not.be.checked');
 
     cy.contains('Auto-Request Movies').should('exist');
     cy.contains('Auto-Request Series').should('exist');
@@ -187,9 +201,7 @@ describe('Auto Request Settings', () => {
     });
     cy.get('#watchlistSyncMovies').should(($checkbox) => {
       expect($checkbox.is(':checked')).to.eq(watchlistSyncMoviesAfterToggle);
-      expect($checkbox.is(':checked')).to.eq(
-        !(originalUserSettings?.watchlistSyncMovies ?? false)
-      );
+      expect($checkbox.is(':checked')).to.eq(true);
     });
     cy.get('#watchlistSyncTv').then(($checkbox) => {
       watchlistSyncTvAfterToggle = !$checkbox.is(':checked');
@@ -197,9 +209,7 @@ describe('Auto Request Settings', () => {
     });
     cy.get('#watchlistSyncTv').should(($checkbox) => {
       expect($checkbox.is(':checked')).to.eq(watchlistSyncTvAfterToggle);
-      expect($checkbox.is(':checked')).to.eq(
-        !(originalUserSettings?.watchlistSyncTv ?? false)
-      );
+      expect($checkbox.is(':checked')).to.eq(true);
     });
 
     cy.intercept('POST', '/api/v1/user/*/settings/main', (request) => {
