@@ -35,6 +35,10 @@ internal class MonetizationManager(
     private val onMessage: (Int) -> Unit,
 ) {
     private val preferences = activity.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val playStoreInstalled: Boolean by lazy {
+        @Suppress("DEPRECATION")
+        runCatching { activity.packageManager.getPackageInfo(PLAY_STORE_PACKAGE, 0) }.isSuccess
+    }
     private var noAdsUnlocked = preferences.getBoolean(NO_ADS_UNLOCKED_KEY, false)
     private var billingClient: BillingClient? = null
     private var billingConnecting = false
@@ -53,7 +57,7 @@ internal class MonetizationManager(
     fun start() {
         onNoAdsChanged(noAdsUnlocked)
         onPrivacyOptionsChanged(false)
-        if (BuildConfig.BILLING_ENABLED) {
+        if (BuildConfig.BILLING_ENABLED && playStoreInstalled) {
             billingClient = BillingClient.newBuilder(activity)
                 .setListener(PurchasesUpdatedListener(::onPurchasesUpdated))
                 .enablePendingPurchases(
@@ -443,6 +447,7 @@ internal class MonetizationManager(
     )
 
     private companion object {
+        const val PLAY_STORE_PACKAGE = "com.android.vending"
         const val PREFERENCES_NAME = "seerrng_monetization"
         const val NO_ADS_UNLOCKED_KEY = "no_ads_lifetime_unlocked"
     }
