@@ -7,6 +7,7 @@ const categoryMappings = {
   audiobook: [3030],
   comic: [7030],
   magazine: [7010],
+  adult: [6000],
   retro: [4050],
   modern: [4000],
   game: [4050],

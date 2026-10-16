@@ -189,7 +189,7 @@ describe('Requests', () => {
     cy.contains('Cancelled request cleared.').should('be.visible');
     cy.contains('Cancelled software request').should('not.exist');
     cy.contains(
-      'No movie, show, music, book, comic, or magazine requests match these filters.'
+      'No movie, show, music, book, comic, magazine, or adult requests match these filters.'
     ).should('be.visible');
   });
 });

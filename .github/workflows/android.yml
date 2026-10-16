@@ -39,6 +39,12 @@ jobs:
 
       - name: Install Android SDK and emulator
         run: |
+          ANDROID_USER_HOME="$HOME/.android"
+          ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          export ANDROID_USER_HOME ANDROID_AVD_HOME
           sdkmanager \
             'platforms;android-36' \
             'build-tools;36.0.0' \
@@ -49,6 +55,8 @@ jobs:
             --package 'system-images;android-36;google_apis;x86_64' \
             --device pixel_2 \
             --force
+          test -f "$ANDROID_AVD_HOME/seerrng-api36.ini"
+          emulator -list-avds | grep -Fxq 'seerrng-api36'
           echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
 
       - name: Run unit and emulator tests, then build debug APK
