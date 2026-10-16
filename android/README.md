@@ -19,23 +19,32 @@ Configure these GitHub Actions repository secrets for signed builds:
 - `ANDROID_KEY_ALIAS`: `seerrng-android-release`
 - `ANDROID_KEY_PASSWORD`: same value as `ANDROID_KEYSTORE_PASSWORD` for PKCS#12
 
-## Ads and the lifetime no-ads unlock
+## Monetization modes
 
-The app shows one non-personalized adaptive banner below the server WebView. It only appears while viewing a saved server, never over sign-in or setup controls. Google UMP handles consent and privacy choices. Debug builds use Google's test app and banner IDs; they never request live ads.
+The default release mode is `ads`: a non-personalized adaptive banner appears below the server WebView, and Google UMP handles consent and privacy choices. Debug builds use Google's test app and banner IDs; they never request live ads.
 
 The [SeerrNG Android privacy policy](https://snapetech-org.github.io/seerrng-android-privacy/) is public, hosted over HTTPS, and linked from the app's first-launch setup and server list. Use this same URL in Play Console and AdMob.
 
-To enable ads and the optional Google Play no-ads purchase in release APKs, configure these repository variables:
+To enable ad-supported releases and the Google Play lifetime unlock, configure these repository variables:
 
 - `ENABLE_PLAY_BILLING`: `true`
 - `ADMOB_APP_ID`: the app ID from AdMob
-- `ADMOB_BANNER_AD_UNIT_ID`: the banner ad unit ID from AdMob
+- `ADMOB_BANNER_AD_UNIT_ID`: the banner ad unit ID
 
-Create a one-time Google Play product with ID `no_ads_lifetime`; Play Console supplies the localized price shown in the app. Create and publish an AdMob UMP consent message before setting the variables. Release monetization stays disabled unless Play Billing and both AdMob IDs are configured.
+Create a one-time Google Play product with ID `lifetime_unlock`; Play Console supplies the localized price shown in the app. Create and publish an AdMob UMP consent message before setting the ad variables.
 
 Google Play Billing requires the package and product to be set up in Play Console. Google documents that billing is blocked for apps not signed and uploaded to Play; registered license testers can sideload for testing. A direct APK download therefore does not provide a separate checkout path.
 
-The client checks Play-owned purchases at launch and resume, acknowledges completed purchases, and caches the no-ads state for offline use. Purchase tokens are not currently verified by a backend. Google recommends backend verification and voided-purchase handling; add that before public rollout if stronger refund and tamper resistance is required.
+The client checks Play-owned purchases at launch and resume, acknowledges completed purchases, and caches the lifetime unlock for offline use. Purchase tokens are not currently verified by a backend. Google recommends backend verification and voided-purchase handling; see [MONETIZATION.md](MONETIZATION.md) before public rollout.
+
+An alternative no-ads build caps use locally. The default evaluation allowance is 20 successful server sessions per install. Build it with:
+
+```sh
+ANDROID_MONETIZATION_MODE=capped FREE_SESSION_LIMIT=20 \
+  bash scripts/build-android-release.sh vX.Y.Z android/dist
+```
+
+For debug testing, set `-PandroidMonetizationMode=capped -PfreeSessionLimit=2` on the Gradle command. The default is `ads`. The cap does not count requests or actions inside SeerrNG's web app, sync between devices, or resist clearing app data; its exact behavior and the store and hosted alternatives are documented in [MONETIZATION.md](MONETIZATION.md).
 
 Keep the private keystore and passwords in encrypted recovery storage. Never commit them to this repository. Every update to an installed APK must use the same signing certificate and a higher Android version code.
 

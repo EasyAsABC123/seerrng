@@ -16,8 +16,23 @@ val playBillingEnabled = providers.gradleProperty("enablePlayBilling")
     .orElse(providers.environmentVariable("ENABLE_PLAY_BILLING"))
     .getOrElse("false")
     .toBoolean()
+val androidMonetizationMode = providers.gradleProperty("androidMonetizationMode")
+    .orElse(providers.environmentVariable("ANDROID_MONETIZATION_MODE"))
+    .getOrElse("ads")
+    .lowercase()
+val freeSessionLimit = providers.gradleProperty("freeSessionLimit")
+    .orElse(providers.environmentVariable("FREE_SESSION_LIMIT"))
+    .getOrElse("20")
+    .toInt()
 val googleTestAdmobAppId = "ca-app-pub-3940256099942544~3347511713"
 val googleTestBannerAdUnitId = "ca-app-pub-3940256099942544/9214589741"
+
+if (androidMonetizationMode !in setOf("ads", "capped")) {
+    throw GradleException("ANDROID_MONETIZATION_MODE must be 'ads' or 'capped'.")
+}
+if (freeSessionLimit < 1) {
+    throw GradleException("FREE_SESSION_LIMIT must be greater than zero.")
+}
 
 fun asBuildConfigString(value: String) =
     "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
@@ -38,6 +53,8 @@ android {
         versionName = providers.gradleProperty("androidVersionName").getOrElse("0.0.0-dev")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["admobAppId"] = googleTestAdmobAppId
+        buildConfigField("String", "MONETIZATION_MODE", asBuildConfigString(androidMonetizationMode))
+        buildConfigField("int", "FREE_SESSION_LIMIT", freeSessionLimit.toString())
     }
 
     signingConfigs {
@@ -54,7 +71,7 @@ android {
         debug {
             manifestPlaceholders["admobAppId"] = googleTestAdmobAppId
             buildConfigField("Boolean", "BILLING_ENABLED", "true")
-            buildConfigField("Boolean", "MONETIZATION_ENABLED", "true")
+            buildConfigField("Boolean", "ADS_ENABLED", (androidMonetizationMode == "ads").toString())
             buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", asBuildConfigString(googleTestBannerAdUnitId))
         }
         release {
@@ -64,8 +81,8 @@ android {
             buildConfigField("Boolean", "BILLING_ENABLED", playBillingEnabled.toString())
             buildConfigField(
                 "Boolean",
-                "MONETIZATION_ENABLED",
-                (playBillingEnabled && admobAppId.isNotBlank() && admobBannerAdUnitId.isNotBlank()).toString(),
+                "ADS_ENABLED",
+                (androidMonetizationMode == "ads" && admobAppId.isNotBlank() && admobBannerAdUnitId.isNotBlank()).toString(),
             )
             buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", asBuildConfigString(admobBannerAdUnitId))
         }

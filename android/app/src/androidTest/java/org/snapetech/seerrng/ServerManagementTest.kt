@@ -195,8 +195,11 @@ class ServerManagementTest {
             val pageText = AtomicReference<String?>(null)
             val pageLoaded = CountDownLatch(1)
             scenario.onActivity { activity ->
-                val view = activity.findViewById<FrameLayout>(R.id.webViewContainer)
-                    .let { it.getChildAt(0) as WebView }
+                val container = activity.findViewById<FrameLayout>(R.id.webViewContainer)
+                val view = (0 until container.childCount)
+                    .map(container::getChildAt)
+                    .filterIsInstance<WebView>()
+                    .single()
                 val deadline = SystemClock.uptimeMillis() + TimeUnit.SECONDS.toMillis(15)
                 fun readPage() {
                     if (view.progress == 100 && view.url?.endsWith("/seerrng") == true) {
