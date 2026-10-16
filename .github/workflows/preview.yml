@@ -50,7 +50,7 @@ jobs:
   publish:
     name: Publish multi-arch image
     needs: validate-main-tag
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write

@@ -63,7 +63,7 @@ const inspectUses = (value, location, seen = new WeakSet()) => {
     if (uses.startsWith('actions/checkout@')) {
       check(
         value.with?.clean !== false,
-        `${location}: checkout must not retain a dirty self-hosted workspace`
+        `${location}: checkout must not retain a dirty workspace`
       );
       const credentialsPersist = value.with?.['persist-credentials'] !== false;
       const isDedicatedSshPushCheckout =
@@ -252,7 +252,7 @@ if (!preview) {
 } else {
   check(
     preview.on?.workflow_dispatch === undefined,
-    'preview.yml: arbitrary workflow-dispatch refs must not reach self-hosted preview builders'
+    'preview.yml: arbitrary workflow-dispatch refs must not publish previews'
   );
   const validationJob = preview.jobs?.['validate-main-tag'];
   const publishJob = preview.jobs?.publish;
@@ -267,7 +267,7 @@ if (!preview) {
   check(
     publishJob?.needs === 'validate-main-tag' ||
       publishJob?.needs?.includes?.('validate-main-tag'),
-    'preview.yml: self-hosted preview publishing must depend on tag validation'
+    'preview.yml: preview publishing must depend on tag validation'
   );
   const validationScript = validationJob?.steps?.find(
     (step) => step.name === 'Ensure bounded preview tag is on main'

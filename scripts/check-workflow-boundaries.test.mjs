@@ -316,25 +316,15 @@ test('CodeQL models the awaited image cache validation barrier', () => {
   );
 });
 
-test('unit-test pull requests stay hosted and main runs require kspls0', () => {
+test('unit-test shards always use GitHub-hosted runners', () => {
   const ciWorkflow = yaml.load(
     fs.readFileSync(
       path.join(rootDirectory, '.github', 'workflows', 'ci.yml'),
       'utf8'
     )
   );
-  const runner = ciWorkflow.jobs['unit-test']?.['runs-on'];
-  const mainRunnerCondition =
-    "((github.event_name == 'push' && github.ref == 'refs/heads/main') || " +
-    "(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))";
-  const trustedRunnerJson =
-    '{"group":"trusted-main","labels":["self-hosted","Linux","X64","host","kspls0"]}';
-  const expectedRunner =
-    '$' +
-    '{{ (' +
-    mainRunnerCondition +
-    " && vars.TRUSTED_MAIN_RUNNERS_ENABLED == 'true') && fromJSON('" +
-    trustedRunnerJson +
-    "') || 'ubuntu-latest' }}";
-  assert.equal(runner, expectedRunner);
+  assert.equal(ciWorkflow.jobs['unit-test']?.['runs-on'], 'ubuntu-latest');
+  assert.equal(ciWorkflow.jobs['unit-test']?.strategy?.['max-parallel'], 4);
+  assert.equal(ciWorkflow.jobs['preflight-deploy'], undefined);
+  assert.equal(ciWorkflow.jobs['deploy-main'], undefined);
 });

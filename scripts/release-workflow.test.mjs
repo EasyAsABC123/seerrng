@@ -348,40 +348,9 @@ test('multi-architecture publishers perform the real build once and verify the i
     "github.ref == 'refs/heads/main' && needs.engine-reconcile.result == 'success'"
   );
   assert.equal(ci.jobs.publish.needs, 'engine-reconcile');
-  assert.equal(ci.on.workflow_dispatch.inputs.deploy_main.default, true);
-  assert.equal(ci.on.workflow_dispatch.inputs.deploy_main.type, 'boolean');
-  assert.equal(
-    ci.jobs.publish.outputs.image_digest,
-    '${{ steps.resolve-digest.outputs.image_digest }}'
-  );
-  assert.deepEqual(ci.jobs['deploy-main'].needs, [
-    'publish',
-    'preflight-deploy',
-    'engine-reconcile',
-    'scan-main-image',
-  ]);
-  assert.equal(
-    ci.jobs['preflight-deploy'].outputs.ready,
-    '${{ steps.verify-storage.outputs.ready }}'
-  );
-  assert.match(
-    ci.jobs['preflight-deploy'].steps.find(
-      (step) =>
-        step.name === 'Verify deployment storage and determine readiness'
-    ).run,
-    /live deployment will remain skipped until the host is repaired/u
-  );
-  assert.match(
-    ci.jobs['preflight-deploy'].steps.find(
-      (step) =>
-        step.name === 'Verify deployment storage and determine readiness'
-    ).run,
-    /ready=false/u
-  );
-  assert.equal(
-    ci.jobs['deploy-main'].if,
-    "github.ref == 'refs/heads/main' && needs.engine-reconcile.result == 'success' && needs.scan-main-image.result == 'success' && needs.publish.result == 'success' && needs.preflight-deploy.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || inputs.deploy_main)"
-  );
+  assert.equal(ci.on.workflow_dispatch, null);
+  assert.equal(ci.jobs['preflight-deploy'], undefined);
+  assert.equal(ci.jobs['deploy-main'], undefined);
   assert.match(
     ci.jobs.publish.steps.find(
       (step) => step.name === 'Build & Push (multi-arch, single tag)'

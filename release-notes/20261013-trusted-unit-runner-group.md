@@ -6,4 +6,5 @@ action: none
 breaking: false
 ---
 
-SeerrNG unit validation on main can use the restricted trusted-main runner group once operators enable TRUSTED_MAIN_RUNNERS_ENABLED. Pull requests and non-main runs continue on hosted runners.
+The trusted-main runner group was retired on 2026-10-16. SeerrNG unit validation
+and every other Actions job now run on GitHub-hosted runners.

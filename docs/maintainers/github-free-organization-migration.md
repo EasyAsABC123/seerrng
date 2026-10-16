@@ -1,3 +1,5 @@
+> Status update (2026-10-16): the private GitHub Actions runner pool described below has been retired. All SeerrNG Actions jobs use GitHub-hosted runners. The earlier migration and trust-boundary details are historical context; they no longer describe the active workflow configuration.
+
 <!-- Copyright (c) 2026 snapetech and SeerrNG contributors. -->
 
 # GitHub Free Organization Migration Runbook

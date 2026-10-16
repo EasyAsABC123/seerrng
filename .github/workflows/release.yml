@@ -224,7 +224,7 @@ jobs:
     name: Generate changelog
     needs: validate-main-tag
     timeout-minutes: 10
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
@@ -287,7 +287,7 @@ jobs:
   create-draft-release:
     name: Create draft release
     timeout-minutes: 10
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     needs: changelog
@@ -323,7 +323,7 @@ jobs:
     name: Publish multi-arch manifests
     needs: [validate-main-tag, create-draft-release]
     timeout-minutes: 90
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -741,7 +741,7 @@ jobs:
     needs:
       [create-draft-release, verify, build-release-assets, dispatch-package-channels]
     timeout-minutes: 10
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
@@ -986,7 +986,7 @@ jobs:
     needs:
       [changelog, publish, publish-release, dispatch-package-channels]
     timeout-minutes: 10
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
@@ -1070,7 +1070,7 @@ jobs:
     name: Correct published Discord security notes
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.announce_security_correction == true
     timeout-minutes: 10
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     env:

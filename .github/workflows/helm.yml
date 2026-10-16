@@ -23,7 +23,7 @@ concurrency:
 jobs:
   package-helm-chart:
     name: Package helm chart
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -97,7 +97,7 @@ jobs:
 
   publish:
     name: Publish to ghcr.io
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       packages: write
@@ -192,7 +192,7 @@ jobs:
   verify:
     name: Verify signatures for each chart tag
     needs: [publish]
-    runs-on: [self-hosted, Linux, X64, seerrng]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
