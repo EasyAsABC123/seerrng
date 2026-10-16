@@ -64,7 +64,7 @@ const AdultDetails = () => {
   return (
     <>
       <PageTitle title={data.title} />
-      <div className="app-page-detail space-y-5">
+      <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-3">
           <MediaTypeBadge mediaType="adult" variant="compact" />
           <Header>{data.title}</Header>

@@ -1,5 +1,6 @@
 import type { RequestOverrides } from '@app/components/RequestModal/AdvancedRequester';
 import { MediaRequestStatus, MediaStatus } from '@server/constants/media';
+import type MediaServiceStatus from '@server/entity/MediaServiceStatus';
 import type { ServiceCommonServer } from '@server/interfaces/api/serviceInterfaces';
 import {
   getActiveRequestForDestination,
@@ -18,13 +19,10 @@ interface DestinationAvailabilityMedia {
   status4k?: MediaStatus;
   serviceId?: number | null;
   serviceId4k?: number | null;
-  serviceStatuses?: {
-    serviceType: 'radarr' | 'sonarr';
-    serverId: number;
-    format: 'standard' | '4k';
-    status: MediaStatus;
-    seasonStatuses?: Record<number, MediaStatus> | null;
-  }[];
+  serviceStatuses?: Pick<
+    MediaServiceStatus,
+    'serviceType' | 'serverId' | 'format' | 'status' | 'seasonStatuses'
+  >[];
   seasons?: {
     seasonNumber: number;
     status: MediaStatus;

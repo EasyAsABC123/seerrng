@@ -306,7 +306,9 @@ const IssueItem = ({
     (opt) => opt.issueType === issue?.issueType
   );
   const issueSubtypeOption =
-    issue && issue.media.mediaType !== 'sports'
+    issue &&
+    issue.media.mediaType !== 'sports' &&
+    issue.media.mediaType !== MediaType.ADULT
       ? getIssueSubtypeOptionsForMediaType(issue.media.mediaType).find(
           (option) => option.value === issue.issueSubtype
         )

@@ -156,7 +156,12 @@ adultRoutes.get('/search', async (req, res) => {
               select: { id: true, status: true },
             })
           : undefined;
-        return toResult(scene, identifier, activeRequest, defaultServerId);
+        return toResult(
+          scene,
+          identifier,
+          activeRequest ?? undefined,
+          defaultServerId
+        );
       })
     );
 
@@ -237,7 +242,9 @@ adultRoutes.get('/:id', async (req, res) => {
       : undefined;
     return res
       .status(200)
-      .json(toResult(scene, identifier, activeRequest, defaultServerId));
+      .json(
+        toResult(scene, identifier, activeRequest ?? undefined, defaultServerId)
+      );
   } catch (error) {
     logger.error('Adult scene details could not be loaded', {
       label: 'Adult',

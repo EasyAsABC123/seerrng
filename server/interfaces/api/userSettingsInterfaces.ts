@@ -39,6 +39,7 @@ export const mediaFilterValues = [
   'audiobook',
   'comic',
   'magazine',
+  'adult',
   'sports',
   'author',
   'software',

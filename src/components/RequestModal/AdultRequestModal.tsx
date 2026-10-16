@@ -184,7 +184,7 @@ const AdultRequestModal = ({
         okDisabled={isUpdating}
         okText={intl.formatMessage(messages.cancelRequest)}
         okButtonType="danger"
-        cancelText={intl.formatMessage(messages.close)}
+        cancelText={intl.formatMessage(globalMessages.close)}
         cancelButtonType="default"
       >
         <div className="app-card-inset refreshed-inset-surface rounded-lg border border-gray-700 p-3">

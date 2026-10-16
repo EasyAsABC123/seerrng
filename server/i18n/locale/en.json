@@ -35,6 +35,7 @@
   "notifications.agents.webpush.viewIssue": "View Issue",
   "notifications.agents.webpush.viewMedia": "View Media",
   "notifications.agents.webpush.viewRequestStatus": "View Request Status",
+  "notifications.common.adult": "adult scene",
   "notifications.common.approve": "Approve",
   "notifications.common.available": "Available",
   "notifications.common.book": "book",

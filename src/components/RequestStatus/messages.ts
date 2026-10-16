@@ -17,6 +17,12 @@ export const requestStatusMessages = defineMessages(
       'The connected comics service reported a download or import failure. Check its queue or logs for the cause, fix it there, then retry here.',
     comicCouldNotAccept:
       'The connected comics service could not accept this request. Check its connection and ComicVine metadata settings, then retry.',
+    adultUnavailable:
+      'Whisparr has not found a usable release for this adult scene yet. Check its indexer categories and acquisition settings, then retry.',
+    adultQueueFailed:
+      'Whisparr reported a download or import failure. Check its queue and logs, fix the issue there, then retry.',
+    adultCouldNotAccept:
+      'Whisparr could not accept this scene request. Check the connection and scene metadata, then retry.',
     waitingForApproval: 'Your request is waiting for approval.',
     approvedWaitingDispatch:
       'Your request was approved and is waiting to be dispatched.',
@@ -52,6 +58,9 @@ const messagesByKey: Record<RequestStatusMessageKey, MessageDescriptor> = {
   comicUnavailable: requestStatusMessages.comicUnavailable,
   comicQueueFailed: requestStatusMessages.comicQueueFailed,
   comicCouldNotAccept: requestStatusMessages.comicCouldNotAccept,
+  adultUnavailable: requestStatusMessages.adultUnavailable,
+  adultQueueFailed: requestStatusMessages.adultQueueFailed,
+  adultCouldNotAccept: requestStatusMessages.adultCouldNotAccept,
   waitingForApproval: requestStatusMessages.waitingForApproval,
   approvedWaitingDispatch: requestStatusMessages.approvedWaitingDispatch,
   searching: requestStatusMessages.searching,

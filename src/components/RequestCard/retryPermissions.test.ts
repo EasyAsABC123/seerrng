@@ -81,4 +81,25 @@ describe('canRetryRequest', () => {
       })
     ).toBe(true);
   });
+
+  it('requires the dedicated Adult request permission for Adult retries', () => {
+    expect(
+      canRetryRequest({
+        requestType: 'adult',
+        is4k: false,
+        requestedById: 12,
+        userId: 12,
+        permissions: Permission.REQUEST,
+      })
+    ).toBe(false);
+    expect(
+      canRetryRequest({
+        requestType: 'adult',
+        is4k: false,
+        requestedById: 12,
+        userId: 12,
+        permissions: Permission.REQUEST_ADULT,
+      })
+    ).toBe(true);
+  });
 });

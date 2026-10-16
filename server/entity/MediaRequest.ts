@@ -2256,6 +2256,7 @@ export class MediaRequest {
         serviceTargets: [
           {
             ...selectedDestination,
+            serverId: requestServer.id,
             status: MediaStatus.PENDING,
           },
         ],

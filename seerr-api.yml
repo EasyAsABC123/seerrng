@@ -3458,6 +3458,7 @@ components:
           audiobook,
           comic,
           magazine,
+          adult,
           retro,
           modern,
           game,
@@ -3476,6 +3477,8 @@ components:
         comic:
           $ref: '#/components/schemas/ProwlarrCategoryIds'
         magazine:
+          $ref: '#/components/schemas/ProwlarrCategoryIds'
+        adult:
           $ref: '#/components/schemas/ProwlarrCategoryIds'
         retro:
           $ref: '#/components/schemas/ProwlarrCategoryIds'
@@ -10617,6 +10620,7 @@ paths:
                               audiobook,
                               comic,
                               magazine,
+                              adult,
                               retro,
                               modern,
                               game,
@@ -10649,6 +10653,7 @@ paths:
                       audiobook,
                       comic,
                       magazine,
+                      adult,
                       retro,
                       modern,
                       game,

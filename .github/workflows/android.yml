@@ -49,6 +49,7 @@ jobs:
             --package 'system-images;android-36;google_apis;x86_64' \
             --device pixel_2 \
             --force
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
 
       - name: Run unit and emulator tests, then build debug APK
         shell: bash

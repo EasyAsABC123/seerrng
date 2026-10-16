@@ -13,7 +13,7 @@ import {
 import { getRepository } from '@server/datasource';
 import { User } from '@server/entity/User';
 import { Permission } from '@server/lib/permissions';
-import { getSettings } from '@server/lib/settings';
+import { getSettings, type WhisparrSettings } from '@server/lib/settings';
 import { isAuthenticated } from '@server/middleware/auth';
 import { setupTestDb } from '@server/test/db';
 import type { Express } from 'express';
@@ -28,6 +28,8 @@ setupTestDb();
 
 const getOriginalSettings = () => structuredClone(getSettings().prowlarr);
 let originalSettings = getOriginalSettings();
+let originalAdultCategoryEnabled = false;
+let originalWhisparrSettings: WhisparrSettings[] = [];
 
 function createValidatedApp(permission = Permission.MANAGE_REQUESTS): Express {
   const app = express();
@@ -104,6 +106,30 @@ function createValidatedSettingsApp(permission = Permission.ADMIN): Express {
 describe('Prowlarr manual search routes', () => {
   beforeEach(() => {
     originalSettings = getOriginalSettings();
+    originalAdultCategoryEnabled =
+      getSettings().main.enabledMediaCategories.adult;
+    originalWhisparrSettings = structuredClone(getSettings().whisparr);
+    getSettings().main.enabledMediaCategories.adult = true;
+    getSettings().whisparr = [
+      {
+        id: 1,
+        name: 'Whisparr',
+        hostname: 'whisparr.local',
+        port: 6969,
+        apiKey: 'test-whisparr-key',
+        useSsl: false,
+        activeProfileId: 1,
+        activeProfileName: 'Default',
+        activeDirectory: '/adult',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: false,
+        preventSearch: false,
+        tagRequests: false,
+        overrideRule: [],
+      },
+    ];
     getSettings().prowlarr = {
       hostname: 'prowlarr.local',
       port: 9696,
@@ -116,6 +142,9 @@ describe('Prowlarr manual search routes', () => {
 
   afterEach(() => {
     getSettings().prowlarr = originalSettings;
+    getSettings().main.enabledMediaCategories.adult =
+      originalAdultCategoryEnabled;
+    getSettings().whisparr = originalWhisparrSettings;
     mock.restoreAll();
   });
 

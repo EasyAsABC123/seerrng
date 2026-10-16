@@ -11,6 +11,7 @@ describe('detectProwlarrCategoryMatches', () => {
     { id: 100_019, name: 'Movies' },
     { id: 100_002, name: 'TV' },
     { id: 100_031, name: 'Audio' },
+    { id: 100_032, name: 'Adult' },
     { id: 100_013, name: 'Adult Games' },
     { id: 100_015, name: 'Nintendo Switch' },
     { id: 100_016, name: 'PC Games' },
@@ -36,6 +37,9 @@ describe('detectProwlarrCategoryMatches', () => {
     ]);
     expect(detectProwlarrCategoryMatches('magazine', categories)).toEqual([
       100_007,
+    ]);
+    expect(detectProwlarrCategoryMatches('adult', categories)).toEqual([
+      100_032,
     ]);
     expect(detectProwlarrCategoryMatches('movie', categories)).toEqual([
       100_019,
