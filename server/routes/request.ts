@@ -300,6 +300,12 @@ const requestMediaTypeFilters = [
   'adult',
   'sports',
 ] as const;
+
+const hasAdultRequestAccess = (user?: User | null): boolean =>
+  user?.hasPermission(
+    [Permission.ADMIN, Permission.MANAGE_REQUESTS, Permission.REQUEST_ADULT],
+    { type: 'or' }
+  ) ?? false;
 const requestStatusFilters = [
   'all',
   'recent',
@@ -682,20 +688,27 @@ const getRequestDownloadAccess = async (
   });
   if (!request) return { status: 404 };
 
+  let adultAccessDenied = false;
   const hasAccess = await runUserSecurityReadWithActor(
     req.user!.id,
     request.requestedBy.id,
     [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
-    async (actor) =>
-      actor.hasPermission(
-        [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
-        {
-          type: 'or',
-        }
-      ) || request.requestedBy.id === actor.id,
+    async (actor) => {
+      if (request.type === MediaType.ADULT && !hasAdultRequestAccess(actor)) {
+        adultAccessDenied = true;
+        return false;
+      }
+
+      return (
+        actor.hasPermission(
+          [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
+          { type: 'or' }
+        ) || request.requestedBy.id === actor.id
+      );
+    },
     { expectedCredentialVersion: getExpectedCredentialVersion(req) }
   );
-  return hasAccess ? { request } : { status: 403 };
+  return hasAccess ? { request } : { status: adultAccessDenied ? 404 : 403 };
 };
 
 const parseRequestDownloadRange = (
@@ -1988,6 +2001,16 @@ requestRoutes.get<
         [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
         { type: 'or' }
       ) ?? false;
+    const canViewAdultRequests = hasAdultRequestAccess(
+      requestReadLease?.actor ?? req.user
+    );
+
+    if (mediaType === 'adult' && !canViewAdultRequests) {
+      return next({
+        status: 403,
+        message: 'You do not have permission to view adult requests.',
+      });
+    }
 
     let query = getRepository(MediaRequest)
       .createQueryBuilder('request')
@@ -2018,6 +2041,12 @@ requestRoutes.get<
     } else if (requestedBy) {
       query = query.andWhere('requestedBy.id = :id', {
         id: requestedBy,
+      });
+    }
+
+    if (!canViewAdultRequests) {
+      query = query.andWhere('request.type != :hiddenAdultType', {
+        hiddenAdultType: MediaType.ADULT,
       });
     }
 
@@ -3162,6 +3191,12 @@ requestRoutes.get('/count', async (req, res, next) => {
         });
       }
 
+      if (!hasAdultRequestAccess(actor)) {
+        countQuery.andWhere('request.type != :hiddenAdultType', {
+          hiddenAdultType: MediaType.ADULT,
+        });
+      }
+
       const counts =
         await countQuery.getRawOne<Record<string, string | number | null>>();
 
@@ -3317,6 +3352,13 @@ requestRoutes.get<
         const canManageRequests = actor.hasPermission(
           Permission.MANAGE_REQUESTS
         );
+        const canViewAdultRequests = hasAdultRequestAccess(actor);
+        if (mediaType === 'adult' && !canViewAdultRequests) {
+          return next({
+            status: 403,
+            message: 'You do not have permission to view adult requests.',
+          });
+        }
         const settings = getExternalRuntimeConfig();
         const page = await getRequestStatusPage({
           take: pageSize,
@@ -3325,6 +3367,7 @@ requestRoutes.get<
           mediaId,
           ownerId: canViewAllRequests ? (requestedBy ?? undefined) : actor.id,
           mediaType: mediaType === 'all' ? undefined : (mediaType as MediaType),
+          excludeAdult: !canViewAdultRequests,
           bookFormat: parsedBookFormat.value,
           search: parsedSearch.value,
           since: getRequestStatusStartDate(parsedTimeFrame.value ?? 'all'),
@@ -3483,6 +3526,10 @@ requestRoutes.get<
       request.requestedBy.id,
       [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
       async (actor) => {
+        if (request.type === MediaType.ADULT && !hasAdultRequestAccess(actor)) {
+          return next({ status: 404, message: 'Request not found.' });
+        }
+
         const canViewAllRequests = actor.hasPermission(
           [Permission.MANAGE_REQUESTS, Permission.REQUEST_VIEW],
           { type: 'or' }
@@ -3686,6 +3733,10 @@ requestRoutes.get('/:requestId', async (req, res, next) => {
           media: { identifiers: true },
         },
       });
+
+      if (request.type === MediaType.ADULT && !hasAdultRequestAccess(actor)) {
+        return next({ status: 404, message: 'Request not found.' });
+      }
 
       if (
         request.requestedBy.id !== actor.id &&

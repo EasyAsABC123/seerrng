@@ -249,6 +249,10 @@ const getMetadataCacheKey = (
 const loadSortMetadata = async (
   item: RequestStatusPageItem
 ): Promise<RequestStatusSortMetadata> => {
+  if (item.request.type === MediaType.ADULT) {
+    return { title: nonEmpty(item.request.media.externalServiceSlug) };
+  }
+
   const key = getMetadataCacheKey(item);
   if (!key) {
     return {};
@@ -357,6 +361,7 @@ export const filterRequestStatusItems = async (
       item.status.service,
       item.request.media.tmdbId,
       item.request.media.mbId,
+      item.request.media.externalServiceSlug,
       ...(item.request.media.identifiers?.map(
         (identifier) => identifier.value
       ) ?? []),

@@ -190,7 +190,8 @@ adultRoutes.get('/:id', async (req, res) => {
   const services = getExternalRuntimeConfig().whisparr;
   const defaultServerId = services.find(({ isDefault }) => isDefault)?.id;
   try {
-    const scene = await mapWithConcurrency(services, 3, async (service) => {
+    let failedServices = 0;
+    const results = await mapWithConcurrency(services, 3, async (service) => {
       try {
         return await runWithServarrServiceSnapshot(
           'whisparr',
@@ -202,9 +203,17 @@ adultRoutes.get('/:id', async (req, res) => {
             }).getSceneByStashDbId(stashDbId)
         );
       } catch {
+        failedServices += 1;
         return undefined;
       }
-    }).then((results) => results.find((result) => result));
+    });
+    if (services.length > 0 && failedServices === services.length) {
+      return res.status(503).json({
+        status: 503,
+        message: 'Whisparr scene details are unavailable right now.',
+      });
+    }
+    const scene = results.find((result) => result);
     if (!scene) {
       return res
         .status(404)

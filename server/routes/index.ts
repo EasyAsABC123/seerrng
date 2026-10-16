@@ -541,6 +541,7 @@ router.use(
   isAuthenticated(),
   categoryAvailabilityGuard(['adult']),
   adultContentPermissionGuard,
+  externalMetadataRateLimit,
   adultRoutes
 );
 router.use(

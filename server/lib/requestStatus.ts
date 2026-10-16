@@ -1844,6 +1844,7 @@ export const getRequestStatusCounts = async (
     ownerId?: number;
     mediaId?: number;
     mediaType?: MediaType;
+    excludeAdult?: boolean;
     bookFormat?: 'ebook' | 'audiobook';
     since?: Date;
   },
@@ -1896,6 +1897,11 @@ export const getRequestStatusCounts = async (
   if (options.mediaType) {
     query.andWhere('requestCount.type = :countMediaType', {
       countMediaType: options.mediaType,
+    });
+  }
+  if (options.excludeAdult) {
+    query.andWhere('requestCount.type != :hiddenAdultType', {
+      hiddenAdultType: MediaType.ADULT,
     });
   }
   if (options.bookFormat) {
@@ -1974,6 +1980,7 @@ const getRequestStatusOlderCount = async (options: {
   ownerId?: number;
   mediaId?: number;
   mediaType?: MediaType;
+  excludeAdult?: boolean;
   bookFormat?: 'ebook' | 'audiobook';
   since: Date;
 }): Promise<number> => {
@@ -2001,6 +2008,11 @@ const getRequestStatusOlderCount = async (options: {
       olderMediaType: options.mediaType,
     });
   }
+  if (options.excludeAdult) {
+    query.andWhere('requestOlder.type != :hiddenAdultType', {
+      hiddenAdultType: MediaType.ADULT,
+    });
+  }
   if (options.bookFormat) {
     query.andWhere(
       options.bookFormat === 'ebook'
@@ -2025,6 +2037,7 @@ export const getRequestStatusPage = async (options: {
   bookFormat?: 'ebook' | 'audiobook';
   search?: string;
   since?: Date;
+  excludeAdult?: boolean;
   filter?: string;
   sort?: RequestStatusSortField;
   sortDirection?: RequestStatusSortDirection;
@@ -2049,6 +2062,11 @@ export const getRequestStatusPage = async (options: {
   }
   if (options.since) {
     query.andWhere('request.createdAt >= :since', { since: options.since });
+  }
+  if (options.excludeAdult) {
+    query.andWhere('request.type != :hiddenAdultType', {
+      hiddenAdultType: MediaType.ADULT,
+    });
   }
   if (options.mediaType) {
     query.andWhere('request.type = :mediaType', {
@@ -2175,6 +2193,7 @@ export const getRequestStatusPage = async (options: {
       ownerId: options.ownerId,
       mediaId: options.mediaId,
       mediaType: options.mediaType,
+      excludeAdult: options.excludeAdult,
       bookFormat: options.bookFormat,
       since: options.since,
     }),
@@ -2183,6 +2202,7 @@ export const getRequestStatusPage = async (options: {
           ownerId: options.ownerId,
           mediaId: options.mediaId,
           mediaType: options.mediaType,
+          excludeAdult: options.excludeAdult,
           bookFormat: options.bookFormat,
           since: options.since,
         })
