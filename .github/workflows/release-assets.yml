@@ -282,6 +282,9 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
+          ADMOB_BANNER_AD_UNIT_ID: ${{ vars.ADMOB_BANNER_AD_UNIT_ID }}
+          ENABLE_PLAY_BILLING: ${{ vars.ENABLE_PLAY_BILLING }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release
 

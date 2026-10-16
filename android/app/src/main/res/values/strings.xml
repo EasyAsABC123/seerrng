@@ -36,4 +36,18 @@
     <string name="download_external_server">For safety, downloads must come from the selected SeerrNG server.</string>
     <string name="download_permission_denied">Storage permission is needed to save downloads on this Android version.</string>
     <string name="download_already_waiting">Finish the pending download permission request first.</string>
+    <string name="no_ads_description">One purchase removes in-app ads for your Google Play account. The local price is shown before you buy.</string>
+    <string name="remove_ads">Remove Ads</string>
+    <string name="remove_ads_with_price">Remove Ads · %1$s once</string>
+    <string name="restore_purchase">Restore</string>
+    <string name="no_ads_unlocked">Lifetime no-ads unlock is active for this Google Play account.</string>
+    <string name="ad_privacy_options">Ad privacy options</string>
+    <string name="no_ads_purchase_unavailable">Google Play billing is unavailable here. The one-time no-ads purchase is offered by the Google Play version.</string>
+    <string name="no_ads_product_unavailable">The no-ads product is not available yet. Try again after it is offered in Google Play.</string>
+    <string name="no_ads_purchase_error">Google Play could not start the purchase. Check your Play account and try again.</string>
+    <string name="no_ads_purchase_pending">Your purchase is pending. Ads will be removed after Google Play confirms it.</string>
+    <string name="no_ads_purchase_success">No ads are unlocked for this Google Play account.</string>
+    <string name="no_ads_purchase_restored">Your no-ads purchase has been restored.</string>
+    <string name="no_ads_purchase_not_found">No no-ads purchase was found for this Google Play account.</string>
+    <string name="ad_privacy_unavailable">Ad privacy options are unavailable right now.</string>
 </resources>

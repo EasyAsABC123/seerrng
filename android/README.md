@@ -19,6 +19,14 @@ Configure these GitHub Actions repository secrets for signed builds:
 - `ANDROID_KEY_ALIAS`: `seerrng-android-release`
 - `ANDROID_KEY_PASSWORD`: same value as `ANDROID_KEYSTORE_PASSWORD` for PKCS#12
 
+To enable ads and the optional Google Play no-ads purchase in release APKs, configure these repository variables:
+
+- `ENABLE_PLAY_BILLING`: `true`
+- `ADMOB_APP_ID`: the app ID from AdMob
+- `ADMOB_BANNER_AD_UNIT_ID`: the banner ad unit ID from AdMob
+
+Create a one-time Google Play in-app product with the ID `no_ads_lifetime`, and configure a consent message in AdMob. Release monetization stays disabled unless Play Billing and both AdMob IDs are configured. Debug builds use Google's sample test ad IDs.
+
 Keep the private keystore and passwords in encrypted recovery storage. Never commit them to this repository. Every update to an installed APK must use the same signing certificate and a higher Android version code.
 
 ## Signing identity

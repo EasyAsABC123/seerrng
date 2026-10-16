@@ -40,6 +40,56 @@
             android:text="@string/add_server" />
 
         <TextView
+            android:id="@+id/noAdsDescription"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/no_ads_description"
+            android:textColor="@color/muted"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/removeAdsButton"
+                style="@style/PrimaryButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/remove_ads" />
+
+            <Button
+                android:id="@+id/restorePurchasesButton"
+                style="@style/SecondaryButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/restore_purchase" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/noAdsUnlockedMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/no_ads_unlocked"
+            android:textColor="@color/brand_blue_dark"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/adPrivacyOptionsButton"
+            style="@style/SecondaryButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ad_privacy_options"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/emptyServersMessage"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -249,5 +299,12 @@
                     android:text="@string/servers" />
             </LinearLayout>
         </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/adViewContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/white"
+            android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>

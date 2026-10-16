@@ -7,6 +7,7 @@ import android.app.Dialog
 import android.app.DownloadManager
 import android.content.pm.PackageManager
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -55,6 +56,12 @@ class MainActivity : Activity() {
     private lateinit var errorMessage: TextView
     private lateinit var activeServerName: TextView
     private lateinit var httpBadge: TextView
+    private lateinit var removeAdsButton: Button
+    private lateinit var restorePurchasesButton: Button
+    private lateinit var noAdsDescription: TextView
+    private lateinit var noAdsUnlockedMessage: TextView
+    private lateinit var adPrivacyOptionsButton: Button
+    private lateinit var monetization: MonetizationManager
 
     private var editingServerId: String? = null
     private var activeServer: SavedServer? = null
@@ -88,6 +95,22 @@ class MainActivity : Activity() {
         errorMessage = findViewById(R.id.webErrorMessage)
         activeServerName = findViewById(R.id.activeServerName)
         httpBadge = findViewById(R.id.httpBadge)
+        removeAdsButton = findViewById(R.id.removeAdsButton)
+        restorePurchasesButton = findViewById(R.id.restorePurchasesButton)
+        noAdsDescription = findViewById(R.id.noAdsDescription)
+        noAdsUnlockedMessage = findViewById(R.id.noAdsUnlockedMessage)
+        adPrivacyOptionsButton = findViewById(R.id.adPrivacyOptionsButton)
+
+        monetization = MonetizationManager(
+            activity = this,
+            adContainer = findViewById(R.id.adViewContainer),
+            onNoAdsChanged = ::renderNoAdsEntitlement,
+            onPriceChanged = ::renderNoAdsPrice,
+            onPrivacyOptionsChanged = { required ->
+                adPrivacyOptionsButton.visibility = if (required) View.VISIBLE else View.GONE
+            },
+            onMessage = { message -> Toast.makeText(this, message, Toast.LENGTH_LONG).show() },
+        )
 
         findViewById<Button>(R.id.addServerButton).setOnClickListener { showEditor(null) }
         findViewById<Button>(R.id.saveServerButton).setOnClickListener { saveEditedServer() }
@@ -99,8 +122,12 @@ class MainActivity : Activity() {
             errorPanel.visibility = View.GONE
             webView?.reload()
         }
+        removeAdsButton.setOnClickListener { monetization.purchaseNoAds() }
+        restorePurchasesButton.setOnClickListener { monetization.restoreNoAds() }
+        adPrivacyOptionsButton.setOnClickListener { monetization.showPrivacyOptions() }
 
         renderServers()
+        monetization.start()
         if (serverStore.all().isEmpty()) {
             showEditor(null)
         } else {
@@ -111,13 +138,25 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        monetization.onResume()
         webView?.onResume()
     }
 
     override fun onPause() {
         webView?.onPause()
+        monetization.onPause()
         flushActiveCookies()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        if (::monetization.isInitialized) monetization.close()
+        super.onDestroy()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        monetization.onConfigurationChanged()
     }
 
     @Deprecated("Use system back navigation")
@@ -157,6 +196,7 @@ class MainActivity : Activity() {
 
     private fun showServerPicker() {
         destroyActiveWebView()
+        monetization.setBrowsingServer(false)
         activeServer = null
         activeAddress = null
         browserScreen.visibility = View.GONE
@@ -167,6 +207,7 @@ class MainActivity : Activity() {
 
     private fun showEditor(server: SavedServer?) {
         destroyActiveWebView()
+        monetization.setBrowsingServer(false)
         activeServer = null
         activeAddress = null
         editingServerId = server?.id
@@ -266,6 +307,7 @@ class MainActivity : Activity() {
         serverPicker.visibility = View.GONE
         serverEditor.visibility = View.GONE
         browserScreen.visibility = View.VISIBLE
+        monetization.setBrowsingServer(true)
         errorPanel.visibility = View.GONE
         activeServerName.text = server.name
         httpBadge.visibility = if (address.isHttps) View.GONE else View.VISIBLE
@@ -597,6 +639,19 @@ class MainActivity : Activity() {
         errorMessage.text = message
         errorPanel.visibility = View.VISIBLE
         pageProgress.visibility = View.GONE
+    }
+
+    private fun renderNoAdsEntitlement(unlocked: Boolean) {
+        val monetizationVisible = BuildConfig.MONETIZATION_ENABLED
+        noAdsDescription.visibility = if (monetizationVisible) View.VISIBLE else View.GONE
+        removeAdsButton.visibility = if (monetizationVisible && !unlocked) View.VISIBLE else View.GONE
+        restorePurchasesButton.visibility = if (monetizationVisible) View.VISIBLE else View.GONE
+        noAdsUnlockedMessage.visibility = if (monetizationVisible && unlocked) View.VISIBLE else View.GONE
+    }
+
+    private fun renderNoAdsPrice(localizedPrice: String?) {
+        removeAdsButton.text = localizedPrice?.let { getString(R.string.remove_ads_with_price, it) }
+            ?: getString(R.string.remove_ads)
     }
 
     private fun deleteProfile(server: SavedServer) {
