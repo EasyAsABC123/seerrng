@@ -13,8 +13,9 @@ test('adds Sonarr v5 request settings and order-scoped season mappings', async (
 
   try {
     await queryRunner.query(
-      `CREATE TABLE "media_request" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL)`
+      `CREATE TABLE "media_request" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "quotaException" boolean NOT NULL DEFAULT 0)`
     );
+    await queryRunner.query(`INSERT INTO "media_request" ("id") VALUES (1)`);
     await queryRunner.query(
       `CREATE TABLE "media_identifier" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL)`
     );
@@ -40,6 +41,12 @@ test('adds Sonarr v5 request settings and order-scoped season mappings', async (
     );
     assert.deepEqual(
       await queryRunner.query(
+        `SELECT "quotaException" FROM "media_request" WHERE "id" = 1`
+      ),
+      [{ quotaException: 0 }]
+    );
+    assert.deepEqual(
+      await queryRunner.query(
         `SELECT "seasonType", "seasonNumber", "externalSeasonNumber" FROM "media_identifier_season_mapping"`
       ),
       [{ seasonType: 'standard', seasonNumber: 1, externalSeasonNumber: 2 }]
@@ -62,6 +69,12 @@ test('adds Sonarr v5 request settings and order-scoped season mappings', async (
     assert.equal(
       await queryRunner.hasColumn('media_request', 'sonarrSeasonType'),
       false
+    );
+    assert.deepEqual(
+      await queryRunner.query(
+        `SELECT "quotaException" FROM "media_request" WHERE "id" = 1`
+      ),
+      [{ quotaException: 0 }]
     );
     assert.deepEqual(
       await queryRunner.query(

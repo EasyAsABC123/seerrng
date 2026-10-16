@@ -1,8 +1,4 @@
-import {
-  TableColumn,
-  type MigrationInterface,
-  type QueryRunner,
-} from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 const createMappingTable = (queryRunner: QueryRunner, legacy: boolean) =>
   queryRunner.query(
@@ -19,23 +15,13 @@ export class SonarrV5RequestMetadata1791960000000 implements MigrationInterface 
       if (
         !(await queryRunner.hasColumn('media_request', 'metadataLanguageId'))
       ) {
-        await queryRunner.addColumn(
-          'media_request',
-          new TableColumn({
-            name: 'metadataLanguageId',
-            type: 'integer',
-            isNullable: true,
-          })
+        await queryRunner.query(
+          'ALTER TABLE "media_request" ADD COLUMN "metadataLanguageId" integer'
         );
       }
       if (!(await queryRunner.hasColumn('media_request', 'sonarrSeasonType'))) {
-        await queryRunner.addColumn(
-          'media_request',
-          new TableColumn({
-            name: 'sonarrSeasonType',
-            type: 'varchar',
-            isNullable: true,
-          })
+        await queryRunner.query(
+          'ALTER TABLE "media_request" ADD COLUMN "sonarrSeasonType" varchar'
         );
       }
     }
