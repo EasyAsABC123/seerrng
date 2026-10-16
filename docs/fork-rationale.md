@@ -57,4 +57,5 @@ The matrix is a retirement checklist, not a claim that a particular upstream
 release already satisfies it. A fork, extension, adapter, or compatible
 service can replace a gate once the behavior is supported and the evidence is
 available. The [documentation index](./README.md) links to current operator
-guides; [NOTICE.md](../NOTICE.md) records project attribution.
+guides; [NOTICE.md](https://github.com/snapetech-org/seerrng/blob/main/NOTICE.md)
+records project attribution.

@@ -84,6 +84,16 @@ describe('GET /live/downloads', () => {
       }).on('error', reject);
     });
 
+  const waitForNoSubscribers = async () => {
+    const timeoutAt = Date.now() + 5_000;
+    while (liveDownloadMonitor.subscriberCount !== 0) {
+      if (Date.now() >= timeoutAt) {
+        assert.equal(liveDownloadMonitor.subscriberCount, 0);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  };
+
   it('rejects requests without authorized torrent IDs', async () => {
     assert.equal(await fetchStatus('/live/downloads?ids=SABnzbd_nzo_1'), 400);
     assert.equal(await fetchStatus(`/live/downloads?ids=${HASH}`), 400);
@@ -156,8 +166,7 @@ describe('GET /live/downloads', () => {
     assert.equal('clientName' in update, false);
 
     // The subscription is released when the browser disconnects.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.equal(liveDownloadMonitor.subscriberCount, 0);
+    await waitForNoSubscribers();
   });
 
   it('clears browser progress when the client stops reporting a torrent', async () => {
@@ -227,7 +236,6 @@ describe('GET /live/downloads', () => {
     });
 
     qbitReportsTorrent = true;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.equal(liveDownloadMonitor.subscriberCount, 0);
+    await waitForNoSubscribers();
   });
 });
