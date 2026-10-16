@@ -39,6 +39,42 @@ Object.defineProperty(SonarrAPI.prototype, 'getSeries', {
   configurable: true,
 });
 
+type TestSonarrEpisode = {
+  id: number;
+  seriesId: number;
+  seasonNumber: number;
+  episodeNumber: number;
+  episodeFileId: number;
+  hasFile: boolean;
+  fileResolution?: string;
+};
+let getEpisodesImpl: (
+  seriesId: number,
+  includeEpisodeFile?: boolean
+) => Promise<TestSonarrEpisode[]> = async (seriesId) => {
+  const series = (await getSeriesImpl()).find((item) => item.id === seriesId);
+  return (series?.seasons ?? []).flatMap((season) => {
+    const fileCount = season.statistics?.episodeFileCount ?? 0;
+    return Array.from({ length: fileCount }, (_, index) => ({
+      id: index + 1,
+      seriesId,
+      seasonNumber: season.seasonNumber,
+      episodeNumber: index + 1,
+      episodeFileId: index + 1,
+      hasFile: true,
+      fileResolution: '1920x1080',
+    }));
+  });
+};
+Object.defineProperty(SonarrAPI.prototype, 'getEpisodes', {
+  set() {},
+  get() {
+    return async (seriesId: number, includeEpisodeFile?: boolean) =>
+      getEpisodesImpl(seriesId, includeEpisodeFile);
+  },
+  configurable: true,
+});
+
 let getLibrarySeriesByTvdbIdImpl: (
   tvdbId: number
 ) => Promise<SonarrSeries[]> = async () => [];
@@ -210,9 +246,101 @@ function configureSonarr(overrides: Partial<SonarrSettings>[] = [{}]): void {
 describe('Sonarr Scanner', () => {
   beforeEach(() => {
     getSeriesImpl = async () => [];
+    getEpisodesImpl = async (seriesId) => {
+      const series = (await getSeriesImpl()).find(
+        (item) => item.id === seriesId
+      );
+      return (series?.seasons ?? []).flatMap((season) => {
+        const fileCount = season.statistics?.episodeFileCount ?? 0;
+        return Array.from({ length: fileCount }, (_, index) => ({
+          id: index + 1,
+          seriesId,
+          seasonNumber: season.seasonNumber,
+          episodeNumber: index + 1,
+          episodeFileId: index + 1,
+          hasFile: true,
+          fileResolution: '1920x1080',
+        }));
+      });
+    };
     getLibrarySeriesByTvdbIdImpl = async () => [];
     getShowByTvdbIdImpl = async () => fakeTmdbShow(1);
     getTvShowImpl = async () => fakeTmdbShow(1);
+  });
+
+  it('detects mixed HD and 4K episode files in a single Sonarr library', async () => {
+    const tmdbId = 890201;
+    const seriesId = 890202;
+    configureSonarr([{ syncEnabled: true }]);
+    getShowByTvdbIdImpl = async () =>
+      fakeTmdbShow(tmdbId, [
+        {
+          id: 1,
+          air_date: '2024-01-01',
+          episode_count: 2,
+          name: 'Season 1',
+          overview: '',
+          season_number: 1,
+        },
+      ]);
+    getSeriesImpl = async () => [
+      fakeSonarrSeries({
+        id: seriesId,
+        tvdbId: 890203,
+        seasons: [
+          {
+            seasonNumber: 1,
+            monitored: true,
+            statistics: {
+              episodeFileCount: 2,
+              totalEpisodeCount: 2,
+              episodeCount: 2,
+              percentOfEpisodes: 100,
+              sizeOnDisk: 0,
+            },
+          },
+        ],
+      }),
+    ];
+    getEpisodesImpl = async (requestedSeriesId, includeEpisodeFile) => {
+      assert.strictEqual(requestedSeriesId, seriesId);
+      assert.strictEqual(includeEpisodeFile, true);
+      return [
+        {
+          id: 1,
+          seriesId,
+          seasonNumber: 1,
+          episodeNumber: 1,
+          episodeFileId: 1,
+          hasFile: true,
+          fileResolution: '1920x1080',
+        },
+        {
+          id: 2,
+          seriesId,
+          seasonNumber: 1,
+          episodeNumber: 2,
+          episodeFileId: 2,
+          hasFile: true,
+          fileResolution: '3840x2160',
+        },
+      ];
+    };
+
+    await runWithMockTimers(() => sonarrScanner.run());
+
+    const media = await getRepository(Media).findOneByOrFail({
+      tmdbId,
+      mediaType: MediaType.TV,
+    });
+    const season = await getRepository(Season).findOneByOrFail({
+      media: { id: media.id },
+      seasonNumber: 1,
+    });
+    assert.strictEqual(media.status, MediaStatus.PARTIALLY_AVAILABLE);
+    assert.strictEqual(media.status4k, MediaStatus.PARTIALLY_AVAILABLE);
+    assert.strictEqual(season.status, MediaStatus.PARTIALLY_AVAILABLE);
+    assert.strictEqual(season.status4k, MediaStatus.PARTIALLY_AVAILABLE);
   });
 
   describe('per-instance availability', () => {

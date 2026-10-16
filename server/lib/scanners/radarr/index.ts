@@ -18,6 +18,7 @@ import {
   runWithServarrServiceSnapshots,
 } from '@server/lib/serviceAdmission';
 import type { RadarrSettings } from '@server/lib/settings';
+import { is4kResolution } from '@server/lib/videoResolution';
 import { getHttpErrorDetails } from '@server/utils/httpError';
 import { uniqWith } from 'lodash';
 
@@ -39,6 +40,7 @@ class RadarrScanner
   private didScan4k = false;
   private serverReturnedEmpty = false;
   private server4kReturnedEmpty = false;
+  private resolutionAwareSingleServer = false;
 
   constructor() {
     super('Radarr Scan', { bundleSize: 50 });
@@ -78,6 +80,16 @@ class RadarrScanner
           );
         }
       );
+      this.resolutionAwareSingleServer =
+        this.servers.filter((server) => server.syncEnabled).length === 1 &&
+        settings.radarr.some(
+          (server) =>
+            server.syncEnabled &&
+            !server.is4k &&
+            server.hostname === this.servers[0].hostname &&
+            server.port === this.servers[0].port &&
+            server.baseUrl === this.servers[0].baseUrl
+        );
 
       for (const server of this.servers) {
         this.currentServer = server;
@@ -99,8 +111,24 @@ class RadarrScanner
             }
           );
 
+          if (
+            this.resolutionAwareSingleServer &&
+            this.items.some(
+              (movie) =>
+                movie.hasFile &&
+                is4kResolution(movie.movieFile?.mediaInfo.resolution) === true
+            )
+          ) {
+            this.enable4kMovie = true;
+          }
+
           const server4k = this.enable4kMovie && server.is4k;
-          if (server4k) {
+          const scansBothResolutions =
+            this.resolutionAwareSingleServer && this.enable4kMovie;
+          if (scansBothResolutions) {
+            this.didScanStandard = true;
+            this.didScan4k = true;
+          } else if (server4k) {
             this.didScan4k = true;
           } else {
             this.didScanStandard = true;
@@ -111,6 +139,10 @@ class RadarrScanner
               this.server4kReturnedEmpty = true;
             } else {
               this.serverReturnedEmpty = true;
+            }
+            if (scansBothResolutions) {
+              this.serverReturnedEmpty = true;
+              this.server4kReturnedEmpty = true;
             }
             this.log(
               `Radarr server ${server.name} returned no movies. Orphan cleanup for this profile type will be skipped.`,
@@ -124,15 +156,30 @@ class RadarrScanner
             (movie) => Number.isSafeInteger(movie.tmdbId) && movie.tmdbId > 0
           );
           if (this.items.length > 0 && hasCompleteMediaIdentity) {
-            await runWithServarrServiceSnapshot('radarr', server, async () =>
-              this.markMissingVideoServiceStatusesUnknown({
-                serviceType: 'radarr',
-                serverId: server.id,
-                format: server4k ? '4k' : 'standard',
-                mediaType: MediaType.MOVIE,
-                tmdbIds: new Set(this.items.map(({ tmdbId }) => tmdbId)),
-              })
-            );
+            const qualityTmdbIds = {
+              standard: new Set<number>(),
+              '4k': new Set<number>(),
+            };
+            for (const movie of this.items) {
+              qualityTmdbIds[
+                this.getMovieIs4k(movie, server) ? '4k' : 'standard'
+              ].add(movie.tmdbId);
+            }
+
+            const formats = scansBothResolutions
+              ? (['standard', '4k'] as const)
+              : ([server4k ? '4k' : 'standard'] as const);
+            for (const format of formats) {
+              await runWithServarrServiceSnapshot('radarr', server, async () =>
+                this.markMissingVideoServiceStatusesUnknown({
+                  serviceType: 'radarr',
+                  serverId: server.id,
+                  format,
+                  mediaType: MediaType.MOVIE,
+                  tmdbIds: qualityTmdbIds[format],
+                })
+              );
+            }
           }
         } else {
           this.log(`Sync not enabled. Skipping Radarr server: ${server.name}`);
@@ -143,12 +190,12 @@ class RadarrScanner
       // If any server is skipped, we can't distinguish truly orphaned media from
       // media that exists on an unscanned server (e.g. separate instances for
       // anime, regional content, or different languages).
-      const allStandardScanned = this.servers
-        .filter((s) => !this.enable4kMovie || !s.is4k)
-        .every((s) => s.syncEnabled);
-      const all4kScanned = this.servers
-        .filter((s) => this.enable4kMovie && s.is4k)
-        .every((s) => s.syncEnabled);
+      const allStandardScanned = this.serversForQuality(false).every(
+        (server) => server.syncEnabled
+      );
+      const all4kScanned = this.serversForQuality(true).every(
+        (server) => server.syncEnabled
+      );
 
       if (!allStandardScanned) {
         this.didScanStandard = false;
@@ -168,13 +215,14 @@ class RadarrScanner
         await this.resolveDeferredMovieStatusResets(false, (callback) =>
           runWithServarrServiceSnapshots(
             'radarr',
-            this.servers.filter(
-              (server) => !this.enable4kMovie || !server.is4k
+            this.serversForQuality(false).filter(
+              (server) => server.syncEnabled
             ),
             callback,
             {
               requireExactAuthoritySet: true,
-              includeCurrent: (server) => !this.enable4kMovie || !server.is4k,
+              includeCurrent: (server) =>
+                server.syncEnabled && this.serverMatchesQuality(server, false),
             }
           )
         );
@@ -183,11 +231,12 @@ class RadarrScanner
         await this.resolveDeferredMovieStatusResets(true, (callback) =>
           runWithServarrServiceSnapshots(
             'radarr',
-            this.servers.filter((server) => this.enable4kMovie && server.is4k),
+            this.serversForQuality(true).filter((server) => server.syncEnabled),
             callback,
             {
               requireExactAuthoritySet: true,
-              includeCurrent: (server) => this.enable4kMovie && server.is4k,
+              includeCurrent: (server) =>
+                server.syncEnabled && this.serverMatchesQuality(server, true),
             }
           )
         );
@@ -206,7 +255,7 @@ class RadarrScanner
   }
 
   private async processRadarrMovie(radarrMovie: RadarrMovie): Promise<void> {
-    const server4k = this.enable4kMovie && this.currentServer.is4k;
+    const server4k = this.getMovieIs4k(radarrMovie, this.currentServer);
     if (server4k) {
       this.scanned4kTmdbIds.add(radarrMovie.tmdbId);
     } else {
@@ -258,13 +307,34 @@ class RadarrScanner
     }
   }
 
+  private serverMatchesQuality(server: RadarrSettings, is4k: boolean): boolean {
+    return (
+      this.resolutionAwareSingleServer ||
+      (this.enable4kMovie && server.is4k) === is4k
+    );
+  }
+
+  private serversForQuality(is4k: boolean): RadarrSettings[] {
+    return this.servers.filter((server) =>
+      this.serverMatchesQuality(server, is4k)
+    );
+  }
+
+  private getMovieIs4k(movie: RadarrMovie, server: RadarrSettings): boolean {
+    if (this.resolutionAwareSingleServer && movie.hasFile) {
+      const detected = is4kResolution(movie.movieFile?.mediaInfo.resolution);
+      if (detected !== undefined) return detected;
+    }
+
+    return this.enable4kMovie && server.is4k;
+  }
+
   private async existsInAnyServer(
     tmdbId: number,
     is4k: boolean
   ): Promise<boolean> {
-    const servers = this.servers.filter(
-      (server) =>
-        server.syncEnabled && (this.enable4kMovie && server.is4k) === is4k
+    const servers = this.serversForQuality(is4k).filter(
+      (server) => server.syncEnabled
     );
 
     for (const server of servers) {
@@ -275,7 +345,18 @@ class RadarrScanner
         });
         const movies = await api.getLibraryMoviesByTmdbId(tmdbId);
 
-        if (movies.some((movie) => movie.tmdbId === tmdbId)) {
+        if (
+          movies.some((movie) => {
+            if (movie.tmdbId !== tmdbId) return false;
+            if (!this.resolutionAwareSingleServer || !movie.hasFile) {
+              return true;
+            }
+            const detected = is4kResolution(
+              movie.movieFile?.mediaInfo.resolution
+            );
+            return detected === undefined || detected === is4k;
+          })
+        ) {
           return true;
         }
       } catch (e) {
@@ -305,8 +386,8 @@ class RadarrScanner
             const changed = await runMediaEntityMutation(media, () =>
               runWithServarrServiceSnapshots(
                 'radarr',
-                this.servers.filter(
-                  (server) => server.syncEnabled && !server.is4k
+                this.serversForQuality(false).filter(
+                  (server) => server.syncEnabled
                 ),
                 async () => {
                   const current = await mediaRepository.findOneBy({
@@ -322,7 +403,8 @@ class RadarrScanner
                 {
                   requireExactAuthoritySet: true,
                   includeCurrent: (server) =>
-                    server.syncEnabled && !server.is4k,
+                    server.syncEnabled &&
+                    this.serverMatchesQuality(server, false),
                 }
               )
             );
@@ -358,8 +440,8 @@ class RadarrScanner
             const changed = await runMediaEntityMutation(media, () =>
               runWithServarrServiceSnapshots(
                 'radarr',
-                this.servers.filter(
-                  (server) => server.syncEnabled && server.is4k
+                this.serversForQuality(true).filter(
+                  (server) => server.syncEnabled
                 ),
                 async () => {
                   const current = await mediaRepository.findOneBy({
@@ -374,7 +456,9 @@ class RadarrScanner
                 },
                 {
                   requireExactAuthoritySet: true,
-                  includeCurrent: (server) => server.syncEnabled && server.is4k,
+                  includeCurrent: (server) =>
+                    server.syncEnabled &&
+                    this.serverMatchesQuality(server, true),
                 }
               )
             );

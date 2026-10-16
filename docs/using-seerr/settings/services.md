@@ -41,7 +41,7 @@ If you have separate 4K Radarr/Sonarr servers, you need to designate default 4K 
 
 #### 4K Server
 
-Only select this option if you have separate non-4K and 4K servers. If you only have a single Radarr/Sonarr server, do _not_ check this box!
+Only select this option if you have separate non-4K and 4K servers. If you have one enabled Radarr/Sonarr instance, leave this unchecked; SeerrNG uses the reported resolution of installed movie and episode files to keep HD and 4K availability separate.
 
 #### Server Name
 

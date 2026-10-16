@@ -259,6 +259,10 @@ const sanitizeSonarrEpisode = (value: unknown): EpisodeResult | undefined => {
   const id = integer(value.id);
   const seasonNumber = integer(value.seasonNumber);
   if (id <= 0 || seasonNumber < 0) return undefined;
+  const episodeFile = isRecord(value.episodeFile) ? value.episodeFile : {};
+  const mediaInfo = isRecord(episodeFile.mediaInfo)
+    ? episodeFile.mediaInfo
+    : {};
   return {
     seriesId: integer(value.seriesId),
     episodeFileId: integer(value.episodeFileId),
@@ -272,6 +276,7 @@ const sanitizeSonarrEpisode = (value: unknown): EpisodeResult | undefined => {
     monitored: boolean(value.monitored),
     absoluteEpisodeNumber: integer(value.absoluteEpisodeNumber),
     unverifiedSceneNumbering: boolean(value.unverifiedSceneNumbering),
+    fileResolution: text(mediaInfo.resolution) || undefined,
     id,
   };
 };
@@ -388,6 +393,7 @@ interface EpisodeResult {
   monitored: boolean;
   absoluteEpisodeNumber: number;
   unverifiedSceneNumbering: boolean;
+  fileResolution?: string;
   id: number;
 }
 
@@ -1448,13 +1454,21 @@ class SonarrAPI extends ServarrBase<{
     }
   }
 
-  public async getEpisodes(seriesId: number): Promise<EpisodeResult[]> {
+  public async getEpisodes(
+    seriesId: number,
+    includeEpisodeFile = false
+  ): Promise<EpisodeResult[]> {
     try {
       const response = await this.request<EpisodeResult[]>(
         'GET',
         '/episode',
         undefined,
-        { params: { seriesId } }
+        {
+          params: {
+            seriesId,
+            ...(includeEpisodeFile ? { includeEpisodeFile: true } : {}),
+          },
+        }
       );
       return sanitizeServarrRecordArray<Record<string, unknown>>(
         response.data,

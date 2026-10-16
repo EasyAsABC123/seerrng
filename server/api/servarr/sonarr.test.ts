@@ -67,6 +67,44 @@ function getAxios(sonarr: SonarrAPI): AxiosInstance {
   return (sonarr as unknown as { axios: AxiosInstance }).axios;
 }
 
+describe('SonarrAPI episode file resolution', () => {
+  afterEach(() => mock.restoreAll());
+
+  it('requests embedded episode files and keeps only the sanitized resolution', async () => {
+    const api = buildSonarr();
+    const get = mock.method(getAxios(api), 'get', async () => ({
+      data: [
+        {
+          id: 11,
+          seriesId: 42,
+          episodeFileId: 9,
+          seasonNumber: 1,
+          episodeNumber: 1,
+          hasFile: true,
+          episodeFile: {
+            mediaInfo: {
+              resolution: '3840x2160',
+              providerSecret: 'hidden',
+            },
+          },
+          providerSecret: 'hidden',
+        },
+      ],
+    }));
+
+    const episodes = await api.getEpisodes(42, true);
+
+    assert.equal(episodes[0].fileResolution, '3840x2160');
+    assert.ok(!('providerSecret' in episodes[0]));
+    const options = get.mock.calls[0].arguments[1] as
+      { params?: Record<string, unknown> } | undefined;
+    assert.deepEqual(options?.params, {
+      seriesId: 42,
+      includeEpisodeFile: true,
+    });
+  });
+});
+
 describe('Sonarr API version selection', () => {
   afterEach(() => mock.restoreAll());
 
