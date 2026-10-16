@@ -803,7 +803,6 @@ class MainActivity : Activity() {
             current.destroy()
         }
         webView = null
-        webContainer.removeAllViews()
         errorPanel.visibility = View.GONE
         pageProgress.visibility = View.GONE
     }

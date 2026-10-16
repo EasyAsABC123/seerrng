@@ -29,6 +29,7 @@ class MonetizationScreenTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("saved_servers", Context.MODE_PRIVATE).edit().clear().commit()
         context.getSharedPreferences("seerrng_monetization", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("seerrng_trial_usage", Context.MODE_PRIVATE).edit().clear().commit()
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
 

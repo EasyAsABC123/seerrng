@@ -93,7 +93,7 @@ class CappedUseScreenTest {
         )
 
         repeat(BuildConfig.FREE_SESSION_LIMIT) { sessionIndex ->
-            onView(withId(R.id.rowConnect)).perform(click())
+            connectServerAt(0)
             if (sessionIndex == 0) onView(withText("Connect over HTTP")).perform(click())
             onView(withId(R.id.browserScreen)).check(matches(isDisplayed()))
             waitForUsedSessions(sessionIndex + 1)
@@ -120,7 +120,7 @@ class CappedUseScreenTest {
         scenario.close()
         scenario = ActivityScenario.launch(MainActivity::class.java)
         onView(withId(R.id.trialUsageStatus)).check(matches(withText(containsString("free sessions are used"))))
-        onView(withId(R.id.rowConnect)).perform(click())
+        connectServerAt(0)
         onView(withId(R.id.serverPicker)).check(matches(isDisplayed()))
         onView(withId(R.id.browserScreen)).check(matches(withEffectiveVisibility(Visibility.GONE)))
         onView(withText("Later")).perform(click())
