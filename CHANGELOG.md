@@ -202,6 +202,69 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.62.0](https://github.com/snapetech-org/seerrng/compare/v3.61.0..v3.62.0) - 2026-10-16
+
+### User-facing changes
+
+#### Added
+
+- **Android:** The SeerrNG Android app prompts for a server URL on first launch, then shows a saved list with isolated sign-ins for each server. File downloads use Android's Download Manager.
+  - **Action required:** Download the signed Android APK from GitHub Releases and add your SeerrNG server address.
+- **Media:** SeerrNG now has an opt-in Adult category backed by Whisparr scene discovery, library status, requests, and a separate permission and quota path.
+- **Android:** The Android app now supports consent-managed, non-personalized banner ads while connected to a saved server, plus a one-time Google Play purchase to remove ads and restore ownership. Google Play displays the configured localized price. Release monetization remains disabled until Play Billing and AdMob are configured.
+  - **Action required:** Configure AdMob and Play Billing repository variables to enable release monetization.
+
+#### Changed
+
+- **Ci:** SeerrNG Actions validation and image publishing now run on GitHub-hosted runners. The automatic deployment job for seerr.home has been removed; deploy to that host using the existing manual procedure.
+
+#### Fixed
+
+- **Android:** The Android client now parses IPv6 hosts and explicit ports correctly when validating download URLs, preserving server matching for reverse-proxy paths.
+  - **Action required:** Download files from an IPv6 SeerrNG server.
+- **Settings:** The Sportarr quality-profile requirement no longer disables the connection test needed to load profiles, so a new server can be configured in one pass.
+  - **Action required:** Test a new Sportarr connection before selecting its quality profile.
+- **Android:** The Android client now checks for the Google Play Store before starting Play Billing. Without the store, purchase and restore remain available and report that Play Billing is unavailable instead of attempting a broken checkout.
+  - **Action required:** Use Play Billing on a device with Google Play installed.
+
+### 🚀 Features
+- *(android)* Link the published privacy policy - ([f51317f](https://github.com/snapetech-org/seerrng/commit/f51317fd31625d384e755965fa01a403d876b64f))
+- *(android)* Harden monetization lifecycle - ([622a1bb](https://github.com/snapetech-org/seerrng/commit/622a1bbf62d95b13f316b2aba7c254e2fd3f83c0))
+- *(android)* Add ads and lifetime no-ads purchase - ([8ecf4fe](https://github.com/snapetech-org/seerrng/commit/8ecf4fe32705752c62f1f5ca2adeeb2b4e086229))
+- *(android)* Add multi-server SeerrNG APK client - ([f915137](https://github.com/snapetech-org/seerrng/commit/f915137294f1d600bba70722184011b15b812e04))
+- Add Whisparr adult media category - ([d53c7e7](https://github.com/snapetech-org/seerrng/commit/d53c7e759bee4e97f3d481b8a26323ae4a913e77))
+
+### 🐛 Bug Fixes
+- *(android)* Verify emulator from SDK directory - ([b57ae3c](https://github.com/snapetech-org/seerrng/commit/b57ae3c43008392ee0959d03dcf5877dd4b43b7e))
+- *(android)* Handle missing Play Store for billing - ([731b309](https://github.com/snapetech-org/seerrng/commit/731b309825552378e799ca09d54027457d3829cf))
+- *(android)* Support IPv6 download URLs - ([4989b87](https://github.com/snapetech-org/seerrng/commit/4989b87158f40ad8ccab472ad696853b1208c784))
+- *(android)* Harden SDK workflow setup - ([e4800d1](https://github.com/snapetech-org/seerrng/commit/e4800d1fb512b72cd2d9158f5e2d130dc658a0d5))
+- *(ci)* Grant Android emulator KVM access - ([646e0b8](https://github.com/snapetech-org/seerrng/commit/646e0b8d2d875b52d4abbcb0357c4561a16c3910))
+- Stabilize Android and Adult CI fixtures - ([6aedde5](https://github.com/snapetech-org/seerrng/commit/6aedde53086e197bfe630e9b52a27fd525dfe11d))
+- Complete Adult category integration checks - ([fe068ce](https://github.com/snapetech-org/seerrng/commit/fe068ceca53139b60b486e93ce6573a8fe0ddd81))
+- Enforce Adult request access boundaries - ([06abe8a](https://github.com/snapetech-org/seerrng/commit/06abe8a880201772642cafe859c864325045fc31))
+- Unblock Sportarr setup and refresh release checks - ([77a5d2d](https://github.com/snapetech-org/seerrng/commit/77a5d2d1e8147fa970988c1abc927f555fe63c45))
+
+### 📖 Documentation
+- *(android)* Document signed APK release process - ([696f9ac](https://github.com/snapetech-org/seerrng/commit/696f9ac953d8cf4378a7d4896dd4832ec4ecfea8))
+- Note Android billing availability fix - ([a5c443f](https://github.com/snapetech-org/seerrng/commit/a5c443f6898c828b41cb41745ed6d63af8c9e24b))
+
+### 🎨 Styling
+- *(ci)* Format Android KVM workflow test - ([76f8cb9](https://github.com/snapetech-org/seerrng/commit/76f8cb9a94170c8ffdb06386ba752d3b1a41bf6a))
+
+### 🧪 Testing
+- *(ci)* Assert Android KVM failure diagnostics - ([e36fbbe](https://github.com/snapetech-org/seerrng/commit/e36fbbe774bfe7787132965e76586f072d191307))
+- *(settings)* Cover Sportarr profile bootstrap - ([7832f46](https://github.com/snapetech-org/seerrng/commit/7832f46af52a62bea0911ea0cea91924d55ae048))
+- Scope auto-request fixture user in Cypress - ([79bc32f](https://github.com/snapetech-org/seerrng/commit/79bc32f161ba2447bc47eb93eea79de475e1a6a5))
+- Stabilize auto-request settings validation - ([dd38d24](https://github.com/snapetech-org/seerrng/commit/dd38d245c619340cd17ef7be0018a9382850d9db))
+
+### ⚙️ Miscellaneous Tasks
+- *(android)* Bound emulator startup wait - ([9aa4013](https://github.com/snapetech-org/seerrng/commit/9aa40130534ac7de085a226d2a27d9f5de5517ad))
+- Route container builds to kspld0 - ([06f200c](https://github.com/snapetech-org/seerrng/commit/06f200c2c5fdb6efda0c62d525f4ec02ca239a2a))
+- Retire private GitHub Actions runners - ([d073243](https://github.com/snapetech-org/seerrng/commit/d0732434ddd1ed2893cf4d867817946ef76c8641))
+
 ## [3.61.0](https://github.com/snapetech-org/seerrng/compare/v3.60.0..v3.61.0) - 2026-10-16
 
 ### User-facing changes
