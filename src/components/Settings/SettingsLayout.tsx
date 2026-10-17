@@ -372,12 +372,50 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
     focusSetting(element);
   };
 
+  const navigateToSettingsSearchDestination = (
+    destination: SettingsSearchDestination
+  ) => {
+    if (dirtyRef.current && destination.route !== router.pathname) {
+      setPendingSettingsSearch(destination);
+      setShowUnsavedChanges(true);
+      return;
+    }
+
+    void router.push({
+      pathname: destination.route,
+      query: {
+        settingsSearch: destination.query,
+        ...(destination.targetId
+          ? { settingsSearchTarget: destination.targetId }
+          : {}),
+      },
+    });
+  };
+
   const handleSettingsSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = keywordSearch.trim();
     if (!query) return;
 
     const normalizedQuery = query.toLocaleLowerCase();
+    const indexedTarget = settingsSearchTargets.find(
+      (target) =>
+        (!target.adminOnly || canAdminister) &&
+        target.terms.some(
+          (term) =>
+            term.includes(normalizedQuery) || normalizedQuery.includes(term)
+        )
+    );
+
+    if (indexedTarget) {
+      navigateToSettingsSearchDestination({
+        route: indexedTarget.route,
+        query,
+        targetId: indexedTarget.targetId,
+      });
+      return;
+    }
+
     const matchingLabel = Array.from(
       contentRef.current?.querySelectorAll<HTMLElement>(
         '[data-settings-search], label, legend, h2, h3, h4'
@@ -397,44 +435,15 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
       }
     }
 
-    const indexedTarget = settingsSearchTargets.find(
-      (target) =>
-        (!target.adminOnly || canAdminister) &&
-        target.terms.some(
-          (term) =>
-            term.includes(normalizedQuery) || normalizedQuery.includes(term)
-        )
-    );
     const matchingRoute = settingsRoutes.find(
       (route) =>
         (!route.requiredPermission || canAdminister) &&
         route.text.toLocaleLowerCase().includes(normalizedQuery)
     );
-    const destination = indexedTarget
-      ? {
-          route: indexedTarget.route,
-          query,
-          targetId: indexedTarget.targetId,
-        }
-      : matchingRoute
-        ? { route: matchingRoute.route, query }
-        : undefined;
-
-    if (!destination) return;
-    if (dirtyRef.current && destination.route !== router.pathname) {
-      setPendingSettingsSearch(destination);
-      setShowUnsavedChanges(true);
-      return;
-    }
-
-    void router.push({
-      pathname: destination.route,
-      query: {
-        settingsSearch: destination.query,
-        ...(destination.targetId
-          ? { settingsSearchTarget: destination.targetId }
-          : {}),
-      },
+    if (!matchingRoute) return;
+    navigateToSettingsSearchDestination({
+      route: matchingRoute.route,
+      query,
     });
   };
 
