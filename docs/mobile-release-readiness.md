@@ -54,7 +54,21 @@ An iOS app cannot use a self-signed certificate for ordinary installation. Ad Ho
 - `.github/workflows/ios.yml` runs iOS unit and UI tests on GitHub's macOS 26 runner and retains the Simulator package plus test results.
 - Main-branch candidate names use the application version from `package.json` plus the workflow run number, so the package version follows each SeerrNG release-preparation commit. Tagged releases use the exact release tag.
 - Tagged releases validate checksums and attach the Android APK/AAB and iOS Simulator package. Signed iOS IPAs are conditional on the signing variables and secrets.
-- The standard release workflow only builds tags reachable from `main`; pushing this feature branch does not create a public release.
+- The standard release workflow only builds tags reachable from `main`. The current mobile test packages are also attached to a dedicated prerelease, so users can download them without waiting for a server release.
+
+### Current GitHub mobile prerelease
+
+The current tested packages are attached to the [SeerrNG mobile prerelease](https://github.com/snapetech-org/seerrng/releases/tag/mobile-v3.63.0-ci.33), built from `main` commit `32cf348bb5e768a38fd5e9e2a865bde4cc7ccab7`. Its release assets are permanent downloads with SHA-256 sidecars; the corresponding Actions artifacts are temporary.
+
+| Package | Version | SHA-256 | Details |
+| --- | --- | --- | --- |
+| Android APK | `3.63.0-ci.33` | `7ba3603a2328bf0c89f0bcd9ef4ecf5054ceb7be924f23f19bef12fcb8f33759` | Ads-mode direct-install package, signed with the stable project key; APK Signature Scheme v2 verified. |
+| Android App Bundle | `3.63.0-ci.33` | `1d1406aeac31a27780e0f22bb7cad1c770a0c44a0a43c0437cd91b29ca54df6c` | Signed with the project's upload key for a future Play upload. |
+| iOS Simulator ZIP | `3.63.0` build `18` | `6109f55cdca4eafa90937047b28783959a5656006e79f879b05372cd4f3848c8` | Bundle ID `org.snapetech.seerrng.ios`; Simulator-only, not an iPhone/iPad IPA. |
+
+The [Android Actions run](https://github.com/snapetech-org/seerrng/actions/runs/38994528628) passed unit and API 36 emulator tests, verified the release signatures, then installed and launched the signed APK. The [iOS Actions run](https://github.com/snapetech-org/seerrng/actions/runs/38994509076) passed all 10 unit tests and 3 UI tests and built the Simulator app. All six files were downloaded from the published release and their sidecars verified against the package hashes above.
+
+This is a testing prerelease, not a store-approved release. Android is packaged in ads mode, but production AdMob identifiers and Play Billing products are not configured, so live ads and purchases have not been verified. The iOS package is not device-installable until Apple distribution signing assets are configured.
 
 ## Monetization and trial choice
 

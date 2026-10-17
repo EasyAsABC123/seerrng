@@ -269,10 +269,22 @@ This repo includes release workflows and packaging metadata for tarball, Debian,
 
 ### Android APK
 
-The Android app is a client for servers you already run. Its signed APK and
-SHA-256 checksum are attached to GitHub Releases. See the
-[Android app guide](./docs/getting-started/android-app.md) for setup,
-installation, and connection details.
+The Android app is a client for servers you already run. Add one or more server
+URLs in the app; see the [Android app guide](./docs/getting-started/android-app.md)
+for setup and connection details.
+
+The current tested mobile packages are attached to the
+[SeerrNG mobile prerelease](https://github.com/snapetech-org/seerrng/releases/tag/mobile-v3.63.0-ci.33):
+
+| Package | Download | SHA-256 |
+| --- | --- | --- |
+| Android APK for direct install (stable project signing key) | [APK](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.33-android.apk) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.33-android.sha256) |
+| Android App Bundle for Google Play upload | [AAB](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.33-android.aab) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.33-android-aab.sha256) |
+| iOS Simulator build (not an iPhone/iPad installable IPA) | [Simulator ZIP](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.18-ios-simulator.zip) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.18-ios-simulator.sha256) |
+
+These are prerelease test builds, not store-approved releases. See the
+[mobile release readiness guide](./docs/mobile-release-readiness.md) for
+signing details, test results, store status, and remaining release work.
 
 ## Required Setup
 
