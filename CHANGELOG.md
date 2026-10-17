@@ -204,6 +204,66 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.63.0](https://github.com/snapetech-org/seerrng/compare/v3.62.0..v3.63.0) - 2026-10-17
+
+### User-facing changes
+
+#### Added
+
+- **Media:** Adult discovery now pages through Whisparr libraries, preserves the active search and server when returning from a scene page, and shows clear request states across destinations. Archive scenes can still be requested through the default server when advanced destination controls are off.
+
+#### Changed
+
+- **Media:** Whisparr Adult discovery now includes scene artwork, studio and performer details, and clearer per-server availability and request status.
+
+#### Fixed
+
+- **Settings:** Jobs & Cache now names scheduled jobs that were previously labeled “Unknown Job,” including external request-list sync, Navidrome scanning, and the requested episode queue.
+- **Interface:** Noninteractive tooltips no longer block clicks on the controls they describe.
+
+### 🚀 Features
+- *(adult)* Enrich scene discovery and requests - ([d4b6603](https://github.com/snapetech-org/seerrng/commit/d4b66036a41934066c14354f79a3ef91e0c0f964))
+- *(adult)* Integrate Whisparr category - ([f74a2eb](https://github.com/snapetech-org/seerrng/commit/f74a2ebb4d3412a34a0ec3e7b8c5b5beba429718))
+- *(android)* Add capped trial QA mode - ([c53afc5](https://github.com/snapetech-org/seerrng/commit/c53afc56f5d9b8722c2cad62d603a8b090ac19c4))
+- *(android)* Add selectable capped-use mode - ([5fea020](https://github.com/snapetech-org/seerrng/commit/5fea0205791f0839b0ffa8a947a948362a8db2ba))
+- Refine Adult Whisparr browsing and request flow - ([429c7a4](https://github.com/snapetech-org/seerrng/commit/429c7a4b8b0dad7303a05239ce968014a5df7741))
+- Enrich Whisparr Adult discovery and requests - ([cd8cabd](https://github.com/snapetech-org/seerrng/commit/cd8cabde0fba2c60bae60f60916b1dc496975cf4))
+
+### 🐛 Bug Fixes
+- *(android)* Include tested capped-trial follow-ups - ([740ed87](https://github.com/snapetech-org/seerrng/commit/740ed870605293fe2d4e88dff4427beef1f3b568))
+- *(android)* Count only successful capped sessions - ([5f62ea8](https://github.com/snapetech-org/seerrng/commit/5f62ea8ace65cbc8874ad094a8ddbf0938b4bb9a))
+- *(android)* Preserve server order and ignore failed loads - ([7e2c37b](https://github.com/snapetech-org/seerrng/commit/7e2c37b8233fcc6d167a918679a8d6567f60d606))
+- *(android)* Retain error panel and isolate trial tests - ([301e3b8](https://github.com/snapetech-org/seerrng/commit/301e3b8edf27552319bdf1489927278789c86521))
+- *(android)* Generate free session limit as Java int - ([9eaa1ba](https://github.com/snapetech-org/seerrng/commit/9eaa1ba419b9b0d49f57a8e92e0fe73937503eff))
+- *(release)* Keep tagged notes immutable - ([b562e1f](https://github.com/snapetech-org/seerrng/commit/b562e1f57d919c8210b064af8bc2618fcff7b71b))
+- *(release-notes)* Remove unnecessary scheduled-job action - ([69a2204](https://github.com/snapetech-org/seerrng/commit/69a22047df3a492330971eb4130aa3d2465368a7))
+- *(release-notes)* Preserve shipped Adult fragment - ([0ad7e96](https://github.com/snapetech-org/seerrng/commit/0ad7e968db5b55097b6c2d04265e7231e2c3b06b))
+- *(settings)* Label every scheduled job - ([690bc63](https://github.com/snapetech-org/seerrng/commit/690bc637e625e9de34813b11ce5c919dafe29f77))
+- *(ui)* Keep passive tooltips off hit targets - ([6105f42](https://github.com/snapetech-org/seerrng/commit/6105f42ce8be138b5d82fbc0cd91b9e8b227ebc2))
+- *(validation)* Handle absent optional platform links - ([e115798](https://github.com/snapetech-org/seerrng/commit/e115798c648318d03b4741535bb0c9fd64de8774))
+- *(validation)* Recognize nested governance headings - ([e8960d0](https://github.com/snapetech-org/seerrng/commit/e8960d09712ba38ace63841a8a3bde8d0a4aa415))
+
+### 🎨 Styling
+- *(adult)* Match route formatting - ([d239b45](https://github.com/snapetech-org/seerrng/commit/d239b45473d1bc44f51a5527b3fe04dba53413e4))
+- *(validation)* Format runner updates - ([dd20648](https://github.com/snapetech-org/seerrng/commit/dd20648751b7ca5463af51dbb6aadad96b352650))
+
+### 🧪 Testing
+- *(android)* Dismiss cap dialog before checking picker - ([db2b5ec](https://github.com/snapetech-org/seerrng/commit/db2b5ec584f762c961513bd63270f2348fdbf6e4))
+- *(android)* Locate WebView by type in container - ([51b67a5](https://github.com/snapetech-org/seerrng/commit/51b67a58faf96ad77d0a9e5aa13bae5e367df88f))
+- *(ci)* Include adult browser case in hosted plan - ([ab7ad33](https://github.com/snapetech-org/seerrng/commit/ab7ad336174ec6673caa86d1a6314724409dc738))
+- *(cypress)* Stabilize touch rating card fixture - ([d877668](https://github.com/snapetech-org/seerrng/commit/d877668128083306d53c457ad7525111198942c9))
+- *(ui)* Assert tooltip pointer boundaries - ([2da55b4](https://github.com/snapetech-org/seerrng/commit/2da55b4b7a2618043079ff165980b1403e020d9c))
+- Fix service and migration test harness - ([5267473](https://github.com/snapetech-org/seerrng/commit/5267473b4cf2ab31557371c04f73b241bdd563d3))
+
+### ⚙️ Miscellaneous Tasks
+- *(android)* Retain instrumentation test reports - ([9de51f5](https://github.com/snapetech-org/seerrng/commit/9de51f54b31d97862e294bc597bfea9e880d44a2))
+- *(android)* Set KVM device permissions - ([8cba6a0](https://github.com/snapetech-org/seerrng/commit/8cba6a09bc982ed8cd491c5fe39e7bd4a0f30fdb))
+- *(android)* Grant emulator KVM access - ([c32a0fc](https://github.com/snapetech-org/seerrng/commit/c32a0fcdf43ef3b71a3798b1ccbe0c61cc4af55a))
+- *(android)* Align emulator AVD directory - ([f57a5ab](https://github.com/snapetech-org/seerrng/commit/f57a5abf163e00886c01e6283257ddf3600eba4f))
+- Sync latest main before Adult merge - ([e707f32](https://github.com/snapetech-org/seerrng/commit/e707f32e5311e8f36765dcd4185a2628fe5b529e))
+
 ## [3.62.0](https://github.com/snapetech-org/seerrng/compare/v3.61.0..v3.62.0) - 2026-10-16
 
 ### User-facing changes
