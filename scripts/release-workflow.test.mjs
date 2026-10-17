@@ -809,6 +809,21 @@ test('release assets build supported native archive platforms', () => {
     ),
     'utf8'
   );
+  const iosProject = fs.readFileSync(
+    path.join(rootDirectory, 'ios/SeerrNG.xcodeproj/project.pbxproj'),
+    'utf8'
+  );
+  assert.match(
+    iosProject,
+    /AA0000000000000000000003 \/\* Debug \*\/ = \{isa = XCBuildConfiguration; buildSettings = \{[^}]*ENABLE_TESTABILITY = YES;/u
+  );
+  const iosSigningScript = fs.readFileSync(
+    path.join(rootDirectory, 'scripts/build-ios-signed-ipa.sh'),
+    'utf8'
+  );
+  assert.match(iosSigningScript, /export_method='ad-hoc'/u);
+  assert.match(iosSigningScript, /export_method='app-store-connect'/u);
+  assert.match(iosSigningScript, /"method": export_method/u);
   assert.match(
     iosScheme,
     /BlueprintIdentifier\s*=\s*"A10000000000000000000002"[\s\S]*?BuildableName\s*=\s*"SeerrNG\.app"/u

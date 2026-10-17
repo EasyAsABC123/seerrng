@@ -30,8 +30,16 @@ for name in IOS_DISTRIBUTION_CERTIFICATE_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PAS
   fi
 done
 case "$kind" in
-  adhoc) profile_secret='IOS_ADHOC_PROVISIONING_PROFILE_BASE64'; output_kind='adhoc' ;;
-  app-store-connect) profile_secret='IOS_APPSTORE_PROVISIONING_PROFILE_BASE64'; output_kind='appstore' ;;
+  adhoc)
+    profile_secret='IOS_ADHOC_PROVISIONING_PROFILE_BASE64'
+    output_kind='adhoc'
+    export_method='ad-hoc'
+    ;;
+  app-store-connect)
+    profile_secret='IOS_APPSTORE_PROVISIONING_PROFILE_BASE64'
+    output_kind='appstore'
+    export_method='app-store-connect'
+    ;;
 esac
 if [[ -z "${!profile_secret:-}" ]]; then
   echo "Missing required iOS signing secret: $profile_secret" >&2
@@ -115,13 +123,13 @@ security default-keychain -d user -s "$keychain"
 security import "$certificate" -k "$keychain" -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
 
-python3 - "$kind" "$IOS_TEAM_ID" "$profile_name" "$bundle_id" "$build_dir/ExportOptions.plist" <<'PY'
+python3 - "$export_method" "$IOS_TEAM_ID" "$profile_name" "$bundle_id" "$build_dir/ExportOptions.plist" <<'PY'
 import plistlib
 import sys
 
-kind, team, profile, bundle_id, path = sys.argv[1:]
+export_method, team, profile, bundle_id, path = sys.argv[1:]
 document = {
-    "method": kind,
+    "method": export_method,
     "signingStyle": "manual",
     "teamID": team,
     "provisioningProfiles": {bundle_id: profile},
