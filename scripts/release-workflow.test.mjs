@@ -811,16 +811,17 @@ test('release assets build supported native archive platforms', () => {
   );
   assert.match(
     iosScheme,
-    /BlueprintIdentifier="A10000000000000000000002" BuildableName="SeerrNG\.app"/u
+    /BlueprintIdentifier\s*=\s*"A10000000000000000000002"[\s\S]*?BuildableName\s*=\s*"SeerrNG\.app"/u
   );
   assert.match(
     iosScheme,
-    /BlueprintIdentifier="A10000000000000000000003" BuildableName="SeerrNGTests\.xctest"/u
+    /BlueprintIdentifier\s*=\s*"A10000000000000000000003"[\s\S]*?BuildableName\s*=\s*"SeerrNGTests\.xctest"/u
   );
   assert.match(
     iosScheme,
-    /BlueprintIdentifier="A10000000000000000000004" BuildableName="SeerrNGUITests\.xctest"/u
+    /BlueprintIdentifier\s*=\s*"A10000000000000000000004"[\s\S]*?BuildableName\s*=\s*"SeerrNGUITests\.xctest"/u
   );
+  assert.match(iosScheme, /<MacroExpansion>[\s\S]*?<\/MacroExpansion>/u);
   assert.equal(downloadAssets.with.path, 'dist-release/downloaded');
   assert.equal(downloadAssets.with['merge-multiple'], undefined);
   assert.match(flattenAssets.run, /Unexpected file in release artifact/u);
