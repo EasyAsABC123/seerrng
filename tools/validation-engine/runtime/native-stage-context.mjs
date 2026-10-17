@@ -868,7 +868,28 @@ function closure(root) {
         stat = lstatSync(absolute),
         file = path.relative(root, absolute).split(path.sep).join('/');
       if (stat.isSymbolicLink()) {
-        const resolved = realpathSync(absolute);
+        let resolved;
+        try {
+          resolved = realpathSync(absolute);
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+          resolved = path.resolve(path.dirname(absolute), readlinkSync(absolute));
+          if (resolved !== root && !beneath(root, resolved))
+            throw new Error(`Tool/dependency closure escapes its root: ${file}`);
+          let existing = resolved;
+          while (true) {
+            try {
+              lstatSync(existing);
+              break;
+            } catch (missing) {
+              if (missing.code !== 'ENOENT') throw missing;
+              const parent = path.dirname(existing);
+              if (parent === existing) throw missing;
+              existing = parent;
+            }
+          }
+          resolved = realpathSync(existing);
+        }
         if (resolved !== root && !beneath(root, resolved))
           throw new Error(`Tool/dependency closure escapes its root: ${file}`);
         entries.push({ path: file, link: readlinkSync(absolute) });

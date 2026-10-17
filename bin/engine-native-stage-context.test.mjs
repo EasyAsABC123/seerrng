@@ -881,6 +881,7 @@ test('browser cache inputs require an exact read-only mount and a stable content
     'pinned bytes\n'
   );
   const cache = path.join(root, 'browser-cache');
+  symlinkSync('missing-platform-package', path.join(cache, 'optional-package'));
   const mountPath = fs.realpathSync(cache).replaceAll(' ', '\\040');
   const readOnlyMountInfo = `1 0 0:1 / / rw - overlay overlay rw\n2 1 0:2 / ${mountPath} ro,nosuid - ext4 /dev/a ro\n`;
   const writableMountInfo = readOnlyMountInfo.replace('ro,nosuid', 'rw,nosuid');
@@ -900,12 +901,24 @@ test('browser cache inputs require an exact read-only mount and a stable content
   assert.equal(reference.root, fs.realpathSync(cache));
   assert.equal(reference.readOnlyProof.verified, true);
   assert.equal(reference.paths.includes(cache), true);
+  assert.equal(reference.entries, 2);
   verifyNativeInputFreshness({ closures: [reference], files: [] });
 
   writeFileSync(path.join(cache, 'browser.bin'), 'changed bytes\n');
   assert.throws(
     () => verifyNativeInputFreshness({ closures: [reference], files: [] }),
     /Frozen native input closure changed/u
+  );
+  const outside = path.join(path.dirname(root), 'outside');
+  mkdirSync(outside);
+  symlinkSync(outside, path.join(cache, 'escaped-package'), 'dir');
+  assert.throws(
+    () =>
+      createReadonlyNativeInputReference(cache, {
+        platform: 'linux',
+        mountInfo: readOnlyMountInfo,
+      }),
+    /closure escapes its root/u
   );
 });
 
