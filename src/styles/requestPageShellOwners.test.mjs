@@ -64,7 +64,7 @@ const verifyShellOwners = (source) => {
         'max-width': 'min(28rem, calc(100vw - 2rem))',
         'white-space': 'normal',
         'overflow-wrap': 'anywhere',
-        'pointer-events': 'auto',
+        'pointer-events': 'none',
       },
     ],
   ]) {
@@ -88,6 +88,10 @@ const verifyShellOwners = (source) => {
       });
     }
   }
+  assert.equal(
+    value(".app-tooltip[data-interactive='true']", 'pointer-events'),
+    'auto'
+  );
   for (const selector of ['.detail-summary-card', '.media-detail-card']) {
     for (const property of [
       'border',
@@ -383,6 +387,8 @@ test('shell checks reject geometry, paint, tooltip and retired-owner regressions
     '.app-tooltip { position: fixed; }',
     '.app-tooltip { padding: 20px; }',
     '.app-tooltip { z-index: 1; }',
+    '.app-tooltip { pointer-events: auto; }',
+    ".app-tooltip[data-interactive='true'] { pointer-events: none; }",
     '.app-tooltip { @apply rounded; }',
     '.media-detail-card { --tw-shadow: 0 0 #0000; }',
   ]) {
