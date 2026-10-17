@@ -1115,6 +1115,33 @@ test('main CI validates release notes against the pushed commit', () => {
   assert.match(validation.run, /--summary-file "\$GITHUB_STEP_SUMMARY"/u);
 });
 
+test('main CI tooling checks fetch tags for changelog validation', () => {
+  const ci = readWorkflow('ci.yml');
+  const checkout = ci.jobs['i18n-and-tooling'].steps.find(
+    (step) => step.name === 'Checkout'
+  );
+
+  assert.equal(checkout?.with?.['fetch-depth'], 0);
+});
+
+test('Cypress uses Cloud-only grouping metadata only when recording', () => {
+  const workflow = readWorkflow('cypress.yml');
+  const steps = workflow.jobs['cypress-run'].steps;
+  const recordedRun = steps.find(
+    (step) => step.name === 'Run Cypress suite with Cypress Cloud'
+  );
+  const localRun = steps.find(
+    (step) => step.name === 'Run Cypress suite without Cypress Cloud'
+  );
+
+  assert.equal(recordedRun?.with?.record, true);
+  assert.ok(recordedRun?.with?.group);
+  assert.ok(recordedRun?.with?.['ci-build-id']);
+  assert.equal(localRun?.with?.record, false);
+  assert.equal(Object.hasOwn(localRun?.with ?? {}, 'group'), false);
+  assert.equal(Object.hasOwn(localRun?.with ?? {}, 'ci-build-id'), false);
+});
+
 test('tag preparation prepends the current changelog without replacing history', () => {
   const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
   const changelogStep = createTag.steps.find(

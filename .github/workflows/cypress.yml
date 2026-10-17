@@ -74,22 +74,49 @@ jobs:
           PORT: 5056
         run: pnpm cypress:build
 
-      - name: Run full Cypress suite
+      - name: Detect Cypress Cloud recording availability
+        id: cypress-recording
+        env:
+          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" && -n "$CYPRESS_RECORD_KEY" ]]; then
+            printf 'enabled=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'enabled=false\n' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Cypress suite with Cypress Cloud
+        if: steps.cypress-recording.outputs.enabled == 'true'
         uses: cypress-io/github-action@c541a95ea92d9239347a2355f2e895cd4b3f8060 # v7.4.6
         with:
           install: false
           start: env E2E_TESTS=true pnpm start
           wait-on: 'http://localhost:5056'
           config: baseUrl=http://localhost:5056
-          record: ${{ github.event_name == 'push' && secrets.CYPRESS_RECORD_KEY != '' }}
+          record: true
           group: SeerrNG Cypress suite
           ci-build-id: ${{ format('{0}-{1}', github.run_id, github.run_attempt) }}
         env:
           SEERR_EXTERNAL_CONFIG: ${{ steps.export-config.outputs.external_config }}
-          CYPRESS_RECORD_KEY: ${{ github.event_name == 'push' && secrets.CYPRESS_RECORD_KEY || '' }}
-          GITHUB_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
+          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WITH_MIGRATIONS: true
           E2E_TESTS: true
           PORT: 5056
           COMMIT_INFO_MESSAGE: ${{ github.event.head_commit.message || github.sha }}
           COMMIT_INFO_SHA: ${{ github.sha }}
+
+      - name: Run Cypress suite without Cypress Cloud
+        if: steps.cypress-recording.outputs.enabled != 'true'
+        uses: cypress-io/github-action@c541a95ea92d9239347a2355f2e895cd4b3f8060 # v7.4.6
+        with:
+          install: false
+          start: env E2E_TESTS=true pnpm start
+          wait-on: 'http://localhost:5056'
+          config: baseUrl=http://localhost:5056
+          record: false
+        env:
+          SEERR_EXTERNAL_CONFIG: ${{ steps.export-config.outputs.external_config }}
+          WITH_MIGRATIONS: true
+          E2E_TESTS: true
+          PORT: 5056
