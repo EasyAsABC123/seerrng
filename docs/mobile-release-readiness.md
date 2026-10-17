@@ -76,11 +76,11 @@ The first version can ship without hosted entitlement infrastructure. Keep purch
 
 | Option | Android | iOS | Hosted service |
 | --- | --- | --- | --- |
-| Free preview + lifetime unlock | 20 successful sessions per installation when Play Billing is enabled, followed by Google Play Billing product ID `lifetime_unlock`. Recommended US price: **$4.99 once**, with local store pricing. Before product setup, release builds are unlimited free evaluation builds. | Implemented as 20 successful server sessions per installation, with StoreKit 2 product ID `lifetime_unlock`; set the closest matching App Store tier when that product is configured. | No; local caps can reset on reinstall or data clear |
+| Free preview + lifetime unlock | 20 successful sessions per installation when Play Billing is enabled, followed by Google Play Billing product ID `lifetime_unlock`. Recommended US price: **$2.99 once**, with local store pricing. Before product setup, release builds are unlimited free evaluation builds. | Implemented as 20 successful server sessions per installation, with StoreKit 2 product ID `lifetime_unlock`; use the closest App Store tier to US$2.99 when that product is configured. | No; local caps can reset on reinstall or data clear |
 | Store subscription with free trial | Play supports trial offers that renew into a subscription. | StoreKit supports introductory subscription offers. | No for store-account entitlements; a backend is recommended for authoritative cross-device purchase state |
 | Account-wide or tamper-resistant usage limit | Not implemented | Not implemented | Yes |
 
-The recommended US price is $4.99 once. The research and rationale are documented in [android/MONETIZATION.md](https://github.com/snapetech-org/seerrng/blob/main/android/MONETIZATION.md). Play Billing and StoreKit provide the final localized price; neither app hardcodes currency. Configure independent one-time products in each store.
+The recommended US price is $2.99 once. The research and rationale are documented in [android/MONETIZATION.md](https://github.com/snapetech-org/seerrng/blob/main/android/MONETIZATION.md). Play Billing and StoreKit provide the final localized price; neither app hardcodes currency. Configure independent one-time products in each store.
 
 Keep the cap behavior transparent: 20 successful server sessions per installation, not 20 requests. A session is counted when the first page load finishes. A session remains open while switching saved servers; closing it and starting another may use another preview session. Local counters are an evaluation gate and can be reset by deleting app data or reinstalling. There is no SeerrNG-hosted usage counter.
 
@@ -95,7 +95,7 @@ Google Play and Apple's stores sell/check out a one-time digital unlock through 
 - [ ] For this personal account, complete the required closed test before applying for production access: at least 12 opted-in testers for 14 continuous days.
 - [ ] After the account setup tasks clear, create the app record for `org.snapetech.seerrng`; upload the signed AAB and enroll in Play App Signing. Keep the direct-install APK signed by the same stable developer key.
 - [ ] Complete the content rating, target audience, Data safety, no-ads declaration, and app access declarations accurately.
-- [ ] Create and publish a one-time product `lifetime_unlock`, set the recommended US base price to $4.99, review local prices, enable `ENABLE_PLAY_BILLING=true`, add license testers, and test purchase, restore, pending, cancelled, and refund/revocation behavior through a Play test track.
+- [ ] Create and publish a one-time product `lifetime_unlock`, set the recommended US base price to $2.99, review local prices, enable `ENABLE_PLAY_BILLING=true`, add license testers, and test purchase, restore, pending, cancelled, and refund/revocation behavior through a Play test track.
 - [ ] Provide Play reviewers with a stable working server or a demo flow and test credentials.
 - [ ] Before shipping adult-media capable SeerrNG servers, establish a store-compatible content policy and enforcement path. See the content gate below.
 
@@ -120,7 +120,7 @@ Google currently requires new apps and updates to target Android 16 / API 36 fro
 
 ## Store listing draft
 
-The first pass of App Store and Play listing text is in [mobile-store-listing-draft.md](mobile-store-listing-draft.md). Screenshots, age/content ratings, data disclosures, reviewer credentials, price, and launch regions are intentionally unfinished because they depend on a working demo and the final content/monetization choice.
+The first pass of App Store and Play listing text is in [mobile-store-listing-draft.md](mobile-store-listing-draft.md). Screenshots, age/content ratings, data disclosures, reviewer credentials, and launch regions remain unfinished because they depend on a working demo and store onboarding.
 
 ## Privacy and data handling
 

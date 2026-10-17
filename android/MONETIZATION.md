@@ -4,7 +4,7 @@
 
 When Play Billing is enabled, the Android app is free to download with a local preview: the first 20 successful server sessions on an installation are free. A one-time, non-consumable Google Play product named `lifetime_unlock` grants unlimited sessions to the Play account that bought it. There are no ads, advertising SDKs, ad consent prompts, or ad-related data collection in the Android app. Builds made before the Play product is configured are unlimited free evaluation builds and do not show purchase controls, so they do not lock users out without a working purchase path.
 
-**Recommended US price: US$4.99 once.** Google Play should localize the configured price for each storefront. The app uses the price returned by Play Billing, so the checkout sheet and button show the user's actual local price.
+**Recommended US price: US$2.99 once.** Google Play should localize the configured price for each storefront. The app uses the price returned by Play Billing, so the checkout sheet and button show the user's actual local price. For iOS, use the closest App Store tier to US$2.99; each store purchase remains separate.
 
 ## Price research
 
@@ -12,15 +12,15 @@ I compared apps around self-hosted media and Seerr clients:
 
 | Comparable | Observed price/model | What it includes | What it suggests |
 | --- | --- | --- | --- |
-| [ServerrSeerr](https://apps.apple.com/us/app/serverrseerr/id6759878396) | US$1.99 paid iOS app | A direct Seerr companion | A low-price reference for a narrow Seerr-only client; it is an Apple listing, not an Android listing. |
-| [Arrcade](https://arrcade.co.uk/) | £5.99 one-time Pro unlock | A broader app supporting 13 media services, multiple connections, and push notifications | A richer self-hosted companion can support a price near US$6 equivalent. |
-| [Plezy](https://play.google.com/store/apps/details?hl=en&id=com.edde746.plezy) | About US$5.99 in the observed US Play storefront; regional prices vary | A full Plex/Jellyfin/Emby media player with playback features | A broader media app occupies the roughly US$6 one-time range. |
-| [Kochab](https://play.google.com/store/apps/details?id=io.kochab) | Free | A broad self-hosted media companion with all listed features included | Free alternatives exist, so the paid benefit must be clear and the free preview must be useful. |
-| [Underseerr](https://underseerr.lusk.app/) | Free and open source; optional paid hosted features | Seerr-focused web companion with optional hosted push and themes | The Seerr ecosystem has a free baseline; charging should be for the convenience of this native client, not server access. |
+| [ServerrSeerr](https://apps.apple.com/us/app/serverrseerr/id6759878396) | US$1.99 paid iOS app | A direct Seerr companion for Seerr, Overseerr, and Jellyseerr | The closest pricing reference is a low one-time price; this is an Apple listing, not an Android listing. |
+| [Arrcade](https://arrcade.co.uk/) | £5.99 one-time Pro unlock | A broader app supporting 13 media services, multiple connections, and push notifications | A richer self-hosted companion is priced higher, near US$6 equivalent. |
+| [Plezy](https://play.google.com/store/apps/details?id=com.edde746.plezy) | US$5.99 in the observed US Play storefront; regional prices vary | A full Plex/Jellyfin/Emby media player with extensive playback features | A broader media app occupies the roughly US$6 one-time range. |
+| [Kochab](https://kochab.io/) | US$39.99 lifetime on its website | A broad 27-service self-hosted management app with a 7-day trial | This much broader product is an upper comparison, not a direct price target. |
+| [SeerrTV](https://devmesh.ca/seerrtv) | Free and open source | A community Seerr client for Android TV | Free alternatives exist in a different form factor, so the phone app's convenience must be clear and the preview useful. |
 
-US$4.99 lands between the $1.99 direct Seerr reference and the roughly $6 broader apps. The Android client is a focused Seerr WebView companion, while the SeerrNG web app remains free and the user supplies their own server. A 20-session preview lets people test their server before paying. US$10 would price this narrower client above broader one-time media apps; the lower US$4.99 price is easier to justify and still leaves room to support maintenance.
+Choose **US$2.99 once** for launch. It is only one dollar above the closest direct Seerr companion and stays comfortably below broader self-hosted apps near US$6. The Android client is a focused SeerrNG companion, while the SeerrNG web app remains free and the user supplies their own server. The 20-session preview gives people room to test their server before paying. US$4.99 would put this narrower client close to more feature-rich apps, and US$10 would be too high for this scope. Revisit the price after there is real purchase conversion and user feedback.
 
-These are storefront snapshots, not a universal price list. Prices vary by country, taxes, promotions, and date. Choose US$4.99 as the US base price in Play Console, then review Play's suggested local prices before publishing.
+These are storefront snapshots, not a universal price list. Prices vary by country, taxes, promotions, and date. Choose US$2.99 as the US base price in Play Console, then review Play's suggested local prices before publishing.
 
 ## What counts as a session
 
@@ -39,7 +39,7 @@ The Play purchase is not ready until all of these are complete:
 
 1. Create the Play app record for `org.snapetech.seerrng` and upload a signed AAB to a test track.
 2. Create a one-time product whose product ID is exactly `lifetime_unlock`.
-3. Set the US base price to US$4.99 and review the regional prices Play proposes.
+3. Set the US base price to US$2.99 and review the regional prices Play proposes.
 4. Add license testers and test purchase, restore, pending, cancellation, refund/revocation, and unavailable-product states from the Play-distributed test app.
 5. Set the GitHub Actions repository variable `ENABLE_PLAY_BILLING=true` only after the product is active and the release build has passed those checks.
 

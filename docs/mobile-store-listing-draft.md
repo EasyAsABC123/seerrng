@@ -18,7 +18,7 @@ You need access to a working SeerrNG server to use the app. Server availability,
 
 HTTPS is recommended. The app warns before saving an HTTP address because HTTP does not encrypt sign-in details or session cookies in transit.
 
-The app is free to download and includes 20 successful server sessions per installation. After the free preview, an optional one-time Google Play purchase unlocks unlimited sessions for the purchasing Play account. The recommended US price is $4.99; Google Play displays the current localized price before checkout. The app contains no ads.
+The app is free to download and includes 20 successful server sessions per installation. After the free preview, an optional one-time Google Play purchase unlocks unlimited sessions for the purchasing Play account. The recommended US price is $2.99; Google Play displays the current localized price before checkout. The app contains no ads.
 
 **Support URL:** `https://github.com/snapetech-org/seerrng/issues`
 
@@ -62,7 +62,7 @@ The app includes 20 successful server sessions per installation. An optional one
 
 ## Before submission
 
-- Confirm the $4.99 US base price and regional price tiers in each store. Android and iOS purchases are separate and do not share entitlements.
+- Confirm the $2.99 US base price and regional price tiers in each store. Android and iOS purchases are separate and do not share entitlements.
 - Replace or confirm the demo/reviewer access instructions and verify a working SeerrNG server.
 - Confirm server-content rules, age/content ratings, and each store's current review requirements.
 - Recheck the linked privacy policy and the final store Data safety / App Privacy answers against the submitted binaries.

@@ -4,7 +4,7 @@ The Android app opens a SeerrNG server that the user enters. It supports multipl
 
 ## Free preview and lifetime unlock
 
-The Google Play app is free to download. Once Play Billing is configured, it includes 20 successful server sessions per installation; a one-time Google Play purchase unlocks unlimited sessions for that Play account. There are no ads or advertising SDKs. The recommended US price is **$4.99 once**. Play Console is the source of truth for the configured price and localizes it for each storefront.
+The Google Play app is free to download. Once Play Billing is configured, it includes 20 successful server sessions per installation; a one-time Google Play purchase unlocks unlimited sessions for that Play account. There are no ads or advertising SDKs. The recommended US price is **$2.99 once**. Play Console is the source of truth for the configured price and localizes it for each storefront.
 
 The app reads the price from Google Play and does not hardcode currency. Create a non-consumable in-app product with ID `lifetime_unlock`, configure its base and regional prices, test it with license testers, then set the GitHub Actions repository variable `ENABLE_PLAY_BILLING=true`. Until that is done, release builds are unlimited free evaluation builds and hide the purchase controls, so users are not capped without a working purchase path. The app also recognizes the legacy `no_ads_lifetime` purchase ID so existing owners can restore a previous entitlement.
 
