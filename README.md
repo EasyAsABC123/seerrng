@@ -19,6 +19,8 @@ SeerrNG is a self-hosted request and discovery app for personal media libraries.
 
 SeerrNG is maintained by snapetech as a separate fork so we can move quickly on cross-media workflows and test ambitious features while keeping Seerr as the base for inherited video, user, server, and deployment behavior. The fork gives us room to develop and validate ideas before proposing them upstream; it does not presume that upstream should adopt every feature or the entire product direction. See [why SeerrNG is a fork](./docs/fork-rationale.md) for the rationale, integration changes, and conditions that could let upstream equivalents replace the fork, and [NOTICE.md](./NOTICE.md) for attribution rules.
 
+For local MCP access, see the [SnapeTech MCP integration guide](./docs/integrations/snapetech-mcp.md).
+
 ## Contents
 
 - [What SeerrNG Does](#what-seerrng-does)
