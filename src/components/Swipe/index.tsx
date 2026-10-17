@@ -563,7 +563,7 @@ const Swipe = () => {
   // Load a compact stack from each category catalog; a new page appends picks.
   useEffect(() => {
     if (!deck || !decisionData) return;
-    const key = `${catalogSessionKey}:${page}:${catalogCards.map((card) => card.id).join(',')}`;
+    const key = `${catalogSessionKey}:${page}:${JSON.stringify(catalogCards)}`;
     if (lastLoaded.current === key) return;
     lastLoaded.current = key;
     setCards((current) => {
