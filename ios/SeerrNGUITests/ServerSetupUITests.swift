@@ -79,6 +79,7 @@ final class ServerSetupUITests: XCTestCase {
         app.buttons["Actions for Work"].tap()
         app.buttons["Delete"].tap()
         XCTAssertFalse(app.staticTexts["Work"].waitForExistence(timeout: 2))
+        app.swipeDown()
         XCTAssertTrue(app.buttons["Actions for Home"].waitForExistence(timeout: 5))
     }
 }
