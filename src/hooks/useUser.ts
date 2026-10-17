@@ -31,6 +31,7 @@ export interface User {
   avatar: string;
   permissions: number;
   requestServices?: string[];
+  contentRestricted?: boolean | null;
   userType: number;
   createdAt: Date;
   updatedAt: Date;

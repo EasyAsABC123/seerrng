@@ -2836,7 +2836,11 @@ userSettingsRoutes.post<{ id: string }, UserSettingsNotificationsResponse>(
 
 userSettingsRoutes.get<
   { id: string },
-  { permissions?: number; requestServices?: string[] }
+  {
+    permissions?: number;
+    requestServices?: string[];
+    contentRestricted?: boolean | null;
+  }
 >(
   '/permissions',
   isAuthenticated(Permission.MANAGE_USERS),
@@ -2865,6 +2869,7 @@ userSettingsRoutes.get<
           return res.status(200).json({
             permissions: user.permissions,
             requestServices: user.requestServices ?? [],
+            contentRestricted: user.contentRestricted ?? null,
           });
         }
       );
@@ -2879,8 +2884,16 @@ userSettingsRoutes.get<
 
 userSettingsRoutes.post<
   { id: string },
-  { permissions?: number; requestServices?: string[] },
-  { permissions: number; requestServices?: string[] }
+  {
+    permissions?: number;
+    requestServices?: string[];
+    contentRestricted?: boolean | null;
+  },
+  {
+    permissions: number;
+    requestServices?: string[];
+    contentRestricted?: boolean | null;
+  }
 >(
   '/permissions',
   isAuthenticated(Permission.MANAGE_USERS),
@@ -2893,7 +2906,10 @@ userSettingsRoutes.post<
     const body = parsedBody.value;
     if (
       Object.keys(body).some(
-        (key) => key !== 'permissions' && key !== 'requestServices'
+        (key) =>
+          key !== 'permissions' &&
+          key !== 'requestServices' &&
+          key !== 'contentRestricted'
       )
     ) {
       return next({
@@ -2912,6 +2928,16 @@ userSettingsRoutes.post<
     ) {
       return next({ status: 400, message: 'permissions is invalid.' });
     }
+
+    if (
+      body.contentRestricted !== undefined &&
+      body.contentRestricted !== null &&
+      typeof body.contentRestricted !== 'boolean'
+    ) {
+      return next({ status: 400, message: 'contentRestricted is invalid.' });
+    }
+    const parsedContentRestricted = body.contentRestricted as
+      boolean | null | undefined;
 
     let parsedRequestServices: string[] | undefined;
     if (body.requestServices !== undefined) {
@@ -2983,6 +3009,9 @@ userSettingsRoutes.post<
             ...(parsedRequestServices !== undefined && {
               requestServices: parsedRequestServices,
             }),
+            ...(parsedContentRestricted !== undefined && {
+              contentRestricted: parsedContentRestricted,
+            }),
           });
           return result.affected === 1
             ? ('updated' as const)
@@ -3010,6 +3039,9 @@ userSettingsRoutes.post<
         permissions: parsedPermissions,
         ...(parsedRequestServices !== undefined && {
           requestServices: parsedRequestServices,
+        }),
+        ...(parsedContentRestricted !== undefined && {
+          contentRestricted: parsedContentRestricted,
         }),
       });
     } catch (e) {

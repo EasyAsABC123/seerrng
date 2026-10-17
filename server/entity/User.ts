@@ -264,6 +264,10 @@ export class User {
   @Column({ nullable: true })
   public magazineQuotaDays?: number;
 
+  /** null inherits the instance age-gate default; true hides mature content. */
+  @Column({ type: 'boolean', nullable: true })
+  public contentRestricted?: boolean | null;
+
   @Column({ nullable: true })
   public adultQuotaLimit?: number;
 

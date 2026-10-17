@@ -1,3 +1,5 @@
+import type { AgeGateSettings } from '@server/constants/ageGate';
+import { DEFAULT_AGE_GATE_SETTINGS } from '@server/constants/ageGate';
 import { OtherUserAvailabilityMode } from '@server/constants/availability';
 import {
   DEFAULT_ENABLED_MEDIA_CATEGORIES,
@@ -502,6 +504,7 @@ export interface MainSettings {
   applicationUrl: string;
   cacheImages: boolean;
   includeAdult: boolean;
+  ageGate?: AgeGateSettings;
   defaultPermissions: number;
   defaultQuotas: {
     movie: Quota;
@@ -606,6 +609,7 @@ interface FullPublicSettings extends PublicSettings {
   romarrEnabled: boolean;
   swipeEnabled: boolean;
   enabledMediaCategories: EnabledMediaCategories;
+  ageGate: AgeGateSettings;
   discoverRegion: string;
   streamingRegion: string;
   originalLanguage: string;
@@ -910,6 +914,7 @@ class Settings {
         applicationUrl: '',
         cacheImages: true,
         includeAdult: false,
+        ageGate: { ...DEFAULT_AGE_GATE_SETTINGS },
         defaultPermissions: Permission.REQUEST,
         defaultQuotas: {
           movie: {},
@@ -1724,6 +1729,10 @@ class Settings {
         ...DEFAULT_ENABLED_MEDIA_CATEGORIES,
         ...this.data.main.enabledMediaCategories,
       },
+      ageGate: {
+        ...DEFAULT_AGE_GATE_SETTINGS,
+        ...this.data.main.ageGate,
+      },
       discoverRegion: this.data.main.discoverRegion,
       streamingRegion: this.data.main.streamingRegion,
       originalLanguage: this.data.main.originalLanguage,
@@ -1945,6 +1954,7 @@ class Settings {
         applicationUrl: '',
         cacheImages: false,
         includeAdult: false,
+        ageGate: { ...DEFAULT_AGE_GATE_SETTINGS },
         defaultPermissions: Permission.REQUEST,
         defaultQuotas: {
           movie: {},

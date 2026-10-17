@@ -11,6 +11,7 @@ import dataSource, { getRepository } from '@server/datasource';
 import DiscoverSlider from '@server/entity/DiscoverSlider';
 import { User } from '@server/entity/User';
 import type { StatusResponse } from '@server/interfaces/api/settingsInterfaces';
+import { isContentRestricted } from '@server/lib/contentRestriction';
 import { isMediaCategoryEnabled } from '@server/lib/mediaCategories';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
@@ -23,6 +24,7 @@ import logger from '@server/logger';
 import { apiResponseCache } from '@server/middleware/apiResponseCache';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
 import { authorizedRouteAccess } from '@server/middleware/authorizedMutation';
+import { contentRestrictionMiddleware } from '@server/middleware/contentRestriction';
 import deprecatedRoute from '@server/middleware/deprecation';
 import { mapProductionCompany } from '@server/models/Movie';
 import { mapNetwork } from '@server/models/Tv';
@@ -118,6 +120,9 @@ const categoryAvailabilityGuard =
   };
 
 const adultContentPermissionGuard: RequestHandler = (req, res, next) => {
+  if (isContentRestricted(req.user)) {
+    return res.status(404).json({ status: 404, message: 'Not found.' });
+  }
   if (
     !req.user?.hasPermission(
       [Permission.ADMIN, Permission.MANAGE_REQUESTS, Permission.REQUEST_ADULT],
@@ -224,6 +229,7 @@ export const getReleaseUpdateStatus = (
 };
 
 router.use(checkUser);
+router.use(contentRestrictionMiddleware);
 router.use(apiResponseCache);
 
 router.get('/status/ready', publicStatusRateLimit, async (_req, res) => {

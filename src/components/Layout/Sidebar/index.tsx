@@ -9,6 +9,7 @@ import useClickOutside from '@app/hooks/useClickOutside';
 import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
+import { isContentRestrictedUser } from '@app/utils/contentRestriction';
 import { isOptionalCatalogPathEnabled } from '@app/utils/serviceAvailability';
 import versionedAsset from '@app/utils/versionedAsset';
 import { Transition, TransitionChild } from '@headlessui/react';
@@ -39,8 +40,12 @@ const Sidebar = ({
   const navRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const intl = useIntl();
-  const { hasPermission } = useUser();
+  const { user, hasPermission } = useUser();
   const { currentSettings } = useSettings();
+  const contentRestricted = isContentRestrictedUser(
+    user,
+    currentSettings.ageGate?.defaultRestricted
+  );
   useClickOutside(navRef, () => setClosed());
 
   const visibleSidebarSections = navigationSections
@@ -48,6 +53,7 @@ const Sidebar = ({
       ...section,
       links: section.links.filter(
         (link) =>
+          !(contentRestricted && link.id === 'adult') &&
           isOptionalCatalogPathEnabled(link.href, currentSettings) &&
           (link.requiredPermission
             ? hasPermission(link.requiredPermission, {

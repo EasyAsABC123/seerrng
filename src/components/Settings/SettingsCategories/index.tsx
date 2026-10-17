@@ -1,3 +1,4 @@
+import Alert from '@app/components/Common/Alert';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
 import SettingsField from '@app/components/Settings/SettingsField';
@@ -5,11 +6,16 @@ import SettingsFormRow from '@app/components/Settings/SettingsFormRow';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
+import {
+  DEFAULT_AGE_GATE_SETTINGS,
+  MOVIE_CERTIFICATIONS,
+  TV_CERTIFICATIONS,
+} from '@server/constants/ageGate';
 import type { MediaCategoryKey } from '@server/constants/mediaCategories';
 import { DEFAULT_ENABLED_MEDIA_CATEGORIES } from '@server/constants/mediaCategories';
 import type { MainSettings } from '@server/lib/settings';
 import axios from 'axios';
-import { Form, Formik } from 'formik';
+import { Field, Form, Formik } from 'formik';
 import { useIntl } from 'react-intl';
 import useSWR, { mutate } from 'swr';
 
@@ -43,6 +49,24 @@ const messages = defineMessages('components.Settings.SettingsCategories', {
   retroDescription: 'Allow retro ROM discovery and requests.',
   modernDescription: 'Allow modern emulation ROM discovery and requests.',
   gameDescription: 'Allow PC game discovery and requests.',
+  adultWarningTitle: 'Adult content is visible to everyone with access',
+  adultWarning:
+    'If you share this instance with family or expose it through a reverse proxy, anyone granted Request Adult can see what you browse and request. Flag family accounts as restricted below, or under each user’s Permissions, so they never see Adult content.',
+  ageGateTitle: 'Age Gate',
+  ageGateDescription:
+    'Restricted accounts cannot see or request Adult content, and mature movies, series, music, books, comics, and tagged titles are hidden server-side. Filtering uses provider ratings and tags and is best-effort for titles without metadata.',
+  ageGateDefault: 'Restrict accounts by default',
+  ageGateDefaultDescription:
+    'Accounts without an explicit setting are restricted. Administrators are exempt.',
+  ageGateMovieMax: 'Highest movie rating',
+  ageGateMovieMaxDescription:
+    'Restricted accounts cannot see movies rated above this.',
+  ageGateTvMax: 'Highest series rating',
+  ageGateTvMaxDescription:
+    'Restricted accounts cannot see series rated above this.',
+  ageGateCountry: 'Rating country',
+  ageGateCountryDescription:
+    'Two-letter country code whose ratings are used, for example US.',
   saveSuccess: 'Category settings saved.',
   saveFailure: 'Category settings could not be saved.',
 });
@@ -102,12 +126,17 @@ const SettingsCategories = () => {
             ...DEFAULT_ENABLED_MEDIA_CATEGORIES,
             ...data?.enabledMediaCategories,
           },
+          ageGate: {
+            ...DEFAULT_AGE_GATE_SETTINGS,
+            ...data?.ageGate,
+          },
         }}
         enableReinitialize
         onSubmit={async (values, { setSubmitting }) => {
           try {
             await axios.post('/api/v1/settings/main', {
               enabledMediaCategories: values.enabledMediaCategories,
+              ageGate: values.ageGate,
             });
             await Promise.all([
               revalidate(),
@@ -127,7 +156,7 @@ const SettingsCategories = () => {
           }
         }}
       >
-        {({ isSubmitting }) => (
+        {({ isSubmitting, values }) => (
           <Form
             className="settings-page-form"
             data-testid="settings-categories-form"
@@ -157,6 +186,89 @@ const SettingsCategories = () => {
                     />
                   </SettingsFormRow>
                 ))}
+              </div>
+              {values.enabledMediaCategories.adult && (
+                <Alert title={intl.formatMessage(messages.adultWarningTitle)}>
+                  {intl.formatMessage(messages.adultWarning)}
+                </Alert>
+              )}
+            </section>
+            <section className="settings-group-card">
+              <h3 className="settings-group-heading">
+                {intl.formatMessage(messages.ageGateTitle)}
+              </h3>
+              <p className="settings-group-description">
+                {intl.formatMessage(messages.ageGateDescription)}
+              </p>
+              <div className="settings-group-content">
+                <SettingsFormRow
+                  htmlFor="ageGate.defaultRestricted"
+                  label={intl.formatMessage(messages.ageGateDefault)}
+                  description={intl.formatMessage(
+                    messages.ageGateDefaultDescription
+                  )}
+                  labelClassName="checkbox-label"
+                  className="settings-form-row-compact-description"
+                >
+                  <SettingsField
+                    type="checkbox"
+                    id="ageGate.defaultRestricted"
+                    name="ageGate.defaultRestricted"
+                    data-testid="age-gate-default"
+                  />
+                </SettingsFormRow>
+                <SettingsFormRow
+                  htmlFor="ageGate.maxMovieCertification"
+                  label={intl.formatMessage(messages.ageGateMovieMax)}
+                  description={intl.formatMessage(
+                    messages.ageGateMovieMaxDescription
+                  )}
+                >
+                  <Field
+                    as="select"
+                    id="ageGate.maxMovieCertification"
+                    name="ageGate.maxMovieCertification"
+                  >
+                    {MOVIE_CERTIFICATIONS.map((rating) => (
+                      <option key={rating} value={rating}>
+                        {rating}
+                      </option>
+                    ))}
+                  </Field>
+                </SettingsFormRow>
+                <SettingsFormRow
+                  htmlFor="ageGate.maxTvCertification"
+                  label={intl.formatMessage(messages.ageGateTvMax)}
+                  description={intl.formatMessage(
+                    messages.ageGateTvMaxDescription
+                  )}
+                >
+                  <Field
+                    as="select"
+                    id="ageGate.maxTvCertification"
+                    name="ageGate.maxTvCertification"
+                  >
+                    {TV_CERTIFICATIONS.map((rating) => (
+                      <option key={rating} value={rating}>
+                        {rating}
+                      </option>
+                    ))}
+                  </Field>
+                </SettingsFormRow>
+                <SettingsFormRow
+                  htmlFor="ageGate.certificationCountry"
+                  label={intl.formatMessage(messages.ageGateCountry)}
+                  description={intl.formatMessage(
+                    messages.ageGateCountryDescription
+                  )}
+                >
+                  <Field
+                    id="ageGate.certificationCountry"
+                    name="ageGate.certificationCountry"
+                    type="text"
+                    maxLength={2}
+                  />
+                </SettingsFormRow>
               </div>
             </section>
             <div className="actions">

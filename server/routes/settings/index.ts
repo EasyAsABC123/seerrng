@@ -5,6 +5,11 @@ import PlexTvAPI, {
   plexUserHasServerAccess,
 } from '@server/api/plextv';
 import TautulliAPI from '@server/api/tautulli';
+import type { AgeGateSettings } from '@server/constants/ageGate';
+import {
+  MOVIE_CERTIFICATIONS,
+  TV_CERTIFICATIONS,
+} from '@server/constants/ageGate';
 import { OtherUserAvailabilityMode } from '@server/constants/availability';
 import {
   MAX_BLOCKLISTED_TAG_IDS,
@@ -1095,6 +1100,49 @@ const parseMainSettingsBody = (
       parsedCategories[key as MediaCategoryKey] = enabled;
     }
     value.enabledMediaCategories = parsedCategories;
+  }
+
+  if (body.ageGate !== undefined) {
+    const gate = body.ageGate;
+    if (!gate || typeof gate !== 'object' || Array.isArray(gate)) {
+      return { error: 'ageGate must be an object.' };
+    }
+    const incoming = gate as Record<string, unknown>;
+    const parsedGate: Partial<AgeGateSettings> = {};
+    if (incoming.defaultRestricted !== undefined) {
+      if (typeof incoming.defaultRestricted !== 'boolean') {
+        return { error: 'ageGate.defaultRestricted must be a boolean.' };
+      }
+      parsedGate.defaultRestricted = incoming.defaultRestricted;
+    }
+    if (incoming.maxMovieCertification !== undefined) {
+      if (
+        typeof incoming.maxMovieCertification !== 'string' ||
+        !MOVIE_CERTIFICATIONS.includes(incoming.maxMovieCertification)
+      ) {
+        return { error: 'ageGate.maxMovieCertification must be valid.' };
+      }
+      parsedGate.maxMovieCertification = incoming.maxMovieCertification;
+    }
+    if (incoming.maxTvCertification !== undefined) {
+      if (
+        typeof incoming.maxTvCertification !== 'string' ||
+        !TV_CERTIFICATIONS.includes(incoming.maxTvCertification)
+      ) {
+        return { error: 'ageGate.maxTvCertification must be valid.' };
+      }
+      parsedGate.maxTvCertification = incoming.maxTvCertification;
+    }
+    if (incoming.certificationCountry !== undefined) {
+      if (
+        typeof incoming.certificationCountry !== 'string' ||
+        !/^[A-Z]{2}$/.test(incoming.certificationCountry)
+      ) {
+        return { error: 'ageGate.certificationCountry must be valid.' };
+      }
+      parsedGate.certificationCountry = incoming.certificationCountry;
+    }
+    value.ageGate = parsedGate as AgeGateSettings;
   }
 
   if (body.otherUsersAvailability !== undefined) {

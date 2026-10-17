@@ -3,6 +3,8 @@ import type { TvShowProvider } from '@server/api/provider';
 import { isTmdbPublicListId } from '@server/constants/discover';
 import type { CacheStore } from '@server/lib/cache';
 import cacheManager from '@server/lib/cache';
+import type { ContentRestriction } from '@server/lib/contentRestriction';
+import { currentContentRestriction } from '@server/lib/contentRestriction';
 import { getSettings } from '@server/lib/settings';
 import { sortBy } from 'lodash';
 import { getTmdbAuthHeaders, getTmdbAuthParams } from './auth';
@@ -913,6 +915,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
   private discoverRegion?: string;
   private originalLanguage?: string;
   private includeAdult: boolean;
+  private contentRestriction?: ContentRestriction;
   constructor({
     discoverRegion,
     originalLanguage,
@@ -929,7 +932,9 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
     this.locale = getSettings().main?.locale || 'en';
     this.discoverRegion = discoverRegion;
     this.originalLanguage = originalLanguage;
-    this.includeAdult = getSettings().main?.includeAdult === true;
+    this.contentRestriction = currentContentRestriction();
+    this.includeAdult =
+      getSettings().main?.includeAdult === true && !this.contentRestriction;
   }
 
   public checkAuthentication = async (): Promise<void> => {
@@ -952,7 +957,12 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
   }: SearchOptions): Promise<TmdbSearchMultiResponse> => {
     try {
       const data = await this.get<TmdbSearchMultiResponse>('/search/multi', {
-        params: { query, page, include_adult: includeAdult, language },
+        params: {
+          query,
+          page,
+          include_adult: this.contentRestriction ? false : includeAdult,
+          language,
+        },
       });
 
       return sanitizeTmdbPagedResponse<TmdbSearchMultiResponse>(data, page);
@@ -978,7 +988,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         params: {
           query,
           page,
-          include_adult: includeAdult,
+          include_adult: this.contentRestriction ? false : includeAdult,
           language,
           primary_release_year: year,
         },
@@ -1007,7 +1017,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         params: {
           query,
           page,
-          include_adult: includeAdult,
+          include_adult: this.contentRestriction ? false : includeAdult,
           language,
           first_air_date_year: year,
         },
@@ -1491,6 +1501,13 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
     certificationLte,
     certificationCountry,
   }: DiscoverMovieOptions = {}): Promise<TmdbSearchMovieResponse> => {
+    if (this.contentRestriction) {
+      includeAdult = false;
+      certificationCountry = this.contentRestriction.certificationCountry;
+      certification = undefined;
+      certificationGte = undefined;
+      certificationLte = this.contentRestriction.maxMovieCertification;
+    }
     try {
       const defaultFutureDate = new Date(
         Date.now() + 1000 * 60 * 60 * 24 * (365 * 1.5)
@@ -1586,6 +1603,12 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
     certificationLte,
     certificationCountry,
   }: DiscoverTvOptions = {}): Promise<TmdbSearchTvResponse> => {
+    if (this.contentRestriction) {
+      certificationCountry = this.contentRestriction.certificationCountry;
+      certification = undefined;
+      certificationGte = undefined;
+      certificationLte = this.contentRestriction.maxTvCertification;
+    }
     try {
       const defaultFutureDate = new Date(
         Date.now() + 1000 * 60 * 60 * 24 * (365 * 1.5)

@@ -56,6 +56,7 @@ import {
   searchComicCatalogIndex,
 } from '@server/lib/comicCatalogIndex';
 import { findComicMediaByComicVineIds } from '@server/lib/comicMediaMatcher';
+import { currentContentRestriction } from '@server/lib/contentRestriction';
 import {
   getCachedDiscoverMovieFeed,
   getDiscoverMovieFeedCacheKey,
@@ -1747,7 +1748,7 @@ discoverRoutes.get('/movies', async (req, res, next) => {
     const userRegion = req.user?.settings?.streamingRegion;
     const userOriginalLanguage = req.user?.settings?.originalLanguage;
     const feedCacheKey =
-      feedShelf && page <= 5
+      feedShelf && page <= 5 && !currentContentRestriction()
         ? getDiscoverMovieFeedCacheKey({
             shelf: feedShelf,
             page,

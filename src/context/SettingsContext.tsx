@@ -35,6 +35,12 @@ const defaultSettings: PublicSettingsResponse = {
   romarrEnabled: false,
   swipeEnabled: true,
   enabledMediaCategories: DEFAULT_ENABLED_MEDIA_CATEGORIES,
+  ageGate: {
+    defaultRestricted: false,
+    maxMovieCertification: 'PG-13',
+    maxTvCertification: 'TV-14',
+    certificationCountry: 'US',
+  },
   discoverRegion: '',
   streamingRegion: '',
   originalLanguage: '',

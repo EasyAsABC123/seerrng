@@ -27,6 +27,12 @@ const messages = defineMessages(
     requestServices: 'Request destinations',
     requestServicesDescription:
       'Let this user choose additional Radarr or Sonarr instances when requesting media.',
+    contentRestriction: 'Age gate',
+    contentRestrictionDescription:
+      'Restricted accounts cannot see or request Adult content, and mature movies, series, and tagged titles in other categories are hidden.',
+    contentRestrictionDefault: 'Use instance default',
+    contentRestrictionOn: 'Restricted (kid account)',
+    contentRestrictionOff: 'Unrestricted',
     requestServiceGrantDescription: 'Available when requesting {mediaType}.',
   }
 );
@@ -44,9 +50,11 @@ const UserPermissions = () => {
     data,
     error,
     mutate: revalidate,
-  } = useSWR<{ permissions?: number; requestServices?: string[] }>(
-    user ? `/api/v1/user/${user?.id}/settings/permissions` : null
-  );
+  } = useSWR<{
+    permissions?: number;
+    requestServices?: string[];
+    contentRestricted?: boolean | null;
+  }>(user ? `/api/v1/user/${user?.id}/settings/permissions` : null);
   const { data: radarrServers } = useSWR<ServiceCommonServer[]>(
     user ? '/api/v1/service/radarr' : null
   );
@@ -114,12 +122,24 @@ const UserPermissions = () => {
         initialValues={{
           currentPermissions: data?.permissions,
           requestServices: data?.requestServices ?? [],
+          contentRestricted:
+            data?.contentRestricted === true
+              ? 'on'
+              : data?.contentRestricted === false
+                ? 'off'
+                : 'default',
         }}
         enableReinitialize
         onSubmit={async (values) => {
           try {
             await axios.post(`/api/v1/user/${user?.id}/settings/permissions`, {
               permissions: values.currentPermissions ?? 0,
+              contentRestricted:
+                values.contentRestricted === 'on'
+                  ? true
+                  : values.contentRestricted === 'off'
+                    ? false
+                    : null,
               ...(radarrServers && sonarrServers
                 ? {
                     requestServices: values.requestServices.filter((service) =>
@@ -156,6 +176,36 @@ const UserPermissions = () => {
                     setFieldValue('currentPermissions', newPermission)
                   }
                 />
+                <div className="form-row">
+                  <label htmlFor="contentRestricted" className="text-label">
+                    {intl.formatMessage(messages.contentRestriction)}
+                    <span className="label-tip">
+                      {intl.formatMessage(
+                        messages.contentRestrictionDescription
+                      )}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <select
+                      id="contentRestricted"
+                      name="contentRestricted"
+                      value={values.contentRestricted}
+                      onChange={(event) =>
+                        setFieldValue('contentRestricted', event.target.value)
+                      }
+                    >
+                      <option value="default">
+                        {intl.formatMessage(messages.contentRestrictionDefault)}
+                      </option>
+                      <option value="on">
+                        {intl.formatMessage(messages.contentRestrictionOn)}
+                      </option>
+                      <option value="off">
+                        {intl.formatMessage(messages.contentRestrictionOff)}
+                      </option>
+                    </select>
+                  </div>
+                </div>
                 {requestServiceOptions.length > 0 && (
                   <div>
                     <h4 className="heading">
