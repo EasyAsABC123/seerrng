@@ -415,14 +415,18 @@ const AdvancedRequester = ({
       defaultServer = serviceServers[0];
     }
 
+    // Only fall back to the default when nothing valid is selected; this
+    // effect re-runs on every selectedServer change and must not undo a
+    // user's explicit choice of a non-default instance.
+    const selectionUnavailable =
+      selectedServer === null ||
+      !serviceServers.some((server) => server.id === selectedServer);
     const canReplaceUnavailableServer =
-      reassignMissingServer &&
-      (selectedServer === null ||
-        !serviceServers.some((server) => server.id === selectedServer));
+      reassignMissingServer && selectionUnavailable;
 
     if (
       defaultServer &&
-      defaultServer.id !== selectedServer &&
+      selectionUnavailable &&
       (!defaultOverrides ||
         defaultOverrides.server === null ||
         canReplaceUnavailableServer)
