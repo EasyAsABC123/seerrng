@@ -22,6 +22,8 @@ If the capped-preview build is selected, it includes 20 successful server sessio
 
 **Support URL:** `https://github.com/snapetech-org/seerrng/issues`
 
+**Support email:** `support@snape.tech`
+
 **Privacy policy:** `https://snapetech-org.github.io/seerrng-android-privacy/`
 
 **Category:** Entertainment (confirm with the final store listing and primary app function).
@@ -49,6 +51,8 @@ HTTPS is recommended. If you choose an HTTP address, the app explains that sign-
 The capped-preview build includes 20 successful server sessions per installation. Any optional lifetime unlock is processed by Apple and uses the localized price shown before purchase.
 
 **Support URL:** `https://github.com/snapetech-org/seerrng/issues`
+
+**Support email:** `support@snape.tech`
 
 **Privacy policy:** `https://snapetech-org.github.io/seerrng-android-privacy/`
 

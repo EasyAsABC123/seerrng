@@ -116,7 +116,7 @@ The first pass of App Store and Play listing text is in [mobile-store-listing-dr
 - Web sign-in and normal SeerrNG requests go directly to the user's selected server, which controls its logs and data retention.
 - The capped-use counter is local. StoreKit/Play Billing process purchases with Apple/Google; the publisher does not receive server credentials, cookies, or URLs.
 - Android can include Google Mobile Ads SDK/UMP when configured. iOS contains no ad or analytics SDK.
-- The published policy URL is `https://snapetech-org.github.io/seerrng-android-privacy/`. It now covers iOS, StoreKit, the per-server WebKit profile, and profile deletion. Recheck it against the final integrations before submitting either app.
+- The published policy URL is `https://snapetech-org.github.io/seerrng-android-privacy/`; privacy and support requests go to `support@snape.tech`. It covers iOS, StoreKit, the per-server WebKit profile, and profile deletion. Recheck it against the final integrations before submitting either app.
 
 ## Official references
 
