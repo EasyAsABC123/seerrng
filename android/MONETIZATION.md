@@ -43,6 +43,19 @@ The Play purchase is not ready until all of these are complete:
 4. Add license testers and test purchase, restore, pending, cancellation, refund/revocation, and unavailable-product states from the Play-distributed test app.
 5. Set the GitHub Actions repository variable `ENABLE_PLAY_BILLING=true` only after the product is active and the release build has passed those checks.
 
+### Play product metadata draft
+
+Use this metadata when the Play app record is available:
+
+- **Product ID:** `lifetime_unlock` (the Android client already queries this ID; Play product IDs cannot be changed after creation)
+- **Name:** `Lifetime Access`
+- **Description:** `One-time purchase unlocks unlimited SeerrNG app sessions for your Google Play account.`
+- **Type:** One-time, non-consumable purchase; single quantity
+- **Price:** US$2.99 base price; review Play's suggested local prices before activation
+- **Ads declaration:** No ads
+
+The product is not configured or active in Play Console yet. Keep `ENABLE_PLAY_BILLING` unset until the app record, product, and Play test-track purchase flow exist.
+
 Until billing is enabled, the release build hides purchase controls and leaves the app unlimited. The signed GitHub APK is useful for direct evaluation, but checkout and purchase restoration rely on Google Play. The app checks owned purchases at launch and resume, acknowledges completed purchases, and caches the local entitlement for offline use. It recognizes the old `no_ads_lifetime` product ID to preserve restore support for existing owners.
 
 The app does not send purchase tokens to a publisher backend. This keeps the initial product simple, but it means the local entitlement is not authoritative against a modified client and the publisher does not receive real-time refund/revocation events. Add backend verification and voided-purchase handling if the product needs stronger enforcement or account-wide entitlement state.
