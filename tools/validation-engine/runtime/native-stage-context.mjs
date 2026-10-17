@@ -873,9 +873,14 @@ function closure(root) {
           resolved = realpathSync(absolute);
         } catch (error) {
           if (error.code !== 'ENOENT') throw error;
-          resolved = path.resolve(path.dirname(absolute), readlinkSync(absolute));
+          resolved = path.resolve(
+            path.dirname(absolute),
+            readlinkSync(absolute)
+          );
           if (resolved !== root && !beneath(root, resolved))
-            throw new Error(`Tool/dependency closure escapes its root: ${file}`);
+            throw new Error(
+              `Tool/dependency closure escapes its root: ${file}`
+            );
           let existing = resolved;
           while (true) {
             try {

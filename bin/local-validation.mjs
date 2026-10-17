@@ -112,7 +112,9 @@ function normalizedMarkdownSection(source, heading) {
   const lines = source.replace(/\r/g, '').split('\n');
   const headingAt = (line) => {
     const match = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
-    return match ? { level: match[1].length, text: match[2].trim() } : undefined;
+    return match
+      ? { level: match[1].length, text: match[2].trim() }
+      : undefined;
   };
   const headings = lines.map(headingAt);
   const start = headings.findIndex((entry) => entry?.text === heading);
