@@ -698,6 +698,8 @@ test('release assets build supported native archive platforms', () => {
     verifyInventory.env.IOS_APPSTORE_SIGNING_ENABLED,
     /vars\.IOS_APPSTORE_SIGNING_ENABLED/u
   );
+  assert.match(verifyInventory.run, /\$\{IOS_ADHOC_SIGNING_ENABLED:-\}/u);
+  assert.match(verifyInventory.run, /\$\{IOS_APPSTORE_SIGNING_ENABLED:-\}/u);
   const archiveBuild = build.steps.find(
     (step) => step.name === 'Build archive'
   );
