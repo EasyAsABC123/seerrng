@@ -99,7 +99,7 @@ Google Play and Apple's stores sell/check out a one-time digital unlock through 
 - [ ] Provide Play reviewers with a stable working server or a demo flow and test credentials.
 - [ ] Before shipping adult-media capable SeerrNG servers, establish a store-compatible content policy and enforcement path. See the content gate below.
 
-**Console status checked 2026-10-16:** Google is still reviewing the uploaded identity documents. The Play Console home page marks real Android device verification and contact-phone verification as required, and the app-creation action is disabled until those account checks are complete. No Play app record, product, or test track has been created yet. Device verification must be completed in the Play Console mobile app on a non-rooted physical Android 10+ phone; an emulator or this remote desktop cannot substitute for it. Phone verification will require the account owner's SMS or voice-call code.
+**Console status checked 2026-10-17:** Google is still reviewing the uploaded identity documents. The Play Console home page marks real Android device verification and contact-phone verification as required, and the app-creation action is disabled until those account checks are complete. No Play app record, product, or test track has been created yet. Device verification must be completed in the Play Console mobile app on a non-rooted physical Android 10+ phone; an emulator or this remote desktop cannot substitute for it. Phone verification will require the account owner's SMS or voice-call code.
 
 Google currently requires new apps and updates to target Android 16 / API 36 from 31 August 2026; this Android project already targets API 36. Check the requirement again before each submission.
 
@@ -136,6 +136,7 @@ The first pass of App Store and Play listing text is in [mobile-store-listing-dr
 ## Official references
 
 - [Google Play Console setup and fee](https://support.google.com/googleplay/android-developer/answer/6112435)
+- [Google Play developer identity and phone verification](https://support.google.com/android-developer-console/answer/16641416)
 - [Google Play device verification requirements](https://support.google.com/googleplay/android-developer/answer/14316361)
 - [Google Play personal account closed-test requirement](https://support.google.com/googleplay/android-developer/answer/14151465)
 - [Google Play one-time product setup](https://support.google.com/googleplay/android-developer/answer/16430488)
