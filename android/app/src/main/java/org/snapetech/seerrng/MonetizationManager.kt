@@ -29,7 +29,7 @@ import com.google.android.ump.UserMessagingPlatform
 internal class MonetizationManager(
     private val activity: Activity,
     private val adContainer: FrameLayout,
-    private val onNoAdsChanged: (Boolean) -> Unit,
+    private val onLifetimeUnlockChanged: (Boolean) -> Unit,
     private val onPriceChanged: (String?) -> Unit,
     private val onPrivacyOptionsChanged: (Boolean) -> Unit,
     private val onMessage: (Int) -> Unit,
@@ -39,7 +39,8 @@ internal class MonetizationManager(
         @Suppress("DEPRECATION")
         runCatching { activity.packageManager.getPackageInfo(PLAY_STORE_PACKAGE, 0) }.isSuccess
     }
-    private var noAdsUnlocked = preferences.getBoolean(NO_ADS_UNLOCKED_KEY, false)
+    private var lifetimeUnlocked = preferences.getBoolean(LIFETIME_UNLOCKED_KEY, false) ||
+        preferences.getBoolean(LEGACY_NO_ADS_UNLOCKED_KEY, false)
     private var billingClient: BillingClient? = null
     private var billingConnecting = false
     private var browsingServer = false
@@ -51,11 +52,11 @@ internal class MonetizationManager(
     private var consentInformation: ConsentInformation? = null
     private var adView: AdView? = null
 
-    val isNoAdsUnlocked: Boolean
-        get() = noAdsUnlocked
+    val isLifetimeUnlocked: Boolean
+        get() = lifetimeUnlocked
 
     fun start() {
-        onNoAdsChanged(noAdsUnlocked)
+        onLifetimeUnlockChanged(lifetimeUnlocked)
         onPrivacyOptionsChanged(false)
         if (BuildConfig.BILLING_ENABLED && playStoreInstalled) {
             billingClient = BillingClient.newBuilder(activity)
@@ -73,7 +74,7 @@ internal class MonetizationManager(
 
     fun setBrowsingServer(visible: Boolean) {
         browsingServer = visible
-        if (visible && BuildConfig.MONETIZATION_ENABLED) requestConsentUpdate()
+        if (visible && BuildConfig.ADS_ENABLED) requestConsentUpdate()
         updateBanner()
     }
 
@@ -85,7 +86,7 @@ internal class MonetizationManager(
             queryOwnedPurchases(manualRestore = false)
             queryProductDetails()
         }
-        if (browsingServer && BuildConfig.MONETIZATION_ENABLED) requestConsentUpdate()
+        if (browsingServer && BuildConfig.ADS_ENABLED) requestConsentUpdate()
         updateBanner()
     }
 
@@ -100,17 +101,17 @@ internal class MonetizationManager(
         }
     }
 
-    fun purchaseNoAds() {
+    fun purchaseLifetimeUnlock() {
         if (released) return
         if (!BuildConfig.BILLING_ENABLED) {
-            onMessage(R.string.no_ads_product_unavailable)
+            onMessage(R.string.lifetime_product_unavailable)
             return
         }
-        if (noAdsUnlocked) return
+        if (lifetimeUnlocked) return
         val client = billingClient
         if (client?.isReady != true) {
             connectBilling()
-            onMessage(R.string.no_ads_purchase_unavailable)
+            onMessage(R.string.lifetime_purchase_unavailable)
             return
         }
 
@@ -118,7 +119,7 @@ internal class MonetizationManager(
             val offer = details?.oneTimePurchaseOfferDetailsList?.firstOrNull()
             val offerToken = offer?.offerToken?.takeIf(String::isNotBlank)
             if (details == null || offerToken == null) {
-                onMessage(R.string.no_ads_product_unavailable)
+                onMessage(R.string.lifetime_product_unavailable)
                 return@queryProductDetails
             }
 
@@ -133,20 +134,20 @@ internal class MonetizationManager(
                     .build(),
             )
             if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-                onMessage(R.string.no_ads_purchase_error)
+                onMessage(R.string.lifetime_purchase_error)
             }
         }
     }
 
-    fun restoreNoAds() {
+    fun restoreLifetimeUnlock() {
         if (released) return
         if (!BuildConfig.BILLING_ENABLED) {
-            onMessage(R.string.no_ads_purchase_unavailable)
+            onMessage(R.string.lifetime_purchase_unavailable)
             return
         }
         if (billingClient?.isReady != true) {
             connectBilling()
-            onMessage(R.string.no_ads_purchase_unavailable)
+            onMessage(R.string.lifetime_purchase_unavailable)
             return
         }
         queryOwnedPurchases(manualRestore = true)
@@ -154,7 +155,7 @@ internal class MonetizationManager(
 
     fun showPrivacyOptions() {
         val information = consentInformation
-        if (!BuildConfig.MONETIZATION_ENABLED || information == null ||
+        if (!BuildConfig.ADS_ENABLED || information == null ||
             information.privacyOptionsRequirementStatus != ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
         ) {
             onMessage(R.string.ad_privacy_unavailable)
@@ -203,7 +204,7 @@ internal class MonetizationManager(
         }
 
         val product = QueryProductDetailsParams.Product.newBuilder()
-            .setProductId(MonetizationPolicy.NO_ADS_PRODUCT_ID)
+            .setProductId(MonetizationPolicy.LIFETIME_UNLOCK_PRODUCT_ID)
             .setProductType(BillingClient.ProductType.INAPP)
             .build()
         val params = QueryProductDetailsParams.newBuilder()
@@ -232,15 +233,15 @@ internal class MonetizationManager(
             if (released) return@queryPurchasesAsync
             if (result.responseCode != BillingClient.BillingResponseCode.OK) return@queryPurchasesAsync
 
-            val wasUnlocked = noAdsUnlocked
+            val wasUnlocked = lifetimeUnlocked
             applyPurchaseState(purchases)
             if (manualRestore) {
                 onMessage(
-                    if (noAdsUnlocked) R.string.no_ads_purchase_restored
-                    else R.string.no_ads_purchase_not_found,
+                    if (lifetimeUnlocked) R.string.lifetime_purchase_restored
+                    else R.string.lifetime_purchase_not_found,
                 )
-            } else if (!wasUnlocked && noAdsUnlocked) {
-                onMessage(R.string.no_ads_purchase_success)
+            } else if (!wasUnlocked && lifetimeUnlocked) {
+                onMessage(R.string.lifetime_purchase_success)
             }
         }
     }
@@ -249,21 +250,21 @@ internal class MonetizationManager(
         if (released) return
         when {
             result.responseCode == BillingClient.BillingResponseCode.OK && purchases != null -> {
-                val wasUnlocked = noAdsUnlocked
+                val wasUnlocked = lifetimeUnlocked
                 applyPurchaseState(purchases)
-                if (!wasUnlocked && noAdsUnlocked) {
-                    onMessage(R.string.no_ads_purchase_success)
+                if (!wasUnlocked && lifetimeUnlocked) {
+                    onMessage(R.string.lifetime_purchase_success)
                 } else if (purchases.any { purchase ->
-                        MonetizationPolicy.NO_ADS_PRODUCT_ID in purchase.products &&
+                        MonetizationPolicy.LIFETIME_UNLOCK_PRODUCT_ID in purchase.products &&
                             purchase.purchaseState == Purchase.PurchaseState.PENDING
                     }
                 ) {
-                    onMessage(R.string.no_ads_purchase_pending)
+                    onMessage(R.string.lifetime_purchase_pending)
                 }
             }
 
             result.responseCode == BillingClient.BillingResponseCode.USER_CANCELED -> Unit
-            else -> onMessage(R.string.no_ads_purchase_error)
+            else -> onMessage(R.string.lifetime_purchase_error)
         }
     }
 
@@ -272,7 +273,7 @@ internal class MonetizationManager(
         purchases.filter { purchase ->
             MonetizationPolicy.shouldAcknowledge(purchase.toStorePurchase())
         }.forEach(::acknowledgePurchase)
-        setNoAdsUnlocked(MonetizationPolicy.ownsNoAds(records))
+        setLifetimeUnlocked(MonetizationPolicy.ownsLifetimeUnlock(records))
     }
 
     private fun acknowledgePurchase(purchase: Purchase) {
@@ -288,17 +289,17 @@ internal class MonetizationManager(
         }
     }
 
-    private fun setNoAdsUnlocked(unlocked: Boolean) {
-        if (noAdsUnlocked != unlocked) {
-            noAdsUnlocked = unlocked
-            preferences.edit().putBoolean(NO_ADS_UNLOCKED_KEY, unlocked).apply()
-            onNoAdsChanged(unlocked)
+    private fun setLifetimeUnlocked(unlocked: Boolean) {
+        if (lifetimeUnlocked != unlocked) {
+            lifetimeUnlocked = unlocked
+            preferences.edit().putBoolean(LIFETIME_UNLOCKED_KEY, unlocked).apply()
+            onLifetimeUnlockChanged(unlocked)
         }
         updateBanner()
     }
 
     private fun requestConsentUpdate() {
-        if (!BuildConfig.MONETIZATION_ENABLED || released || consentRequestInProgress) return
+        if (!BuildConfig.ADS_ENABLED || released || consentRequestInProgress) return
         val information = consentInformation
             ?: UserMessagingPlatform.getConsentInformation(activity).also { consentInformation = it }
         consentRequestInProgress = true
@@ -331,7 +332,7 @@ internal class MonetizationManager(
 
     private fun initializeMobileAdsIfAllowed() {
         val information = consentInformation ?: return
-        if (!BuildConfig.MONETIZATION_ENABLED || !information.canRequestAds() || mobileAdsInitializing || mobileAdsInitialized) {
+        if (!BuildConfig.ADS_ENABLED || !information.canRequestAds() || mobileAdsInitializing || mobileAdsInitialized) {
             updateBanner()
             return
         }
@@ -347,7 +348,7 @@ internal class MonetizationManager(
     }
 
     private fun updatePrivacyOptionsVisibility() {
-        val required = BuildConfig.MONETIZATION_ENABLED &&
+        val required = BuildConfig.ADS_ENABLED &&
             consentInformation?.privacyOptionsRequirementStatus == ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
         onPrivacyOptionsChanged(required)
     }
@@ -355,9 +356,9 @@ internal class MonetizationManager(
     private fun updateBanner() {
         if (released) return
         val allowedByApp = MonetizationPolicy.shouldShowBanner(
-            adsEnabled = BuildConfig.MONETIZATION_ENABLED,
+            adsEnabled = BuildConfig.ADS_ENABLED,
             browsingServer = browsingServer,
-            noAdsUnlocked = noAdsUnlocked,
+            lifetimeUnlocked = lifetimeUnlocked,
         )
         val allowedByConsent = consentInformation?.canRequestAds() == true
         if (!allowedByApp || !allowedByConsent) {
@@ -370,12 +371,12 @@ internal class MonetizationManager(
         adContainer.visibility = View.GONE
         adContainer.post {
             if (released ||
-                !BuildConfig.MONETIZATION_ENABLED ||
+                !BuildConfig.ADS_ENABLED ||
                 consentInformation?.canRequestAds() != true ||
                 adView != null ||
                 adContainer.width <= 0 ||
                 !browsingServer ||
-                noAdsUnlocked ||
+                lifetimeUnlocked ||
                 !mobileAdsInitialized
             ) {
                 bannerRequestPending = false
@@ -392,7 +393,7 @@ internal class MonetizationManager(
                 adListener = object : AdListener() {
                     override fun onAdLoaded() {
                         bannerRequestPending = false
-                        if (adView === this@apply && browsingServer && !noAdsUnlocked) {
+                        if (adView === this@apply && browsingServer && !lifetimeUnlocked) {
                             adContainer.visibility = View.VISIBLE
                         }
                     }
@@ -449,6 +450,7 @@ internal class MonetizationManager(
     private companion object {
         const val PLAY_STORE_PACKAGE = "com.android.vending"
         const val PREFERENCES_NAME = "seerrng_monetization"
-        const val NO_ADS_UNLOCKED_KEY = "no_ads_lifetime_unlocked"
+        const val LIFETIME_UNLOCKED_KEY = "lifetime_unlocked"
+        const val LEGACY_NO_ADS_UNLOCKED_KEY = "no_ads_lifetime_unlocked"
     }
 }

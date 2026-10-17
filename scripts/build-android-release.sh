@@ -3,6 +3,12 @@ set -euo pipefail
 
 tag="${1:?Usage: build-android-release.sh vX.Y.Z [output-directory]}"
 output_dir="${2:-dist-release}"
+monetization_mode="${ANDROID_MONETIZATION_MODE:-ads}"
+
+if [[ "$monetization_mode" != "ads" && "$monetization_mode" != "capped" ]]; then
+  echo "ANDROID_MONETIZATION_MODE must be 'ads' or 'capped': $monetization_mode" >&2
+  exit 2
+fi
 
 if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
   echo "Android release tag must be a semantic version: $tag" >&2
@@ -62,11 +68,16 @@ apk="android/app/build/outputs/apk/release/app-release.apk"
 test -s "$apk"
 "$apksigner" verify --verbose --print-certs "$apk"
 
-archive="seerrng-${tag}-android.apk"
-checksum="seerrng-${tag}-android.sha256"
+if [[ "$monetization_mode" == "capped" ]]; then
+  archive="seerrng-${tag}-android-capped.apk"
+  checksum="seerrng-${tag}-android-capped.sha256"
+else
+  archive="seerrng-${tag}-android.apk"
+  checksum="seerrng-${tag}-android.sha256"
+fi
 cp -- "$apk" "$output_dir/$archive"
 (
   cd "$output_dir"
   sha256sum "$archive" > "$checksum"
 )
-echo "Built signed Android APK: $output_dir/$archive"
+echo "Built signed Android APK ($monetization_mode mode): $output_dir/$archive"

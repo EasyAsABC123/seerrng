@@ -15,7 +15,6 @@ import logger from '@server/logger';
 import { mapWithConcurrency } from '@server/utils/concurrency';
 import { getHttpErrorDetails } from '@server/utils/httpError';
 import { parsePositiveInt } from '@server/utils/pagination';
-import { createHash } from 'crypto';
 import { Router } from 'express';
 import { In, IsNull } from 'typeorm';
 
@@ -307,12 +306,7 @@ adultRoutes.get('/:id/cover', async (req, res) => {
           url: WhisparrAPI.buildUrl(current, '/api/v3'),
         }).getSceneCover(stashDbId)
     );
-    const etag = `"${createHash('sha256').update(cover.imageBuffer).digest('hex')}"`;
-    res
-      .set('Cache-Control', 'private, max-age=86400')
-      .set('ETag', etag)
-      .type(cover.contentType);
-    if (req.fresh) return res.status(304).end();
+    res.set('Cache-Control', 'private, no-store').type(cover.contentType);
     return res.status(200).send(cover.imageBuffer);
   } catch (error) {
     logger.warn('Adult scene cover could not be loaded', {
