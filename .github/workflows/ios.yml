@@ -39,6 +39,9 @@ jobs:
           available_simulators="$(xcrun simctl list devices available)"
           grep -Fq 'iPhone 17' <<<"$available_simulators"
 
+      - name: Inspect iOS Xcode project and scheme
+        run: xcodebuild -list -project ios/SeerrNG.xcodeproj -scheme SeerrNG
+
       - name: Run iOS unit and UI tests, then package Simulator app
         env:
           IOS_BUILD_NUMBER: ${{ github.run_number }}

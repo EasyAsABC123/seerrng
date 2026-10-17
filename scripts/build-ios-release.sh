@@ -39,6 +39,7 @@ fi
 project='ios/SeerrNG.xcodeproj'
 scheme='SeerrNG'
 version_settings=("MARKETING_VERSION=$short_version" "CURRENT_PROJECT_VERSION=$build_number")
+xcodebuild -list -project "$project" -scheme "$scheme"
 
 xcodebuild \
   -project "$project" \

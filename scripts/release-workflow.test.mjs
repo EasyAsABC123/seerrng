@@ -792,6 +792,12 @@ test('release assets build supported native archive platforms', () => {
   assert.doesNotMatch(iosClientToolchainCheck, /xcodebuild -version \|/u);
   assert.match(
     iosClientWorkflow.jobs.ios.steps.find(
+      (step) => step.name === 'Inspect iOS Xcode project and scheme'
+    ).run,
+    /xcodebuild -list -project ios\/SeerrNG\.xcodeproj -scheme SeerrNG/u
+  );
+  assert.match(
+    iosClientWorkflow.jobs.ios.steps.find(
       (step) => step.name === 'Run iOS unit and UI tests, then package Simulator app'
     ).run,
     /scripts\/build-ios-release\.sh/u
