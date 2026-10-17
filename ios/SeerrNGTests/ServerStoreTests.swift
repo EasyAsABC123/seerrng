@@ -19,4 +19,20 @@ final class ServerStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.remove(id: first.id)?.id, first.id)
         XCTAssertTrue(reloaded.servers.isEmpty)
     }
+
+    func testRemovingOneServerPreservesOtherServers() throws {
+        let suite = "SeerrNG-ServerStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = ServerStore(defaults: defaults)
+        let home = try ServerEndpoint.create(name: "Home", address: "home.example.test")
+        let office = try ServerEndpoint.create(name: "Office", address: "office.example.test")
+        store.save(home)
+        store.save(office)
+
+        XCTAssertEqual(store.remove(id: office.id)?.id, office.id)
+        XCTAssertEqual(store.servers, [home])
+        XCTAssertEqual(ServerStore(defaults: defaults).servers, [home])
+    }
 }
