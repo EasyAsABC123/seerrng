@@ -46,6 +46,7 @@ test('admins can connect a read-only Audiobookshelf book library', async ({
   });
 
   await page.goto('/settings/services');
+  await page.getByRole('button', { name: 'Audiobooks & Books' }).click();
   await expect(
     page.getByRole('heading', { name: 'Audiobookshelf Availability' })
   ).toBeVisible();

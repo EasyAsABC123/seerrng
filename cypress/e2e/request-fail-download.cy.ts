@@ -306,9 +306,15 @@ describe('manual fail and search from request status', () => {
       cy.contains('The release was failed and a new search was started.')
         .should('be.visible')
         .and(($message) => {
-          const notification = $message.closest('.toast').children().first();
+          const toast = $message.closest('.toast');
+          const notification = toast.children().first();
           expect(notification).to.have.css('opacity', '1');
-          expect(notification).to.have.css('pointer-events', 'auto');
+          expect(toast).to.have.css('pointer-events', 'none');
+          expect(notification).to.have.css('pointer-events', 'none');
+          expect(notification.find('button')).to.have.css(
+            'pointer-events',
+            'auto'
+          );
         });
       cy.contains('Someone Else’s Movie')
         .parents('[data-testid=request-card]')

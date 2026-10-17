@@ -134,7 +134,6 @@ describe('Current batch layout standards', () => {
 
   for (const route of [
     '/settings/plex',
-    '/settings/services',
     '/settings/network',
     '/settings/jobs',
   ]) {

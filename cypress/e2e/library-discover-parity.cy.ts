@@ -782,6 +782,7 @@ describe('Books and Music discover parity', () => {
       .should('be.visible');
     cy.get('[data-testid=modal-cancel-button]').click();
 
+    cy.contains('button[aria-pressed="false"]', 'Audiobooks & Books').click();
     cy.contains('button', 'Add Bookshelf Server').click();
     cy.contains('[data-testid=modal-title]', 'Add New Bookshelf Server').should(
       'be.visible'

@@ -335,10 +335,12 @@ describe('ROMarrNG software acquisition integration', () => {
       });
     });
     cy.contains('h3', 'Software acquisition').should('be.visible');
+    cy.contains('button[aria-pressed="false"]', 'TV & Movies').click();
     cy.contains('h4', 'Optional Sportarr DVR link').should('be.visible');
     cy.contains(
       'Enable and configure IPTV Tunerr to connect its sports feeds.'
     ).should('be.visible');
+    cy.contains('button[aria-pressed="false"]', 'Tools & Other').click();
     cy.contains('h4', 'ROMarrNG to IGDB platform matching', {
       timeout: 10000,
     }).scrollIntoView();

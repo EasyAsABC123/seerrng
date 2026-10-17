@@ -33,7 +33,9 @@ describe('service setup categories', () => {
     cy.get('[data-settings-category="audiobooks-books"]')
       .should('be.visible')
       .and('contain', 'Bookshelf Settings')
-      .and('contain', 'Reader Apps');
+      .and('contain', 'Reader Apps')
+      .and('contain', 'Audiobookshelf Availability')
+      .and('contain', 'Connect Audiobookshelf library');
 
     cy.contains('button[aria-pressed="false"]', 'Tools & Other').click();
     cy.location('search').should('eq', '?serviceCategory=tools-other');
@@ -41,6 +43,9 @@ describe('service setup categories', () => {
       .should('be.visible')
       .and('contain', 'Connect your apps');
     cy.get('#prowlarr').should('be.visible');
+    cy.get('[data-settings-category="audiobooks-books"]').should(
+      'not.be.visible'
+    );
   });
 
   it('opens a hidden category for Settings search results and deep links', () => {
