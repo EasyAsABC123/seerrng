@@ -323,6 +323,7 @@ const Swipe = () => {
     id: string;
     direction: SwipeDirection;
   }>();
+  const exitTimer = useRef<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [showPreferences, setShowPreferences] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -377,6 +378,11 @@ const Swipe = () => {
 
   const selectMediaType = useCallback(
     (nextMediaType: SwipeMediaType) => {
+      if (exitTimer.current !== undefined) {
+        window.clearTimeout(exitTimer.current);
+        exitTimer.current = undefined;
+        setExiting(undefined);
+      }
       setMediaType(nextMediaType);
       setPage(1);
       const nextReturnTo = deckSourcePath[nextMediaType] ?? returnTo;
@@ -393,6 +399,15 @@ const Swipe = () => {
       );
     },
     [returnTo, router]
+  );
+
+  useEffect(
+    () => () => {
+      if (exitTimer.current !== undefined) {
+        window.clearTimeout(exitTimer.current);
+      }
+    },
+    []
   );
 
   const { data: status, error: statusError } = useSWR<{
@@ -690,7 +705,8 @@ const Swipe = () => {
           }
         }
         setExiting({ id: top.id, direction });
-        window.setTimeout(() => {
+        exitTimer.current = window.setTimeout(() => {
+          exitTimer.current = undefined;
           setExiting(undefined);
           setCards((current) => {
             const next = current.filter((card) => card.id !== top.id);
@@ -754,6 +770,11 @@ const Swipe = () => {
         { mediaType }
       );
       const card = response.data.card;
+      if (exitTimer.current !== undefined) {
+        window.clearTimeout(exitTimer.current);
+        exitTimer.current = undefined;
+      }
+      setExiting(undefined);
       setCards((current) => [
         card,
         ...current.filter((item) => item.id !== card.id),
