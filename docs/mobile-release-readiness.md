@@ -90,12 +90,12 @@ Google Play and Apple's stores sell/check out a one-time digital unlock through 
 
 ### Google Play
 
-- [x] Create the Play Console developer account and pay the one-time US$25 registration fee; the account holder confirms identity verification is complete.
-- [ ] Verify a real Android 10+ device through the Play Console mobile app and complete phone verification. These were still shown in the last Console check before identity verification; confirm their current state in Console.
+- [x] Create the Play Console developer account and pay the one-time US$25 registration fee. Identity documents have been submitted; Play Console currently says Google is reviewing them.
+- [ ] After Google approves the identity documents, verify a real Android device through the Play Console mobile app and complete contact-phone verification. Both currently show as required in Console.
 - [ ] For this personal account, complete the required closed test before applying for production access: at least 12 opted-in testers for 14 continuous days.
-- [ ] Create the app record for `org.snapetech.seerrng`; upload the signed AAB and enroll in Play App Signing. Keep the direct-install APK signed by the same stable developer key.
+- [ ] After the account setup tasks clear, create the app record for `org.snapetech.seerrng`; upload the signed AAB and enroll in Play App Signing. Keep the direct-install APK signed by the same stable developer key.
 - [ ] Complete the content rating, target audience, Data safety, no-ads declaration, and app access declarations accurately.
-- [ ] Create and publish a one-time product `lifetime_unlock`, set the US base price to $4.99, review local prices, enable `ENABLE_PLAY_BILLING=true`, add license testers, and test purchase, restore, pending, cancelled, and refund/revocation behavior through a Play test track.
+- [ ] Create and publish a one-time product `lifetime_unlock`, set the recommended US base price to $4.99, review local prices, enable `ENABLE_PLAY_BILLING=true`, add license testers, and test purchase, restore, pending, cancelled, and refund/revocation behavior through a Play test track.
 - [ ] Provide Play reviewers with a stable working server or a demo flow and test credentials.
 - [ ] Before shipping adult-media capable SeerrNG servers, establish a store-compatible content policy and enforcement path. See the content gate below.
 

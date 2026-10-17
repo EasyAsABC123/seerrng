@@ -63,7 +63,9 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   assert.match(build.run, /:app:assembleDebug/u);
   assert.match(build.run, /ANDROID_EMULATOR_PID=\$emulator_pid/u);
   assert.deepEqual(
-    Object.keys(releaseCandidate.env).filter((name) => /admob|monetization/iu.test(name)),
+    Object.keys(releaseCandidate.env).filter((name) =>
+      /admob|monetization/iu.test(name)
+    ),
     []
   );
   for (const secretName of [

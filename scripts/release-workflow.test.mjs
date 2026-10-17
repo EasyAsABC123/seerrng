@@ -760,11 +760,12 @@ test('release assets build supported native archive platforms', () => {
     "bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release"
   );
   const androidPackageBuild = androidBuild.steps.find(
-    (step) =>
-      step.name === 'Build, sign, and checksum the Android APK and AAB'
+    (step) => step.name === 'Build, sign, and checksum the Android APK and AAB'
   );
   assert.deepEqual(
-    Object.keys(androidPackageBuild.env).filter((name) => /admob|monetization/iu.test(name)),
+    Object.keys(androidPackageBuild.env).filter((name) =>
+      /admob|monetization/iu.test(name)
+    ),
     []
   );
   assert.equal(
