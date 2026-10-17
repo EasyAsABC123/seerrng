@@ -276,15 +276,15 @@ and a one-time lifetime unlock at a recommended US price of $2.99. It contains
 no advertising SDKs. See the [pricing and monetization decision](./android/MONETIZATION.md).
 
 The current tested mobile packages are attached to the
-[SeerrNG mobile prerelease](https://github.com/snapetech-org/seerrng/releases/tag/mobile-v3.63.0-ci.33):
+[SeerrNG mobile prerelease](https://github.com/snapetech-org/seerrng/releases/tag/mobile-v3.63.0-ci.35):
 
 | Package | Download | SHA-256 |
 | --- | --- | --- |
-| Android APK for direct install (stable project signing key) | [APK](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.33-android.apk) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.33-android.sha256) |
-| Android App Bundle for Google Play upload | [AAB](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.33-android.aab) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.33-android-aab.sha256) |
-| iOS Simulator build (not an iPhone/iPad installable IPA) | [Simulator ZIP](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.18-ios-simulator.zip) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.33/seerrng-v3.63.0-ci.18-ios-simulator.sha256) |
+| Android APK for direct install (stable project signing key) | [APK](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.35/seerrng-v3.63.0-ci.35-android.apk) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.35/seerrng-v3.63.0-ci.35-android.sha256) |
+| Android App Bundle signed with the upload key | [AAB](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.35/seerrng-v3.63.0-ci.35-android.aab) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.35/seerrng-v3.63.0-ci.35-android-aab.sha256) |
+| iOS Simulator build (not an iPhone/iPad installable IPA) | [Simulator ZIP](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.35/seerrng-v3.63.0-ci.20-ios-simulator.zip) | [checksum](https://github.com/snapetech-org/seerrng/releases/download/mobile-v3.63.0-ci.35/seerrng-v3.63.0-ci.20-ios-simulator.sha256) |
 
-These are prerelease test builds, not store-approved releases. See the
+The GitHub Android packages have Play Billing disabled, so they remain unlimited evaluation builds; the 20-session cap and lifetime purchase UI are only enabled in a configured Play build. These are prerelease test builds, not store-approved releases. See the
 [mobile release readiness guide](./docs/mobile-release-readiness.md) for
 signing details, test results, store status, and remaining release work.
 

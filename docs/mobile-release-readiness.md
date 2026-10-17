@@ -58,17 +58,17 @@ An iOS app cannot use a self-signed certificate for ordinary installation. Ad Ho
 
 ### Current GitHub mobile prerelease
 
-The current tested packages are attached to the [SeerrNG mobile prerelease](https://github.com/snapetech-org/seerrng/releases/tag/mobile-v3.63.0-ci.33), built from `main` commit `32cf348bb5e768a38fd5e9e2a865bde4cc7ccab7`. Its release assets are permanent downloads with SHA-256 sidecars; the corresponding Actions artifacts are temporary.
+The current tested packages are attached to the [SeerrNG mobile prerelease](https://github.com/snapetech-org/seerrng/releases/tag/mobile-v3.63.0-ci.35), built from `main` commit `3ed9200e4421e6526c8449d895749913c031ddf8`. Its release assets are permanent downloads with SHA-256 sidecars; the corresponding Actions artifacts are temporary.
 
 | Package | Version | SHA-256 | Details |
 | --- | --- | --- | --- |
-| Android APK | `3.63.0-ci.33` | `7ba3603a2328bf0c89f0bcd9ef4ecf5054ceb7be924f23f19bef12fcb8f33759` | Ads-mode direct-install package, signed with the stable project key; APK Signature Scheme v2 verified. |
-| Android App Bundle | `3.63.0-ci.33` | `1d1406aeac31a27780e0f22bb7cad1c770a0c44a0a43c0437cd91b29ca54df6c` | Signed with the project's upload key for a future Play upload. |
-| iOS Simulator ZIP | `3.63.0` build `18` | `6109f55cdca4eafa90937047b28783959a5656006e79f879b05372cd4f3848c8` | Bundle ID `org.snapetech.seerrng.ios`; Simulator-only, not an iPhone/iPad IPA. |
+| Android APK | `3.63.0-ci.35` | `98e68be60e450bbca27e45ef875652432d884c0e8a4dd9b6884a9ea8bc338cbd` | No-ad direct-install package, signed with the stable RSA-4096 project key; APK Signature Scheme v2 verified, installed, and launched on the API 36 emulator. |
+| Android App Bundle | `3.63.0-ci.35` | `bfbbf0c3df3621d57648bc13b3c6c28cff849d2a3774868da7b64744d7c149d7` | Signed with the stable upload key for a future Play upload; Play App Signing is pending app-record setup. |
+| iOS Simulator ZIP | `3.63.0-ci.20` | `3a712bf2efba4590da7df206635661e3d8a743e1eae6c93f6af5948d5f92088d` | Bundle ID `org.snapetech.seerrng.ios`; Simulator-only, not an iPhone/iPad IPA. iOS source was unchanged after its passing run. |
 
-The [Android Actions run](https://github.com/snapetech-org/seerrng/actions/runs/38994528628) passed unit and API 36 emulator tests, verified the release signatures, then installed and launched the signed APK. The [iOS Actions run](https://github.com/snapetech-org/seerrng/actions/runs/38994509076) passed all 10 unit tests and 3 UI tests and built the Simulator app. All six files were downloaded from the published release and their sidecars verified against the package hashes above.
+The [Android Actions run](https://github.com/snapetech-org/seerrng/actions/runs/38997834311) passed unit and API 36 emulator tests, verified the release signatures, then installed and launched the signed APK. The [iOS Actions run](https://github.com/snapetech-org/seerrng/actions/runs/38997049997) passed the unit and UI test suites and built the Simulator app. Each release package has a SHA-256 sidecar.
 
-This is a testing prerelease, not a store-approved release. Android is packaged in ads mode, but production AdMob identifiers and Play Billing products are not configured, so live ads and purchases have not been verified. The iOS package is not device-installable until Apple distribution signing assets are configured.
+This is a testing prerelease, not a store-approved release. Neither client contains advertising or analytics SDKs. Play Billing is disabled in the GitHub Android package, so the package is unlimited and does not demonstrate the 20-session cap or a live purchase. The iOS package is not device-installable until Apple distribution signing assets are configured.
 
 ## Monetization and trial choice
 
