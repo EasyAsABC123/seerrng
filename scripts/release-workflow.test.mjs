@@ -813,9 +813,17 @@ test('release assets build supported native archive platforms', () => {
     path.join(rootDirectory, 'ios/SeerrNG.xcodeproj/project.pbxproj'),
     'utf8'
   );
+  const iosInfoPlist = fs.readFileSync(
+    path.join(rootDirectory, 'ios/SeerrNG/Info.plist'),
+    'utf8'
+  );
   assert.match(
     iosProject,
     /AA0000000000000000000003 \/\* Debug \*\/ = \{isa = XCBuildConfiguration; buildSettings = \{[^}]*ENABLE_TESTABILITY = YES;/u
+  );
+  assert.match(
+    iosInfoPlist,
+    /<key>CFBundleExecutable<\/key>\s*<string>\$\(EXECUTABLE_NAME\)<\/string>/u
   );
   const iosSigningScript = fs.readFileSync(
     path.join(rootDirectory, 'scripts/build-ios-signed-ipa.sh'),
