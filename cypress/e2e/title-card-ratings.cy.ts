@@ -3,7 +3,7 @@ const ratingMovie = {
   mediaType: 'movie',
   title: 'Rating Fixture',
   releaseDate: '2025-01-01',
-  posterPath: null,
+  posterPath: '/images/seerr_poster_not_found_logo_top.png',
   voteAverage: 8.2,
   voteCount: 1200,
 };
@@ -92,6 +92,7 @@ describe('Title card ratings', () => {
       .first()
       .find('[data-poster-region="frame"]')
       .click();
+    cy.location('pathname').should('eq', '/discover/movies');
     cy.wait('@getRatings');
     assertPopoverFitsViewport();
     cy.get('.poster-rating-values').should(($values) => {
