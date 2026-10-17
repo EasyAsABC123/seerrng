@@ -117,7 +117,7 @@ const messages = defineMessages('components.Settings', {
   whisparrsettings: 'Whisparr Settings',
   sportarrsettings: 'Sportarr Settings',
   lidarrsettings: 'Lidarr Settings',
-  readarrsettings: 'Bookshelf Settings',
+  readarrsettings: 'ChaptarrNG / Bookshelf Settings',
   audiobookshelfsettings: 'Audiobookshelf Availability',
   audiobookshelfDescription:
     'Optionally sync an Audiobookshelf book library so SeerrNG can recognize matching audiobooks that are already available. This connection is read-only and does not send acquisition requests.',
@@ -135,17 +135,19 @@ const messages = defineMessages('components.Settings', {
   musicServiceSettingsDescription:
     'Configure your {serverType} server(s) below. You can connect multiple {serverType} servers, but only one of them can be marked as default. Administrators are able to override the server used to process new requests prior to approval.',
   bookServiceSettingsDescription:
-    'Add one connection for Books and one for Audiobooks to enable both request formats. Both connections can point to the same {serverType} instance; select a different Book Format on each and mark one default for each format. Administrators can override the server before approval.',
+    'Connect ChaptarrNG, BookshelfNG, or another Readarr-compatible service here. Add one connection for each book format you use. Book and Audiobook connections can point to the same instance with a different Book Format selected on each. Administrators can override the server before approval.',
+  bookServiceApiKeyDescription:
+    'No variable is needed on the SeerrNG container. For ChaptarrNG 0.9.941+, set CHAPTARR__AUTH__SEERRAPIKEY on the ChaptarrNG container, then enter that key in this connection.',
   bookFreshSetup:
-    'Recommended for a new setup: run one BookshelfNG instance for both formats. Add the Book connection first, then use the same instance for Audiobooks.',
+    'Recommended for a new setup: run one ChaptarrNG instance for both formats. Add the Book connection first, then use the same instance for Audiobooks.',
   bookAddMissingFormat:
-    'This Bookshelf can handle both formats. Add the missing {format} connection using the same instance, or add a different server.',
+    'This book server can handle both formats. Add the missing {format} connection using the same instance, or add a different server.',
   bookAddOtherFormat: 'Use this instance for {format} requests',
   bookSharedSetup:
-    'These two SeerrNG connections route requests to one BookshelfNG instance and share its library.',
+    'These two SeerrNG connections route requests to one book-service instance and share its library.',
   bookSplitUpgrade:
-    'Your Book and Audiobook connections use different addresses. Upgrades keep them as configured. If they use separate databases, migrate the audiobook library before pointing both connections to one BookshelfNG instance.',
-  bookCombineGuide: 'Bookshelf deployment options',
+    'Your Book and Audiobook connections use different addresses. Upgrades keep them as configured. If they use separate databases, migrate the audiobook library before pointing both connections to one shared book-service instance.',
+  bookCombineGuide: 'Book backend deployment options',
   deleteserverconfirm: 'Are you sure you want to delete this server?',
   ssl: 'SSL',
   default: 'Default',
@@ -167,7 +169,7 @@ const messages = defineMessages('components.Settings', {
   noDefaultSportarr:
     'Choose one Sportarr server as the default destination for sports requests.',
   addlidarr: 'Add Lidarr Server',
-  addreadarr: 'Add Bookshelf Server',
+  addreadarr: 'Add ChaptarrNG Server',
   addmylar: 'Add Mylar Server',
   addkapowarr: 'Add Kapowarr Server',
   addbackissue: 'Add BackIssue Server',
@@ -1399,9 +1401,10 @@ const SettingsServices = ({
             {intl.formatMessage(messages.readarrsettings)}
           </h3>
           <p className="description">
-            {intl.formatMessage(messages.bookServiceSettingsDescription, {
-              serverType: 'Bookshelf',
-            })}
+            {intl.formatMessage(messages.bookServiceSettingsDescription)}
+          </p>
+          <p className="description mt-2">
+            {intl.formatMessage(messages.bookServiceApiKeyDescription)}
           </p>
         </div>
         <div className="app-card-sub section settings-service-section">
@@ -1470,7 +1473,7 @@ const SettingsServices = ({
                   {hasReadarrEbook && !hasDefaultReadarrEbook && (
                     <Alert
                       title={intl.formatMessage(messages.noDefaultServer, {
-                        serverType: 'Bookshelf',
+                        serverType: 'book',
                         mediaType: intl.formatMessage(messages.mediaTypeEbook),
                       })}
                     />
@@ -1478,7 +1481,7 @@ const SettingsServices = ({
                   {hasReadarrAudiobook && !hasDefaultReadarrAudiobook && (
                     <Alert
                       title={intl.formatMessage(messages.noDefaultServer, {
-                        serverType: 'Bookshelf',
+                        serverType: 'book',
                         mediaType: intl.formatMessage(
                           messages.mediaTypeAudiobook
                         ),
@@ -1488,7 +1491,7 @@ const SettingsServices = ({
                   {!hasReadarrEbook && !hasReadarrAudiobook && (
                     <Alert
                       title={intl.formatMessage(messages.noDefaultServer, {
-                        serverType: 'Bookshelf',
+                        serverType: 'book',
                         mediaType: intl.formatMessage(messages.mediaTypeBook),
                       })}
                     />

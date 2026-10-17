@@ -139,14 +139,19 @@ still sends the request with the server's configured tags and any tags selected
 for that request. The requester tag is skipped for that dispatch, and SeerrNG
 logs a warning.
 
-### Bookshelf Settings
+### ChaptarrNG / Bookshelf Settings
 
-SeerrNG uses Bookshelf for book requests through the Readarr-compatible API.
-One BookshelfNG instance can manage ebooks and audiobooks in the same library.
-SeerrNG keeps ebook and audiobook routing separate, so add a service entry for
-each format you enable and mark one as the default for that format. Both
-entries can use the same BookshelfNG URL and API key; this does not require two
-BookshelfNG instances.
+SeerrNG connects to ChaptarrNG, BookshelfNG, and other Readarr-compatible book
+backends through this shared settings section. No environment variable is
+needed on the SeerrNG container. For ChaptarrNG 0.9.941+, set
+`CHAPTARR__AUTH__SEERRAPIKEY` on the ChaptarrNG container and enter that key in
+the service form.
+
+One ChaptarrNG or BookshelfNG instance can manage ebooks and audiobooks in the
+same library. SeerrNG keeps ebook and audiobook routing separate, so add a
+service entry for each format you enable and mark one as the default for that
+format. Both entries can use the same backend URL and API key; this does not
+require two ChaptarrNG or BookshelfNG instances.
 
 Each BookshelfNG author can optionally set separate ebook and audiobook
 folders for future imports, upgrades, and renames. Existing files are not moved
@@ -156,9 +161,9 @@ profile when its override is unset. Use separate BookshelfNG instances only
 when you need isolated databases or different settings for the same author.
 
 Use the [Bookshelf Backend](/using-seerr/bookshelf-backend) guide for the
-recommended Docker Compose deployment. Hardcover is the default for new
-deployments, while existing Goodreads/softcover and other compatible metadata
-sources remain supported. Migration is optional.
+recommended ChaptarrNG Docker Compose deployment. Hardcover is the default for
+new deployments, while existing Goodreads/softcover and other compatible
+metadata sources remain supported. Migration is optional.
 
 Administrators can [preview and move ebook or audiobook paths](/using-seerr/bookshelf-media-path-migration)
 inside one BookshelfNG database. This tool does not merge split Bookshelf

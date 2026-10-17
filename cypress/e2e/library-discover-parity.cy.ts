@@ -754,7 +754,7 @@ describe('Books and Music discover parity', () => {
     cy.contains('button[aria-pressed="false"]', 'Music').click();
     cy.contains('h3', 'Lidarr Settings').scrollIntoView().should('be.visible');
     cy.contains('button[aria-pressed="false"]', 'Audiobooks & Books').click();
-    cy.contains('h3', 'Bookshelf Settings')
+    cy.contains('h3', 'ChaptarrNG / Bookshelf Settings')
       .scrollIntoView()
       .should('be.visible');
 
@@ -783,9 +783,9 @@ describe('Books and Music discover parity', () => {
     cy.get('[data-testid=modal-cancel-button]').click();
 
     cy.contains('button[aria-pressed="false"]', 'Audiobooks & Books').click();
-    cy.contains('button', 'Add Bookshelf Server').click();
-    cy.contains('[data-testid=modal-title]', 'Add New Bookshelf Server').should(
-      'be.visible'
+    cy.contains('button', 'Add ChaptarrNG Server').click();
+    cy.contains('[data-testid=modal-title]', 'Add ChaptarrNG Server').should(
+      'exist'
     );
     cy.contains(
       'ChaptarrNG is the maintained book backend for new installs. Existing BookshelfNG and other Readarr-compatible servers remain supported during migration. Set Book Format to match the configured root folder; Seerr sends that format explicitly on every request.'
@@ -802,6 +802,10 @@ describe('Books and Music discover parity', () => {
     assertDialogFieldDescription(
       'API Key',
       'Find the key in ChaptarrNG under Settings > General > Security > API Key'
+    );
+    assertDialogFieldDescription(
+      'API Key',
+      'For ChaptarrNG 0.9.941+, set CHAPTARR__AUTH__SEERRAPIKEY in the ChaptarrNG container'
     );
     assertDialogFieldDescription(
       'URL Base',
@@ -856,13 +860,13 @@ describe('Books and Music discover parity', () => {
 
     cy.visit('/settings/services?serviceCategory=audiobooks-books');
 
-    cy.contains('h3', 'Bookshelf Settings')
+    cy.contains('h3', 'ChaptarrNG / Bookshelf Settings')
       .scrollIntoView()
       .should('be.visible');
     cy.contains(
       'Your Book and Audiobook connections use different addresses.'
     ).should('be.visible');
-    cy.contains('a', 'Bookshelf deployment options')
+    cy.contains('a', 'Book backend deployment options')
       .should(
         'have.attr',
         'href',

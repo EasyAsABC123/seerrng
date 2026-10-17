@@ -35,11 +35,11 @@ release; see the [combined ChaptarrNG retirement matrix](https://github.com/snap
 ## One BookshelfNG instance for both formats
 
 One BookshelfNG instance and database can manage ebooks and audiobooks on the
-same book record. SeerrNG keeps format routing separate, so add two **Bookshelf**
-service entries when you want both formats: set one to **Book** and the other
-to **Audiobook**, and point both entries to the same BookshelfNG URL and API
-key. The entries let SeerrNG route each format; they are not separate
-BookshelfNG instances.
+same book record. SeerrNG keeps format routing separate, so add two connections
+in **Settings > Services > Audiobooks & Books** when you want both formats: set
+one to **Book** and the other to **Audiobook**, and point both entries to the
+same backend URL and API key. The entries let SeerrNG route each format; they
+are not separate backend instances.
 
 This applies to existing legacy installations only. For new deployments, use
 the [ChaptarrNG service](#chaptarrng). In SeerrNG's **Configure Services**
@@ -691,9 +691,11 @@ and both-format requests have been tested through SeerrNG.
 
 ## SeerrNG Configuration for One BookshelfNG Instance
 
-In **Settings > Services**, add two Bookshelf service entries that point to
-the same BookshelfNG host, port, and API key. This keeps SeerrNG's format
-routing separate while BookshelfNG stores both formats in one library.
+In **Settings > Services > Audiobooks & Books**, open **ChaptarrNG / Bookshelf
+Settings** and add two connections that point to the same BookshelfNG host,
+port, and API key. The **Add ChaptarrNG Server** button also accepts BookshelfNG
+and other Readarr-compatible backends. This keeps SeerrNG's format routing
+separate while BookshelfNG stores both formats in one library.
 To reorganize files inside that combined database, use the admin-only
 [Bookshelf media path mover](./bookshelf-media-path-migration.md). It previews
 the file moves and requires confirmation before BookshelfNG queues them.

@@ -19,8 +19,8 @@ import { useIntl } from 'react-intl';
 import * as Yup from 'yup';
 
 const messages = defineMessages('components.Settings.ReadarrModal', {
-  createreadarr: 'Add New Bookshelf Server',
-  editreadarr: 'Edit Bookshelf Server',
+  createreadarr: 'Add ChaptarrNG Server',
+  editreadarr: 'Edit Book Server',
   validationNameRequired: 'You must provide a server name',
   validationHostnameRequired: 'You must provide a valid hostname or IP address',
   validationPortRequired: 'You must provide a valid port number',

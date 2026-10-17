@@ -29,6 +29,10 @@ guide](./dependency-forks.md).
 | PC games | [QuestarrNG](https://github.com/snapetech-org/QuestarrNG) | Provides the IGDB catalog and acquires PC game requests. |
 | Emulation ROMs | [ROMarrNG](https://github.com/snapetech-org/ROMarrNG) | Provides supported systems and acquires ROM requests. Configure each available system as Retro or Modern in SeerrNG. |
 
+In **Settings > Services > Audiobooks & Books**, ChaptarrNG is configured from
+the **ChaptarrNG / Bookshelf Settings** section. It uses the same book-service
+form as BookshelfNG and other Readarr-compatible backends.
+
 Prowlarr is an optional indexer manager. It can provide configured indexers to
 compatible acquisition apps and power SeerrNG's manual indexer search. A
 download client such as qBittorrent is also optional; configure it inside each

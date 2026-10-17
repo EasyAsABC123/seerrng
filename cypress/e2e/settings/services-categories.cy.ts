@@ -4,6 +4,7 @@ describe('service setup categories', () => {
   });
 
   it('shows only the selected category and keeps the choice in the URL', () => {
+    cy.intercept('GET', '/api/v1/settings/readarr', []);
     cy.visit('/settings/services');
 
     cy.get('[data-settings-category="tv-movies"]')
@@ -32,10 +33,22 @@ describe('service setup categories', () => {
     cy.location('search').should('eq', '?serviceCategory=audiobooks-books');
     cy.get('[data-settings-category="audiobooks-books"]')
       .should('be.visible')
-      .and('contain', 'Bookshelf Settings')
+      .and('contain', 'ChaptarrNG / Bookshelf Settings')
+      .and('contain', 'Connect ChaptarrNG, BookshelfNG')
+      .and('contain', 'No variable is needed on the SeerrNG container')
+      .and('contain', 'Add ChaptarrNG Server')
       .and('contain', 'Reader Apps')
       .and('contain', 'Audiobookshelf Availability')
       .and('contain', 'Connect Audiobookshelf library');
+
+    cy.contains('button', 'Add ChaptarrNG Server').click();
+    cy.contains('[data-testid=modal-title]', 'Add ChaptarrNG Server').should(
+      'exist'
+    );
+    cy.get('[role="dialog"]')
+      .contains('CHAPTARR__AUTH__SEERRAPIKEY')
+      .should('exist');
+    cy.get('[data-testid=modal-cancel-button]').click();
 
     cy.contains('button[aria-pressed="false"]', 'System').click();
     cy.location('search').should('eq', '?serviceCategory=tools-other');
