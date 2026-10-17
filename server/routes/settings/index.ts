@@ -74,6 +74,7 @@ import {
   authorizedMutation,
   authorizedRouteAccess,
 } from '@server/middleware/authorizedMutation';
+import connectionHostsRoutes from '@server/routes/settings/connectionHosts';
 import discoverSettingRoutes from '@server/routes/settings/discover';
 import loginLinkRoutes from '@server/routes/settings/loginLinks';
 import { ApiError } from '@server/types/error';
@@ -1471,6 +1472,7 @@ settingsRoutes.use('/slskdn', slskdnRoutes);
 settingsRoutes.use('/readmeabook', readMeABookRoutes);
 settingsRoutes.use('/login-links', loginLinkRoutes);
 settingsRoutes.use('/swipe', swipeSettingsRoutes);
+settingsRoutes.use('/connection-hosts', connectionHostsRoutes);
 
 export const filteredMainSettings = (
   user: User,

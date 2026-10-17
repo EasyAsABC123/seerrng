@@ -1,6 +1,7 @@
 import Alert from '@app/components/Common/Alert';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import { SavedServiceHostPicker } from '@app/components/Settings/SavedServiceHostPicker';
 import SettingsField from '@app/components/Settings/SettingsField';
 import { useLiveTvStatus } from '@app/hooks/useLiveTv';
 import useToasts from '@app/hooks/useToasts';
@@ -282,6 +283,12 @@ const SettingsTunerr = () => {
             }
           />
         </div>
+        {id === 'hostname' && (
+          <SavedServiceHostPicker
+            selectedHost={String(draft?.hostname ?? '')}
+            onSelect={(hostname) => update({ hostname })}
+          />
+        )}
         {options.description && (
           <p className="settings-form-row-description">{options.description}</p>
         )}

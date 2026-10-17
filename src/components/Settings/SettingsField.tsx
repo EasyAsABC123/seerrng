@@ -1,4 +1,5 @@
 import SelectionCircle from '@app/components/Common/SelectionCircle';
+import { FormikSavedServiceHostPicker } from '@app/components/Settings/SavedServiceHostPicker';
 import { notifySettingsUserChange } from '@app/components/Settings/settingsEvents';
 import {
   Field as FormikField,
@@ -130,6 +131,16 @@ const SettingsField = forwardRef<HTMLButtonElement, SettingsFieldProps>(
       ) : (
         <FormikSettingsCheckboxField {...props} ref={ref} />
       )
+    ) : /(?:hostname|ip|ipAddress)$/i.test(props.name) ? (
+      <>
+        <FormikField {...(props as unknown as FieldAttributes<unknown>)} />
+        <FormikSavedServiceHostPicker
+          fieldName={props.name}
+          onChange={
+            props.onChange as ChangeEventHandler<HTMLInputElement> | undefined
+          }
+        />
+      </>
     ) : (
       <FormikField {...(props as unknown as FieldAttributes<unknown>)} />
     )

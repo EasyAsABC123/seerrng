@@ -5082,6 +5082,28 @@
     @apply flex max-w-xl rounded-md shadow-sm;
   }
 
+  .service-host-picker {
+    @apply relative shrink-0;
+  }
+
+  .service-host-picker > summary {
+    @apply cursor-pointer rounded-md border border-gray-600 bg-gray-800 px-2 py-2 text-xs whitespace-nowrap text-gray-200 hover:border-gray-400 hover:text-white;
+    list-style: none;
+  }
+
+  .service-host-picker > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .service-host-picker[open] {
+    z-index: 40;
+  }
+
+  .service-host-picker-menu {
+    @apply absolute top-full right-0 z-50 mt-1 flex w-max max-w-[calc(100vw-2rem)] min-w-48 flex-col gap-1 overflow-y-auto rounded-md border border-gray-600 bg-gray-900 p-2 shadow-xl;
+    max-height: min(16rem, calc(100vh - 2rem));
+  }
+
   .actions {
     @apply border-t border-gray-700 text-white;
     margin-top: var(--card-spacing);

@@ -495,6 +495,8 @@ export interface ProxySettings {
 
 export interface MainSettings {
   apiKey: string;
+  /** Saved hostname/IP presets shared by service connection forms. */
+  connectionHosts?: SavedConnectionHost[];
   downloadPathMappings: DownloadPathMapping[];
   applicationTitle: string;
   applicationUrl: string;
@@ -542,6 +544,11 @@ export interface MainSettings {
   /** Metron API token. Used only as a fallback when ComicVine search fails. */
   metronToken?: string;
   googleBooksApiKey?: string;
+}
+
+export interface SavedConnectionHost {
+  name: string;
+  hostname: string;
 }
 
 export interface ProxySettings {
@@ -897,6 +904,7 @@ class Settings {
       vapidPublic: '',
       main: {
         apiKey: '',
+        connectionHosts: [],
         downloadPathMappings: [],
         applicationTitle: 'Seerr',
         applicationUrl: '',

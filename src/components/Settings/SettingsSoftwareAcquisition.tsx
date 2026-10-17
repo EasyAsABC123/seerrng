@@ -3,6 +3,7 @@ import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import SelectionCircle from '@app/components/Common/SelectionCircle';
 import Tooltip from '@app/components/Common/Tooltip';
+import { SavedServiceHostPicker } from '@app/components/Settings/SavedServiceHostPicker';
 import { useSetupConnectionSuggestion } from '@app/context/SetupConnectionsContext';
 import defineMessages from '@app/utils/defineMessages';
 import { QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
@@ -445,17 +446,26 @@ const SettingsSoftwareAcquisition = () => {
           </p>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="text-sm text-gray-200">
-            {intl.formatMessage(messages.hostname)}
-            <input
-              className="input input-lite mt-1 w-full"
-              value={current.hostname}
-              onChange={(event) =>
-                updateProvider(provider, { hostname: event.target.value })
-              }
-              autoComplete="off"
-            />
-          </label>
+          <div className="text-sm text-gray-200">
+            <label htmlFor={`${provider}-hostname`}>
+              {intl.formatMessage(messages.hostname)}
+            </label>
+            <div className="mt-1 flex items-start gap-2">
+              <input
+                id={`${provider}-hostname`}
+                className="input input-lite min-w-0 flex-1"
+                value={current.hostname}
+                onChange={(event) =>
+                  updateProvider(provider, { hostname: event.target.value })
+                }
+                autoComplete="off"
+              />
+              <SavedServiceHostPicker
+                selectedHost={current.hostname}
+                onSelect={(hostname) => updateProvider(provider, { hostname })}
+              />
+            </div>
+          </div>
           <label className="text-sm text-gray-200">
             {intl.formatMessage(messages.port)}
             <input

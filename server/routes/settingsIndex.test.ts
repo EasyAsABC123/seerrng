@@ -517,6 +517,76 @@ describe('Settings route input validation', () => {
     assert.strictEqual(saveMock.mock.callCount(), 0);
   });
 
+  it('stores reusable service hostnames and rejects unsafe values', async () => {
+    const settings = getSettings();
+    const originalHosts = settings.main.connectionHosts;
+    const hosts = [
+      { name: 'Docker', hostname: '192.168.1.50' },
+      { name: 'Media network', hostname: 'media.internal' },
+    ];
+
+    try {
+      const saved = await request(app)
+        .put('/settings/connection-hosts')
+        .send({ hosts });
+      assert.strictEqual(saved.status, 200);
+      assert.deepStrictEqual(saved.body, hosts);
+      assert.deepStrictEqual(settings.main.connectionHosts, hosts);
+
+      const apiList = await request(createOpenApiValidatedApp()).get(
+        '/api/v1/settings/connection-hosts'
+      );
+      assert.strictEqual(apiList.status, 200);
+      assert.deepStrictEqual(apiList.body, hosts);
+
+      const apiSaved = await request(createOpenApiValidatedApp())
+        .put('/api/v1/settings/connection-hosts')
+        .send({ hosts });
+      assert.strictEqual(apiSaved.status, 200);
+      assert.deepStrictEqual(apiSaved.body, hosts);
+
+      const withScheme = await request(app)
+        .put('/settings/connection-hosts')
+        .send({
+          hosts: [{ name: 'Bad host', hostname: 'http://media.local' }],
+        });
+      const withPort = await request(app)
+        .put('/settings/connection-hosts')
+        .send({ hosts: [{ name: 'Bad host', hostname: 'media.local:8080' }] });
+      const duplicateName = await request(app)
+        .put('/settings/connection-hosts')
+        .send({
+          hosts: [
+            { name: 'Docker', hostname: '192.168.1.50' },
+            { name: 'docker', hostname: 'media.internal' },
+          ],
+        });
+      const tooMany = await request(app)
+        .put('/settings/connection-hosts')
+        .send({
+          hosts: Array.from({ length: 17 }, (_, index) => ({
+            name: `Host ${index}`,
+            hostname: `host-${index}.internal`,
+          })),
+        });
+
+      assert.strictEqual(withScheme.status, 400);
+      assert.strictEqual(withPort.status, 400);
+      assert.strictEqual(duplicateName.status, 400);
+      assert.strictEqual(tooMany.status, 400);
+      assert.deepStrictEqual(settings.main.connectionHosts, hosts);
+
+      const cleared = await request(app)
+        .put('/settings/connection-hosts')
+        .send({ hosts: [] });
+      assert.strictEqual(cleared.status, 200);
+      assert.deepStrictEqual(cleared.body, []);
+      assert.deepStrictEqual(settings.main.connectionHosts, []);
+    } finally {
+      settings.main.connectionHosts = originalHosts;
+    }
+  });
+
   it('persists and validates the TMDB adult content setting', async () => {
     const settings = getSettings();
     const originalIncludeAdult = settings.main.includeAdult;

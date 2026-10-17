@@ -1,5 +1,6 @@
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import { SavedServiceHostPicker } from '@app/components/Settings/SavedServiceHostPicker';
 import SettingsField from '@app/components/Settings/SettingsField';
 import defineMessages from '@app/utils/defineMessages';
 import type ReadMeABookRequest from '@server/entity/ReadMeABookRequest';
@@ -162,6 +163,12 @@ const SettingsReadMeABook = () => {
           value={String(draft[key])}
           onChange={(event) => update(key, event.target.value)}
         />
+        {key === 'hostname' && (
+          <SavedServiceHostPicker
+            selectedHost={draft.hostname}
+            onSelect={(hostname) => update('hostname', hostname)}
+          />
+        )}
       </div>
     </div>
   );

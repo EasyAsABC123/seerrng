@@ -148,6 +148,15 @@ enter each key in the corresponding app and use **Test** so SeerrNG validates
 the API and loads profiles, root folders, or provider capabilities. Imported
 suggestions stay in memory until you clear them or reload SeerrNG.
 
+### Reusing service hosts
+
+In **Settings → Services → System**, add named entries under **Saved hosts**.
+Enter only a hostname or IP address, without `http://`, `https://`, or a port.
+These entries are saved with SeerrNG's settings and shared by administrators.
+Once saved, each service hostname or IP field offers buttons for filling in a
+saved host. Selecting one changes only that field; keep the service's own port,
+SSL, and URL base settings as needed.
+
 The report starts with each app’s common web port. Confirm custom ports, SSL,
 and reverse-proxy paths in the target app. Enter API keys manually. **Test** is
 the live API probe: it verifies that SeerrNG can reach the selected service

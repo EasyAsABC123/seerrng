@@ -1,4 +1,5 @@
 import SelectionCircle from '@app/components/Common/SelectionCircle';
+import { SavedServiceHostPicker } from '@app/components/Settings/SavedServiceHostPicker';
 import { useSetupConnectionSuggestion } from '@app/context/SetupConnectionsContext';
 import defineMessages from '@app/utils/defineMessages';
 import { detectProwlarrCategoryMatches } from '@app/utils/prowlarrCategories';
@@ -377,15 +378,24 @@ const SettingsProwlarr = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="text-sm text-gray-200">
-          {intl.formatMessage(messages.address)}
-          <input
-            className="input input-lite mt-1 w-full"
-            autoComplete="off"
-            value={form.hostname}
-            onChange={(event) => updateForm({ hostname: event.target.value })}
-          />
-        </label>
+        <div className="text-sm text-gray-200">
+          <label htmlFor="prowlarr-hostname">
+            {intl.formatMessage(messages.address)}
+          </label>
+          <div className="mt-1 flex items-start gap-2">
+            <input
+              id="prowlarr-hostname"
+              className="input input-lite min-w-0 flex-1"
+              autoComplete="off"
+              value={form.hostname}
+              onChange={(event) => updateForm({ hostname: event.target.value })}
+            />
+            <SavedServiceHostPicker
+              selectedHost={form.hostname}
+              onSelect={(hostname) => updateForm({ hostname })}
+            />
+          </div>
+        </div>
         <label className="text-sm text-gray-200">
           {intl.formatMessage(messages.port)}
           <input

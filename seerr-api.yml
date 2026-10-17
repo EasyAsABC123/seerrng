@@ -2422,6 +2422,12 @@ components:
         apiKey:
           type: string
           readOnly: true
+        connectionHosts:
+          type: array
+          readOnly: true
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/SavedConnectionHost'
         appLanguage:
           type: string
           example: en
@@ -2471,6 +2477,20 @@ components:
         versionCheck:
           type: boolean
           example: false
+    SavedConnectionHost:
+      type: object
+      required:
+        - name
+        - hostname
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        hostname:
+          type: string
+          minLength: 1
+          maxLength: 255
     PublicOidcProvider:
       type: object
       readOnly: true
@@ -7813,6 +7833,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NetworkSettings'
+  /settings/connection-hosts:
+    get:
+      summary: Get saved service connection hosts
+      description: Returns the administrator-managed hostnames and IP addresses offered in service connection forms.
+      tags:
+        - settings
+      responses:
+        '200':
+          description: Saved host entries
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 16
+                items:
+                  $ref: '#/components/schemas/SavedConnectionHost'
+    put:
+      summary: Replace saved service connection hosts
+      description: Replaces the administrator-managed host list. Host entries contain a display name and a hostname or IP address without a scheme or port.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hosts
+              properties:
+                hosts:
+                  type: array
+                  maxItems: 16
+                  items:
+                    $ref: '#/components/schemas/SavedConnectionHost'
+      responses:
+        '200':
+          description: Saved host entries
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 16
+                items:
+                  $ref: '#/components/schemas/SavedConnectionHost'
+        '400':
+          description: Invalid host list
   /settings/main/regenerate:
     post:
       summary: Get main settings with newly-generated API key

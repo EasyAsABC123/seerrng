@@ -1,6 +1,7 @@
 import Alert from '@app/components/Common/Alert';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import { SavedServiceHostPicker } from '@app/components/Settings/SavedServiceHostPicker';
 import SettingsField from '@app/components/Settings/SettingsField';
 import useToasts from '@app/hooks/useToasts';
 import defineMessages from '@app/utils/defineMessages';
@@ -175,6 +176,12 @@ const SettingsSlskdn = () => {
             onChange={(event) => update({ [id]: event.currentTarget.value })}
           />
         </div>
+        {id === 'hostname' && (
+          <SavedServiceHostPicker
+            selectedHost={draft?.hostname ?? ''}
+            onSelect={(hostname) => update({ hostname })}
+          />
+        )}
         {options.description && (
           <p className="settings-form-row-description">{options.description}</p>
         )}

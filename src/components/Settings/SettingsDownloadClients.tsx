@@ -1,6 +1,7 @@
 import Alert from '@app/components/Common/Alert';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
+import { SavedServiceHostPicker } from '@app/components/Settings/SavedServiceHostPicker';
 import SettingsField from '@app/components/Settings/SettingsField';
 import useToasts from '@app/hooks/useToasts';
 import defineMessages from '@app/utils/defineMessages';
@@ -385,6 +386,12 @@ const SettingsDownloadClients = () => {
                     }
                   />
                 </div>
+                <SavedServiceHostPicker
+                  selectedHost={client.hostname}
+                  onSelect={(hostname) =>
+                    updateClient(client.key, { hostname })
+                  }
+                />
               </div>
             </div>
             <div className="form-row">

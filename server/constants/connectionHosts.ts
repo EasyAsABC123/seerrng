@@ -1,0 +1,1 @@
+export const MAX_SAVED_CONNECTION_HOSTS = 16;
