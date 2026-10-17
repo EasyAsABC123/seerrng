@@ -83,6 +83,9 @@ const messages = defineMessages('components.Settings.SettingsNetwork', {
   caFile: 'CA chain file (optional)',
   providedFileTip:
     'Use paths visible inside the SeerrNG process. Mount certificate files into the container; private keys are never uploaded through this form.',
+  showProvidedCertificateNotice: 'Show Certificate Notice on Login',
+  showProvidedCertificateNoticeTip:
+    'Show the provided-certificate fingerprint notice on login and setup pages.',
   redirectHttpToHttps: 'Redirect HTTP to HTTPS',
   redirectHttpToHttpsTip:
     'Leave this off while verifying the HTTPS URL. HTTP will show an upgrade instruction instead of serving the app.',
@@ -198,6 +201,8 @@ const SettingsNetwork = () => {
             tlsKeyFile: data?.tls?.keyFile ?? '',
             tlsCaFile: data?.tls?.caFile ?? '',
             tlsRedirectHttpToHttps: data?.tls?.redirectHttpToHttps ?? false,
+            tlsShowProvidedCertificateNotice:
+              data?.tls?.showProvidedCertificateNotice ?? true,
             tlsAllowHttpAuth: data?.tls?.allowHttpAuth ?? true,
             tlsHttpAuthAcknowledged: data?.tls?.httpAuthAcknowledged ?? true,
           }}
@@ -233,10 +238,13 @@ const SettingsNetwork = () => {
                   keyFile: values.tlsKeyFile,
                   caFile: values.tlsCaFile,
                   redirectHttpToHttps: values.tlsRedirectHttpToHttps,
+                  showProvidedCertificateNotice:
+                    values.tlsShowProvidedCertificateNotice,
                   allowHttpAuth: values.tlsAllowHttpAuth,
                   httpAuthAcknowledged: values.tlsHttpAuthAcknowledged,
                 },
               });
+              mutate('/api/v1/status/tls');
               mutate('/api/v1/settings/public');
               mutate('/api/v1/status?checkUpdateAvailable=false');
 
@@ -369,6 +377,28 @@ const SettingsNetwork = () => {
                               </div>
                             </div>
                           ))}
+                          <div className="form-row">
+                            <label
+                              htmlFor="tlsShowProvidedCertificateNotice"
+                              className="checkbox-label"
+                            >
+                              {intl.formatMessage(
+                                messages.showProvidedCertificateNotice
+                              )}
+                            </label>
+                            <div className="form-input-area">
+                              <SettingsField
+                                type="checkbox"
+                                id="tlsShowProvidedCertificateNotice"
+                                name="tlsShowProvidedCertificateNotice"
+                              />
+                            </div>
+                            <span className="settings-form-row-description">
+                              {intl.formatMessage(
+                                messages.showProvidedCertificateNoticeTip
+                              )}
+                            </span>
+                          </div>
                         </>
                       )}
                     </div>

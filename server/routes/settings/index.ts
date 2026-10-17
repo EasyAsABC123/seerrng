@@ -776,6 +776,7 @@ export const parseTlsSettingsBody = (
 
   for (const [key, fieldName] of [
     ['redirectHttpToHttps', 'tls.redirectHttpToHttps'],
+    ['showProvidedCertificateNotice', 'tls.showProvidedCertificateNotice'],
     ['allowHttpAuth', 'tls.allowHttpAuth'],
     ['httpAuthAcknowledged', 'tls.httpAuthAcknowledged'],
   ] as const) {

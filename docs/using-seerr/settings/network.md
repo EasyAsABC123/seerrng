@@ -99,6 +99,10 @@ listeners. It is separate from the outbound HTTP(S) proxy setting:
   certificate under `CONFIG_DIRECTORY/tls`.
 - **Provided certificate** reads certificate paths mounted into the SeerrNG
   process. Private keys are never uploaded through the UI.
+- With a provided certificate, **Show Certificate Notice on Login** controls
+  the informational certificate and fingerprint panel on login and setup
+  pages. It does not hide warnings that block an unsafe or incomplete browser
+  transport.
 - **Redirect HTTP to HTTPS** is intentionally separate. Leave it off while
   verifying the HTTPS URL and certificate trust; HTTP then returns an upgrade
   instruction instead of serving the application.

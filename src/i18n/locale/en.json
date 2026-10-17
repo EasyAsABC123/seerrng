@@ -4010,6 +4010,8 @@
   "components.Settings.SettingsNetwork.proxyUser": "Proxy Username",
   "components.Settings.SettingsNetwork.redirectHttpToHttps": "Redirect HTTP to HTTPS",
   "components.Settings.SettingsNetwork.redirectHttpToHttpsTip": "Leave this off while verifying the HTTPS URL. HTTP will show an upgrade instruction instead of serving the app.",
+  "components.Settings.SettingsNetwork.showProvidedCertificateNotice": "Show Certificate Notice on Login",
+  "components.Settings.SettingsNetwork.showProvidedCertificateNoticeTip": "Show the provided-certificate fingerprint notice on login and setup pages.",
   "components.Settings.SettingsNetwork.tlsDisabled": "Disabled (direct HTTP sign-in or use a reverse proxy)",
   "components.Settings.SettingsNetwork.tlsHosts": "Self-signed HTTPS hostnames and IP addresses",
   "components.Settings.SettingsNetwork.tlsHostsTip": "Comma-separated names and addresses included in the generated certificate and accepted by the HTTP listener. Provided certificates use their own SANs.",

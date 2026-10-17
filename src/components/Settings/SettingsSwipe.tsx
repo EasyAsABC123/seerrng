@@ -9,7 +9,7 @@ import axios from 'axios';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
-import useSWR from 'swr';
+import useSWR, { mutate as mutateCache } from 'swr';
 
 const REDACTED = '[REDACTED]';
 
@@ -101,6 +101,7 @@ const SettingsSwipe = () => {
         draft
       );
       await mutate(response.data, { revalidate: false });
+      await mutateCache('/api/v1/settings/public');
       setIsDirty(false);
       addToast(intl.formatMessage(messages.saveSuccess), {
         appearance: 'success',

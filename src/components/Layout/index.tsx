@@ -285,7 +285,7 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="mb-6">
             <div className="max-w-8xl mx-auto" data-page-layout-part="content">
               <UserWarnings />
-              {discoveryMediaType && (
+              {discoveryMediaType && currentSettings.swipeEnabled !== false && (
                 <div className="app-filter-section-gap">
                   <DiscoveryModeTabs
                     selected="discover"

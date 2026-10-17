@@ -12,6 +12,7 @@ export interface OptionalServiceAvailability {
   sportsEnabled?: boolean;
   softwareEnabled?: boolean;
   romarrEnabled?: boolean;
+  swipeEnabled?: boolean;
   enabledMediaCategories?: Partial<Record<MediaCategoryKey, boolean>>;
 }
 
@@ -115,6 +116,10 @@ export const isOptionalCatalogPathEnabled = (
   path: string,
   availability: OptionalServiceAvailability
 ): boolean => {
+  if (path === '/swipe' || path.startsWith('/swipe/')) {
+    return availability.swipeEnabled !== false;
+  }
+
   if (
     path === '/discover/movies' ||
     path.startsWith('/discover/movies/') ||

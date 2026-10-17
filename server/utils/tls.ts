@@ -30,6 +30,7 @@ export interface TlsSettings {
   keyFile: string;
   caFile: string;
   redirectHttpToHttps: boolean;
+  showProvidedCertificateNotice?: boolean;
   allowHttpAuth: boolean;
   httpAuthAcknowledged: boolean;
 }

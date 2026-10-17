@@ -51,6 +51,7 @@ export interface PublicSettingsResponse {
   sportsEnabled: boolean;
   softwareEnabled: boolean;
   romarrEnabled?: boolean;
+  swipeEnabled?: boolean;
   enabledMediaCategories?: EnabledMediaCategories;
   discoverRegion: string;
   streamingRegion: string;
@@ -114,6 +115,7 @@ export interface TlsStatusResponse {
   configuredHttpsPort: number | null;
   configuredHttpAuthAllowed: boolean;
   configuredRedirectsHttpToHttps: boolean;
+  showProvidedCertificateNotice?: boolean;
   environmentOverrides: string[];
   pendingRestart: boolean;
   setupRequired: boolean;

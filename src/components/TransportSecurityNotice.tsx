@@ -352,6 +352,13 @@ const TransportSecurityNotice = ({
     );
   }
 
+  if (
+    data.mode === 'provided' &&
+    data.showProvidedCertificateNotice === false
+  ) {
+    return null;
+  }
+
   return (
     <Alert
       type={data.mode === 'self-signed' ? 'warning' : 'info'}

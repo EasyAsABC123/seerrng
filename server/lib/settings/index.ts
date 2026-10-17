@@ -597,6 +597,7 @@ interface FullPublicSettings extends PublicSettings {
   sportsEnabled: boolean;
   softwareEnabled: boolean;
   romarrEnabled: boolean;
+  swipeEnabled: boolean;
   enabledMediaCategories: EnabledMediaCategories;
   discoverRegion: string;
   streamingRegion: string;
@@ -1249,6 +1250,7 @@ class Settings {
           keyFile: '',
           caFile: '',
           redirectHttpToHttps: false,
+          showProvidedCertificateNotice: true,
           allowHttpAuth: true,
           httpAuthAcknowledged: true,
         },
@@ -1709,6 +1711,7 @@ class Settings {
         this.data.softwareAcquisition.romarr.hostname &&
         this.data.softwareAcquisition.romarr.apiKey
       ),
+      swipeEnabled: this.data.swipe.enabled !== false,
       enabledMediaCategories: {
         ...DEFAULT_ENABLED_MEDIA_CATEGORIES,
         ...this.data.main.enabledMediaCategories,
@@ -2275,6 +2278,7 @@ class Settings {
           keyFile: '',
           caFile: '',
           redirectHttpToHttps: false,
+          showProvidedCertificateNotice: true,
           allowHttpAuth: true,
           httpAuthAcknowledged: true,
         },

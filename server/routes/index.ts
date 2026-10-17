@@ -247,6 +247,8 @@ router.get('/status/tls', publicStatusRateLimit, (_req, res) => {
       configuredHttpsPort: configured.httpsPort,
       configuredHttpAuthAllowed: configured.httpAuthAllowed,
       configuredRedirectsHttpToHttps: configured.redirectsHttpToHttps,
+      showProvidedCertificateNotice:
+        settings.network.tls.showProvidedCertificateNotice !== false,
       environmentOverrides: configured.environmentOverrides,
       pendingRestart: restartFlag.isSet(),
       setupRequired: !settings.public.initialized,
