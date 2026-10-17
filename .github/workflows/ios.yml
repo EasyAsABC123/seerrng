@@ -39,6 +39,12 @@ jobs:
           available_simulators="$(xcrun simctl list devices available)"
           grep -Fq 'iPhone 17' <<<"$available_simulators"
 
+      - name: Validate iOS project files
+        run: plutil -lint ios/SeerrNG.xcodeproj/project.pbxproj ios/SeerrNG/Info.plist
+
+      - name: List iOS project targets and schemes
+        run: xcodebuild -list -project ios/SeerrNG.xcodeproj
+
       - name: Inspect iOS Xcode project and scheme
         run: xcodebuild -list -project ios/SeerrNG.xcodeproj -scheme SeerrNG
 
@@ -58,3 +64,20 @@ jobs:
             dist-ios-release/seerrng-*-ios-tests.xcresult
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Collect Xcode crash reports
+        if: failure()
+        run: |
+          mkdir -p dist-xcode-diagnostics
+          find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -type f -mmin -60 \
+            \( -name 'xcodebuild*.crash' -o -name 'xcodebuild*.ips' -o -name 'Xcode*.crash' \) \
+            -exec cp -p {} dist-xcode-diagnostics/ \;
+          find dist-xcode-diagnostics -maxdepth 1 -type f -print
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: ios-xcode-crash-diagnostics
+          path: dist-xcode-diagnostics/*
+          if-no-files-found: ignore
+          retention-days: 7
