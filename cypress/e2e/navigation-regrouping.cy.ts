@@ -60,7 +60,11 @@ describe('primary navigation', () => {
       results: [],
     });
     cy.intercept('GET', '/api/v1/swipe/status', {
+      enabled: true,
       aiRanking: false,
+      mediaTypes: ['movie'],
+      softwareCatalogProvider: 'questarr',
+      bookFormats: ['ebook', 'audiobook'],
     });
     cy.intercept('GET', '/api/v1/swipe/profile', {
       tasteNotes: '',
@@ -95,7 +99,13 @@ describe('primary navigation', () => {
       totalResults: 0,
       results: [],
     });
-    cy.intercept('GET', '/api/v1/swipe/status', { aiRanking: false });
+    cy.intercept('GET', '/api/v1/swipe/status', {
+      enabled: true,
+      aiRanking: false,
+      mediaTypes: ['tv'],
+      softwareCatalogProvider: 'questarr',
+      bookFormats: ['ebook', 'audiobook'],
+    });
     cy.intercept('GET', '/api/v1/swipe/profile', {
       tasteNotes: '',
       seriesRequest: 'first-season',

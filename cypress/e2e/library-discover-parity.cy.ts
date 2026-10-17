@@ -926,12 +926,12 @@ describe('Books and Music discover parity', () => {
       .should('not.exist');
     cy.contains('button[aria-pressed="false"]', 'Audiobooks & Books').click();
     cy.contains(
-      'At least one Bookshelf server must be marked as default in order for book requests to be processed.'
+      'At least one book server must be marked as default in order for book requests to be processed.'
     )
       .scrollIntoView()
       .should('be.visible');
     cy.contains(
-      'At least one Bookshelf server must be marked as default in order for audiobook requests to be processed.'
+      'At least one book server must be marked as default in order for audiobook requests to be processed.'
     )
       .scrollIntoView()
       .should('be.visible');
