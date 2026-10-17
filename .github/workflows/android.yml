@@ -9,6 +9,7 @@ on:
   push:
     branches:
       - main
+      - codex/mobile-store-release
     paths:
       - 'android/**'
       - 'scripts/build-android-release.sh'
@@ -80,7 +81,7 @@ jobs:
             -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect > "$RUNNER_TEMP/android-emulator.log" 2>&1 &
           emulator_pid=$!
-          trap 'adb emu kill >/dev/null 2>&1 || true; wait "$emulator_pid" 2>/dev/null || true' EXIT
+          echo "ANDROID_EMULATOR_PID=$emulator_pid" >> "$GITHUB_ENV"
           timeout 300s adb wait-for-device || {
             cat "$RUNNER_TEMP/android-emulator.log" >&2
             echo 'Android emulator did not register with ADB.' >&2
@@ -101,9 +102,15 @@ jobs:
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
           ./android/gradlew --no-daemon -p android \
+            -PandroidMonetizationMode=ads \
             :app:testDebugUnitTest \
             :app:connectedDebugAndroidTest \
             :app:assembleDebug
+          ./android/gradlew --no-daemon -p android \
+            -PandroidMonetizationMode=capped \
+            -PfreeSessionLimit=2 \
+            :app:testDebugUnitTest \
+            :app:connectedDebugAndroidTest
 
       - name: Upload Android test reports
         if: always()
@@ -114,3 +121,52 @@ jobs:
             android/app/build/reports/androidTests/connected/
             android/app/build/outputs/androidTest-results/connected/
           if-no-files-found: ignore
+
+      - name: Build signed APK and Play App Bundle
+        if: github.event_name != 'pull_request'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
+          ADMOB_BANNER_AD_UNIT_ID: ${{ vars.ADMOB_BANNER_AD_UNIT_ID }}
+          ENABLE_PLAY_BILLING: ${{ vars.ENABLE_PLAY_BILLING }}
+          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          bash scripts/build-android-release.sh "v3.62.0-ci.${GITHUB_RUN_NUMBER}" dist-android-release
+          signed_apk="$(find dist-android-release -maxdepth 1 -type f -name 'seerrng-*-android*.apk' -print -quit)"
+          test -n "$signed_apk"
+          adb install -r "$signed_apk"
+          adb shell am start -n org.snapetech.seerrng/.MainActivity
+          for attempt in {1..15}; do
+            if adb shell pidof org.snapetech.seerrng >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          adb shell pidof org.snapetech.seerrng >/dev/null
+          if adb logcat -d -s AndroidRuntime:E | grep -F 'FATAL EXCEPTION' >/dev/null; then
+            echo 'Signed Android release candidate crashed during first launch.' >&2
+            exit 1
+          fi
+          echo "Installed and launched the signed release APK: $signed_apk"
+
+      - name: Upload signed Android release candidate
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-release-candidate
+          path: dist-android-release/seerrng-*
+          if-no-files-found: error
+
+      - name: Stop Android emulator
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${ANDROID_EMULATOR_PID:-}" ]]; then
+            adb emu kill >/dev/null 2>&1 || true
+            kill "$ANDROID_EMULATOR_PID" 2>/dev/null || true
+          fi

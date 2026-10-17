@@ -1,0 +1,181 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A20000000000000000000001 /* SeerrNGApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* SeerrNGApp.swift */; };
+		A20000000000000000000002 /* SeerrNGRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* SeerrNGRootView.swift */; };
+		A20000000000000000000003 /* ServerEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* ServerEndpoint.swift */; };
+		A20000000000000000000004 /* ServerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* ServerStore.swift */; };
+		A20000000000000000000005 /* CappedUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000005 /* CappedUsageStore.swift */; };
+		A20000000000000000000006 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000006 /* StoreKitManager.swift */; };
+		A20000000000000000000007 /* ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000007 /* ServerListView.swift */; };
+		A20000000000000000000008 /* ServerEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000008 /* ServerEditorView.swift */; };
+		A20000000000000000000009 /* ServerBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000009 /* ServerBrowserView.swift */; };
+		A20000000000000000000010 /* LifetimeUnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000010 /* LifetimeUnlockView.swift */; };
+		A20000000000000000000011 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000020 /* SwiftUI.framework */; };
+		A20000000000000000000012 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000021 /* WebKit.framework */; };
+		A20000000000000000000013 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000022 /* StoreKit.framework */; };
+		A20000000000000000000014 /* ServerEndpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000011 /* ServerEndpointTests.swift */; };
+		A20000000000000000000015 /* CappedUsageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000012 /* CappedUsageStoreTests.swift */; };
+		A20000000000000000000016 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000023 /* XCTest.framework */; };
+		A20000000000000000000017 /* ServerSetupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000013 /* ServerSetupUITests.swift */; };
+		A20000000000000000000018 /* XCTest.framework in UI Frameworks */ = {isa = PBXBuildFile; fileRef = A30000000000000000000023 /* XCTest.framework */; };
+		A20000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000015 /* Assets.xcassets */; };
+		A20000000000000000000020 /* ServerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000019 /* ServerStoreTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A80000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000002;
+			remoteInfo = SeerrNG;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A30000000000000000000001 /* SeerrNGApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeerrNGApp.swift; sourceTree = "<group>"; };
+		A30000000000000000000002 /* SeerrNGRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeerrNGRootView.swift; sourceTree = "<group>"; };
+		A30000000000000000000003 /* ServerEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEndpoint.swift; sourceTree = "<group>"; };
+		A30000000000000000000004 /* ServerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStore.swift; sourceTree = "<group>"; };
+		A30000000000000000000005 /* CappedUsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CappedUsageStore.swift; sourceTree = "<group>"; };
+		A30000000000000000000006 /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
+		A30000000000000000000007 /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
+		A30000000000000000000008 /* ServerEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEditorView.swift; sourceTree = "<group>"; };
+		A30000000000000000000009 /* ServerBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBrowserView.swift; sourceTree = "<group>"; };
+		A30000000000000000000010 /* LifetimeUnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LifetimeUnlockView.swift; sourceTree = "<group>"; };
+		A30000000000000000000011 /* ServerEndpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEndpointTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000012 /* CappedUsageStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CappedUsageStoreTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000013 /* ServerSetupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSetupUITests.swift; sourceTree = "<group>"; };
+		A30000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A30000000000000000000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A30000000000000000000016 /* SeerrNG.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SeerrNG.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000017 /* SeerrNGTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SeerrNGTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000018 /* SeerrNGUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SeerrNGUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000019 /* ServerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStoreTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000020 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A30000000000000000000021 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		A30000000000000000000022 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
+		A30000000000000000000023 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000011, A20000000000000000000012, A20000000000000000000013, ); runOnlyForDeploymentPostprocessing = 0; };
+		A40000000000000000000002 /* Unit Test Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000016, ); runOnlyForDeploymentPostprocessing = 0; };
+		A40000000000000000000003 /* UI Test Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000018, ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000000000000000000001 = {
+			isa = PBXGroup;
+			children = (A50000000000000000000002 /* SeerrNG */, A50000000000000000000003 /* SeerrNGTests */, A50000000000000000000004 /* SeerrNGUITests */, A50000000000000000000005 /* Products */, A50000000000000000000006 /* Frameworks */, );
+			sourceTree = "<group>";
+		};
+		A50000000000000000000002 /* SeerrNG */ = {
+			isa = PBXGroup;
+			path = SeerrNG;
+			sourceTree = "<group>";
+			children = (A30000000000000000000001, A30000000000000000000002, A30000000000000000000003, A30000000000000000000004, A30000000000000000000005, A30000000000000000000006, A30000000000000000000007, A30000000000000000000008, A30000000000000000000009, A30000000000000000000010, A30000000000000000000014, A30000000000000000000015, );
+		};
+		A50000000000000000000003 /* SeerrNGTests */ = {isa = PBXGroup; path = SeerrNGTests; sourceTree = "<group>"; children = (A30000000000000000000011, A30000000000000000000012, A30000000000000000000019, ); };
+		A50000000000000000000004 /* SeerrNGUITests */ = {isa = PBXGroup; path = SeerrNGUITests; sourceTree = "<group>"; children = (A30000000000000000000013, ); };
+		A50000000000000000000005 /* Products */ = {isa = PBXGroup; name = Products; sourceTree = "<group>"; children = (A30000000000000000000016, A30000000000000000000017, A30000000000000000000018, ); };
+		A50000000000000000000006 /* Frameworks */ = {isa = PBXGroup; name = Frameworks; sourceTree = "<group>"; children = (A30000000000000000000020, A30000000000000000000021, A30000000000000000000022, A30000000000000000000023, ); };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000002 /* SeerrNG */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000000000000000000002 /* Build configuration list for PBXNativeTarget "SeerrNG" */;
+			buildPhases = (A40000000000000000000004 /* Sources */, A40000000000000000000001 /* Frameworks */, A40000000000000000000005 /* Resources */, );
+			buildRules = ();
+			dependencies = ();
+			name = SeerrNG;
+			productName = SeerrNG;
+			productReference = A30000000000000000000016 /* SeerrNG.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A10000000000000000000003 /* SeerrNGTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000000000000000000003 /* Build configuration list for PBXNativeTarget "SeerrNGTests" */;
+			buildPhases = (A40000000000000000000006 /* Sources */, A40000000000000000000002 /* Unit Test Frameworks */, A40000000000000000000007 /* Unit Test Resources */, );
+			buildRules = ();
+			dependencies = (A90000000000000000000001 /* PBXTargetDependency */, );
+			name = SeerrNGTests;
+			productName = SeerrNGTests;
+			productReference = A30000000000000000000017 /* SeerrNGTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A10000000000000000000004 /* SeerrNGUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000000000000000000004 /* Build configuration list for PBXNativeTarget "SeerrNGUITests" */;
+			buildPhases = (A40000000000000000000008 /* Sources */, A40000000000000000000003 /* UI Test Frameworks */, A40000000000000000000009 /* UI Test Resources */, );
+			buildRules = ();
+			dependencies = (A90000000000000000000002 /* PBXTargetDependency */, );
+			name = SeerrNGUITests;
+			productName = SeerrNGUITests;
+			productReference = A30000000000000000000018 /* SeerrNGUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 2600; LastSwiftUpdateCheck = 2600; TargetAttributes = {A10000000000000000000002 = {CreatedOnToolsVersion = 26.0; }; A10000000000000000000003 = {CreatedOnToolsVersion = 26.0; TestTargetID = A10000000000000000000002; }; A10000000000000000000004 = {CreatedOnToolsVersion = 26.0; TestTargetID = A10000000000000000000002; }; }; };
+			buildConfigurationList = A70000000000000000000001 /* Build configuration list for PBXProject */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base, );
+			mainGroup = A50000000000000000000001;
+			productRefGroup = A50000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A10000000000000000000002 /* SeerrNG */, A10000000000000000000003 /* SeerrNGTests */, A10000000000000000000004 /* SeerrNGUITests */, );
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A40000000000000000000005 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000019 /* Assets.xcassets in Resources */, ); runOnlyForDeploymentPostprocessing = 0; };
+		A40000000000000000000007 /* Unit Test Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A40000000000000000000009 /* UI Test Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A40000000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000004, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007, A20000000000000000000008, A20000000000000000000009, A20000000000000000000010, ); runOnlyForDeploymentPostprocessing = 0; };
+		A40000000000000000000006 /* Unit Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000014, A20000000000000000000015, A20000000000000000000020, ); runOnlyForDeploymentPostprocessing = 0; };
+		A40000000000000000000008 /* UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000017, ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A90000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A10000000000000000000002 /* SeerrNG */; targetProxy = A80000000000000000000001 /* PBXContainerItemProxy */; };
+		A90000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A10000000000000000000002 /* SeerrNG */; targetProxy = A80000000000000000000001 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; }; name = Debug; };
+		AA0000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; }; name = Release; };
+		AA0000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = SeerrNG/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 3.62.0; CURRENT_PROJECT_VERSION = 1; PRODUCT_BUNDLE_IDENTIFIER = org.snapetech.seerrng.ios; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		AA0000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = SeerrNG/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; MARKETING_VERSION = 3.62.0; CURRENT_PROJECT_VERSION = 1; PRODUCT_BUNDLE_IDENTIFIER = org.snapetech.seerrng.ios; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		AA0000000000000000000005 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = org.snapetech.seerrng.ios.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SeerrNG.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SeerrNG"; }; name = Debug; };
+		AA0000000000000000000006 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = org.snapetech.seerrng.ios.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SeerrNG.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SeerrNG"; }; name = Release; };
+		AA0000000000000000000007 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = org.snapetech.seerrng.ios.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TEST_TARGET_NAME = SeerrNG; }; name = Debug; };
+		AA0000000000000000000008 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = org.snapetech.seerrng.ios.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TEST_TARGET_NAME = SeerrNG; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A70000000000000000000001 /* Build configuration list for PBXProject */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000001 /* Debug */, AA0000000000000000000002 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A70000000000000000000002 /* Build configuration list for PBXNativeTarget "SeerrNG" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000003 /* Debug */, AA0000000000000000000004 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A70000000000000000000003 /* Build configuration list for PBXNativeTarget "SeerrNGTests" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000005 /* Debug */, AA0000000000000000000006 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A70000000000000000000004 /* Build configuration list for PBXNativeTarget "SeerrNGUITests" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000007 /* Debug */, AA0000000000000000000008 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+	};
+	rootObject = A10000000000000000000001 /* Project object */;
+}

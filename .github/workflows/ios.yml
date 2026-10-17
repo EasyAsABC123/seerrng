@@ -1,0 +1,95 @@
+name: iOS Client
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'scripts/build-ios-release.sh'
+      - '.github/workflows/ios.yml'
+      - '.github/workflows/release-assets.yml'
+      - '.github/workflows/release.yml'
+  push:
+    paths:
+      - 'ios/**'
+      - 'scripts/build-ios-release.sh'
+      - '.github/workflows/ios.yml'
+      - '.github/workflows/release-assets.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: Test and package iOS Simulator build
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify Xcode release toolchain
+        run: |
+          set -euo pipefail
+          xcode_version_output="$(xcodebuild -version)"
+          printf '%s\n' "$xcode_version_output"
+          grep -Eq '^Xcode 2[6-9](\.|$)' <<<"$xcode_version_output"
+          available_simulators="$(xcrun simctl list devices available)"
+          grep -Fq 'iPhone 17' <<<"$available_simulators"
+
+      - name: Validate iOS project files
+        run: plutil -lint ios/SeerrNG.xcodeproj/project.pbxproj ios/SeerrNG/Info.plist
+
+      - name: List iOS project targets without shared schemes
+        run: |
+          scheme_free_directory="$RUNNER_TEMP/SeerrNG-without-scheme"
+          cp -R ios "$scheme_free_directory"
+          scheme_free_project="$scheme_free_directory/SeerrNG.xcodeproj"
+          rm -rf "$scheme_free_project/xcshareddata"
+          xcodebuild -list -project "$scheme_free_project"
+
+      - name: Inspect iOS Xcode project and scheme
+        run: xcodebuild -list -project ios/SeerrNG.xcodeproj -scheme SeerrNG
+
+      - name: Run iOS unit and UI tests, then package Simulator app
+        env:
+          IOS_BUILD_NUMBER: ${{ github.run_number }}
+          IOS_SIMULATOR_NAME: iPhone 17
+        run: bash scripts/build-ios-release.sh "v3.62.0-ci.${IOS_BUILD_NUMBER}" dist-ios-release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: ios-simulator-release-candidate
+          path: |
+            dist-ios-release/seerrng-*-ios-simulator.zip
+            dist-ios-release/seerrng-*-ios-simulator.sha256
+            dist-ios-release/seerrng-*-ios-tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Collect Xcode crash reports
+        if: failure()
+        run: |
+          mkdir -p dist-xcode-diagnostics
+          for report_directory in \
+            "$HOME/Library/Logs/DiagnosticReports" \
+            "$HOME/Library/Logs/CrashReporter" \
+            "/Library/Logs/DiagnosticReports"; do
+            if [[ -d "$report_directory" ]]; then
+              find "$report_directory" -maxdepth 1 -type f -mmin -60 \
+                \( -iname '*xcodebuild*.crash' -o -iname '*xcodebuild*.ips' -o -iname '*xcode*.crash' \) \
+                -exec cp -p {} dist-xcode-diagnostics/ \;
+            fi
+          done
+          find dist-xcode-diagnostics -maxdepth 1 -type f -print
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: ios-xcode-crash-diagnostics
+          path: dist-xcode-diagnostics/*
+          if-no-files-found: ignore
+          retention-days: 7

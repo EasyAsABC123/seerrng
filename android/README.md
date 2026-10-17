@@ -10,7 +10,7 @@ Build with Java 17, Android SDK platform 36, and Build Tools 36.0.0:
 bash scripts/build-android-release.sh vX.Y.Z android/dist
 ```
 
-The script verifies the APK signature and writes `seerrng-vX.Y.Z-android.apk` and its `.sha256` checksum. The release workflow uses the same script and attaches both files to Android-enabled releases.
+The script verifies the APK and App Bundle signatures and writes `seerrng-vX.Y.Z-android.apk` / `.aab` in `ads` mode, or `seerrng-vX.Y.Z-android-capped.apk` / `.aab` in `capped` mode. Each artifact gets a SHA-256 sidecar. The APK is for direct installation; the AAB is signed with the same upload key for Google Play App Signing.
 
 Configure these GitHub Actions repository secrets for signed builds:
 
@@ -23,10 +23,13 @@ Configure these GitHub Actions repository secrets for signed builds:
 
 The default release mode is `ads`: a non-personalized adaptive banner appears below the server WebView, and Google UMP handles consent and privacy choices. Debug builds use Google's test app and banner IDs; they never request live ads.
 
-The [SeerrNG Android privacy policy](https://snapetech-org.github.io/seerrng-android-privacy/) is public, hosted over HTTPS, and linked from the app's first-launch setup and server list. Use this same URL in Play Console and AdMob.
+The [SeerrNG Mobile privacy policy](https://snapetech-org.github.io/seerrng-android-privacy/) is public, hosted over HTTPS, and linked from the app's first-launch setup and server list. Use this same URL in Play Console and AdMob.
+
+See [mobile release readiness](../docs/mobile-release-readiness.md) for the iOS client, store checklists, signing, GitHub packaging, and remaining release gates.
 
 To enable ad-supported releases and the Google Play lifetime unlock, configure these repository variables:
 
+- `ANDROID_MONETIZATION_MODE`: `ads` or `capped` (defaults to `ads`); candidate and tagged release workflows package the selected mode
 - `ENABLE_PLAY_BILLING`: `true`
 - `ADMOB_APP_ID`: the app ID from AdMob
 - `ADMOB_BANNER_AD_UNIT_ID`: the banner ad unit ID
@@ -61,4 +64,5 @@ Verify a downloaded APK and inspect its signing certificate with Android Build T
 ```sh
 apksigner verify --verbose --print-certs seerrng-vX.Y.Z-android.apk
 sha256sum --check seerrng-vX.Y.Z-android.sha256
+sha256sum --check seerrng-vX.Y.Z-android-aab.sha256
 ```

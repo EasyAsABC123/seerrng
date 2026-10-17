@@ -36,6 +36,16 @@ on:
         required: false
       ANDROID_KEY_PASSWORD:
         required: false
+      IOS_DISTRIBUTION_CERTIFICATE_BASE64:
+        required: false
+      IOS_DISTRIBUTION_CERTIFICATE_PASSWORD:
+        required: false
+      IOS_TEAM_ID:
+        required: false
+      IOS_ADHOC_PROVISIONING_PROFILE_BASE64:
+        required: false
+      IOS_APPSTORE_PROVISIONING_PROFILE_BASE64:
+        required: false
 
 permissions:
   contents: read
@@ -276,7 +286,7 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Build, sign, and checksum the Android APK
+      - name: Build, sign, and checksum the Android APK and AAB
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -285,13 +295,92 @@ jobs:
           ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
           ADMOB_BANNER_AD_UNIT_ID: ${{ vars.ADMOB_BANNER_AD_UNIT_ID }}
           ENABLE_PLAY_BILLING: ${{ vars.ENABLE_PLAY_BILLING }}
+          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: seerrng-android
-          path: dist-release/seerrng-*-android.*
+          path: dist-release/seerrng-*-android*
+          if-no-files-found: error
+
+  build-ios:
+    name: Build iOS Simulator release package
+    needs: resolve
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          persist-credentials: false
+
+      - name: Verify Xcode release toolchain
+        run: |
+          set -euo pipefail
+          xcode_version_output="$(xcodebuild -version)"
+          printf '%s\n' "$xcode_version_output"
+          grep -Eq '^Xcode 2[6-9](\.|$)' <<<"$xcode_version_output"
+          available_simulators="$(xcrun simctl list devices available)"
+          grep -Fq 'iPhone 17' <<<"$available_simulators"
+
+      - name: Test and package iOS Simulator app
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          IOS_BUILD_NUMBER: ${{ github.run_number }}
+          IOS_SIMULATOR_NAME: iPhone 17
+        run: bash scripts/build-ios-release.sh "$TAG" dist-release
+
+      - name: Build signed Ad Hoc IPA
+        if: vars.IOS_ADHOC_SIGNING_ENABLED == 'true'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          IOS_BUILD_NUMBER: ${{ github.run_number }}
+          IOS_DISTRIBUTION_KIND: adhoc
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_ADHOC_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_ADHOC_PROVISIONING_PROFILE_BASE64 }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: bash scripts/build-ios-signed-ipa.sh "$TAG" dist-release
+
+      - name: Build signed App Store Connect IPA
+        if: vars.IOS_APPSTORE_SIGNING_ENABLED == 'true'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          IOS_BUILD_NUMBER: ${{ github.run_number }}
+          IOS_DISTRIBUTION_KIND: app-store-connect
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_APPSTORE_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROVISIONING_PROFILE_BASE64 }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: bash scripts/build-ios-signed-ipa.sh "$TAG" dist-release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: seerrng-ios-simulator
+          path: |
+            dist-release/seerrng-*-ios-simulator.zip
+            dist-release/seerrng-*-ios-simulator.sha256
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: vars.IOS_ADHOC_SIGNING_ENABLED == 'true'
+        with:
+          name: seerrng-ios-adhoc
+          path: dist-release/seerrng-*-ios-adhoc.ipa*
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: vars.IOS_APPSTORE_SIGNING_ENABLED == 'true'
+        with:
+          name: seerrng-ios-appstore
+          path: dist-release/seerrng-*-ios-appstore.ipa*
           if-no-files-found: error
 
   build-jellyfin-plugin:
@@ -390,7 +479,7 @@ jobs:
 
   publish:
     name: Upload release assets
-    needs: [resolve, build, build-android, build-jellyfin-plugin]
+    needs: [resolve, build, build-android, build-ios, build-jellyfin-plugin]
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -406,32 +495,68 @@ jobs:
         shell: bash
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
+          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
+          IOS_ADHOC_SIGNING_ENABLED: ${{ vars.IOS_ADHOC_SIGNING_ENABLED }}
+          IOS_APPSTORE_SIGNING_ENABLED: ${{ vars.IOS_APPSTORE_SIGNING_ENABLED }}
         run: |
           set -euo pipefail
           release_dir='dist-release'
+          case "$ANDROID_MONETIZATION_MODE" in
+            ads) android_asset_suffix='android' ;;
+            capped) android_asset_suffix='android-capped' ;;
+            *) echo "ANDROID_MONETIZATION_MODE must be 'ads' or 'capped'." >&2; exit 2 ;;
+          esac
           downloads="$release_dir/downloaded"
           while IFS= read -r -d '' file; do
             filename="${file##*/}"
             artifact="${file#"$downloads"/}"
             artifact="${artifact%%/*}"
+            expected_manifest=""
             case "$artifact" in
-              seerrng-linux-x64) expected_archive="seerrng-${TAG}-linux-x64.tar.gz" ;;
-              seerrng-linux-arm64) expected_archive="seerrng-${TAG}-linux-arm64.tar.gz" ;;
-              seerrng-macos-x64) expected_archive="seerrng-${TAG}-macos-x64.tar.gz" ;;
-              seerrng-macos-arm64) expected_archive="seerrng-${TAG}-macos-arm64.tar.gz" ;;
-              seerrng-windows-x64) expected_archive="seerrng-${TAG}-windows-x64.zip" ;;
-              seerrng-windows-arm64) expected_archive="seerrng-${TAG}-windows-arm64.zip" ;;
-              seerrng-android) expected_archive="seerrng-${TAG}-android.apk" ;;
-              seerrng-jellyfin-plugin) expected_archive="seerrng-jellyfin-bridge-${TAG}.zip" ;;
+              seerrng-linux-x64) expected_archives=("seerrng-${TAG}-linux-x64.tar.gz") ;;
+              seerrng-linux-arm64) expected_archives=("seerrng-${TAG}-linux-arm64.tar.gz") ;;
+              seerrng-macos-x64) expected_archives=("seerrng-${TAG}-macos-x64.tar.gz") ;;
+              seerrng-macos-arm64) expected_archives=("seerrng-${TAG}-macos-arm64.tar.gz") ;;
+              seerrng-windows-x64) expected_archives=("seerrng-${TAG}-windows-x64.zip") ;;
+              seerrng-windows-arm64) expected_archives=("seerrng-${TAG}-windows-arm64.zip") ;;
+              seerrng-android)
+                expected_archives=("seerrng-${TAG}-${android_asset_suffix}.apk" "seerrng-${TAG}-${android_asset_suffix}.aab")
+                ;;
+              seerrng-ios-simulator) expected_archives=("seerrng-${TAG}-ios-simulator.zip") ;;
+              seerrng-ios-adhoc) expected_archives=("seerrng-${TAG}-ios-adhoc.ipa") ;;
+              seerrng-ios-appstore) expected_archives=("seerrng-${TAG}-ios-appstore.ipa") ;;
+              seerrng-jellyfin-plugin) expected_archive="seerrng-jellyfin-bridge-${TAG}.zip"; expected_manifest='seerrng-jellyfin-plugin-manifest.json' ;;
               *) echo "Unexpected release artifact directory: $artifact" >&2; exit 1 ;;
             esac
-            expected_checksum="${expected_archive%.tar.gz}"
-            expected_checksum="${expected_checksum%.zip}"
-            expected_checksum="${expected_checksum%.apk}.sha256"
-            expected_manifest=""
-            [[ "$artifact" != 'seerrng-jellyfin-plugin' ]] || expected_manifest='seerrng-jellyfin-plugin-manifest.json'
-            if [[ "$filename" != "$expected_archive" && "$filename" != "$expected_checksum" && "$filename" != "$expected_manifest" ]]; then
-              echo "Unexpected file in release artifact $artifact: $filename (expected $expected_archive)" >&2
+            if [[ "$artifact" != 'seerrng-jellyfin-plugin' ]]; then
+              expected_files=()
+              for expected_archive in "${expected_archives[@]}"; do
+                checksum_base="${expected_archive%.tar.gz}"
+                checksum_base="${checksum_base%.zip}"
+                checksum_base="${checksum_base%.apk}"
+                checksum_base="${checksum_base%.ipa}"
+                if [[ "$expected_archive" == *.aab ]]; then
+                  checksum_base="${checksum_base%.aab}-aab"
+                else
+                  checksum_base="${checksum_base%.aab}"
+                fi
+                expected_files+=("$expected_archive" "${checksum_base}.sha256")
+              done
+            else
+              expected_files=("$expected_archive" "${expected_archive%.zip}.sha256")
+            fi
+            file_allowed=false
+            for expected_file in "${expected_files[@]}"; do
+              if [[ "$filename" == "$expected_file" ]]; then
+                file_allowed=true
+                break
+              fi
+            done
+            if [[ "$filename" == "$expected_manifest" && -n "$expected_manifest" ]]; then
+              file_allowed=true
+            fi
+            if [[ "$file_allowed" != true ]]; then
+              echo "Unexpected file in release artifact $artifact: $filename (expected ${expected_files[*]} $expected_manifest)" >&2
               exit 1
             fi
             target="$release_dir/$filename"
@@ -446,8 +571,14 @@ jobs:
         shell: bash
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
+          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
         run: |
           set -euo pipefail
+          case "$ANDROID_MONETIZATION_MODE" in
+            ads) android_asset_suffix='android' ;;
+            capped) android_asset_suffix='android-capped' ;;
+            *) echo "ANDROID_MONETIZATION_MODE must be 'ads' or 'capped'." >&2; exit 2 ;;
+          esac
           expected=(
             "seerrng-${TAG}-linux-x64.tar.gz"
             "seerrng-${TAG}-linux-arm64.tar.gz"
@@ -455,14 +586,30 @@ jobs:
             "seerrng-${TAG}-macos-x64.tar.gz"
             "seerrng-${TAG}-windows-x64.zip"
             "seerrng-${TAG}-windows-arm64.zip"
-            "seerrng-${TAG}-android.apk"
+            "seerrng-${TAG}-ios-simulator.zip"
             "seerrng-jellyfin-bridge-${TAG}.zip"
           )
+          expected+=(
+            "seerrng-${TAG}-${android_asset_suffix}.apk"
+            "seerrng-${TAG}-${android_asset_suffix}.aab"
+          )
+          if [[ "$IOS_ADHOC_SIGNING_ENABLED" == 'true' ]]; then
+            expected+=("seerrng-${TAG}-ios-adhoc.ipa")
+          fi
+          if [[ "$IOS_APPSTORE_SIGNING_ENABLED" == 'true' ]]; then
+            expected+=("seerrng-${TAG}-ios-appstore.ipa")
+          fi
           for archive in "${expected[@]}"; do
             test -f "dist-release/$archive"
             archive_base="${archive%.tar.gz}"
             archive_base="${archive_base%.zip}"
             archive_base="${archive_base%.apk}"
+            archive_base="${archive_base%.ipa}"
+            if [[ "$archive" == *.aab ]]; then
+              archive_base="${archive_base%.aab}-aab"
+            else
+              archive_base="${archive_base%.aab}"
+            fi
             checksum="dist-release/$archive_base.sha256"
             test -f "$checksum"
             (
@@ -470,7 +617,7 @@ jobs:
               sha256sum -c "$(basename "$checksum")"
             )
           done
-          mapfile -t archives < <(find dist-release -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.apk' \) -printf '%f\n' | sort)
+          mapfile -t archives < <(find dist-release -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.apk' -o -name '*.aab' -o -name '*.ipa' \) -printf '%f\n' | sort)
           printf '%s\n' "${archives[@]}"
           diff -u <(printf '%s\n' "${expected[@]}" | sort) <(printf '%s\n' "${archives[@]}")
 
