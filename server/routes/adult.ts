@@ -290,9 +290,7 @@ adultRoutes.get('/:id/cover', async (req, res) => {
           url: WhisparrAPI.buildUrl(current, '/api/v3'),
         }).getSceneCover(stashDbId)
     );
-    res
-      .set('Cache-Control', 'private, no-store')
-      .type(cover.contentType);
+    res.set('Cache-Control', 'private, no-store').type(cover.contentType);
     return res.status(200).send(cover.imageBuffer);
   } catch (error) {
     logger.warn('Adult scene cover could not be loaded', {
