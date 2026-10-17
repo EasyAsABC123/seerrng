@@ -66,7 +66,7 @@ class MainActivity : Activity() {
     private lateinit var monetization: MonetizationManager
     private lateinit var trialUsageStore: TrialUsageStore
     private var trialSessionStartedThisLaunch = false
-    private var mainFrameLoadFailed = false
+    private var activeMainFrameLoadFailed = false
 
     private var editingServerId: String? = null
     private var activeServer: SavedServer? = null
@@ -125,11 +125,8 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.cancelEditorButton).setOnClickListener { showServerPicker() }
         findViewById<Button>(R.id.backToServersButton).setOnClickListener { showServerPicker() }
         findViewById<Button>(R.id.errorServersButton).setOnClickListener { showServerPicker() }
-        findViewById<Button>(R.id.reloadButton).setOnClickListener { webView?.reload() }
-        findViewById<Button>(R.id.retryButton).setOnClickListener {
-            errorPanel.visibility = View.GONE
-            webView?.reload()
-        }
+        findViewById<Button>(R.id.reloadButton).setOnClickListener { reloadActivePage() }
+        findViewById<Button>(R.id.retryButton).setOnClickListener { reloadActivePage() }
         lifetimeUnlockButton.setOnClickListener { monetization.purchaseLifetimeUnlock() }
         restorePurchasesButton.setOnClickListener { monetization.restoreLifetimeUnlock() }
         adPrivacyOptionsButton.setOnClickListener { monetization.showPrivacyOptions() }
@@ -320,7 +317,6 @@ class MainActivity : Activity() {
     }
 
     private fun startBrowser(server: SavedServer, address: ParsedServerAddress) {
-        mainFrameLoadFailed = false
         val cappedMode = BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE
         if (!CappedUsePolicy.canStartServerSession(
                 cappedMode = cappedMode,
@@ -359,6 +355,7 @@ class MainActivity : Activity() {
 
     private fun loadServer(server: SavedServer, address: ParsedServerAddress) {
         if (activeServer?.id != server.id || browserScreen.visibility != View.VISIBLE) return
+        activeMainFrameLoadFailed = false
         val view = createWebView(server.profileName, allowPopups = true)
         webView = view
         webContainer.addView(
@@ -482,6 +479,12 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun reloadActivePage() {
+        activeMainFrameLoadFailed = false
+        errorPanel.visibility = View.GONE
+        webView?.reload()
+    }
+
     private fun createWebViewClient() = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
             handleNavigation(request.url, request.hasGesture())
@@ -498,15 +501,12 @@ class MainActivity : Activity() {
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
-            if (view == webView) pageProgress.visibility = View.GONE
-        }
-
-        override fun onPageCommitVisible(view: WebView, url: String?) {
-            if (view == webView &&
+            if (view != webView) return
+            pageProgress.visibility = View.GONE
+            if (!activeMainFrameLoadFailed &&
                 BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE &&
                 !monetization.isLifetimeUnlocked &&
                 !trialSessionStartedThisLaunch &&
-                !mainFrameLoadFailed &&
                 trialUsageStore.consumeSession()
             ) {
                 trialSessionStartedThisLaunch = true
@@ -521,7 +521,19 @@ class MainActivity : Activity() {
         ) {
             super.onReceivedError(view, request, error)
             if (view == webView && request.isForMainFrame) {
-                mainFrameLoadFailed = true
+                activeMainFrameLoadFailed = true
+                showError(getString(R.string.connection_error))
+            }
+        }
+
+        override fun onReceivedHttpError(
+            view: WebView,
+            request: WebResourceRequest,
+            errorResponse: android.webkit.WebResourceResponse,
+        ) {
+            super.onReceivedHttpError(view, request, errorResponse)
+            if (view == webView && request.isForMainFrame && errorResponse.statusCode >= 400) {
+                activeMainFrameLoadFailed = true
                 showError(getString(R.string.connection_error))
             }
         }
@@ -529,7 +541,7 @@ class MainActivity : Activity() {
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
             handler.cancel()
             if (view == webView) {
-                mainFrameLoadFailed = true
+                activeMainFrameLoadFailed = true
                 showError(getString(R.string.secure_connection_error))
             }
         }
