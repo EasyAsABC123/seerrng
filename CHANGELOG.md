@@ -210,6 +210,47 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.66.0](https://github.com/snapetech-org/seerrng/compare/v3.65.0..v3.66.0) - 2026-10-17
+
+### User-facing changes
+
+#### Added
+
+- **Swipe:** Swipe now covers every enabled requestable catalog, with category-specific search, filters, request options, and private decision history. Adult picks stay outside AI ordering, and software requests include the right system or PC target.
+
+#### Changed
+
+- **Unraid:** The SeerrNG Unraid template and optional Compose stack now use the validated main image channel. Companion services also follow their main release tags, so the existing Unraid definitions track validated builds without a manual tag change.
+- **Books:** ChaptarrNG now has a clearly named entry in Services, with setup guidance that explains where its restricted API key belongs.
+
+#### Fixed
+
+- **Comics:** Comic discovery now refreshes its provider configuration when opened, so adding a ComicVine API key takes effect without leaving a stale missing-key message on screen.
+- **Settings:** Settings Search now opens its known destination before checking similar wording on the current tab. Searching for the API key from Metadata, for example, now takes you to the General settings field instead of stopping on a matching note.
+- **Distribution:** The Community Apps template now calls out the SeerrNG image registry move. Existing installations can keep pointing at the old image path until the Repository field is updated, so the template and Unraid guide now explain how to switch without changing the config mount.
+  - **Action required:** Update existing Unraid installs from ghcr.io/snapetech/seerrng to ghcr.io/snapetech-org/seerrng:latest while keeping the current /app/config host path.
+
+### 🚀 Features
+- *(swipe)* Support all requestable catalogs - ([4681da7](https://github.com/snapetech-org/seerrng/commit/4681da7697263911d14a779d3473e7cdb266af58))
+
+### 🐛 Bug Fixes
+- *(comics)* Refresh ComicVine discovery configuration - ([dd5c23e](https://github.com/snapetech-org/seerrng/commit/dd5c23e2b2f33185748fe0f487ea4e6a1d5a8e45))
+- *(settings)* Prioritize indexed search destinations - ([b9fd412](https://github.com/snapetech-org/seerrng/commit/b9fd412e62de6e7be8a67183aa2c22c33667bfec))
+- *(settings)* Surface ChaptarrNG in Services - ([5a4bc22](https://github.com/snapetech-org/seerrng/commit/5a4bc228d9d2e76c7d994036b8bdae4a98f34065))
+- *(swipe)* Refresh history when reopened - ([41aa822](https://github.com/snapetech-org/seerrng/commit/41aa8222fd0548a12c0ffc2bc2bb89b8bb81d274))
+- *(swipe)* Refresh identical catalog matches - ([4119e35](https://github.com/snapetech-org/seerrng/commit/4119e3547bf49ddb2435c7d5c954dcf57ca4baad))
+- *(swipe)* Refresh cards when catalog filters change - ([7799359](https://github.com/snapetech-org/seerrng/commit/7799359c794703b586af717b93802882c8cd2821))
+- *(swipe)* Cancel pending exits on history changes - ([7bcc26d](https://github.com/snapetech-org/seerrng/commit/7bcc26da13e1a54d33bfc624b3e7b777e8c778a3))
+- *(swipe)* Preserve cards when undoing during exit - ([da85c24](https://github.com/snapetech-org/seerrng/commit/da85c247c57c484317609564b33f99a4acd010c3))
+
+### 📖 Documentation
+- *(unraid)* Clarify image registry migration - ([8d620a9](https://github.com/snapetech-org/seerrng/commit/8d620a91c0035fb9a4f268c57b889c72af658642))
+
+### 🧪 Testing
+- *(swipe)* Stabilize catalog and keyboard journeys - ([6751d22](https://github.com/snapetech-org/seerrng/commit/6751d22bb3e3f2c1acc2bc2a0165e0d7adf76fff))
+
 ## [3.65.0](https://github.com/snapetech-org/seerrng/compare/v3.64.0..v3.65.0) - 2026-10-17
 
 ### User-facing changes
