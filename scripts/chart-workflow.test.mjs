@@ -24,50 +24,21 @@ const ciWorkflow = yaml.load(
 );
 const steps = workflow.jobs['lint-test'].steps;
 
-test('chart validation uses version-aware comparison for pull requests', () => {
-  const listChanged = steps.find(
-    (step) => step.name === 'Run chart-testing (list-changed)'
+test('chart validation runs generated documentation and all charts directly', () => {
+  const docs = steps.find(
+    (step) => step.name === 'Verify generated chart documentation'
   );
-  const pullRequestLint = steps.find(
-    (step) => step.name === 'Run chart-testing (pull request)'
-  );
+  const lint = steps.find((step) => step.name === 'Lint every Helm chart');
 
-  assert.equal(
-    listChanged.if,
-    "steps.engine-admission.outputs.execute == 'true'"
-  );
-  assert.match(listChanged.run, /GITHUB_EVENT_NAME.*pull_request/iu);
-  assert.equal(
-    pullRequestLint.if,
-    "!cancelled() && steps.engine-admission.outputs.execute == 'true' && github.event_name == 'pull_request' && steps.list-changed.outputs.changed == 'true'"
-  );
-  assert.match(pullRequestLint.run, /ct lint --target-branch/iu);
-});
-
-test('centrally selected chart validation retains push-wide lint behavior', () => {
-  const pushLint = steps.find(
-    (step) => step.name === 'Run chart-testing (push)'
-  );
-
-  assert.equal(
-    pushLint.if,
-    "!cancelled() && steps.engine-admission.outputs.execute == 'true' && github.event_name == 'push'"
-  );
-  assert.match(pushLint.run, /ct lint --all --validate-maintainers=false/iu);
+  assert.ok(docs);
+  assert.match(docs.run, /find charts .*Chart\.yaml/u);
+  assert.match(lint.run, /ct lint --all --validate-maintainers=false/iu);
   assert.ok(Object.hasOwn(workflow.on, 'workflow_call'));
   assert.deepEqual(ciWorkflow.on.push.branches, ['main']);
+  assert.equal(Object.hasOwn(ciWorkflow.on, 'pull_request'), false);
   assert.equal(
     ciWorkflow.jobs.helm.uses,
     './.github/workflows/lint-helm-charts.yml'
   );
-  assert.match(ciWorkflow.jobs.helm.if, /always\(\)/u);
-  assert.match(ciWorkflow.jobs.helm.if, /!cancelled\(\)/u);
-  assert.match(
-    ciWorkflow.jobs.helm.if,
-    /needs\.engine-plan\.result == 'success'/u
-  );
-  assert.match(
-    ciWorkflow.jobs.helm.if,
-    /needs\.engine-plan\.outputs\.helm == 'true'/u
-  );
+  assert.equal(ciWorkflow.jobs.helm.with, undefined);
 });

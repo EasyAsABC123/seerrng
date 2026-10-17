@@ -3,15 +3,12 @@
 import { Command, Option } from 'commander';
 import { createWriteStream, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { glob, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { run } from 'node:test';
 import * as reporters from 'node:test/reporters';
 import { fileURLToPath } from 'node:url';
-// eslint-disable-next-line no-relative-import-paths/no-relative-import-paths -- Native test runner bootstrap cannot resolve application aliases.
-import { setIsolatedTestEnvironment } from '../../tools/validation-engine/runtime/test-environment.mjs';
-// eslint-disable-next-line no-relative-import-paths/no-relative-import-paths -- Native test runner bootstrap cannot resolve application aliases.
-import { detectWorkerCapacity } from '../../tools/validation-engine/runtime/cpu-capacity.mjs';
+import { setIsolatedTestEnvironment } from './test-environment.mjs';
 
 const resolveImport = (specifier: string) =>
   fileURLToPath(import.meta.resolve(specifier));
@@ -99,11 +96,7 @@ if (positionals.length > 0) {
 // @ts-expect-error Node's test runner needs this explicit test environment.
 process.env.NODE_ENV = 'test';
 const testConcurrency =
-  opts.testConcurrency ??
-  Math.min(
-    256,
-    detectWorkerCapacity({ sourceRoot: BASE_DIR }).configuredWorkers
-  );
+  opts.testConcurrency ?? Math.max(1, Math.min(8, availableParallelism()));
 const testConfigDirectory = mkdtempSync(
   join(tmpdir(), 'seerrng-node-test-config-')
 );
@@ -120,8 +113,7 @@ process.env.TS_NODE_FILES = 'true';
 const stream = run({
   files,
   // Process isolation gives each file its own application DataSource and
-  // in-memory SQLite database. Keep that boundary while using the engine's
-  // bounded worker budget instead of serializing independent files.
+  // in-memory SQLite database while keeping concurrent work bounded.
   concurrency: testConcurrency,
   isolation: 'process',
   execArgv: [

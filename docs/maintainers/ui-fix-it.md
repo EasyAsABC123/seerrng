@@ -87,25 +87,24 @@ natural wrapping for longer or translated copy rather than clipping it.
    standard minimum gaps; they must not change control geometry.
    For saved disclosure controls, test pin-to-expand and unpin-to-collapse separately from manual heading toggles. Capture previous/next state transitions before queueing React state updates; do not compare an advancing mutable ref inside a deferred updater. Cover delayed saved-state arrival, independent sections and optimistic rollback with isolated fixtures. Keep a staged rollout within the scope the maintainer authorized and complete its applicable automated checks; do not wait for separate human sign-off when the maintainer directs rollout.
 
-## 6. Run the shared gate efficiently
+## 6. Run the shared checks efficiently
 
-Before the expensive cumulative run, establish a complete pinned repository tree
-and the prerequisites required by its current test inventory. A runtime app
-volume may omit workflow/release/dotfile fixtures even though the app runs.
-Check the snapshot manifest against those inputs; do not reconstruct missing
-files from a different release or guessed ancestry. Linux platform selection is
-not proof that Bash/Git/Python, CLI tools or GNU filesystem options are installed.
-Use a suitable disposable toolchain and record its versions. Plan discovery
-does not certify these external prerequisites. Missing inputs block finalization,
-not permission to skip suites, change CI or install tools into the live preview.
+Use focused tests while repairing a change, then run the native checks that cover
+the final integrated source. The package scripts and main-branch GitHub workflow
+are the authoritative check lists. Keep mutable config and database fixtures in
+disposable scratch storage, preserve provider/network guards, and record actual
+passes, failures, skips, and platform exclusions.
 
-1. Read `tools/validation-engine/README.md` and follow the applicable mode exactly. Regenerate and review the selected source's test inventory, expected cases, ownership, dependency closure, source/dependency/runtime hashes and invocation packets. During repairs, run affected focused checks and label preview evidence as iterative. Run the engine on the exact final candidate and the integrated tree after conflicts. Keep mutable config/database fixtures in disposable scratch storage; preserve provider/network guards and global-state barriers. Queue failures for reviewed diagnosis and repair, then rerun failed checks and their affected dependency closure. A successful complete applicable engine mode owns every required stage and suite in that candidate's verified plan and live inventory; do not repeat unchanged stages. `--tests-only` is partial and cannot certify finalization. Retain discovery and executed results separately, including counts/skips/platform exclusions; Linux is required for full POSIX tooling parity.
-2. Run focused source/AST checks, effective CSS checks and behavioral tests for changed owners and affected consumers. Reuse existing focused tests instead of building a second verifier architecture or performing an unrelated whole-site audit.
-3. Assertions target roles, relationships and actual behavior. Parse CSS correctly across grouped/nested rules; do not use stale utility-name assertions, naive first-brace extraction, or exact text examples as proof of styling.
-4. Run proportional lint/type and focused checks for changed source types/style owners during iteration. Use the complete applicable engine gate for finalization rather than adding a second compile or browser sequence. Check service health only after authorized publication. Compile/type/HTTP success does not establish visual inspection evidence or a successful provider round trip.
-5. Diagnose a failing check. Repair actual behavior or update a genuinely superseded assertion with equivalent coverage and acceptance evidence. Never weaken or delete a live behavior check merely to obtain a passing count.
-6. Avoid repeated full builds, rerunning unchanged suites, broad source copies and serial work that can safely be batched. Keep one authoritative readback, one owned edit batch, focused checks and a final cumulative verification. Communicate shared-file barriers and completion promptly.
-7. If scope, safety, source identity or gate coverage is unresolved, fail closed: do not finalize or claim completion. Record unrelated baseline failures. If the user authorized broader remediation or completion of the required gate, repair failures that block that scope without asking again; otherwise keep unrelated backend repairs out of the change. Deferral never converts a failed required gate into a pass.
+1. Run affected Vitest or native TypeScript tests, then `pnpm test`,
+   `pnpm test:node`, and `pnpm test:tooling` when the change crosses those areas.
+2. Run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` for
+   the integrated source. Run `pnpm test:playwright` and Cypress for browser
+   changes; use the hosted CI browser jobs for the full suite.
+3. Review effective CSS and rendered behavior for interface changes. Test live
+   providers only when the task calls for it, and distinguish mocks from actual
+   service round trips.
+4. Diagnose failures and repair the cause. Do not remove an existing behavior
+   check just to get a passing count. Keep unrelated baseline failures explicit.
 
 ## 7. Record, report and evolve
 

@@ -36,8 +36,9 @@ This runbook covers the seven public application repositories in the shared
 
 QuestarrNG and packaging repositories are outside this seven-repository runner
 scope. Add them only after the owner confirms the exact expanded repository
-list. Keep each project's validation engine and acceptance rules repository-
-specific.
+list. Keep each project's checks and acceptance rules repository-specific.
+SeerrNG's former validation engine has been removed; its main-branch workflow
+now runs the native test and security jobs directly.
 
 The current GitHub account login is the personal account `snapetech`; that login
 cannot also be the organization's login. **Organization login and display name
@@ -177,9 +178,9 @@ Before moving any repository:
   runners or persistent host credentials/data.
 - Preserve the distinct runner policy already in use: ChaptarrNG on `kspld0`,
   BookshelfNG on `kspls0`, TorrentNG on both where supported, SLSKDN on its
-  private server label, ROMarrNG and SLSKR hosted-only, and SeerrNG's local
-  Mode 1 / hosted Mode 2 validation. Confirm current settings before relying on
-  this memory-derived inventory.
+  private server label, ROMarrNG and SLSKR hosted-only, and SeerrNG on hosted
+  main-branch CI. Confirm current settings before relying on this memory-derived
+  inventory.
 - Preserve hosted GitHub Actions for public PR checks. Do not disable standard
   hosted runners, buy larger runners, or change project-specific validation
   gates as part of the ownership move.

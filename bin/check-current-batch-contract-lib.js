@@ -2746,11 +2746,10 @@ const validateCurrentBatchContract = (files) => {
     )
       errors.push(`package.json: ${reason}`);
   };
-  requirePublicCommand(
-    'validate:development',
-    'node bin/run-local-validation.mjs --package-entry',
-    'the complete validation command must retain the repository engine entry point'
-  );
+  if (Object.hasOwn(publicScripts, 'validate:development'))
+    errors.push(
+      'package.json: the retired validation engine command must stay removed'
+    );
   requirePublicCommand(
     'build',
     'pnpm build:all',
@@ -2824,16 +2823,6 @@ const validateCurrentBatchContract = (files) => {
     "'bin/run-tooling-tests.mjs',",
     'the current-batch check must include the tooling suite as a contract input'
   );
-  for (const check of [
-    'check-current-batch-contract.js',
-    'check-refreshed-ui-style.js',
-  ]) {
-    requireText(
-      'bin/local-validation.mjs',
-      check,
-      'the cumulative runner must discover current-batch and shared-style checks'
-    );
-  }
   requireText(
     'bin/check-refreshed-ui-style-lib.test.mjs',
     'rejects visual inline and embedded styles in refreshed components',

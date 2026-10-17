@@ -18,15 +18,16 @@ const vitestEnvironmentKeys = Object.freeze([
   'VITEST_WORKER_ID',
 ]);
 
-export function createIsolatedTestEnvironment(
+export function setIsolatedTestEnvironment(
   directory,
   inherited = process.env,
   { includeCi = false, includeVitest = false } = {}
 ) {
-  if (typeof directory !== 'string' || directory.length === 0)
-    throw new Error('Test environment requires an owned temporary directory');
+  if (typeof directory !== 'string' || directory.length === 0) {
+    throw new Error('Tests require an owned temporary configuration directory');
+  }
 
-  const env = {};
+  const environment = {};
   const allowedKeys = includeVitest
     ? [...inheritedEnvironmentKeys, ...vitestEnvironmentKeys]
     : inheritedEnvironmentKeys;
@@ -35,13 +36,11 @@ export function createIsolatedTestEnvironment(
     const entry =
       entries.find(([name]) => name === key) ??
       entries.find(([name]) => name.toUpperCase() === key);
-    if (entry && typeof entry[1] === 'string') env[key] = entry[1];
+    if (entry && typeof entry[1] === 'string') environment[key] = entry[1];
   }
 
-  if (includeCi && inherited.CI !== undefined) env.CI = 'true';
-
-  return {
-    ...env,
+  if (includeCi && inherited.CI !== undefined) environment.CI = 'true';
+  Object.assign(environment, {
     HOME: directory,
     USERPROFILE: directory,
     TMPDIR: directory,
@@ -56,16 +55,9 @@ export function createIsolatedTestEnvironment(
     ALLOW_NETWORK: 'false',
     SEERR_TEST_FAIL_ON_NETWORK: 'true',
     NEXT_TELEMETRY_DISABLED: '1',
-  };
-}
+  });
 
-export function setIsolatedTestEnvironment(
-  directory,
-  inherited = process.env,
-  options = {}
-) {
-  const env = createIsolatedTestEnvironment(directory, inherited, options);
   for (const key of Object.keys(process.env)) delete process.env[key];
-  Object.assign(process.env, env);
-  return env;
+  Object.assign(process.env, environment);
+  return environment;
 }

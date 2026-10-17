@@ -54,24 +54,19 @@ the contributor's accepted visual/interaction contract.
 
 ## Apply the same verification procedure
 
-Establish complete repository fixtures and native tool prerequisites using the
-validation-engine guide before the cumulative run. An app-volume archive or bare Node
-image is not a complete repository/toolchain receipt. Resolve missing fixtures
-from the actual pinned Git inputs; never invent them, copy another release's
-workflows or waive required checks. Retain the source manifest and tool versions.
+Establish the complete repository checkout and native tool prerequisites before
+the final run. Use the checked-in workflow and package scripts as the source of
+truth; do not copy workflows from another release or waive required checks.
+Retain the source revision and tool versions.
 
 1. Follow the fix-it audit against changed assets and their affected consumers,
    including effective CSS cascade, structural ownership, dynamic/secondary class
    props, hit areas, fixed headers versus scrollers, state, and narrow layouts.
-   Read `tools/validation-engine/README.md`, regenerate and review the
-   source-specific inventory and invocation plan, then run the applicable mode on
-   the exact integrated candidate. A successful complete applicable engine mode
-   owns every required stage and suite in that candidate's verified plan and live
-   inventory; do not repeat unchanged stages. `--tests-only` is partial and cannot
-   certify finalization. Any failed required check blocks finalization; do not
-   bypass a hook or redefine success.
-2. Retain the complete engine result with the target's pinned runtime and
-   dependencies. Preserve existing CI workflows/checks. Run any additional
+   Run focused tests while repairing, then run the native package checks and the
+   main-branch CI workflow on the exact integrated commit. Any failed required
+   check blocks finalization; do not bypass a hook or redefine success.
+2. Retain test results with the target's pinned runtime and dependencies. Keep
+   the main-branch CI checks. Run any additional
    authorized live-provider verification separately; never report a skipped suite
    as a pass or a mock as real-service verification. Native saved actions mutate
    only after an explicit user action.

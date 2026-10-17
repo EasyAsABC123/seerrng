@@ -375,10 +375,7 @@ test('Jellyfin CI tests incomplete startup responses before the live smoke test'
 
   assert.ok(startupRetryTest);
   assert.ok(liveSmokeTest);
-  assert.equal(
-    startupRetryTest.if,
-    "steps.engine-admission.outputs.execute == 'true'"
-  );
+  assert.equal(startupRetryTest.if, undefined);
   assert.match(
     startupRetryTest.run,
     /python3 -m unittest discover -s integrations\/jellyfin-plugin\/tests/u
@@ -396,12 +393,23 @@ test('multi-architecture publishers perform the real build once and verify the i
   const release = readWorkflow('release.yml');
 
   assert.equal(ci.jobs.build, undefined);
-  assert.equal(
-    ci.jobs.publish.if,
-    "github.ref == 'refs/heads/main' && needs.engine-reconcile.result == 'success'"
-  );
-  assert.equal(ci.jobs.publish.needs, 'engine-reconcile');
+  assert.equal(ci.jobs.publish.if, "github.ref == 'refs/heads/main'");
+  assert.deepEqual(ci.jobs.publish.needs, [
+    'release-notes',
+    'i18n-and-tooling',
+    'test',
+    'unit-test',
+    'node-test',
+    'jellyfin-plugin',
+    'codeql',
+    'playwright',
+    'cypress',
+    'test-docs',
+    'docs-links',
+    'helm',
+  ]);
   assert.equal(ci.on.workflow_dispatch, null);
+  assert.equal(Object.hasOwn(ci.on, 'pull_request'), false);
   assert.equal(ci.jobs['preflight-deploy'], undefined);
   assert.equal(ci.jobs['deploy-main'], undefined);
   assert.match(
@@ -418,12 +426,9 @@ test('multi-architecture publishers perform the real build once and verify the i
   );
   assert.equal(
     ci.jobs['scan-main-image'].if,
-    "github.ref == 'refs/heads/main' && needs.engine-reconcile.result == 'success' && needs.publish.result == 'success'"
+    "github.ref == 'refs/heads/main' && needs.publish.result == 'success'"
   );
-  assert.deepEqual(ci.jobs['scan-main-image'].needs, [
-    'publish',
-    'engine-reconcile',
-  ]);
+  assert.deepEqual(ci.jobs['scan-main-image'].needs, ['publish']);
   assert.deepEqual(ci.jobs['scan-main-image'].strategy.matrix.include, [
     { platform: 'linux/amd64', suffix: 'amd64' },
     { platform: 'linux/arm64', suffix: 'arm64' },
@@ -1094,17 +1099,19 @@ test('release asset checksums match the builder sidecar names', () => {
   assert.match(assetsText, /checksum_base="\$\{checksum_base%\.aab\}-aab"/u);
 });
 
-test('pull-request CI publishes the exact release-note preview', () => {
+test('main CI validates release notes against the pushed commit', () => {
   const ci = readWorkflow('ci.yml');
   const validation = ci.jobs['release-notes'].steps.find(
     (step) => step.name === 'Validate release-note fragment or explicit opt-out'
   );
 
   assert.ok(validation);
+  assert.equal(validation.env.BASE_SHA, '${{ github.event.before }}');
   assert.equal(
     validation.env.PR_BODY,
-    "${{ github.event_name == 'pull_request' && github.event.pull_request.body || github.event.head_commit.message || '' }}"
+    "${{ github.event.head_commit.message || '' }}"
   );
+  assert.doesNotMatch(validation.run, /\$\{\{/u);
   assert.match(validation.run, /--summary-file "\$GITHUB_STEP_SUMMARY"/u);
 });
 

@@ -737,22 +737,22 @@ pnpm dev
 Useful commands:
 
 ```bash
-pnpm validate:development
 pnpm typecheck
 pnpm typecheck:client
 pnpm typecheck:server
 pnpm lint
 pnpm test
+pnpm test:node
+pnpm test:tooling
 pnpm test:playwright
 pnpm build
 pnpm --dir gen-docs build
 ```
 
-`pnpm validate:development` is the complete active local validation path. Its
-current stages, prerequisites, worker policy, and evidence contract are defined
-in the [validation-engine guide](./tools/validation-engine/README.md). `pnpm test`
-is Vitest-only, and focused commands such as `pnpm test:playwright` do not replace
-the complete applicable engine gate.
+The test scripts use the project’s native runners: `pnpm test` runs Vitest,
+`pnpm test:node` runs the native TypeScript server tests, and
+`pnpm test:tooling` runs the JavaScript tooling checks. CI also runs the browser,
+documentation, plugin, chart, and security checks directly.
 
 Migration-specific checks:
 

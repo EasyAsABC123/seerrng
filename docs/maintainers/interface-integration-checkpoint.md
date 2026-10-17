@@ -10,7 +10,9 @@ a second approval gate after the maintainer explicitly directs merge or release.
 This appendix is chronological evidence. Only the latest dated entry describes
 current status; no older imperative, command binding, or pending gate controls
 current work. Normative procedure lives in the UI guides, `CONTRIBUTING.md`, and
-`tools/validation-engine/README.md`.
+the native commands documented in `README.md`. The former validation engine was
+retired on October 17, 2026; references in older entries below are historical
+evidence only.
 
 ## Current maintainer direction — October 6, 2026
 

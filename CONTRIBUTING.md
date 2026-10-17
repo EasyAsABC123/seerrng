@@ -75,10 +75,10 @@ do not require a second confirmation that the same work was reviewed.
      git push origin BRANCH_NAME --force-with-lease
      ```
 
-   - For final-candidate verification, follow the authoritative
-     [validation-engine guide](./tools/validation-engine/README.md). `pnpm test`
-     and `pnpm test:ci` are Vitest-only and do not replace the complete
-     applicable engine gate.
+   - Run the native checks for the code you changed. The main-branch CI runs
+     Vitest, native TypeScript and tooling tests, lint, formatting, type checks,
+     build, browser suites, docs, CodeQL, and packaging checks directly.
+     See the useful commands in [README](./README.md).
 
 ### Helm Chart
 

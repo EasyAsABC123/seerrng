@@ -138,7 +138,7 @@ test('upstream public commands preserve build-time translation and visual guards
     [
       'validate:development',
       'node bin/run-local-validation.mjs',
-      'the complete validation command must retain the repository engine entry point',
+      'the retired validation engine command must stay removed',
     ],
     ['build', 'pnpm build:compile', 'upstream build-all entry point'],
     ['build:all', 'run-p build:next', 'compile both client and server'],
@@ -371,12 +371,6 @@ test('accepted poster, tree, and shared ownership contracts reject functional re
       'margin-inline-start: auto;',
       'margin-inline-start: 0;',
       'page progress must remain right justified',
-    ],
-    [
-      'bin/local-validation.mjs',
-      "['Shared visual standard', 'bin/check-refreshed-ui-style.js']",
-      "['Shared visual standard', 'bin/removed-style-check.js']",
-      'the cumulative runner must discover current-batch and shared-style checks',
     ],
   ];
   const baseline = validateCurrentBatchContract(repositoryFilesWith());
