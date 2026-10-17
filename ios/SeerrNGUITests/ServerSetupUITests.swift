@@ -81,7 +81,12 @@ final class ServerSetupUITests: XCTestCase {
         let deletionAlert = app.alerts["Delete server?"]
         XCTAssertTrue(deletionAlert.waitForExistence(timeout: 3))
         deletionAlert.buttons["Delete"].tap()
-        XCTAssertTrue(app.buttons["Actions for Home"].waitForExistence(timeout: 5))
+
+        app.terminate()
+        let relaunchedApp = XCUIApplication()
+        relaunchedApp.launch()
+        XCTAssertTrue(relaunchedApp.staticTexts["Home"].waitForExistence(timeout: 5))
+        XCTAssertFalse(relaunchedApp.staticTexts["Work"].exists)
     }
 }
 
