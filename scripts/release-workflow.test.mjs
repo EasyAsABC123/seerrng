@@ -1099,3 +1099,21 @@ test('git-cliff skips all release-preparation commits', () => {
 
   assert.match(cliff, /message = '\^chore\\\(release\\\):'/u);
 });
+
+test('git-cliff uses stable semantic-version tags as release boundaries', () => {
+  const cliff = fs.readFileSync(
+    path.join(rootDirectory, '.github', 'cliff.toml'),
+    'utf8'
+  );
+  const tagPatternLine = cliff.match(/^tag_pattern = (.+)$/mu)?.[1];
+
+  assert.ok(tagPatternLine);
+
+  const tagPattern = JSON.parse(tagPatternLine);
+  const matchesTag = new RegExp(tagPattern);
+
+  assert.equal(matchesTag.test('v3.63.0'), true);
+  assert.equal(matchesTag.test('3.63.0'), true);
+  assert.equal(matchesTag.test('mobile-v3.63.0-ci.36'), false);
+  assert.equal(matchesTag.test('v3.63.0-rc.1'), false);
+});
