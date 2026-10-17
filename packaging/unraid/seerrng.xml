@@ -16,7 +16,7 @@
   <ReadMe>https://github.com/snapetech-org/seerrng/blob/main/README.md</ReadMe>
   <Category>MediaApp:Video Status:Stable</Category>
   <ExtraSearchTerms>seerrng seerr jellyseerr overseerr plex jellyfin emby requests movies tv music books ebooks audiobooks comics magazines radarr sonarr lidarr bookshelf bookshelfng readarr chaptarr chaptarrng mylar3 kapowarr lazylibrarian romarrng questarrng roms games</ExtraSearchTerms>
-  <Changes>Updated supported media workflows and SeerrNG integration references.</Changes>
+  <Changes>Image moved to ghcr.io/snapetech-org/seerrng. Existing installs using ghcr.io/snapetech/seerrng must update Repository to ghcr.io/snapetech-org/seerrng:latest to receive updates.</Changes>
   <License>MIT License</License>
   <Requires>Requires Docker, network access for metadata and external service integrations, and a persistent host directory for /app/config. Set the host directory ownership to UID 1000 and GID 1000 before the first start because the image does not run as root.</Requires>
   <Screenshot>https://raw.githubusercontent.com/snapetech-org/seerrng/main/public/readme-discover-covers.jpg</Screenshot>

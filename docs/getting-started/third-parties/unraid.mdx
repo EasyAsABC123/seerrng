@@ -17,6 +17,16 @@ SeerrNG is a community-maintained Seerr fork. Its Unraid template uses the Seerr
 This guide covers manual template configuration. Most users can install SeerrNG from Community Apps with the default values.
 :::
 
+:::warning Existing installs
+The SeerrNG image moved from `ghcr.io/snapetech/seerrng` to
+`ghcr.io/snapetech-org/seerrng`. The old image path no longer receives
+updates. In Unraid, edit the SeerrNG container and set **Repository** to
+`ghcr.io/snapetech-org/seerrng:latest`, then apply the template. Keep your
+existing host path mapped to `/app/config`; that is where the database and
+settings are stored. The `:main` image is published after the main branch CI
+checks pass, so it can lag behind a new commit.
+:::
+
 ## Template installation
 
 Search for **SeerrNG** in
