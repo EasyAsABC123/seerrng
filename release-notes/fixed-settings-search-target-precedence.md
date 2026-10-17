@@ -5,4 +5,4 @@ area: settings
 action: none
 breaking: false
 ---
-Settings Search now opens the dedicated Prowlarr tab before unrelated text on the current tab can intercept the search. API-key searches still focus a matching local control, or jump to the General settings field when there is no local match.
+Settings Search now opens its known destination before checking similar wording on the current tab. Searching for the API key from Metadata, for example, now takes you to the General settings field instead of stopping on a matching note.
