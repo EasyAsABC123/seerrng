@@ -206,6 +206,78 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.64.0](https://github.com/snapetech-org/seerrng/compare/v3.63.0..v3.64.0) - 2026-10-17
+
+### User-facing changes
+
+#### Added
+
+- **Mobile Apps:** SeerrNG now provides native Android and iOS clients that let users enter and manage multiple server addresses. Android packages support direct installation and Google Play upload; the current iOS package targets Simulator until Apple signing is configured.
+  - **Action required:** Install the Android package from GitHub Releases and enter a SeerrNG server URL.
+
+#### Changed
+
+- **Android:** Android no longer includes ads, an advertising SDK, or consent prompts. Once Play Billing is configured, each installation gets 20 successful server sessions free, followed by a one-time lifetime unlock. The recommended US price is $2.99; builds without store billing stay unlimited.
+  - **Action required:** Configure the Play lifetime product before enabling Play Billing.
+- **Settings:** Service integrations are now grouped into TV & Movies, Audiobooks & Books, Music, and Tools & Other categories. The selected category stays in the URL, and Settings search opens the matching section.
+
+#### Fixed
+
+- **Interface:** Passive notifications no longer block controls beneath them. Their dismiss and issue-detail actions remain available.
+
+### 🚀 Features
+- *(android)* Remove ads and price lifetime unlock - ([4eba6d1](https://github.com/snapetech-org/seerrng/commit/4eba6d1268cb2c1201c0659af287bb6ff65d27e9))
+- *(ios)* Add accessible server actions menu - ([854e11f](https://github.com/snapetech-org/seerrng/commit/854e11fdd68d0361f5b7c6d97416eeaee96e31a6))
+- *(mobile)* Prepare Android and iOS releases - ([c0af13c](https://github.com/snapetech-org/seerrng/commit/c0af13c5f8489dc2ddaee06799531512f883456b))
+- *(settings)* Group service integrations by category - ([3186d7e](https://github.com/snapetech-org/seerrng/commit/3186d7e70a38f9afa7dcc9b314d8750cdd0ed649))
+
+### 🐛 Bug Fixes
+- *(ci)* Isolate Android release signing from pull requests - ([e523493](https://github.com/snapetech-org/seerrng/commit/e523493ef37f1438ae935fa1a505c273af44162c))
+- *(ios)* Defer server data-store cleanup - ([0264805](https://github.com/snapetech-org/seerrng/commit/02648055564d73d51f916dc68113d5ab9b629f45))
+- *(ios)* Confirm server removal safely - ([0ab160c](https://github.com/snapetech-org/seerrng/commit/0ab160c0b712b08bde77ff4e2cc128a89fd081c3))
+- *(ios)* Declare app executable in bundle plist - ([99d8f0a](https://github.com/snapetech-org/seerrng/commit/99d8f0a619b5ccb9edb73836dbd164ccdc77405f))
+- *(ios)* Enable unit test imports and IPA export methods - ([4562659](https://github.com/snapetech-org/seerrng/commit/45626595623710d9ffcbb4133d3d3e2634527f5f))
+- *(ios)* Generate a complete shared Xcode scheme - ([b5915cb](https://github.com/snapetech-org/seerrng/commit/b5915cb0283513b1df076b557c35fd92f15854a0))
+- *(ios)* Reference shared scheme targets correctly - ([d6262a6](https://github.com/snapetech-org/seerrng/commit/d6262a610b97b9ffddf7270efe5cbcbb68dd4719))
+- *(ios)* Avoid Xcode version check pipe abort - ([534bdf5](https://github.com/snapetech-org/seerrng/commit/534bdf5acff4cf9e5cbc6138fb484676fa32a0bb))
+- *(release)* Ignore mobile prerelease tags when bumping stable - ([0f6c1d1](https://github.com/snapetech-org/seerrng/commit/0f6c1d1cb0ba48aab71f2aee609464139add367b))
+- *(settings)* Clear stale service search targets - ([62e465c](https://github.com/snapetech-org/seerrng/commit/62e465caddd18d41c5c8dfe5422b79d6fc8f8b6d))
+- *(ui)* Keep passive notifications off click targets - ([6bcfa04](https://github.com/snapetech-org/seerrng/commit/6bcfa042846a5c93e2384b68a7d5b67091929b49))
+
+### 📖 Documentation
+- *(android)* Recommend $2.99 lifetime unlock - ([3ed9200](https://github.com/snapetech-org/seerrng/commit/3ed9200e4421e6526c8449d895749913c031ddf8))
+- *(mobile)* Update Play Console status - ([2641818](https://github.com/snapetech-org/seerrng/commit/2641818f73ab26fbe65160e2805ed0dfc2eadf91))
+- *(mobile)* Clarify release guide links - ([7400117](https://github.com/snapetech-org/seerrng/commit/7400117830c89486879eb1d818e8a131d1862dfb))
+- *(mobile)* Repair docs site links - ([cb132d8](https://github.com/snapetech-org/seerrng/commit/cb132d8b114a423b374c23d4c5b08f857303d6a8))
+- *(mobile)* Link published release assets - ([50a6f97](https://github.com/snapetech-org/seerrng/commit/50a6f97657e670966e9510872ef1cd16e9412456))
+- *(release)* Announce mobile clients - ([fe9127c](https://github.com/snapetech-org/seerrng/commit/fe9127c7d800620ea8ea7203bf9fc0b30bb026b2))
+- Link mobile ci.35 prerelease artifacts - ([c8f0dc6](https://github.com/snapetech-org/seerrng/commit/c8f0dc683a7c38e1a1147b705a530723ce4ee60f))
+- Repair BookshelfNG link target - ([84f404d](https://github.com/snapetech-org/seerrng/commit/84f404d622dde25874d3f5c34092d29697c94b53))
+- Add mobile support contact - ([740ef00](https://github.com/snapetech-org/seerrng/commit/740ef00f67b04a00da6f5d8a6973e96cde9ddf1f))
+
+### 🎨 Styling
+- *(mobile)* Format iOS release metadata - ([32cf348](https://github.com/snapetech-org/seerrng/commit/32cf348bb5e768a38fd5e9e2a865bde4cc7ccab7))
+
+### 🧪 Testing
+- *(android)* Install signed APK on emulator - ([22bf221](https://github.com/snapetech-org/seerrng/commit/22bf2211e6db988468ad4f486cb5d4d7d00fc9c3))
+- *(android)* Exercise capped mode in emulator CI - ([3a3d259](https://github.com/snapetech-org/seerrng/commit/3a3d2593dd85819937576e9712778a47dbf4cc85))
+- *(ios)* Verify server deletion after relaunch - ([0f16bab](https://github.com/snapetech-org/seerrng/commit/0f16bab870702cd7b84aba20ab2b85fc54c485be))
+- *(ios)* Scroll server list after deletion - ([50f31d9](https://github.com/snapetech-org/seerrng/commit/50f31d97ea7662ee4743965406987de68f823caf))
+- *(ios)* Verify removing one server preserves the rest - ([ef1853a](https://github.com/snapetech-org/seerrng/commit/ef1853a8c67e2dc78203a20377152ecb90521258))
+- *(settings)* Align browser flows with service categories - ([0e69393](https://github.com/snapetech-org/seerrng/commit/0e69393098c891747d12160789a0cdbf0112a228))
+
+### ⚙️ Miscellaneous Tasks
+- *(ios)* Isolate project parsing from shared scheme - ([268600b](https://github.com/snapetech-org/seerrng/commit/268600b6eec261a80e1609d728bbbebc1d585923))
+- *(ios)* Capture Xcode project crash diagnostics - ([164351e](https://github.com/snapetech-org/seerrng/commit/164351ebd0e8d8f3ca57fc7df2f7d36987e11676))
+- *(ios)* Inspect Xcode project before tests - ([44afc71](https://github.com/snapetech-org/seerrng/commit/44afc71c329efd0160aaef5f67b297ffabe0e1cc))
+- *(mobile)* Version candidate builds from app release - ([db55b8c](https://github.com/snapetech-org/seerrng/commit/db55b8ce71881d7b8dd2f51679ef222476f5d991))
+- *(release)* Validate Chocolatey API key format - ([3789631](https://github.com/snapetech-org/seerrng/commit/378963138b34692b1489a69c4d414eba930e61e3))
+- Mark Android pricing docs internal - ([803d713](https://github.com/snapetech-org/seerrng/commit/803d7136ed4d66c0175d94a396e5c8290d1df102))
+- Mark Play Console docs internal - ([de0583c](https://github.com/snapetech-org/seerrng/commit/de0583cc944c61c5b5de76d1a4a23b341f96a638))
+- Mark mobile docs update internal - ([580d125](https://github.com/snapetech-org/seerrng/commit/580d125260cd95c1ee8ff3ec69e47ec8e9718890))
+
 ## [3.63.0](https://github.com/snapetech-org/seerrng/compare/v3.62.0..v3.63.0) - 2026-10-17
 
 ### User-facing changes
