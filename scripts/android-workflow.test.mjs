@@ -18,6 +18,7 @@ const workflow = yaml.load(
 
 test('Android workflow builds, tests on an emulator, and creates a debug APK', () => {
   const job = workflow.jobs.android;
+  const releaseJob = workflow.jobs['android-release'];
   const sdkInstall = job.steps.find(
     (step) => step.name === 'Install Android SDK and emulator'
   );
@@ -27,16 +28,23 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   const build = job.steps.find(
     (step) => step.name === 'Run unit and emulator tests, then build debug APK'
   );
-  const releaseCandidate = job.steps.find(
-    (step) => step.name === 'Build signed APK and Play App Bundle'
-  );
   const stopEmulator = job.steps.find(
     (step) => step.name === 'Stop Android emulator'
+  );
+  const releaseCandidate = releaseJob.steps.find(
+    (step) => step.name === 'Build, install, and launch the signed release APK'
+  );
+  const releaseUpload = releaseJob.steps.find(
+    (step) => step.name === 'Upload signed Android release candidate'
   );
 
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   assert.ok(workflow.on.pull_request.paths.includes('android/**'));
   assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
+  assert.doesNotMatch(JSON.stringify(job), /secrets\.ANDROID_KEYSTORE_/u);
+  assert.equal(releaseJob.needs, 'android');
+  assert.match(releaseJob.if, /github\.event_name != 'pull_request'/u);
+  assert.match(releaseJob.if, /github\.ref == 'refs\/heads\/main'/u);
   assert.match(sdkInstall.run, /system-images;android-36;google_apis;x86_64/u);
   assert.ok(kvm, 'KVM permissions must be prepared before emulator startup');
   assert.match(kvm.run, /sudo chmod 0666 \/dev\/kvm/u);
@@ -60,9 +68,25 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
     releaseCandidate.env.ANDROID_MONETIZATION_MODE,
     "${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}"
   );
+  for (const secretName of [
+    'ANDROID_KEYSTORE_BASE64',
+    'ANDROID_KEYSTORE_PASSWORD',
+    'ANDROID_KEY_ALIAS',
+    'ANDROID_KEY_PASSWORD',
+  ]) {
+    assert.equal(
+      releaseCandidate.env[secretName],
+      `\u0024{{ github.event_name != 'pull_request' && secrets.${secretName} }}`
+    );
+  }
   assert.match(releaseCandidate.run, /scripts\/build-android-release\.sh/u);
+  assert.match(releaseCandidate.run, /emulator -avd seerrng-api36/u);
   assert.match(releaseCandidate.run, /adb install -r/u);
-  assert.match(releaseCandidate.run, /org\.snapetech\.seerrng\/\.MainActivity/u);
+  assert.match(
+    releaseCandidate.run,
+    /org\.snapetech\.seerrng\/\.MainActivity/u
+  );
+  assert.ok(releaseUpload);
   assert.equal(stopEmulator.if, 'always()');
   assert.match(stopEmulator.run, /adb emu kill/u);
 });

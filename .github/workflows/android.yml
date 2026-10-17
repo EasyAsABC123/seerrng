@@ -122,13 +122,85 @@ jobs:
             android/app/build/outputs/androidTest-results/connected/
           if-no-files-found: ignore
 
-      - name: Build signed APK and Play App Bundle
-        if: github.event_name != 'pull_request'
+      - name: Stop Android emulator
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${ANDROID_EMULATOR_PID:-}" ]]; then
+            adb emu kill >/dev/null 2>&1 || true
+            kill "$ANDROID_EMULATOR_PID" 2>/dev/null || true
+          fi
+
+  android-release:
+    name: Build and smoke-test signed Android release
+    needs: android
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.android.result == 'success' &&
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'workflow_dispatch' ||
+      github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android SDK and emulator
+        run: |
+          ANDROID_USER_HOME="$HOME/.android"
+          ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          export ANDROID_USER_HOME ANDROID_AVD_HOME
+          sdkmanager \
+            'platforms;android-36' \
+            'build-tools;36.0.0' \
+            'emulator' \
+            'system-images;android-36;google_apis;x86_64'
+          echo no | avdmanager create avd \
+            --name seerrng-api36 \
+            --package 'system-images;android-36;google_apis;x86_64' \
+            --device pixel_2 \
+            --force
+          test -f "$ANDROID_AVD_HOME/seerrng-api36.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fxq 'seerrng-api36'
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+
+      - name: Enable KVM for Android emulator
+        run: |
+          if [[ ! -e /dev/kvm ]]; then
+            echo 'GitHub runner does not expose /dev/kvm; signed APK smoke tests cannot run.' >&2
+            exit 1
+          fi
+          sudo chmod 0666 /dev/kvm
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo 'Runner cannot read and write /dev/kvm after permissions were updated.' >&2
+            ls -l /dev/kvm >&2
+            exit 1
+          fi
+
+      - name: Build, install, and launch the signed release APK
+        shell: bash
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEY_PASSWORD }}
           ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
           ADMOB_BANNER_AD_UNIT_ID: ${{ vars.ADMOB_BANNER_AD_UNIT_ID }}
           ENABLE_PLAY_BILLING: ${{ vars.ENABLE_PLAY_BILLING }}
@@ -136,6 +208,30 @@ jobs:
           RUNNER_TEMP: ${{ runner.temp }}
         run: |
           set -euo pipefail
+          emulator -avd seerrng-api36 \
+            -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect > "$RUNNER_TEMP/android-release-emulator.log" 2>&1 &
+          emulator_pid=$!
+          echo "ANDROID_EMULATOR_PID=$emulator_pid" >> "$GITHUB_ENV"
+          timeout 300s adb wait-for-device || {
+            cat "$RUNNER_TEMP/android-release-emulator.log" >&2
+            echo 'Android emulator did not register with ADB.' >&2
+            exit 1
+          }
+          for attempt in {1..120}; do
+            if [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == '1' ]]; then
+              break
+            fi
+            sleep 2
+          done
+          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == '1' ]] || {
+            cat "$RUNNER_TEMP/android-release-emulator.log" >&2
+            echo 'Android emulator did not finish booting.' >&2
+            exit 1
+          }
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
           app_version="$(node -p 'require("./package.json").version')"
           bash scripts/build-android-release.sh "v${app_version}-ci.${GITHUB_RUN_NUMBER}" dist-android-release
           signed_apk="$(find dist-android-release -maxdepth 1 -type f -name 'seerrng-*-android*.apk' -print -quit)"
@@ -156,7 +252,6 @@ jobs:
           echo "Installed and launched the signed release APK: $signed_apk"
 
       - name: Upload signed Android release candidate
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-release-candidate
