@@ -374,11 +374,11 @@ test('Swipe exposes every enabled category and uses its normal request path', as
     .getByRole('searchbox', {
       name: 'Search titles, creators, descriptions, or genres',
     })
-    .fill('quest classics');
+    .fill('retro');
   const softwareSearchRequest = page.waitForRequest(
     (request) =>
       request.url().includes('/api/v1/request/software/catalog/search') &&
-      new URL(request.url()).searchParams.get('q') === 'quest classics'
+      new URL(request.url()).searchParams.get('q') === 'retro'
   );
   await page
     .getByRole('button', {
@@ -651,6 +651,7 @@ test('Swipe controls support keyboard actions, undo, and pointer gestures', asyn
   await historyDialog.getByRole('button', { name: 'Bring back' }).click();
   await expect.poll(() => decisions.length).toBe(0);
   await historyDialog.getByRole('button', { name: 'Close' }).last().click();
+  await expect(historyDialog).toBeHidden();
   await expect(topTitle).toHaveText('Swipe action one');
 
   const card = page.locator('.swipe-card[data-stack-position="0"]');
