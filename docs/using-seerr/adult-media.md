@@ -54,11 +54,23 @@ requests submitted during the configured time window.
 
 ## Browse and request scenes
 
-Users with Adult access open **Discover → Adult**, search Whisparr's scene
-catalog, and open a result to request it. SeerrNG checks the StashDB identity
-against its synced library status and request history before accepting another
-request. Request Status shows Adult requests alongside the other request types
-and has a dedicated Adult media filter.
+Users with Adult access open **Discover → Adult** to browse recently added
+scenes from their Whisparr libraries or search across configured Whisparr
+servers by title, performer, or studio. Results include scene artwork, studio,
+performers, library state, and the server that supplied the result. Opening a
+scene shows its details and links performers and studios back to related Adult
+searches. With multiple Whisparr instances, the server filter can focus on one
+library or search all configured servers. The scene page links back to the same
+search and server scope. SeerrNG checks the StashDB identity against library and
+request state before accepting another request. Request Status shows Adult
+requests alongside the other request types and has a dedicated Adult media
+filter.
+
+Users with advanced request options can choose which Whisparr server receives a
+request. The chosen server is carried from a catalog result through scene
+details and the request dialog. Availability and in-progress state are checked
+for that destination, so scenes already present there cannot be requested again.
+Users without advanced options request through the configured default server.
 
 Approved requests use the configured Whisparr default, quality profile, and
 root folder. Whisparr handles the download and import lifecycle; SeerrNG reads
@@ -86,7 +98,8 @@ download client. Approved requests still go through Whisparr.
 ## Current boundaries
 
 - Adult catalog and detail lookups come from the configured Whisparr scene API.
-  SeerrNG does not connect directly to Stash or another scene manager.
+  SeerrNG does not connect directly to Stash or another scene manager. Scene
+  artwork is loaded through an authenticated, size-bounded SeerrNG image route.
 - Whisparr controls acquisition, indexers, download clients, monitoring, and
   import behavior. SeerrNG does not grab manual Prowlarr search results.
 - The supported integration is Whisparr's scene-focused v3 API; Whisparr v2 is

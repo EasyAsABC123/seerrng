@@ -1,7 +1,7 @@
 import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
 import { Transition } from '@headlessui/react';
-import type { MediaStatus } from '@server/constants/media';
+import type { MediaRequestStatus, MediaStatus } from '@server/constants/media';
 import type { MediaRequest } from '@server/entity/MediaRequest';
 import type { NonFunctionProperties } from '@server/interfaces/api/common';
 import dynamic from 'next/dynamic';
@@ -62,6 +62,8 @@ interface RequestModalProps {
   magazineTitle?: string;
   adultId?: string;
   adultRequestId?: number;
+  adultRequestStatus?: MediaRequestStatus;
+  initialServerId?: number;
   sportarrLeagueId?: string;
   sportarrTitle?: string;
   initialBookFormat?: 'ebook' | 'audiobook' | 'both';
@@ -85,6 +87,8 @@ const RequestModal = ({
   magazineTitle,
   adultId,
   adultRequestId,
+  adultRequestStatus,
+  initialServerId,
   sportarrLeagueId,
   sportarrTitle,
   initialBookFormat,
@@ -173,6 +177,8 @@ const RequestModal = ({
         <AdultRequestModal
           adultId={adultId}
           adultRequestId={adultRequestId}
+          adultRequestStatus={adultRequestStatus}
+          initialServerId={initialServerId}
           onComplete={onComplete}
           onCancel={onCancel}
           onUpdating={onUpdating}
