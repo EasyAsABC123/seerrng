@@ -67,7 +67,7 @@ final class ServerSetupUITests: XCTestCase {
         app.buttons["saveServerButton"].tap()
         XCTAssertTrue(app.staticTexts["Office"].waitForExistence(timeout: 5))
 
-        app.staticTexts["Office"].swipeLeft()
+        app.buttons["Actions for Office"].tap()
         app.buttons["Edit"].tap()
         let nameField = app.textFields["serverNameField"]
         nameField.tap()
@@ -76,7 +76,7 @@ final class ServerSetupUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Work"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Home"].exists)
 
-        app.staticTexts["Work"].swipeLeft()
+        app.buttons["Actions for Work"].tap()
         app.buttons["Delete"].tap()
         XCTAssertFalse(app.staticTexts["Work"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["Home"].exists)

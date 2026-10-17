@@ -95,6 +95,25 @@ struct ServerListView: View {
             }
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("connectServer_\(server.id.uuidString)")
+
+            Menu {
+                Button {
+                    editingServer = server
+                    showingEditor = true
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                Button(role: .destructive) {
+                    serverStore.remove(id: server.id)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Actions for \(server.name)")
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
