@@ -85,7 +85,12 @@ const DiscoverComics = ({ titleOverride }: DiscoverComicsProps = {}) => {
   >(
     '/api/v1/discover/comics',
     { query, publisher, startYear, minIssues, maxIssues },
-    { showErrorToast: false, hideErrorWithResults: false }
+    {
+      showErrorToast: false,
+      hideErrorWithResults: false,
+      revalidateOnMount: true,
+      dedupingInterval: 0,
+    }
   );
   const isIndexing = discover.firstResultData?.indexing;
   const refreshDiscovery = discover.mutate;
@@ -246,6 +251,7 @@ const DiscoverComics = ({ titleOverride }: DiscoverComicsProps = {}) => {
       )}
       {!discover.error &&
         !discover.isLoadingInitialData &&
+        !discover.isValidating &&
         discover.isEmpty &&
         discover.firstResultData?.comicVineConfigured === false &&
         !discover.firstResultData?.indexing && (

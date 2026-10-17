@@ -165,6 +165,8 @@ const useDiscover = <
     showErrorToast = true,
     shouldRetryOnError = true,
     hideErrorWithResults = true,
+    revalidateOnMount = false,
+    dedupingInterval = 30000,
   }: {
     enabled?: boolean;
     hideAvailable?: boolean;
@@ -174,6 +176,8 @@ const useDiscover = <
     showErrorToast?: boolean;
     shouldRetryOnError?: boolean;
     hideErrorWithResults?: boolean;
+    revalidateOnMount?: boolean;
+    dedupingInterval?: number;
   } = {}
 ): DiscoverResult<T, S> => {
   const settings = useSettings();
@@ -232,7 +236,8 @@ const useDiscover = <
       // Loading the next page should only append that page. Availability and
       // request state are refreshed explicitly when a cached view is restored.
       revalidateFirstPage: false,
-      dedupingInterval: 30000,
+      revalidateOnMount,
+      dedupingInterval,
       revalidateOnFocus: false,
       fallbackData,
       shouldRetryOnError,
