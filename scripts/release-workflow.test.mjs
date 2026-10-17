@@ -384,7 +384,8 @@ test('Jellyfin CI tests incomplete startup responses before the live smoke test'
     /python3 -m unittest discover -s integrations\/jellyfin-plugin\/tests/u
   );
   assert.ok(
-    plugin.steps.indexOf(startupRetryTest) < plugin.steps.indexOf(liveSmokeTest),
+    plugin.steps.indexOf(startupRetryTest) <
+      plugin.steps.indexOf(liveSmokeTest),
     'the startup-response regression test must run before the Jellyfin container smoke test'
   );
 });
