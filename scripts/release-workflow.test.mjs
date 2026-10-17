@@ -689,7 +689,15 @@ test('release assets build supported native archive platforms', () => {
   );
   const verifyInventory = publish.steps.find(
     (step) => step.name === 'Verify archive inventory and checksums'
-  ).run;
+  );
+  assert.match(
+    verifyInventory.env.IOS_ADHOC_SIGNING_ENABLED,
+    /vars\.IOS_ADHOC_SIGNING_ENABLED/u
+  );
+  assert.match(
+    verifyInventory.env.IOS_APPSTORE_SIGNING_ENABLED,
+    /vars\.IOS_APPSTORE_SIGNING_ENABLED/u
+  );
   const archiveBuild = build.steps.find(
     (step) => step.name === 'Build archive'
   );
@@ -880,7 +888,7 @@ test('release assets build supported native archive platforms', () => {
   );
   assert.match(buildScript, /node -p 'process\.arch'/u);
   assert.doesNotMatch(buildScript, /uname -m/u);
-  assert.match(verifyInventory, /sha256sum -c/u);
+  assert.match(verifyInventory.run, /sha256sum -c/u);
   for (const archive of [
     'seerrng-${TAG}-macos-x64.tar.gz',
     'seerrng-${TAG}-windows-arm64.zip',
@@ -889,7 +897,7 @@ test('release assets build supported native archive platforms', () => {
     'seerrng-${TAG}-ios-simulator.zip',
   ]) {
     assert.ok(
-      verifyInventory.includes(`"${archive}"`),
+      verifyInventory.run.includes(`"${archive}"`),
       `expected the release-asset inventory check to require ${archive}`
     );
   }

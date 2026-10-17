@@ -562,6 +562,8 @@ jobs:
         shell: bash
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
+          IOS_ADHOC_SIGNING_ENABLED: ${{ vars.IOS_ADHOC_SIGNING_ENABLED }}
+          IOS_APPSTORE_SIGNING_ENABLED: ${{ vars.IOS_APPSTORE_SIGNING_ENABLED }}
         run: |
           set -euo pipefail
           expected=(
@@ -578,10 +580,10 @@ jobs:
             "seerrng-${TAG}-android.apk"
             "seerrng-${TAG}-android.aab"
           )
-          if [[ "$IOS_ADHOC_SIGNING_ENABLED" == 'true' ]]; then
+          if [[ "${IOS_ADHOC_SIGNING_ENABLED:-}" == 'true' ]]; then
             expected+=("seerrng-${TAG}-ios-adhoc.ipa")
           fi
-          if [[ "$IOS_APPSTORE_SIGNING_ENABLED" == 'true' ]]; then
+          if [[ "${IOS_APPSTORE_SIGNING_ENABLED:-}" == 'true' ]]; then
             expected+=("seerrng-${TAG}-ios-appstore.ipa")
           fi
           for archive in "${expected[@]}"; do
