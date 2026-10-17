@@ -102,9 +102,15 @@ jobs:
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
           ./android/gradlew --no-daemon -p android \
+            -PandroidMonetizationMode=ads \
             :app:testDebugUnitTest \
             :app:connectedDebugAndroidTest \
             :app:assembleDebug
+          ./android/gradlew --no-daemon -p android \
+            -PandroidMonetizationMode=capped \
+            -PfreeSessionLimit=2 \
+            :app:testDebugUnitTest \
+            :app:connectedDebugAndroidTest
 
       - name: Upload Android test reports
         if: always()

@@ -48,6 +48,9 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   assert.match(build.run, /:app:testDebugUnitTest/u);
   assert.match(build.run, /-p android/u);
   assert.match(build.run, /:app:connectedDebugAndroidTest/u);
+  assert.match(build.run, /-PandroidMonetizationMode=ads/u);
+  assert.match(build.run, /-PandroidMonetizationMode=capped/u);
+  assert.match(build.run, /-PfreeSessionLimit=2/u);
   assert.match(build.run, /:app:assembleDebug/u);
   assert.match(build.run, /trap .*adb emu kill/u);
   assert.equal(
