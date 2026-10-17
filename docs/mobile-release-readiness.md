@@ -1,6 +1,6 @@
 # SeerrNG mobile release readiness
 
-This guide covers the Android APK and Play upload, the iOS client, GitHub release packaging, and the remaining store work. It is written for the current branch and must be checked again when the store accounts and products are created.
+This guide records the Android and iOS package formats, verification steps, GitHub release path, and remaining store work. The mobile source is merged to `main`. The current downloadable files and their checksums are linked from the [README](../README.md#android-apk); confirm account-specific items in Play Console or App Store Connect before submission.
 
 ## What is built
 
@@ -52,6 +52,7 @@ An iOS app cannot use a self-signed certificate for ordinary installation. Ad Ho
 
 - `.github/workflows/android.yml` runs Android unit and emulator UI tests in both `ads` and capped modes, then installs and launches the signed APK on the API 36 emulator before uploading the APK/AAB candidate.
 - `.github/workflows/ios.yml` runs iOS unit and UI tests on GitHub's macOS 26 runner and retains the Simulator package plus test results.
+- Main-branch candidate names use the application version from `package.json` plus the workflow run number, so the package version follows each SeerrNG release-preparation commit. Tagged releases use the exact release tag.
 - Tagged releases validate checksums and attach the Android APK/AAB and iOS Simulator package. Signed iOS IPAs are conditional on the signing variables and secrets.
 - The standard release workflow only builds tags reachable from `main`; pushing this feature branch does not create a public release.
 
@@ -76,8 +77,9 @@ Google Play and Apple's stores sell/check out a one-time digital unlock through 
 
 ### Google Play
 
-- [ ] Create/verify a Play Console developer account, accept its distribution agreement, and pay the currently documented one-time US$25 registration fee.
-- [ ] Choose personal or organization registration and complete the identity checks. Personal accounts created after 13 November 2023 must complete a closed test with at least 12 opted-in testers for 14 continuous days before applying for production access.
+- [x] Create the Play Console developer account and pay the one-time US$25 registration fee; the account holder confirms identity verification is complete.
+- [ ] Verify a real Android 10+ device through the Play Console mobile app and complete phone verification. These were still shown in the last Console check before identity verification; confirm their current state in Console.
+- [ ] For this personal account, complete the required closed test before applying for production access: at least 12 opted-in testers for 14 continuous days.
 - [ ] Create the app record for `org.snapetech.seerrng`; upload the signed AAB and enroll in Play App Signing. Keep the direct-install APK signed by the same stable developer key.
 - [ ] Complete the content rating, target audience, Data safety, ads, and app access declarations accurately.
 - [ ] If ads are chosen, create an AdMob app and banner unit, publish an applicable UMP consent message, and set `ADMOB_APP_ID` and `ADMOB_BANNER_AD_UNIT_ID` repository variables. Do not use test IDs in production.

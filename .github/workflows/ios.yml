@@ -57,7 +57,9 @@ jobs:
         env:
           IOS_BUILD_NUMBER: ${{ github.run_number }}
           IOS_SIMULATOR_NAME: iPhone 17
-        run: bash scripts/build-ios-release.sh "v3.62.0-ci.${IOS_BUILD_NUMBER}" dist-ios-release
+        run: |
+          app_version="$(node -p 'require("./package.json").version')"
+          bash scripts/build-ios-release.sh "v${app_version}-ci.${IOS_BUILD_NUMBER}" dist-ios-release
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
