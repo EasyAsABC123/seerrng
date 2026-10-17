@@ -42,7 +42,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const ts = loadTypeScript(root);
 const sink = { write() {} };
 const validGovernanceContributing =
-  '# Contributing\n\n## AI Assistance\n\nMaintainers may authorize and accept AI-assisted work without a separate human-review gate. An explicit maintainer direction to merge or release supplies that authorization; do not require a second confirmation that the same work was reviewed.\n\n## Contributing Code\n\nKeep a PR branch current with `main` only when current GitHub rules require it; rebase or merge as needed. Merge after the checks and approvals required by current GitHub rules are satisfied. An explicit maintainer direction to merge is sufficient; no additional review or approval is required beyond those rules. Use any merge method enabled in GitHub.';
+  '# Contributing\n\n## AI Assistance\n\nMaintainers may authorize and accept AI-assisted work without a separate human-review gate. An explicit maintainer direction to merge or release supplies that authorization; do not require a second confirmation that the same work was reviewed.\n\n### Contributing Code\n\nKeep a PR branch current with `main` only when current GitHub rules require it; rebase or merge as needed. Merge after the checks and approvals required by current GitHub rules are satisfied. An explicit maintainer direction to merge is sufficient; no additional review or approval is required beyond those rules. Use any merge method enabled in GitHub.';
 const fixture = () => {
   const directory = mkdtempSync(join(tmpdir(), 'seerrng-validation-fixture-'));
   const write = (path, contents = '// fixture') => {
@@ -580,6 +580,19 @@ test('contribution guidance preserves explicit maintainer authority while the no
   const hook =
     '[ -n "$HUSKY_BYPASS" ] || pnpm attribution:check || exit $?\npnpm exec lint-staged || exit $?\n';
   assert.doesNotThrow(() => validateGovernanceSources(hook, contributing));
+  const ruleOutsideSection = contributing
+    .replace(
+      'Merge after the checks and approvals required by current GitHub rules are satisfied. An explicit maintainer direction to merge is sufficient; no additional review or approval is required beyond those rules. Use any merge method enabled in GitHub.',
+      ''
+    )
+    .replace(
+      '\n## AI Assistance',
+      '\n### Later Section\n\nMerge after the checks and approvals required by current GitHub rules are satisfied. An explicit maintainer direction to merge is sufficient; no additional review or approval is required beyond those rules. Use any merge method enabled in GitHub.\n\n## AI Assistance'
+    );
+  assert.throws(
+    () => validateGovernanceSources(hook, ruleOutsideSection),
+    /must preserve/
+  );
   for (const changedContributing of [
     contributing.replace(
       'only when current GitHub rules require it',

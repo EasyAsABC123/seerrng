@@ -110,11 +110,17 @@ export function validatePackageBindings(packageJson) {
 
 function normalizedMarkdownSection(source, heading) {
   const lines = source.replace(/\r/g, '').split('\n');
-  const start = lines.findIndex((line) => line.trim() === `## ${heading}`);
+  const headingAt = (line) => {
+    const match = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+    return match ? { level: match[1].length, text: match[2].trim() } : undefined;
+  };
+  const headings = lines.map(headingAt);
+  const start = headings.findIndex((entry) => entry?.text === heading);
   if (start === -1)
     throw new Error(`Governance source is missing section: ${heading}`);
+  const level = headings[start].level;
   const next = lines.findIndex(
-    (line, index) => index > start && /^##\s+/.test(line)
+    (_line, index) => index > start && headings[index]?.level <= level
   );
   return lines
     .slice(start + 1, next === -1 ? undefined : next)
