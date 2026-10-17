@@ -407,7 +407,10 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
         )
     );
 
-    if (indexedTarget) {
+    if (
+      indexedTarget?.targetId === 'prowlarr-settings-title' &&
+      indexedTarget.route !== router.pathname
+    ) {
       navigateToSettingsSearchDestination({
         route: indexedTarget.route,
         query,
@@ -433,6 +436,15 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
         focusSettingsSearchResult(control);
         return;
       }
+    }
+
+    if (indexedTarget) {
+      navigateToSettingsSearchDestination({
+        route: indexedTarget.route,
+        query,
+        targetId: indexedTarget.targetId,
+      });
+      return;
     }
 
     const matchingRoute = settingsRoutes.find(
