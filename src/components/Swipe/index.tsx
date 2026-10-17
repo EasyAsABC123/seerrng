@@ -324,6 +324,13 @@ const Swipe = () => {
     direction: SwipeDirection;
   }>();
   const exitTimer = useRef<number | undefined>(undefined);
+  const cancelPendingExit = useCallback(() => {
+    if (exitTimer.current !== undefined) {
+      window.clearTimeout(exitTimer.current);
+      exitTimer.current = undefined;
+    }
+    setExiting(undefined);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [showPreferences, setShowPreferences] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -378,11 +385,7 @@ const Swipe = () => {
 
   const selectMediaType = useCallback(
     (nextMediaType: SwipeMediaType) => {
-      if (exitTimer.current !== undefined) {
-        window.clearTimeout(exitTimer.current);
-        exitTimer.current = undefined;
-        setExiting(undefined);
-      }
+      cancelPendingExit();
       setMediaType(nextMediaType);
       setPage(1);
       const nextReturnTo = deckSourcePath[nextMediaType] ?? returnTo;
@@ -398,7 +401,7 @@ const Swipe = () => {
         { shallow: true, scroll: false }
       );
     },
-    [returnTo, router]
+    [cancelPendingExit, returnTo, router]
   );
 
   useEffect(
@@ -770,11 +773,7 @@ const Swipe = () => {
         { mediaType }
       );
       const card = response.data.card;
-      if (exitTimer.current !== undefined) {
-        window.clearTimeout(exitTimer.current);
-        exitTimer.current = undefined;
-      }
-      setExiting(undefined);
+      cancelPendingExit();
       setCards((current) => [
         card,
         ...current.filter((item) => item.id !== card.id),
@@ -792,7 +791,7 @@ const Swipe = () => {
     } finally {
       setBusy(false);
     }
-  }, [addToast, busy, intl, mediaType, mutateDecisions]);
+  }, [addToast, busy, cancelPendingExit, intl, mediaType, mutateDecisions]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -955,6 +954,7 @@ const Swipe = () => {
         mediaType: item.mediaType,
         id: item.id,
       });
+      cancelPendingExit();
       await Promise.all([mutateHistory(), mutateDecisions()]);
       setCards((current) => [
         item.card,
@@ -983,6 +983,7 @@ const Swipe = () => {
       await axios.delete(
         `/api/v1/swipe/history?mediaType=${encodeURIComponent(mediaType)}`
       );
+      cancelPendingExit();
       await Promise.all([mutateHistory(), mutateDecisions()]);
       setCards([]);
       lastLoaded.current = undefined;

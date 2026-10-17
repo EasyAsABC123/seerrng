@@ -337,7 +337,11 @@ test('Swipe exposes every enabled category and uses its normal request path', as
     page.getByText(/Adult discovery stays within your Whisparr catalog/)
   ).toBeVisible();
   await expect(page.getByText('Ordered for you by AI')).toHaveCount(0);
-  await page.getByRole('searchbox').fill('performer');
+  await page
+    .getByRole('searchbox', {
+      name: 'Search titles, creators, descriptions, or genres',
+    })
+    .fill('performer');
   const adultSearchRequest = page.waitForRequest(
     (request) =>
       request.url().includes('/api/v1/adult/search') &&
@@ -366,7 +370,11 @@ test('Swipe exposes every enabled category and uses its normal request path', as
   );
 
   await page.getByTestId('swipe-category-software-retro').click();
-  await page.getByRole('searchbox').fill('quest classics');
+  await page
+    .getByRole('searchbox', {
+      name: 'Search titles, creators, descriptions, or genres',
+    })
+    .fill('quest classics');
   const softwareSearchRequest = page.waitForRequest(
     (request) =>
       request.url().includes('/api/v1/request/software/catalog/search') &&
@@ -654,7 +662,7 @@ test('Swipe controls support keyboard actions, undo, and pointer gestures', asyn
     steps: 6,
   });
   await page.mouse.up();
-  await expect(topTitle).toHaveText('Swipe action three');
+  await expect(topTitle).toHaveText('Swipe action two');
   await expect.poll(() => decisions[0]?.decision).toBe('pass');
 
   await page.keyboard.press('ArrowRight');
