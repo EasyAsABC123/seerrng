@@ -1,6 +1,6 @@
 # SeerrNG mobile release readiness
 
-This guide records the Android and iOS package formats, verification steps, GitHub release path, and remaining store work. The mobile source is merged to `main`. The current downloadable files and their checksums are linked from the [README](https://github.com/snapetech-org/seerrng#android-apk); confirm account-specific items in Play Console or App Store Connect before submission.
+This guide records the Android and iOS package formats, verification steps, GitHub release path, and remaining store work. The mobile source is merged to `main`. The current downloadable files and their checksums are linked from the [README](https://github.com/snapetech-org/seerrng/blob/main/README.md#android-apk); confirm account-specific items in Play Console or App Store Connect before submission.
 
 ## What is built
 
@@ -29,7 +29,7 @@ The Android release script needs the configured stable signing secrets and Andro
 - `seerrng-vX.Y.Z-android.apk` and `.aab` when `ANDROID_MONETIZATION_MODE=ads`, or `seerrng-vX.Y.Z-android-capped.apk` and `.aab` when it is `capped`. The Actions repository variable defaults to `ads`; one mode is packaged per tagged release.
 - APKs are for direct install and updates signed with the same developer-controlled key. The AAB is signed with that key as the Play upload key. Google Play App Signing must be enabled in Play Console before the AAB can be distributed from Play.
 
-The APK's signer fingerprint and update-key handling are documented in the [Android build guide](https://github.com/snapetech-org/seerrng/blob/main/android/README.md). The keystore is not in the repository. GitHub Actions already has the Android keystore secrets configured; no signing secret values are printed or stored in this guide.
+The APK's signer fingerprint and update-key handling are documented in [android/README.md](https://github.com/snapetech-org/seerrng/blob/main/android/README.md). The keystore is not in the repository. GitHub Actions already has the Android keystore secrets configured; no signing secret values are printed or stored in this guide.
 
 ### iOS
 
@@ -46,7 +46,7 @@ The GitHub release workflow always attaches that Simulator package. When Apple s
 
 Both signed variants include SHA-256 sidecars. Configure the required secrets and `IOS_APPSTORE_SIGNING_ENABLED` / `IOS_ADHOC_SIGNING_ENABLED` Actions variables only after the Apple team, certificate, and matching provisioning profiles exist. The signing script uses a temporary macOS keychain and removes its temporary signing files after the build.
 
-An iOS app cannot use a self-signed certificate for ordinary installation. Ad Hoc distribution requires an Apple Developer Program membership, a distribution certificate, and registered device IDs; an App Store profile is needed for TestFlight/App Store distribution. See the [iOS build guide](https://github.com/snapetech-org/seerrng/blob/main/ios/README.md).
+An iOS app cannot use a self-signed certificate for ordinary installation. Ad Hoc distribution requires an Apple Developer Program membership, a distribution certificate, and registered device IDs; an App Store profile is needed for TestFlight/App Store distribution. See [ios/README.md](https://github.com/snapetech-org/seerrng/blob/main/ios/README.md).
 
 ### Automated checks
 
@@ -81,7 +81,7 @@ The first version can ship without hosted entitlement infrastructure. Keep purch
 | Store subscription with free trial | Play supports trial offers that renew into a subscription. | StoreKit supports introductory subscription offers. | No for store-account entitlements; a backend is recommended for authoritative cross-device purchase state |
 | Account-wide or tamper-resistant usage limit | Not implemented | Not implemented | Yes |
 
-The current price proposal is “$10 lifetime”; currency and regional price are not chosen. StoreKit/Play must provide the final localized price. The iOS purchase UI uses the price returned by StoreKit and does not hardcode a currency. Android's cap, ad mode, purchases, and limits are described in [the Android monetization guide](https://github.com/snapetech-org/seerrng/blob/main/android/MONETIZATION.md).
+The current price proposal is “$10 lifetime”; currency and regional price are not chosen. StoreKit/Play must provide the final localized price. The iOS purchase UI uses the price returned by StoreKit and does not hardcode a currency. Android's cap, ad mode, purchases, and limits are described in [android/MONETIZATION.md](https://github.com/snapetech-org/seerrng/blob/main/android/MONETIZATION.md).
 
 Keep the cap behavior transparent: 20 successful server sessions per installation, not 20 requests. A session is counted when the first page load finishes. A session remains open while switching saved servers; closing it and starting another may use another preview session. Local counters are an evaluation gate and can be reset by deleting app data or reinstalling. There is no SeerrNG-hosted usage counter.
 
