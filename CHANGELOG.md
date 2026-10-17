@@ -208,6 +208,41 @@ that are not called out here.
 
 # Changelog
 
+# Changelog
+
+## [3.65.0](https://github.com/snapetech-org/seerrng/compare/v3.64.0..v3.65.0) - 2026-10-17
+
+### User-facing changes
+
+#### Changed
+
+- **Settings:** Operators can hide the provided-certificate notice from login and setup pages. Disabling Swipe now also removes it from desktop and mobile navigation, so users no longer see an unavailable entry.
+- **Settings:** Prowlarr settings now have a dedicated Settings page with clear guidance about manual indexer search and the supported provider. The Services page groups system tools, including Swipe Discovery and Live Download Progress, under System.
+
+### 🚀 Features
+- *(settings)* Make Prowlarr easier to find - ([b635147](https://github.com/snapetech-org/seerrng/commit/b635147c3bb006f22a84082abd9285c3e2178154))
+- Control TLS notice and hide disabled Swipe - ([2e5f549](https://github.com/snapetech-org/seerrng/commit/2e5f54906c7dc1b3b4b8e46d3d3e6f6b950b4afa))
+
+### 🐛 Bug Fixes
+- *(ci)* Restore native CI job execution - ([a82aaf6](https://github.com/snapetech-org/seerrng/commit/a82aaf6ee7b63bfbeb2e45000beef4484a10b800))
+- *(ci)* Retry truncated Jellyfin startup responses - ([3081c27](https://github.com/snapetech-org/seerrng/commit/3081c2747c8d0f378a36fb011fa18fba4264876b))
+- *(release)* Pass optional iOS flags to asset verifier - ([f2619cc](https://github.com/snapetech-org/seerrng/commit/f2619cca49c73ab6c08e23ff77ac88b7608ab0b0))
+
+### 📖 Documentation
+- *(android)* Clarify Play device verification - ([6f1e488](https://github.com/snapetech-org/seerrng/commit/6f1e488704c32ef5ee5a70b54f88ff8c0981359b))
+- *(android)* Refresh Play account readiness - ([3e456ce](https://github.com/snapetech-org/seerrng/commit/3e456ce0482f94b267c5bf60d5b3d860721a1607))
+- *(android)* Link Play verification requirements - ([abb57c7](https://github.com/snapetech-org/seerrng/commit/abb57c75f2dc39d5a4e8376dda6f6707ce51a508))
+- *(android)* Prepare Play lifetime unlock setup - ([d71ac5b](https://github.com/snapetech-org/seerrng/commit/d71ac5bdb95b54b13e46fadb3dc547a28da1ace8))
+
+### 🎨 Styling
+- Format release workflow test - ([b751501](https://github.com/snapetech-org/seerrng/commit/b751501295f706d7edf8f046bb3c08245d9a5c3a))
+
+### 🧪 Testing
+- *(release)* Cover unset iOS signing flags - ([bfafb9c](https://github.com/snapetech-org/seerrng/commit/bfafb9c308e5ec6013f0c13c734bce87a21d34a5))
+
+### ⚙️ Miscellaneous Tasks
+- *(ci)* Remove validation engine - ([265d469](https://github.com/snapetech-org/seerrng/commit/265d4696ebe870ee28ab67790ff0fd56f2ee6670))
+
 ## [3.64.0](https://github.com/snapetech-org/seerrng/compare/v3.63.0..v3.64.0) - 2026-10-17
 
 ### User-facing changes
