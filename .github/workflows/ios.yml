@@ -42,8 +42,13 @@ jobs:
       - name: Validate iOS project files
         run: plutil -lint ios/SeerrNG.xcodeproj/project.pbxproj ios/SeerrNG/Info.plist
 
-      - name: List iOS project targets and schemes
-        run: xcodebuild -list -project ios/SeerrNG.xcodeproj
+      - name: List iOS project targets without shared schemes
+        run: |
+          scheme_free_directory="$RUNNER_TEMP/SeerrNG-without-scheme"
+          cp -R ios "$scheme_free_directory"
+          scheme_free_project="$scheme_free_directory/SeerrNG.xcodeproj"
+          rm -rf "$scheme_free_project/xcshareddata"
+          xcodebuild -list -project "$scheme_free_project"
 
       - name: Inspect iOS Xcode project and scheme
         run: xcodebuild -list -project ios/SeerrNG.xcodeproj -scheme SeerrNG
@@ -69,9 +74,16 @@ jobs:
         if: failure()
         run: |
           mkdir -p dist-xcode-diagnostics
-          find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -type f -mmin -60 \
-            \( -name 'xcodebuild*.crash' -o -name 'xcodebuild*.ips' -o -name 'Xcode*.crash' \) \
-            -exec cp -p {} dist-xcode-diagnostics/ \;
+          for report_directory in \
+            "$HOME/Library/Logs/DiagnosticReports" \
+            "$HOME/Library/Logs/CrashReporter" \
+            "/Library/Logs/DiagnosticReports"; do
+            if [[ -d "$report_directory" ]]; then
+              find "$report_directory" -maxdepth 1 -type f -mmin -60 \
+                \( -iname '*xcodebuild*.crash' -o -iname '*xcodebuild*.ips' -o -iname '*xcode*.crash' \) \
+                -exec cp -p {} dist-xcode-diagnostics/ \;
+            fi
+          done
           find dist-xcode-diagnostics -maxdepth 1 -type f -print
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
