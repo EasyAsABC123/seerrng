@@ -42,9 +42,15 @@ jobs:
         env:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
         run: |
+          $ErrorActionPreference = 'Stop'
           if ([string]::IsNullOrWhiteSpace($env:CHOCOLATEY_API_KEY)) {
             throw 'The CHOCOLATEY_API_KEY repository secret is required to submit the SeerrNG package.'
           }
+          $apiKeyGuid = [guid]::Empty
+          if (-not [guid]::TryParse($env:CHOCOLATEY_API_KEY.Trim(), [ref]$apiKeyGuid)) {
+            throw 'The CHOCOLATEY_API_KEY repository secret must be a GUID-formatted Chocolatey Community Repository API key.'
+          }
+          Write-Output 'Chocolatey API key format validated.'
 
       - name: Require a published GitHub release
         shell: pwsh
@@ -134,11 +140,16 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:CHOCOLATEY_API_KEY)) {
             throw 'The CHOCOLATEY_API_KEY repository secret is required to submit the SeerrNG package.'
           }
+          $apiKeyGuid = [guid]::Empty
+          if (-not [guid]::TryParse($env:CHOCOLATEY_API_KEY.Trim(), [ref]$apiKeyGuid)) {
+            throw 'The CHOCOLATEY_API_KEY repository secret must be a GUID-formatted Chocolatey Community Repository API key.'
+          }
 
           $packagePath = Join-Path (Join-Path $env:RUNNER_TEMP 'seerrng-chocolatey-package') "seerrng.$env:VERSION.nupkg"
           if (-not (Test-Path -LiteralPath $packagePath)) { throw "The package was not found at $packagePath." }
 
+          $apiKey = $apiKeyGuid.ToString('D')
           choco push $packagePath `
             --source 'https://push.chocolatey.org/' `
-            --api-key $env:CHOCOLATEY_API_KEY
+            --api-key $apiKey
           if ($LASTEXITCODE -ne 0) { throw 'Chocolatey rejected the SeerrNG package submission.' }

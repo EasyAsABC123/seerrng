@@ -288,9 +288,20 @@ test('Chocolatey packages only verified Windows release archives', () => {
   const workflow = readWorkflow('release-chocolatey.yml');
   const job = workflow.jobs['publish-chocolatey'];
   const steps = job.steps.map((step) => step.run ?? '').join('\n');
+  const credentialStep = job.steps.find(
+    (step) => step.name === 'Require Chocolatey publisher credential'
+  );
+  const submitStep = job.steps.find(
+    (step) => step.name === 'Submit package to Chocolatey Community Repository'
+  );
 
   assert.equal(workflow.on.workflow_dispatch.inputs.tag.required, true);
   assert.equal(job['runs-on'], 'windows-latest');
+  assert.ok(credentialStep);
+  assert.match(credentialStep.run, /\[guid\]::TryParse/iu);
+  assert.ok(submitStep);
+  assert.match(submitStep.run, /ToString\('D'\)/u);
+  assert.match(submitStep.run, /--api-key \$apiKey/u);
   assert.match(
     steps,
     /merge-base --is-ancestor HEAD refs\/remotes\/origin\/main/u
