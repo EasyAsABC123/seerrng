@@ -61,9 +61,14 @@ test('runStartupMigrations serializes competing SQLite processes', async () => {
         stderr += chunk.toString();
       });
       worker.once('error', reject);
-      worker.once('close', (code) => {
+      worker.once('close', (code, signal) => {
         if (code !== 0) {
-          reject(new Error(stderr || `Migration worker exited with ${code}`));
+          reject(
+            new Error(
+              stderr ||
+                `Migration worker exited with ${signal ? `signal ${signal}` : code}`
+            )
+          );
           return;
         }
         try {

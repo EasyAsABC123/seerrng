@@ -121,7 +121,7 @@ function createOpenApiApp(includeOperationalPermissions = false) {
     req.user = {
       id: 1,
       ...(includeOperationalPermissions ? { hasPermission: () => true } : {}),
-    } as Express.Request['user'];
+    } as unknown as Express.Request['user'];
     next();
   });
   app.use(
