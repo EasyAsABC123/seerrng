@@ -59,5 +59,33 @@ describe('service setup categories', () => {
     cy.visit('/settings/services?settingsSearchTarget=prowlarr#prowlarr');
     cy.get('[data-settings-category="tools-other"]').should('be.visible');
     cy.get('#prowlarr').should('be.visible');
+
+    cy.get('input[aria-label="Search Settings"]').type('Navidrome{enter}');
+    cy.get('[data-settings-category="music"]').should('be.visible');
+    cy.location('search').should('eq', '?serviceCategory=music');
+    cy.get('[data-settings-category="tools-other"]').should('not.be.visible');
+  });
+
+  it('keeps the category chooser usable on a narrow screen', () => {
+    cy.viewport(390, 640);
+    cy.visit('/settings/services');
+
+    cy.get('nav[aria-label="Service categories"] button').should(
+      'have.length',
+      4
+    );
+    cy.document().then((document) => {
+      expect(document.documentElement.scrollWidth).to.be.at.most(
+        document.documentElement.clientWidth + 1
+      );
+    });
+
+    cy.contains('button[aria-pressed="false"]', 'Audiobooks & Books').click();
+    cy.get('[data-settings-category="audiobooks-books"]').should('be.visible');
+    cy.document().then((document) => {
+      expect(document.documentElement.scrollWidth).to.be.at.most(
+        document.documentElement.clientWidth + 1
+      );
+    });
   });
 });

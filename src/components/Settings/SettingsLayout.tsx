@@ -327,11 +327,14 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
     const category = categoryPanel?.dataset.settingsCategory;
 
     if (categoryPanel?.hidden && category) {
+      const query = { ...router.query };
+      delete query.settingsSearchTarget;
+      query.serviceCategory = category;
       void router
         .replace(
           {
             pathname: router.pathname,
-            query: { ...router.query, serviceCategory: category },
+            query,
           },
           undefined,
           { shallow: true, scroll: false }
