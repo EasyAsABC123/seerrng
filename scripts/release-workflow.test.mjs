@@ -47,6 +47,15 @@ test('release assets build while image verification runs, then package channels 
     ANDROID_KEYSTORE_PASSWORD: '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}',
     ANDROID_KEY_ALIAS: '${{ secrets.ANDROID_KEY_ALIAS }}',
     ANDROID_KEY_PASSWORD: '${{ secrets.ANDROID_KEY_PASSWORD }}',
+    IOS_DISTRIBUTION_CERTIFICATE_BASE64:
+      '${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}',
+    IOS_DISTRIBUTION_CERTIFICATE_PASSWORD:
+      '${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}',
+    IOS_TEAM_ID: '${{ secrets.IOS_TEAM_ID }}',
+    IOS_ADHOC_PROVISIONING_PROFILE_BASE64:
+      '${{ secrets.IOS_ADHOC_PROVISIONING_PROFILE_BASE64 }}',
+    IOS_APPSTORE_PROVISIONING_PROFILE_BASE64:
+      '${{ secrets.IOS_APPSTORE_PROVISIONING_PROFILE_BASE64 }}',
   });
   assert.deepEqual(packageDispatch.needs, ['verify', 'build-release-assets']);
   assert.equal(packageDispatch['timeout-minutes'], 360);
@@ -600,6 +609,15 @@ test('release recovery validates reusable artifacts and repairs the failed relea
     ANDROID_KEYSTORE_PASSWORD: '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}',
     ANDROID_KEY_ALIAS: '${{ secrets.ANDROID_KEY_ALIAS }}',
     ANDROID_KEY_PASSWORD: '${{ secrets.ANDROID_KEY_PASSWORD }}',
+    IOS_DISTRIBUTION_CERTIFICATE_BASE64:
+      '${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}',
+    IOS_DISTRIBUTION_CERTIFICATE_PASSWORD:
+      '${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}',
+    IOS_TEAM_ID: '${{ secrets.IOS_TEAM_ID }}',
+    IOS_ADHOC_PROVISIONING_PROFILE_BASE64:
+      '${{ secrets.IOS_ADHOC_PROVISIONING_PROFILE_BASE64 }}',
+    IOS_APPSTORE_PROVISIONING_PROFILE_BASE64:
+      '${{ secrets.IOS_APPSTORE_PROVISIONING_PROFILE_BASE64 }}',
   });
   assert.match(
     assetBuild.with.reuse_windows_x64_artifact,
@@ -729,21 +747,44 @@ test('release assets build supported native archive platforms', () => {
     'resolve',
     'build',
     'build-android',
+    'build-ios',
     'build-jellyfin-plugin',
   ]);
   const androidBuild = assets.jobs['build-android'];
   assert.equal(androidBuild.needs, 'resolve');
   assert.equal(
     androidBuild.steps.find(
-      (step) => step.name === 'Build, sign, and checksum the Android APK'
+      (step) => step.name === 'Build, sign, and checksum the Android APK and AAB'
     ).run,
     "bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release"
+  );
+  assert.equal(
+    androidBuild.steps.find(
+      (step) => step.name === 'Build, sign, and checksum the Android APK and AAB'
+    ).env.ANDROID_MONETIZATION_MODE,
+    "${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}"
   );
   assert.equal(
     androidBuild.steps.find((step) =>
       step.uses?.startsWith('actions/upload-artifact@')
     ).with.name,
     'seerrng-android'
+  );
+  const iosBuild = assets.jobs['build-ios'];
+  assert.equal(iosBuild.needs, 'resolve');
+  assert.equal(iosBuild['runs-on'], 'macos-26');
+  assert.equal(
+    iosBuild.steps.find((step) => step.name === 'Test and package iOS Simulator app')
+      .run,
+    'bash scripts/build-ios-release.sh "$TAG" dist-release'
+  );
+  const iosClientWorkflow = readWorkflow('ios.yml');
+  assert.equal(iosClientWorkflow.jobs.ios['runs-on'], 'macos-26');
+  assert.match(
+    iosClientWorkflow.jobs.ios.steps.find(
+      (step) => step.name === 'Run iOS unit and UI tests, then package Simulator app'
+    ).run,
+    /scripts\/build-ios-release\.sh/u
   );
   assert.equal(downloadAssets.with.path, 'dist-release/downloaded');
   assert.equal(downloadAssets.with['merge-multiple'], undefined);
@@ -767,7 +808,9 @@ test('release assets build supported native archive platforms', () => {
   for (const archive of [
     'seerrng-${TAG}-macos-x64.tar.gz',
     'seerrng-${TAG}-windows-arm64.zip',
-    'seerrng-${TAG}-android.apk',
+    'seerrng-${TAG}-${android_asset_suffix}.apk',
+    'seerrng-${TAG}-${android_asset_suffix}.aab',
+    'seerrng-${TAG}-ios-simulator.zip',
   ]) {
     assert.ok(
       verifyInventory.includes(`"${archive}"`),
@@ -782,14 +825,16 @@ test('release assets build supported native archive platforms', () => {
   for (const archive of [
     'seerrng-${TAG}-macos-x64.tar.gz',
     'seerrng-${TAG}-windows-arm64.zip',
-    'seerrng-${TAG}-android.apk',
-    'seerrng-${TAG}-android.sha256',
+    'seerrng-${TAG}-ios-simulator.zip',
+    'seerrng-${TAG}-ios-simulator.sha256',
   ]) {
     assert.ok(
       requiredAssets.includes(`"${archive}"`),
       `expected the release gate to require ${archive}`
     );
   }
+  assert.match(requiredAssets, /android_asset_suffix='android-capped'/u);
+  assert.match(requiredAssets, /\$\{android_asset_suffix\}-aab\.sha256/u);
 });
 
 test('tag preparation keeps Helm metadata aligned with the application release', () => {
@@ -933,9 +978,10 @@ test('release asset checksums match the builder sidecar names', () => {
   assert.match(assetsText, /archive_base="\$\{archive%\.tar\.gz\}"/u);
   assert.match(assetsText, /archive_base="\$\{archive_base%\.zip\}"/u);
   assert.match(assetsText, /archive_base="\$\{archive_base%\.apk\}"/u);
+  assert.match(assetsText, /archive_base="\$\{archive_base%\.aab\}-aab"/u);
   assert.match(
     assetsText,
-    /expected_checksum="\$\{expected_checksum%\.apk\}\.sha256"/u
+    /checksum_base="\$\{checksum_base%\.aab\}-aab"/u
   );
 });
 

@@ -1,6 +1,6 @@
 # Android monetization options
 
-This document compares the current ad-supported prototype with a capped-use option, store-managed subscription trials, and a hosted account model. The client is a native Android shell that opens each user's own SeerrNG server in a WebView; it does not run the SeerrNG backend. That boundary determines what a local usage cap can count.
+This document compares the Android ad-supported and capped-use modes, the iOS capped-use client, store-managed subscription trials, and a hosted account model. Each mobile client opens the user's own SeerrNG server; neither app runs the SeerrNG backend. That boundary determines what a local usage cap can count.
 
 ## Current implementation
 
@@ -12,6 +12,8 @@ The app can be built in either of two modes:
 | `capped` | No ads; 20 successful server sessions per app installation by default. | Removes the session cap. |
 
 Both modes use the same prospective Google Play non-consumable product ID, `lifetime_unlock`. The requested $10 amount is a pricing candidate; its currency is not selected, and no product, price, AdMob app ID, banner ID, or published consent message has been created in Play Console or AdMob yet. The store will localize and display the configured price before purchase.
+
+The iOS client uses the `capped` model: 20 successful server sessions per installation and a StoreKit 2 non-consumable product with ID `lifetime_unlock`. The App Store product and price are not configured yet. iOS does not include ads. The Android and iOS implementations are described in [the mobile release guide](../docs/mobile-release-readiness.md).
 
 Choose the mode at build time:
 
@@ -29,7 +31,7 @@ ANDROID_MONETIZATION_MODE=capped FREE_SESSION_LIMIT=20 \
   :app:testDebugUnitTest :app:assembleDebug
 ```
 
-The release script emits `seerrng-vX.Y.Z-android.apk` for `ads` and `seerrng-vX.Y.Z-android-capped.apk` for `capped`; each gets its own SHA-256 sidecar. The APK signing identity is unchanged between modes.
+The release script emits `seerrng-vX.Y.Z-android.apk` and a signed `seerrng-vX.Y.Z-android.aab` for `ads`, or `seerrng-vX.Y.Z-android-capped.apk` and its AAB for `capped`; each gets a SHA-256 sidecar. The APK signing identity is unchanged between modes. The APK is for direct distribution; upload the AAB to Play Console and enable Play App Signing for store distribution.
 
 A capped release is for QA only until Play Billing is enabled and the lifetime product is available. Without billing, the preview still expires but the purchase controls are hidden, so a user cannot continue after the cap.
 
@@ -61,7 +63,7 @@ Google describes consumable products as items users can buy again after use, and
 
 Apple supports consumable, non-consumable, auto-renewable subscription, and non-renewing subscription IAP types. Introductory subscription offers can include a free trial; the subscription begins immediately and renews at the regular price after the trial. Apple says auto-renewable subscriptions must provide ongoing value, last at least seven days, and work across the user's devices. See [App Store Connect IAP types](https://developer.apple.com/help/app-store-connect/reference/in-app-purchases-and-subscriptions/in-app-purchase-types), [StoreKit introductory offers](https://developer.apple.com/documentation/storekit/implementing-introductory-offers-in-your-app), and [App Review Guidelines, payments and subscriptions](https://developer.apple.com/app-store/review/guidelines/).
 
-If a native iOS SeerrNG client is ever built, it will need a separate StoreKit integration and its own product identifiers. Current Apple payment rules require careful review before offering an external payment route for an in-app digital unlock; an Android product or checkout cannot simply be reused in an iOS app.
+The iOS client now has a separate StoreKit 2 integration. Create the non-consumable `lifetime_unlock` product in App Store Connect and test it with sandbox accounts before enabling the purchase UI in an App Store release. The same text product ID can be used independently in each store, but the purchase records and entitlements are not shared. Current Apple payment rules require careful review before offering an external payment route for an in-app digital unlock.
 
 ## Does a trial need our own server?
 
@@ -78,7 +80,7 @@ Google recommends a secure backend for purchase verification, subscription-speci
 3. **Treat the capped build as a product experiment.** It has no ad SDK activity and no hosted cost, but reinstall/data-clear bypasses it. If this is acceptable, server infrastructure is unnecessary. If account-wide enforcement is a requirement, estimate a hosted identity/entitlement service before choosing this option.
 4. **Use a subscription trial only if we want ongoing billing.** The trial is a subscription promotion, not a store-provided free counter. Clearly state the trial length, renewal amount, cancellation path, eligibility, and ongoing value before choosing it. It is a poor fit if the intended paid offer remains a one-time lifetime purchase.
 
-At present, the release build still defaults to the ad-supported mode, with ads and billing disabled unless configured. No Play or AdMob product configuration is implied by adding this prototype.
+The release build defaults to the `ads` mode. Set the GitHub Actions repository variable `ANDROID_MONETIZATION_MODE` to `capped` to build the no-ad, 20-session preview instead. Ads and billing remain disabled unless their Play/AdMob settings are configured. No Play or AdMob product configuration is implied by adding this prototype.
 
 ## Validation checklist
 
@@ -97,5 +99,6 @@ At present, the release build still defaults to the ad-supported mode, with ads 
 - Configure `ENABLE_PLAY_BILLING=true`; use Google Play license testers and a Play test track for purchase tests. A directly downloaded APK has no Play checkout path.
 - Add backend purchase-token verification and refund/voided-purchase handling before public paid distribution if stronger entitlement security is required.
 - Rebuild, sign, verify the APK signature, and verify the SHA-256 sidecar using the existing release script. Keep the established release keystore unchanged.
-- If distributing through Google Play, plan the Play upload package separately (including the Play-required bundle/signing configuration); the existing release script packages APKs for direct distribution.
-- If building an iOS client later, implement StoreKit separately and review the then-current App Store IAP, subscription, external-link, and privacy requirements.
+- If distributing through Google Play, upload the signed AAB, enable Play App Signing, and test through a Play track.
+- Create the iOS App Store product, test StoreKit with Apple sandbox accounts, and review App Review's current IAP, subscription, external-link, and privacy requirements.
+- The iOS client is a new SwiftUI/WebKit app; run its unit and UI tests on a macOS runner and complete a physical-device test before store submission.

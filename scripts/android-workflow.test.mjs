@@ -27,6 +27,9 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   const build = job.steps.find(
     (step) => step.name === 'Run unit and emulator tests, then build debug APK'
   );
+  const releaseCandidate = job.steps.find(
+    (step) => step.name === 'Build signed APK and Play App Bundle'
+  );
 
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   assert.ok(workflow.on.pull_request.paths.includes('android/**'));
@@ -47,4 +50,9 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   assert.match(build.run, /:app:connectedDebugAndroidTest/u);
   assert.match(build.run, /:app:assembleDebug/u);
   assert.match(build.run, /trap .*adb emu kill/u);
+  assert.equal(
+    releaseCandidate.env.ANDROID_MONETIZATION_MODE,
+    "${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}"
+  );
+  assert.match(releaseCandidate.run, /scripts\/build-android-release\.sh/u);
 });

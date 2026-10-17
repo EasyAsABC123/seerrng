@@ -60,24 +60,40 @@ test -s "$keystore"
 
 export ANDROID_KEYSTORE_PATH="$keystore"
 mkdir -p "$output_dir"
-./android/gradlew --no-daemon -p android :app:assembleRelease \
+./android/gradlew --no-daemon -p android \
+  :app:assembleRelease \
+  :app:bundleRelease \
   "-PandroidVersionName=$version" \
   "-PandroidVersionCode=$version_code"
 
 apk="android/app/build/outputs/apk/release/app-release.apk"
+aab="android/app/build/outputs/bundle/release/app-release.aab"
 test -s "$apk"
+test -s "$aab"
 "$apksigner" verify --verbose --print-certs "$apk"
+if ! jar tf "$aab" | grep -Eq '^META-INF/[^/]+\.(RSA|DSA|EC)$'; then
+  echo 'Android App Bundle is missing its signing certificate.' >&2
+  exit 1
+fi
+jarsigner -verify -verbose:summary "$aab" >/dev/null
 
 if [[ "$monetization_mode" == "capped" ]]; then
   archive="seerrng-${tag}-android-capped.apk"
+  bundle="seerrng-${tag}-android-capped.aab"
   checksum="seerrng-${tag}-android-capped.sha256"
+  bundle_checksum="seerrng-${tag}-android-capped-aab.sha256"
 else
   archive="seerrng-${tag}-android.apk"
+  bundle="seerrng-${tag}-android.aab"
   checksum="seerrng-${tag}-android.sha256"
+  bundle_checksum="seerrng-${tag}-android-aab.sha256"
 fi
 cp -- "$apk" "$output_dir/$archive"
+cp -- "$aab" "$output_dir/$bundle"
 (
   cd "$output_dir"
   sha256sum "$archive" > "$checksum"
+  sha256sum "$bundle" > "$bundle_checksum"
 )
 echo "Built signed Android APK ($monetization_mode mode): $output_dir/$archive"
+echo "Built signed Android App Bundle ($monetization_mode mode): $output_dir/$bundle"

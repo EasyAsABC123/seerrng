@@ -1,0 +1,55 @@
+name: iOS Client
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'scripts/build-ios-release.sh'
+      - '.github/workflows/ios.yml'
+      - '.github/workflows/release-assets.yml'
+      - '.github/workflows/release.yml'
+  push:
+    paths:
+      - 'ios/**'
+      - 'scripts/build-ios-release.sh'
+      - '.github/workflows/ios.yml'
+      - '.github/workflows/release-assets.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: Test and package iOS Simulator build
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify Xcode release toolchain
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcodebuild -version | grep -Eq '^Xcode 2[6-9](\.|$)'
+          xcrun simctl list devices available | grep -F 'iPhone 17'
+
+      - name: Run iOS unit and UI tests, then package Simulator app
+        env:
+          IOS_BUILD_NUMBER: ${{ github.run_number }}
+          IOS_SIMULATOR_NAME: iPhone 17
+        run: bash scripts/build-ios-release.sh "v3.62.0-ci.${IOS_BUILD_NUMBER}" dist-ios-release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: ios-simulator-release-candidate
+          path: |
+            dist-ios-release/seerrng-*-ios-simulator.zip
+            dist-ios-release/seerrng-*-ios-simulator.sha256
+            dist-ios-release/seerrng-*-ios-tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
