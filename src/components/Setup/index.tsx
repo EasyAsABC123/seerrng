@@ -455,7 +455,7 @@ const Setup = () => {
               </div>
             ) : (
               <div>
-                <SettingsServices />
+                <SettingsServices showProwlarr />
                 <div className="actions">
                   <div className="flex justify-end">
                     <span className="ms-3 inline-flex rounded-md shadow-sm">

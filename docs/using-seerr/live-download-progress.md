@@ -33,7 +33,7 @@ and SeerrNG keeps only one reading for each torrent.
 
 ## Set up
 
-1. Open **Settings → Services** and find **Live Download Progress**.
+1. Open **Settings → Services → System** and find **Live Download Progress**.
 2. Select **Add Download Client**, choose the client, and enter its address and
    credentials. Use the same hostname and port that your *arr services use
    when SeerrNG runs on the same Docker network.

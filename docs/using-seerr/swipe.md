@@ -41,7 +41,7 @@ describe what you are in the mood for; the AI uses it to order your picks.
 ## For administrators
 
 Swipe is on by default for everyone who can make requests. Turn it off, or set
-up AI ordering, under **Settings → Services → Swipe Discovery**.
+up AI ordering, under **Settings → Services → System → Swipe Discovery**.
 
 AI ordering is optional. Choose a provider:
 

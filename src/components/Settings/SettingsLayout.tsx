@@ -31,6 +31,7 @@ const messages = defineMessages('components.Settings', {
   menuPlexSettings: 'Plex',
   menuJellyfinSettings: '{mediaServerName}',
   menuServices: 'Services',
+  menuProwlarr: 'Prowlarr',
   menuLibraryMigration: 'Library Migration',
   menuNetwork: 'Network',
   menuNotifications: 'Notifications',
@@ -65,9 +66,22 @@ type SettingsSearchDestination = {
 
 const settingsSearchTargets = [
   {
+    route: '/settings/prowlarr',
+    targetId: 'prowlarr-settings-title',
+    terms: [
+      'prowlarr',
+      'indexer search',
+      'indexer settings',
+      'nzb hydra2',
+      'nzbhydra2',
+    ],
+    adminOnly: true,
+  },
+  {
     route: '/settings/main',
     targetId: 'apiKey',
     terms: ['api', 'api key', 'apikey', 'application api key'],
+    adminOnly: false,
   },
 ] as const;
 
@@ -85,7 +99,7 @@ export const useSettingsPageAction = (action: SettingsPageAction | null) => {
 };
 
 const editableSettingsRoute = (path: string) =>
-  !/^\/settings\/(?:services|library-migration|logs|jobs|about|discovery)(?:\/|$)/.test(
+  !/^\/settings\/(?:services|prowlarr|library-migration|logs|jobs|about|discovery)(?:\/|$)/.test(
     path
   );
 
@@ -159,6 +173,12 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
       text: intl.formatMessage(messages.menuNetwork),
       route: '/settings/network',
       regex: /^\/settings\/network/,
+    },
+    {
+      text: intl.formatMessage(messages.menuProwlarr),
+      route: '/settings/prowlarr',
+      regex: /^\/settings\/prowlarr/,
+      requiredPermission: Permission.ADMIN,
     },
     {
       text: intl.formatMessage(messages.menuMetadataProviders),
@@ -377,14 +397,18 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
       }
     }
 
-    const indexedTarget = settingsSearchTargets.find((target) =>
-      target.terms.some(
-        (term) =>
-          term.includes(normalizedQuery) || normalizedQuery.includes(term)
-      )
+    const indexedTarget = settingsSearchTargets.find(
+      (target) =>
+        (!target.adminOnly || canAdminister) &&
+        target.terms.some(
+          (term) =>
+            term.includes(normalizedQuery) || normalizedQuery.includes(term)
+        )
     );
-    const matchingRoute = settingsRoutes.find((route) =>
-      route.text.toLocaleLowerCase().includes(normalizedQuery)
+    const matchingRoute = settingsRoutes.find(
+      (route) =>
+        (!route.requiredPermission || canAdminister) &&
+        route.text.toLocaleLowerCase().includes(normalizedQuery)
     );
     const destination = indexedTarget
       ? {

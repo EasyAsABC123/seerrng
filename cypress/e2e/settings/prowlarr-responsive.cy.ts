@@ -131,12 +131,15 @@ describe('Prowlarr settings on a short mobile screen', () => {
   });
 
   it('keeps save reachable after scrolling the long indexer report', () => {
-    cy.visit('/settings/services?serviceCategory=tools-other');
+    cy.visit('/settings/prowlarr');
     cy.wait('@prowlarrSettings').then(({ response }) => {
       expect(response?.statusCode).to.equal(200);
       expect(response?.body).to.deep.equal(prowlarrSettings);
     });
     cy.get('#prowlarr', { timeout: 10000 }).should('be.visible');
+    cy.contains(
+      'This setting connects to Prowlarr only. NZBHydra2 is not currently supported here.'
+    ).should('be.visible');
     cy.contains('#prowlarr h3', 'Prowlarr indexers', {
       timeout: 10000,
     }).scrollIntoView();

@@ -5,8 +5,8 @@ description: Connect Prowlarr to SeerrNG for manual category-aware indexer searc
 
 # Indexer searches by media category
 
-Administrators can connect one Prowlarr instance under **Settings > Services >
-Prowlarr indexers**. SeerrNG then provides **Indexer Search** for users with
+Administrators can connect one Prowlarr instance under **Settings > Prowlarr**.
+SeerrNG then provides **Indexer Search** for users with
 **Manage Requests** permission. The page searches Prowlarr directly across
 movies, TV, music, ebooks, audiobooks, comics, magazines, adult scenes, retro
 ROMs, modern ROMs, and PC games. Adult search appears only when the Adult
@@ -16,6 +16,8 @@ This is a manual search for inspecting available releases. SeerrNG does not
 grab a result, send it to a download client, or add it to a media library from
 this page. An approved request still goes to its configured media manager or
 software provider, which owns acquisition, import, and progress tracking.
+This configuration supports Prowlarr only; NZBHydra2 is not currently
+supported as a SeerrNG indexer-search provider.
 
 | SeerrNG category | Title discovery in SeerrNG | Manual Prowlarr search | Approved request acquisition |
 | --- | --- | --- | --- |
@@ -32,7 +34,7 @@ software provider, which owns acquisition, import, and progress tracking.
 
 ## Configure Prowlarr
 
-1. Open **Settings > Services > Prowlarr indexers** as an administrator.
+1. Open **Settings > Prowlarr** as an administrator.
 2. Enter the Prowlarr hostname, port, optional base path, SSL setting, and API
    key. The API key stays on the SeerrNG server and is masked after saving.
 3. Select **Test connection and inspect coverage**. SeerrNG checks its Prowlarr

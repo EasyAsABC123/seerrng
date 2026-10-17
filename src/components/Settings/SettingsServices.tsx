@@ -53,7 +53,7 @@ import type {
 import axios from 'axios';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR, { mutate } from 'swr';
 
@@ -104,7 +104,7 @@ const messages = defineMessages('components.Settings', {
   serviceCategoryTvMovies: 'TV & Movies',
   serviceCategoryBooks: 'Audiobooks & Books',
   serviceCategoryMusic: 'Music',
-  serviceCategoryTools: 'Tools & Other',
+  serviceCategoryTools: 'System',
   serviceCategories: 'Service categories',
   spotifyPlaylistSettings:
     'Configure Spotify playlist access in General settings',
@@ -209,7 +209,7 @@ const serviceCategoryFromSearchTarget = (
   targetId: string | undefined
 ): ServiceCategory | undefined => {
   if (!targetId) return undefined;
-  if (targetId === 'prowlarr' || targetId.startsWith('download-clients-')) {
+  if (targetId.startsWith('download-clients-')) {
     return 'tools-other';
   }
   if (targetId.startsWith('slskdn-')) return 'music';
@@ -432,9 +432,36 @@ const ServerInstance = ({
   );
 };
 
-const SettingsServices = () => {
+const SettingsServices = ({
+  showProwlarr = false,
+}: {
+  showProwlarr?: boolean;
+}) => {
   const intl = useIntl();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!router.isReady || router.pathname !== '/settings/services') return;
+    const legacyProwlarrLink =
+      router.query.settingsSearchTarget === 'prowlarr' ||
+      window.location.hash === '#prowlarr';
+    if (!legacyProwlarrLink) return;
+
+    const settingsSearch =
+      typeof router.query.settingsSearch === 'string'
+        ? router.query.settingsSearch
+        : undefined;
+    void router.replace({
+      pathname: '/settings/prowlarr',
+      query: settingsSearch
+        ? {
+            settingsSearch,
+            settingsSearchTarget: 'prowlarr-settings-title',
+          }
+        : {},
+    });
+  }, [router]);
+
   const searchTargetCategory = serviceCategoryFromSearchTarget(
     typeof router.query.settingsSearchTarget === 'string'
       ? router.query.settingsSearchTarget
@@ -1958,7 +1985,7 @@ const SettingsServices = () => {
             )}
           </ul>
         </div>
-        <SettingsProwlarr />
+        {showProwlarr && <SettingsProwlarr />}
         <SettingsDownloadClients />
       </div>
       <div

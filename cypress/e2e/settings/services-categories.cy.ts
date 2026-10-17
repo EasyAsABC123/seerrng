@@ -37,29 +37,41 @@ describe('service setup categories', () => {
       .and('contain', 'Audiobookshelf Availability')
       .and('contain', 'Connect Audiobookshelf library');
 
-    cy.contains('button[aria-pressed="false"]', 'Tools & Other').click();
+    cy.contains('button[aria-pressed="false"]', 'System').click();
     cy.location('search').should('eq', '?serviceCategory=tools-other');
     cy.get('[data-settings-category="tools-other"]')
       .should('be.visible')
       .and('contain', 'Connect your apps');
-    cy.get('#prowlarr').should('be.visible');
+    cy.get('#prowlarr').should('not.exist');
+    cy.contains('section.app-card-sub', 'Live Download Progress').should(
+      'be.visible'
+    );
+    cy.contains('section.app-card-sub', 'Swipe Discovery').should('be.visible');
     cy.get('[data-settings-category="audiobooks-books"]').should(
       'not.be.visible'
     );
   });
 
-  it('opens a hidden category for Settings search results and deep links', () => {
+  it('opens Prowlarr from Settings search and preserves existing Prowlarr links', () => {
     cy.visit('/settings/services');
     cy.get('input[aria-label="Search Settings"]').type('Prowlarr{enter}');
 
-    cy.get('[data-settings-category="tools-other"]').should('be.visible');
-    cy.location('search').should('contain', 'serviceCategory=tools-other');
-    cy.get('#prowlarr').should('be.visible');
+    cy.location('pathname').should('eq', '/settings/prowlarr');
+    cy.get('#prowlarr-settings-title').should('be.visible');
+    cy.get('.settings-page-filter-nav nav a[href="/settings/prowlarr"]')
+      .should('contain', 'Prowlarr')
+      .next()
+      .should('contain', 'Metadata Providers');
 
     cy.visit('/settings/services?settingsSearchTarget=prowlarr#prowlarr');
-    cy.get('[data-settings-category="tools-other"]').should('be.visible');
-    cy.get('#prowlarr').should('be.visible');
+    cy.location('pathname').should('eq', '/settings/prowlarr');
+    cy.get('#prowlarr-settings-title').should('be.visible');
 
+    cy.visit('/settings/services#prowlarr');
+    cy.location('pathname').should('eq', '/settings/prowlarr');
+    cy.get('#prowlarr-settings-title').should('be.visible');
+
+    cy.visit('/settings/services');
     cy.get('input[aria-label="Search Settings"]').type('Navidrome{enter}');
     cy.get('[data-settings-category="music"]').should('be.visible');
     cy.location('search').should('eq', '?serviceCategory=music');

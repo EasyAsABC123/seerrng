@@ -302,7 +302,7 @@ const IndexerSearch = () => {
             {canAdmin && (
               <Link
                 className="mt-2 inline-block underline"
-                href="/settings/services#prowlarr"
+                href="/settings/prowlarr"
               >
                 {intl.formatMessage(messages.configure)}
               </Link>

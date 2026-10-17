@@ -340,7 +340,7 @@ describe('ROMarrNG software acquisition integration', () => {
     cy.contains(
       'Enable and configure IPTV Tunerr to connect its sports feeds.'
     ).should('be.visible');
-    cy.contains('button[aria-pressed="false"]', 'Tools & Other').click();
+    cy.contains('button[aria-pressed="false"]', 'System').click();
     cy.contains('h4', 'ROMarrNG to IGDB platform matching', {
       timeout: 10000,
     }).scrollIntoView();

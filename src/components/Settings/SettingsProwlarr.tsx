@@ -15,7 +15,9 @@ import useSWR, { mutate } from 'swr';
 const messages = defineMessages('components.SettingsProwlarr', {
   title: 'Prowlarr indexers',
   description:
-    'Connect your Prowlarr instance once to run category-aware manual searches across the indexers you already manage there.',
+    'Optional: connect Prowlarr to run category-aware manual searches from SeerrNG. Approved requests continue through your configured media managers and software providers.',
+  supportNote:
+    'This setting connects to Prowlarr only. NZBHydra2 is not currently supported here.',
   address: 'Hostname',
   port: 'Port',
   basePath: 'Base path',
@@ -368,6 +370,9 @@ const SettingsProwlarr = () => {
         </h3>
         <p className="description mt-1">
           {intl.formatMessage(messages.description)}
+        </p>
+        <p className="label-tip mt-1">
+          {intl.formatMessage(messages.supportNote)}
         </p>
       </div>
 
