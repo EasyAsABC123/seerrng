@@ -510,6 +510,10 @@ const Swipe = () => {
   );
 
   useEffect(() => {
+    if (showHistory) void mutateHistory();
+  }, [mutateHistory, showHistory]);
+
+  useEffect(() => {
     if (!mediaType.startsWith('software-') || !filtersForMode.query.trim()) {
       return;
     }
