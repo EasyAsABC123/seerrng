@@ -6,7 +6,7 @@ This guide records the Android and iOS package formats, verification steps, GitH
 
 | Platform | Package ID | Native app work | Current release package |
 | --- | --- | --- | --- |
-| Android | `org.snapetech.seerrng` | Server picker, add/edit/remove multiple URLs, Android WebView profiles, downloads, privacy link, Android Billing, optional ads or capped preview | Stable-key signed APK for direct installation and signed AAB for Play App Signing; both get SHA-256 sidecars |
+| Android | `org.snapetech.seerrng` | Server picker, add/edit/remove multiple URLs, Android WebView profiles, downloads, privacy link, 20-session local preview when Play Billing is enabled, one-time unlock; no ads | Stable-key signed APK for direct installation and signed AAB for Play App Signing; both get SHA-256 sidecars |
 | iOS | `org.snapetech.seerrng.ios` | SwiftUI server manager, per-server persistent WebKit profiles, browser navigation, HTTP warning, local capped preview, StoreKit 2 lifetime unlock | iOS Simulator `.app` ZIP and checksum; optional App Store Connect and Ad Hoc IPAs when Apple signing is configured |
 
 Both clients connect directly to a server that the user enters. There is no central SeerrNG account or license service. HTTPS is recommended. The iOS build uses an explicit WebKit-only App Transport Security exception because the server hostname is user-configured and may be a private HTTP address; the UI warns before saving HTTP. Apple requires justification for network exceptions, so test and review this reason as part of submission.
@@ -26,7 +26,7 @@ bash scripts/build-android-release.sh vX.Y.Z dist-release
 
 The Android release script needs the configured stable signing secrets and Android SDK Build Tools 36.0.0. It builds and verifies both:
 
-- `seerrng-vX.Y.Z-android.apk` and `.aab` when `ANDROID_MONETIZATION_MODE=ads`, or `seerrng-vX.Y.Z-android-capped.apk` and `.aab` when it is `capped`. The Actions repository variable defaults to `ads`; one mode is packaged per tagged release.
+- `seerrng-vX.Y.Z-android.apk` and `seerrng-vX.Y.Z-android.aab`, each with a SHA-256 sidecar. Every Android build uses the 20-successful-session preview; there is no advertising build variant.
 - APKs are for direct install and updates signed with the same developer-controlled key. The AAB is signed with that key as the Play upload key. Google Play App Signing must be enabled in Play Console before the AAB can be distributed from Play.
 
 The APK's signer fingerprint and update-key handling are documented in [android/README.md](https://github.com/snapetech-org/seerrng/blob/main/android/README.md). The keystore is not in the repository. GitHub Actions already has the Android keystore secrets configured; no signing secret values are printed or stored in this guide.
@@ -50,7 +50,7 @@ An iOS app cannot use a self-signed certificate for ordinary installation. Ad Ho
 
 ### Automated checks
 
-- `.github/workflows/android.yml` runs Android unit and emulator UI tests in both `ads` and capped modes, then installs and launches the signed APK on the API 36 emulator before uploading the APK/AAB candidate.
+- `.github/workflows/android.yml` runs Android unit and emulator UI tests with a two-session test limit, then installs and launches the signed APK on the API 36 emulator before uploading the APK/AAB candidate.
 - `.github/workflows/ios.yml` runs iOS unit and UI tests on GitHub's macOS 26 runner and retains the Simulator package plus test results.
 - Main-branch candidate names use the application version from `package.json` plus the workflow run number, so the package version follows each SeerrNG release-preparation commit. Tagged releases use the exact release tag.
 - Tagged releases validate checksums and attach the Android APK/AAB and iOS Simulator package. Signed iOS IPAs are conditional on the signing variables and secrets.
@@ -76,12 +76,11 @@ The first version can ship without hosted entitlement infrastructure. Keep purch
 
 | Option | Android | iOS | Hosted service |
 | --- | --- | --- | --- |
-| Ad-supported | Existing optional AdMob + UMP mode; production AdMob IDs and a published consent message are not configured. | No ad SDK is included. | No |
-| Capped preview + lifetime unlock | Existing 20-session capped mode; Play Billing product ID is `lifetime_unlock`. | Implemented as 20 successful server sessions per installation, with StoreKit 2 product ID `lifetime_unlock`. | No; local caps can reset on reinstall or data clear |
+| Free preview + lifetime unlock | 20 successful sessions per installation when Play Billing is enabled, followed by Google Play Billing product ID `lifetime_unlock`. Recommended US price: **$4.99 once**, with local store pricing. Before product setup, release builds are unlimited free evaluation builds. | Implemented as 20 successful server sessions per installation, with StoreKit 2 product ID `lifetime_unlock`; set the closest matching App Store tier when that product is configured. | No; local caps can reset on reinstall or data clear |
 | Store subscription with free trial | Play supports trial offers that renew into a subscription. | StoreKit supports introductory subscription offers. | No for store-account entitlements; a backend is recommended for authoritative cross-device purchase state |
 | Account-wide or tamper-resistant usage limit | Not implemented | Not implemented | Yes |
 
-The current price proposal is “$10 lifetime”; currency and regional price are not chosen. StoreKit/Play must provide the final localized price. The iOS purchase UI uses the price returned by StoreKit and does not hardcode a currency. Android's cap, ad mode, purchases, and limits are described in [android/MONETIZATION.md](https://github.com/snapetech-org/seerrng/blob/main/android/MONETIZATION.md).
+The recommended US price is $4.99 once. The research and rationale are documented in [android/MONETIZATION.md](https://github.com/snapetech-org/seerrng/blob/main/android/MONETIZATION.md). Play Billing and StoreKit provide the final localized price; neither app hardcodes currency. Configure independent one-time products in each store.
 
 Keep the cap behavior transparent: 20 successful server sessions per installation, not 20 requests. A session is counted when the first page load finishes. A session remains open while switching saved servers; closing it and starting another may use another preview session. Local counters are an evaluation gate and can be reset by deleting app data or reinstalling. There is no SeerrNG-hosted usage counter.
 
@@ -95,10 +94,8 @@ Google Play and Apple's stores sell/check out a one-time digital unlock through 
 - [ ] Verify a real Android 10+ device through the Play Console mobile app and complete phone verification. These were still shown in the last Console check before identity verification; confirm their current state in Console.
 - [ ] For this personal account, complete the required closed test before applying for production access: at least 12 opted-in testers for 14 continuous days.
 - [ ] Create the app record for `org.snapetech.seerrng`; upload the signed AAB and enroll in Play App Signing. Keep the direct-install APK signed by the same stable developer key.
-- [ ] Complete the content rating, target audience, Data safety, ads, and app access declarations accurately.
-- [ ] If ads are chosen, create an AdMob app and banner unit, publish an applicable UMP consent message, and set `ADMOB_APP_ID` and `ADMOB_BANNER_AD_UNIT_ID` repository variables. Do not use test IDs in production.
-- [ ] Set the `ANDROID_MONETIZATION_MODE` repository variable to `ads` or `capped` after choosing the store experience. The release workflow packages only that selected mode; `capped` uses a 20-successful-session preview with no ad SDK activity.
-- [ ] If the lifetime unlock is chosen, create and publish a one-time product `lifetime_unlock`, choose regional price(s), enable `ENABLE_PLAY_BILLING=true`, add license testers, and test purchase, restore, pending, cancelled, and refund/revocation behavior through a Play test track.
+- [ ] Complete the content rating, target audience, Data safety, no-ads declaration, and app access declarations accurately.
+- [ ] Create and publish a one-time product `lifetime_unlock`, set the US base price to $4.99, review local prices, enable `ENABLE_PLAY_BILLING=true`, add license testers, and test purchase, restore, pending, cancelled, and refund/revocation behavior through a Play test track.
 - [ ] Provide Play reviewers with a stable working server or a demo flow and test credentials.
 - [ ] Before shipping adult-media capable SeerrNG servers, establish a store-compatible content policy and enforcement path. See the content gate below.
 
@@ -130,9 +127,9 @@ The first pass of App Store and Play listing text is in [mobile-store-listing-dr
 - Server names and normalized URLs are stored on the device.
 - Each iOS server has its own persistent WebKit profile. Removing a server removes that profile. Android uses an app-managed WebView profile per server.
 - Web sign-in and normal SeerrNG requests go directly to the user's selected server, which controls its logs and data retention.
-- The capped-use counter is local. StoreKit/Play Billing process purchases with Apple/Google; the publisher does not receive server credentials, cookies, or URLs.
-- Android can include Google Mobile Ads SDK/UMP when configured. iOS contains no ad or analytics SDK.
-- The published policy URL is `https://snapetech-org.github.io/seerrng-android-privacy/`; privacy and support requests go to `support@snape.tech`. It covers iOS, StoreKit, the per-server WebKit profile, and profile deletion. Recheck it against the final integrations before submitting either app.
+- The iOS preview counter and the Android counter when Play Billing is enabled are local. StoreKit/Play Billing process purchases with Apple/Google; the publisher does not receive server credentials, cookies, or URLs.
+- Neither mobile client includes advertising or analytics SDKs. The Android app uses Google Play Billing only when the store product is configured; iOS uses StoreKit.
+- The published policy URL is `https://snapetech-org.github.io/seerrng-android-privacy/`; privacy and support requests go to `support@snape.tech`. It covers both clients, store purchases, per-server browser profiles, and profile deletion. Recheck it against the final integrations before submitting either app.
 
 ## Official references
 

@@ -67,7 +67,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="@string/lifetime_unlock_description_ads"
+            android:text="@string/lifetime_unlock_description"
             android:textColor="@color/muted"
             android:textSize="13sp" />
 
@@ -83,7 +83,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/lifetime_unlock_button_ads" />
+                android:text="@string/lifetime_unlock_button" />
 
             <Button
                 android:id="@+id/restorePurchasesButton"
@@ -98,18 +98,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="@string/lifetime_unlock_active_ads"
+            android:text="@string/lifetime_unlock_active"
             android:textColor="@color/brand_blue_dark"
             android:textSize="14sp"
             android:textStyle="bold"
-            android:visibility="gone" />
-
-        <Button
-            android:id="@+id/adPrivacyOptionsButton"
-            style="@style/SecondaryButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/ad_privacy_options"
             android:visibility="gone" />
 
         <TextView
@@ -338,11 +330,5 @@
             </LinearLayout>
         </FrameLayout>
 
-        <FrameLayout
-            android:id="@+id/adViewContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/white"
-            android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>

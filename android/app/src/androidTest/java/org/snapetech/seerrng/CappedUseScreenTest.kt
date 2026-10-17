@@ -75,8 +75,6 @@ class CappedUseScreenTest {
 
     @Test
     fun countsOneSessionPerLaunchAndBlocksFurtherConnectionsWhenEmpty() {
-        if (BuildConfig.MONETIZATION_MODE != "capped") return
-
         onView(withId(R.id.serverNameInput)).perform(replaceText("Local test"), closeSoftKeyboard())
         onView(withId(R.id.serverUrlInput)).perform(
             replaceText("http://127.0.0.1:${localServer.localPort}"),
@@ -131,8 +129,6 @@ class CappedUseScreenTest {
 
     @Test
     fun failedServerLoadDoesNotConsumeASession() {
-        if (BuildConfig.MONETIZATION_MODE != "capped") return
-
         val closedPort = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
         onView(withId(R.id.serverNameInput)).perform(replaceText("Offline test"), closeSoftKeyboard())
         onView(withId(R.id.serverUrlInput)).perform(

@@ -759,12 +759,13 @@ test('release assets build supported native archive platforms', () => {
     ).run,
     "bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release"
   );
-  assert.equal(
-    androidBuild.steps.find(
-      (step) =>
-        step.name === 'Build, sign, and checksum the Android APK and AAB'
-    ).env.ANDROID_MONETIZATION_MODE,
-    "${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}"
+  const androidPackageBuild = androidBuild.steps.find(
+    (step) =>
+      step.name === 'Build, sign, and checksum the Android APK and AAB'
+  );
+  assert.deepEqual(
+    Object.keys(androidPackageBuild.env).filter((name) => /admob|monetization/iu.test(name)),
+    []
   );
   assert.equal(
     androidBuild.steps.find((step) =>
@@ -871,8 +872,8 @@ test('release assets build supported native archive platforms', () => {
   for (const archive of [
     'seerrng-${TAG}-macos-x64.tar.gz',
     'seerrng-${TAG}-windows-arm64.zip',
-    'seerrng-${TAG}-${android_asset_suffix}.apk',
-    'seerrng-${TAG}-${android_asset_suffix}.aab',
+    'seerrng-${TAG}-android.apk',
+    'seerrng-${TAG}-android.aab',
     'seerrng-${TAG}-ios-simulator.zip',
   ]) {
     assert.ok(
@@ -896,8 +897,7 @@ test('release assets build supported native archive platforms', () => {
       `expected the release gate to require ${archive}`
     );
   }
-  assert.match(requiredAssets, /android_asset_suffix='android-capped'/u);
-  assert.match(requiredAssets, /\$\{android_asset_suffix\}-aab\.sha256/u);
+  assert.match(requiredAssets, /seerrng-\$\{TAG\}-android-aab\.sha256/u);
 });
 
 test('tag preparation keeps Helm metadata aligned with the application release', () => {

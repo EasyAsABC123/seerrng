@@ -1,104 +1,67 @@
-# Android monetization options
+# Android lifetime unlock and pricing
 
-This document compares the Android ad-supported and capped-use modes, the iOS capped-use client, store-managed subscription trials, and a hosted account model. Each mobile client opens the user's own SeerrNG server; neither app runs the SeerrNG backend. That boundary determines what a local usage cap can count.
+## Decision
 
-## Current implementation
+When Play Billing is enabled, the Android app is free to download with a local preview: the first 20 successful server sessions on an installation are free. A one-time, non-consumable Google Play product named `lifetime_unlock` grants unlimited sessions to the Play account that bought it. There are no ads, advertising SDKs, ad consent prompts, or ad-related data collection in the Android app. Builds made before the Play product is configured are unlimited free evaluation builds and do not show purchase controls, so they do not lock users out without a working purchase path.
 
-The app can be built in either of two modes:
+**Recommended US price: US$4.99 once.** Google Play should localize the configured price for each storefront. The app uses the price returned by Play Billing, so the checkout sheet and button show the user's actual local price.
 
-| Mode | Free access | Lifetime purchase |
-| --- | --- | --- |
-| `ads` (default) | No session cap; a non-personalized adaptive banner appears below the server WebView when production ad IDs and UMP configuration are supplied. | Removes in-app banner ads. |
-| `capped` | No ads; 20 successful server sessions per app installation by default. | Removes the session cap. |
+## Price research
 
-Both modes use the same prospective Google Play non-consumable product ID, `lifetime_unlock`. The requested $10 amount is a pricing candidate; its currency is not selected, and no product, price, AdMob app ID, banner ID, or published consent message has been created in Play Console or AdMob yet. The store will localize and display the configured price before purchase.
+I compared apps around self-hosted media and Seerr clients:
 
-The iOS client uses the `capped` model: 20 successful server sessions per installation and a StoreKit 2 non-consumable product with ID `lifetime_unlock`. The App Store product and price are not configured yet. iOS does not include ads. The Android and iOS implementations are described in [the mobile release guide](../docs/mobile-release-readiness.md).
-
-Choose the mode at build time:
-
-```sh
-# Ad-supported build (the default)
-bash scripts/build-android-release.sh vX.Y.Z android/dist
-
-# No-ad, capped-use build
-ANDROID_MONETIZATION_MODE=capped FREE_SESSION_LIMIT=20 \
-  bash scripts/build-android-release.sh vX.Y.Z android/dist
-
-# Fast debug/CI build with a small cap
-./android/gradlew -p android \
-  -PandroidMonetizationMode=capped -PfreeSessionLimit=2 \
-  :app:testDebugUnitTest :app:assembleDebug
-```
-
-The release script emits `seerrng-vX.Y.Z-android.apk` and a signed `seerrng-vX.Y.Z-android.aab` for `ads`, or `seerrng-vX.Y.Z-android-capped.apk` and its AAB for `capped`; each gets a SHA-256 sidecar. The APK signing identity is unchanged between modes. The APK is for direct distribution; upload the AAB to Play Console and enable Play App Signing for store distribution.
-
-A capped release is for QA only until Play Billing is enabled and the lifetime product is available. Without billing, the preview still expires but the purchase controls are hidden, so a user cannot continue after the cap.
-
-### How the capped preview behaves
-
-- The default limit is 20; `FREE_SESSION_LIMIT` or `-PfreeSessionLimit` can change it for a build. The value must be a positive integer.
-- A session is counted after the first server page successfully finishes loading in the app's main screen. A bad URL, an offline server, an HTTP error page, or a failed page load does not consume a session.
-- Only the first successful server connection in that open app screen counts. Going back to the server list, switching among saved servers, backgrounding, and resuming do not charge additional sessions for that screen.
-- The counter is stored in private app preferences on the device. It applies across all servers saved in that installation. It does not count clicks, searches, requests, or other actions inside the SeerrNG web app.
-- An already-open session remains usable after its final free session is counted. After that app screen is closed and the app is opened again, connecting is blocked until the lifetime unlock is found or restored.
-- Clearing app data or reinstalling resets the local counter. The prototype is a low-friction evaluation gate, not a tamper-resistant license system. A modified client or restored local preference can bypass it.
-- The cap does not alter the SeerrNG server's own authentication, roles, quotas, or request rules. It only controls whether this Android client starts another WebView session.
-
-The privacy policy already describes data stored on-device. This counter is local only; it does not send server URLs, use counts, account identifiers, or analytics to SeerrNG or a SeerrNG-operated service.
-
-## What app stores provide
-
-Google Play and Apple's App Store provide product catalogs, checkout, purchase records, and purchase restoration. They do not provide an arbitrary “allow N free server actions” counter for an app to configure.
-
-| Mechanism | Store support | Hosted service required? | Main trade-off |
+| Comparable | Observed price/model | What it includes | What it suggests |
 | --- | --- | --- | --- |
-| One-time lifetime unlock | Google Play non-consumable one-time product; Apple non-consumable IAP. | No for a device-only entitlement. A backend is recommended for authoritative verification, refunds, or cross-device account linking. | One payment grants a permanent benefit. Fits the proposed $10 lifetime unlock. |
-| Free trial that converts to subscription | Google Play subscription offer; Apple auto-renewable subscription introductory offer, including a free trial. | No for a store-account entitlement that is checked on the device. A backend is recommended for secure verification and subscription notifications. | The trial converts to a recurring paid subscription unless cancelled. Requires ongoing subscription value and clear renewal terms. |
-| Time-limited access without subscription | App-managed clock/expiry, or a store non-renewing subscription where appropriate. | No for per-install timing; yes for reliable cross-device timing. | Local clocks and reinstall can reset a client-only timer. Apple's non-renewing subscription leaves duration tracking and restoration to the app. |
-| Free-use or action quota | The app implements the counter. Consumable store products can sell credit packs, but the app still decrements credits. | No for a per-install counter; yes for account-wide or tamper-resistant limits. | Local counters are easy to reset. A secure account-wide counter needs a durable identity and a backend. |
-| Hosted free quota | A SeerrNG-operated service or a change to each connected server checks a user's entitlement and remaining quota. | Yes. | Stronger cross-device enforcement, with account, privacy, availability, security, and operating-cost responsibilities. |
+| [ServerrSeerr](https://apps.apple.com/us/app/serverrseerr/id6759878396) | US$1.99 paid iOS app | A direct Seerr companion | A low-price reference for a narrow Seerr-only client; it is an Apple listing, not an Android listing. |
+| [Arrcade](https://arrcade.co.uk/) | £5.99 one-time Pro unlock | A broader app supporting 13 media services, multiple connections, and push notifications | A richer self-hosted companion can support a price near US$6 equivalent. |
+| [Plezy](https://play.google.com/store/apps/details?hl=en&id=com.edde746.plezy) | About US$5.99 in the observed US Play storefront; regional prices vary | A full Plex/Jellyfin/Emby media player with playback features | A broader media app occupies the roughly US$6 one-time range. |
+| [Kochab](https://play.google.com/store/apps/details?id=io.kochab) | Free | A broad self-hosted media companion with all listed features included | Free alternatives exist, so the paid benefit must be clear and the free preview must be useful. |
+| [Underseerr](https://underseerr.lusk.app/) | Free and open source; optional paid hosted features | Seerr-focused web companion with optional hosted push and themes | The Seerr ecosystem has a free baseline; charging should be for the convenience of this native client, not server access. |
 
-Google describes consumable products as items users can buy again after use, and non-consumables as one-time permanent benefits such as ad removal. Its subscription offers support free trials; after the trial, the subscription renews at the regular price unless cancelled. See [Google Play one-time products](https://developer.android.com/google/play/billing/one-time-products), [Google Play subscriptions](https://developer.android.com/google/play/billing/subscriptions), and [Google Play Billing integration testing](https://developer.android.com/google/play/billing/test).
+US$4.99 lands between the $1.99 direct Seerr reference and the roughly $6 broader apps. The Android client is a focused Seerr WebView companion, while the SeerrNG web app remains free and the user supplies their own server. A 20-session preview lets people test their server before paying. US$10 would price this narrower client above broader one-time media apps; the lower US$4.99 price is easier to justify and still leaves room to support maintenance.
 
-Apple supports consumable, non-consumable, auto-renewable subscription, and non-renewing subscription IAP types. Introductory subscription offers can include a free trial; the subscription begins immediately and renews at the regular price after the trial. Apple says auto-renewable subscriptions must provide ongoing value, last at least seven days, and work across the user's devices. See [App Store Connect IAP types](https://developer.apple.com/help/app-store-connect/reference/in-app-purchases-and-subscriptions/in-app-purchase-types), [StoreKit introductory offers](https://developer.apple.com/documentation/storekit/implementing-introductory-offers-in-your-app), and [App Review Guidelines, payments and subscriptions](https://developer.apple.com/app-store/review/guidelines/).
+These are storefront snapshots, not a universal price list. Prices vary by country, taxes, promotions, and date. Choose US$4.99 as the US base price in Play Console, then review Play's suggested local prices before publishing.
 
-The iOS client now has a separate StoreKit 2 integration. Create the non-consumable `lifetime_unlock` product in App Store Connect and test it with sandbox accounts before enabling the purchase UI in an App Store release. The same text product ID can be used independently in each store, but the purchase records and entitlements are not shared. Current Apple payment rules require careful review before offering an external payment route for an in-app digital unlock.
+## What counts as a session
 
-## Does a trial need our own server?
+- The default allowance is 20 successful server sessions per installation. `FREE_SESSION_LIMIT` or Gradle's `-PfreeSessionLimit` can set a positive test/build value.
+- A session is counted only after the first main page successfully finishes loading. A bad URL, offline server, HTTP error, or failed page load does not consume a session.
+- The first successful connection in one open app session counts. Switching among saved servers, backgrounding, and resuming does not count another use.
+- After the final free session is counted, that open session remains usable. On a later app launch, another server session requires the lifetime unlock.
+- The count is stored in private app preferences and applies across servers saved in that installation. Clearing app data or reinstalling resets it. It is a simple preview counter, not tamper-resistant licensing.
+- The count does not track actions inside SeerrNG, sync across devices, or send usage data to Snapetech or the user's server.
 
-**No, for a per-install cap or a store-managed subscription trial.** The capped prototype uses Android private storage and can enforce its rule offline. A Play subscription trial can be configured in Play Console and checked through Play Billing. Apple introductory offers can be configured in App Store Connect and checked through StoreKit. In both cases, the store handles trial eligibility and billing; the app decides what access to grant based on the store entitlement.
+This needs no hosted quota service because the client connects to independently operated servers and has no central SeerrNG account. A server-side quota would require a new identity/entitlement service or protocol changes to every connected server.
 
-**Yes, for reliable account-wide usage limits or authoritative purchase verification.** This client connects to many unrelated, user-operated SeerrNG servers and has no single SeerrNG account that identifies the user across them. A central counter would need a publisher account, or each SeerrNG server would need a protocol/API change. Either choice adds signup and support flows plus privacy, availability, security, and ongoing operations. The current project does not have that licensing service.
+## Google Play setup
 
-Google recommends a secure backend for purchase verification, subscription-specific features, real-time developer notifications, and voided purchase handling. The current client acknowledges completed Play purchases, checks the Play account on launch/resume, and caches the entitlement for offline behavior, but it does not validate tokens on a backend. This is acceptable for a prototype; add server verification before relying on the client as the sole gate for paid access. See [Google's one-time purchase processing guidance](https://developer.android.com/google/play/billing/lifecycle/one-time) and [Play Billing backend integration](https://developer.android.com/google/play/billing/backend).
+The Play purchase is not ready until all of these are complete:
 
-## Decision guide
+1. Create the Play app record for `org.snapetech.seerrng` and upload a signed AAB to a test track.
+2. Create a one-time product whose product ID is exactly `lifetime_unlock`.
+3. Set the US base price to US$4.99 and review the regional prices Play proposes.
+4. Add license testers and test purchase, restore, pending, cancellation, refund/revocation, and unavailable-product states from the Play-distributed test app.
+5. Set the GitHub Actions repository variable `ENABLE_PLAY_BILLING=true` only after the product is active and the release build has passed those checks.
 
-1. **Keep the lifetime unlock.** A one-time, store-owned permanent entitlement matches the $10 proposal and avoids asking users to subscribe to a client for their own server. The same generic entitlement works in both Android modes.
-2. **Keep both modes buildable while deciding.** Use `ads` to evaluate ad revenue and consent friction; use `capped` to evaluate whether 20 free sessions are enough to demonstrate the client. Do not ship both behaviors simultaneously in one build.
-3. **Treat the capped build as a product experiment.** It has no ad SDK activity and no hosted cost, but reinstall/data-clear bypasses it. If this is acceptable, server infrastructure is unnecessary. If account-wide enforcement is a requirement, estimate a hosted identity/entitlement service before choosing this option.
-4. **Use a subscription trial only if we want ongoing billing.** The trial is a subscription promotion, not a store-provided free counter. Clearly state the trial length, renewal amount, cancellation path, eligibility, and ongoing value before choosing it. It is a poor fit if the intended paid offer remains a one-time lifetime purchase.
+Until billing is enabled, the release build hides purchase controls and leaves the app unlimited. The signed GitHub APK is useful for direct evaluation, but checkout and purchase restoration rely on Google Play. The app checks owned purchases at launch and resume, acknowledges completed purchases, and caches the local entitlement for offline use. It recognizes the old `no_ads_lifetime` product ID to preserve restore support for existing owners.
 
-The release build defaults to the `ads` mode. Set the GitHub Actions repository variable `ANDROID_MONETIZATION_MODE` to `capped` to build the no-ad, 20-session preview instead. Ads and billing remain disabled unless their Play/AdMob settings are configured. No Play or AdMob product configuration is implied by adding this prototype.
+The app does not send purchase tokens to a publisher backend. This keeps the initial product simple, but it means the local entitlement is not authoritative against a modified client and the publisher does not receive real-time refund/revocation events. Add backend verification and voided-purchase handling if the product needs stronger enforcement or account-wide entitlement state.
+
+## Other monetization options
+
+| Option | Store support | Hosted service | Fit here |
+| --- | --- | --- | --- |
+| One-time lifetime unlock | Google Play non-consumable product | No for device-local entitlement; backend recommended for authoritative verification, refund handling, or cross-device accounts | Best fit for a small utility used with the user's own server. |
+| Subscription with a free trial | Play subscription offers can start with a trial and renew into recurring billing | No for store-account status; backend recommended for robust verification and notifications | Poor fit without ongoing hosted value. Users would pay repeatedly for a client to their own server. |
+| Local time-limited access or action quota | Implemented by the app; the store does not provide an arbitrary session counter | No for per-install counter; yes for reliable account-wide enforcement | Reinstall or app-data clearing can reset it. The current 20-session counter is this kind of preview. |
+| Hosted quota or publisher account | Custom app/server integration | Yes | Adds account, privacy, security, availability, and operating costs; unnecessary for the current preview. |
+
+Google Play documents [one-time products](https://developer.android.com/google/play/billing/one-time-products), [subscriptions](https://developer.android.com/google/play/billing/subscriptions), and [billing test setup](https://developer.android.com/google/play/billing/test). Apple uses separate products and purchase records; its reference model is documented under [in-app purchase types](https://developer.apple.com/help/app-store-connect/reference/in-app-purchases-and-subscriptions/in-app-purchase-types). A Play purchase does not unlock an Apple build.
 
 ## Validation checklist
 
-### Local mode and cap behavior
-
-- Run `:app:testDebugUnitTest` for both `ads` and `capped` configurations.
-- Run `:app:connectedDebugAndroidTest` with `-PandroidMonetizationMode=capped -PfreeSessionLimit=2` to check the visible counter, successful page counting, same-screen server switching, app relaunch, and the exhausted gate.
-- Verify an unreachable server does not consume a use; a successfully loaded local test page does.
-- Verify the final session stays open, the next launch is blocked, and the cap is not visible in `ads` mode.
-- Verify lifetime purchase and restore in Google Play license-test accounts, including pending, cancelled, refunded/revoked, and unavailable-product cases. Debug builds use test ad IDs only.
-
-### Store and release readiness
-
-- Create the package/product in Play Console; configure the `lifetime_unlock` one-time product and regional pricing only after choosing the model and price.
-- For ads, create an AdMob app/banner unit, publish the UMP consent message, and set `ADMOB_APP_ID` and `ADMOB_BANNER_AD_UNIT_ID`.
-- Configure `ENABLE_PLAY_BILLING=true`; use Google Play license testers and a Play test track for purchase tests. A directly downloaded APK has no Play checkout path.
-- Add backend purchase-token verification and refund/voided-purchase handling before public paid distribution if stronger entitlement security is required.
-- Rebuild, sign, verify the APK signature, and verify the SHA-256 sidecar using the existing release script. Keep the established release keystore unchanged.
-- If distributing through Google Play, upload the signed AAB, enable Play App Signing, and test through a Play track.
-- Create the iOS App Store product, test StoreKit with Apple sandbox accounts, and review App Review's current IAP, subscription, external-link, and privacy requirements.
-- The iOS client is a new SwiftUI/WebKit app; run its unit and UI tests on a macOS runner and complete a physical-device test before store submission.
+- Run `:app:testDebugUnitTest`, `:app:connectedDebugAndroidTest`, and `:app:assembleDebug` with `-PfreeSessionLimit=2`.
+- Verify successful pages count once, failed loads do not count, switching servers in one app session does not spend another use, and a new launch is blocked after the cap.
+- Test Play purchase and restore through a Play test track before enabling the product in a public build.
+- Verify release APK and AAB signatures and SHA-256 sidecars with `scripts/build-android-release.sh`.
+- Keep the established release keystore unchanged. The AAB is uploaded to Google Play; the APK is for direct installation and GitHub distribution.

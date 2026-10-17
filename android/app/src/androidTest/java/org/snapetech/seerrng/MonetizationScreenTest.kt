@@ -52,18 +52,13 @@ class MonetizationScreenTest {
             matches(
                 withText(
                     containsString(
-                        if (BuildConfig.MONETIZATION_MODE == "capped") "Unlock Lifetime Access" else "Remove Ads",
+                        "Unlock Lifetime Access",
                     ),
                 ),
             ),
         )
-        if (BuildConfig.MONETIZATION_MODE == "capped") {
-            onView(withId(R.id.trialUsageStatus)).check(matches(withText(containsString("free server sessions"))))
-        } else {
-            onView(withId(R.id.trialUsageStatus)).check(matches(withEffectiveVisibility(Visibility.GONE)))
-        }
+        onView(withId(R.id.trialUsageStatus)).check(matches(withText(containsString("free server sessions"))))
         onView(withId(R.id.restorePurchasesButton)).check(matches(isDisplayed()))
-        onView(withId(R.id.adViewContainer)).check(matches(withEffectiveVisibility(Visibility.GONE)))
 
         onView(withId(R.id.restorePurchasesButton)).perform(click())
         onView(withId(R.id.restorePurchasesButton)).check(matches(isDisplayed()))

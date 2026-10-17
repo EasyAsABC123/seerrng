@@ -271,7 +271,9 @@ This repo includes release workflows and packaging metadata for tarball, Debian,
 
 The Android app is a client for servers you already run. Add one or more server
 URLs in the app; see the [Android app guide](./docs/getting-started/android-app.md)
-for setup and connection details.
+for setup and connection details. The Play build uses a 20-session free preview
+and a one-time lifetime unlock at a recommended US price of $4.99. It contains
+no advertising SDKs. See the [pricing and monetization decision](./android/MONETIZATION.md).
 
 The current tested mobile packages are attached to the
 [SeerrNG mobile prerelease](https://github.com/snapetech-org/seerrng/releases/tag/mobile-v3.63.0-ci.33):

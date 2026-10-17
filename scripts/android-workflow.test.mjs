@@ -59,14 +59,12 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   assert.match(build.run, /:app:testDebugUnitTest/u);
   assert.match(build.run, /-p android/u);
   assert.match(build.run, /:app:connectedDebugAndroidTest/u);
-  assert.match(build.run, /-PandroidMonetizationMode=ads/u);
-  assert.match(build.run, /-PandroidMonetizationMode=capped/u);
   assert.match(build.run, /-PfreeSessionLimit=2/u);
   assert.match(build.run, /:app:assembleDebug/u);
   assert.match(build.run, /ANDROID_EMULATOR_PID=\$emulator_pid/u);
-  assert.equal(
-    releaseCandidate.env.ANDROID_MONETIZATION_MODE,
-    "${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}"
+  assert.deepEqual(
+    Object.keys(releaseCandidate.env).filter((name) => /admob|monetization/iu.test(name)),
+    []
   );
   for (const secretName of [
     'ANDROID_KEYSTORE_BASE64',

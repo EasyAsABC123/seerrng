@@ -3,12 +3,6 @@ set -euo pipefail
 
 tag="${1:?Usage: build-android-release.sh vX.Y.Z [output-directory]}"
 output_dir="${2:-dist-release}"
-monetization_mode="${ANDROID_MONETIZATION_MODE:-ads}"
-
-if [[ "$monetization_mode" != "ads" && "$monetization_mode" != "capped" ]]; then
-  echo "ANDROID_MONETIZATION_MODE must be 'ads' or 'capped': $monetization_mode" >&2
-  exit 2
-fi
 
 if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
   echo "Android release tag must be a semantic version: $tag" >&2
@@ -77,17 +71,10 @@ if ! jar tf "$aab" | grep -Eq '^META-INF/[^/]+\.(RSA|DSA|EC)$'; then
 fi
 jarsigner -verify -verbose:summary "$aab" >/dev/null
 
-if [[ "$monetization_mode" == "capped" ]]; then
-  archive="seerrng-${tag}-android-capped.apk"
-  bundle="seerrng-${tag}-android-capped.aab"
-  checksum="seerrng-${tag}-android-capped.sha256"
-  bundle_checksum="seerrng-${tag}-android-capped-aab.sha256"
-else
-  archive="seerrng-${tag}-android.apk"
-  bundle="seerrng-${tag}-android.aab"
-  checksum="seerrng-${tag}-android.sha256"
-  bundle_checksum="seerrng-${tag}-android-aab.sha256"
-fi
+archive="seerrng-${tag}-android.apk"
+bundle="seerrng-${tag}-android.aab"
+checksum="seerrng-${tag}-android.sha256"
+bundle_checksum="seerrng-${tag}-android-aab.sha256"
 cp -- "$apk" "$output_dir/$archive"
 cp -- "$aab" "$output_dir/$bundle"
 (
@@ -95,5 +82,5 @@ cp -- "$aab" "$output_dir/$bundle"
   sha256sum "$archive" > "$checksum"
   sha256sum "$bundle" > "$bundle_checksum"
 )
-echo "Built signed Android APK ($monetization_mode mode): $output_dir/$archive"
-echo "Built signed Android App Bundle ($monetization_mode mode): $output_dir/$bundle"
+echo "Built signed Android APK: $output_dir/$archive"
+echo "Built signed Android App Bundle: $output_dir/$bundle"

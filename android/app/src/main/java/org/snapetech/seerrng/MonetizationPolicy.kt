@@ -24,18 +24,14 @@ internal object MonetizationPolicy {
 
     fun shouldAcknowledge(purchase: StorePurchase): Boolean =
         purchase.isLifetimeUnlock() && purchase.state == StorePurchaseState.PURCHASED && !purchase.acknowledged
-
-    fun shouldShowBanner(adsEnabled: Boolean, browsingServer: Boolean, lifetimeUnlocked: Boolean): Boolean =
-        adsEnabled && browsingServer && !lifetimeUnlocked
 }
 
 internal object CappedUsePolicy {
     fun canStartServerSession(
-        cappedMode: Boolean,
+        previewEnabled: Boolean,
         lifetimeUnlocked: Boolean,
         sessionAlreadyStartedThisLaunch: Boolean,
         usedSessions: Int,
         sessionLimit: Int,
-    ): Boolean =
-        !cappedMode || lifetimeUnlocked || sessionAlreadyStartedThisLaunch || usedSessions < sessionLimit
+    ): Boolean = !previewEnabled || lifetimeUnlocked || sessionAlreadyStartedThisLaunch || usedSessions < sessionLimit
 }

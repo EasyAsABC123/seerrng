@@ -9,7 +9,6 @@ on:
   push:
     branches:
       - main
-      - codex/mobile-store-release
     paths:
       - 'android/**'
       - 'scripts/build-android-release.sh'
@@ -102,15 +101,10 @@ jobs:
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
           ./android/gradlew --no-daemon -p android \
-            -PandroidMonetizationMode=ads \
+            -PfreeSessionLimit=2 \
             :app:testDebugUnitTest \
             :app:connectedDebugAndroidTest \
             :app:assembleDebug
-          ./android/gradlew --no-daemon -p android \
-            -PandroidMonetizationMode=capped \
-            -PfreeSessionLimit=2 \
-            :app:testDebugUnitTest \
-            :app:connectedDebugAndroidTest
 
       - name: Upload Android test reports
         if: always()
@@ -201,10 +195,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEY_PASSWORD }}
-          ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
-          ADMOB_BANNER_AD_UNIT_ID: ${{ vars.ADMOB_BANNER_AD_UNIT_ID }}
           ENABLE_PLAY_BILLING: ${{ vars.ENABLE_PLAY_BILLING }}
-          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: |
           set -euo pipefail
@@ -234,7 +225,7 @@ jobs:
           adb shell settings put global animator_duration_scale 0
           app_version="$(node -p 'require("./package.json").version')"
           bash scripts/build-android-release.sh "v${app_version}-ci.${GITHUB_RUN_NUMBER}" dist-android-release
-          signed_apk="$(find dist-android-release -maxdepth 1 -type f -name 'seerrng-*-android*.apk' -print -quit)"
+          signed_apk="$(find dist-android-release -maxdepth 1 -type f -name 'seerrng-*-android.apk' -print -quit)"
           test -n "$signed_apk"
           adb install -r "$signed_apk"
           adb shell am start -n org.snapetech.seerrng/.MainActivity

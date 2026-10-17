@@ -8,7 +8,6 @@ import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.Intent
-import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -62,8 +61,7 @@ class MainActivity : Activity() {
     private lateinit var lifetimeUnlockDescription: TextView
     private lateinit var lifetimeUnlockMessage: TextView
     private lateinit var trialUsageStatus: TextView
-    private lateinit var adPrivacyOptionsButton: Button
-    private lateinit var monetization: MonetizationManager
+    private lateinit var lifetimeUnlock: LifetimeUnlockManager
     private lateinit var trialUsageStore: TrialUsageStore
     private var trialSessionStartedThisLaunch = false
     private var activeMainFrameLoadFailed = false
@@ -107,16 +105,10 @@ class MainActivity : Activity() {
         lifetimeUnlockDescription = findViewById(R.id.lifetimeUnlockDescription)
         lifetimeUnlockMessage = findViewById(R.id.lifetimeUnlockMessage)
         trialUsageStatus = findViewById(R.id.trialUsageStatus)
-        adPrivacyOptionsButton = findViewById(R.id.adPrivacyOptionsButton)
-
-        monetization = MonetizationManager(
+        lifetimeUnlock = LifetimeUnlockManager(
             activity = this,
-            adContainer = findViewById(R.id.adViewContainer),
             onLifetimeUnlockChanged = ::renderLifetimeUnlock,
             onPriceChanged = ::renderLifetimeUnlockPrice,
-            onPrivacyOptionsChanged = { required ->
-                adPrivacyOptionsButton.visibility = if (required) View.VISIBLE else View.GONE
-            },
             onMessage = { message -> Toast.makeText(this, message, Toast.LENGTH_LONG).show() },
         )
 
@@ -127,14 +119,13 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.errorServersButton).setOnClickListener { showServerPicker() }
         findViewById<Button>(R.id.reloadButton).setOnClickListener { reloadActivePage() }
         findViewById<Button>(R.id.retryButton).setOnClickListener { reloadActivePage() }
-        lifetimeUnlockButton.setOnClickListener { monetization.purchaseLifetimeUnlock() }
-        restorePurchasesButton.setOnClickListener { monetization.restoreLifetimeUnlock() }
-        adPrivacyOptionsButton.setOnClickListener { monetization.showPrivacyOptions() }
+        lifetimeUnlockButton.setOnClickListener { lifetimeUnlock.purchaseLifetimeUnlock() }
+        restorePurchasesButton.setOnClickListener { lifetimeUnlock.restoreLifetimeUnlock() }
         findViewById<TextView>(R.id.pickerPrivacyPolicyLink).setOnClickListener { openPrivacyPolicy() }
         findViewById<TextView>(R.id.editorPrivacyPolicyLink).setOnClickListener { openPrivacyPolicy() }
 
         renderServers()
-        monetization.start()
+        lifetimeUnlock.start()
         if (serverStore.all().isEmpty()) {
             showEditor(null)
         } else {
@@ -153,25 +144,19 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        monetization.onResume()
+        lifetimeUnlock.onResume()
         webView?.onResume()
     }
 
     override fun onPause() {
         webView?.onPause()
-        monetization.onPause()
         flushActiveCookies()
         super.onPause()
     }
 
     override fun onDestroy() {
-        if (::monetization.isInitialized) monetization.close()
+        if (::lifetimeUnlock.isInitialized) lifetimeUnlock.close()
         super.onDestroy()
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        monetization.onConfigurationChanged()
     }
 
     @Deprecated("Use system back navigation")
@@ -211,7 +196,6 @@ class MainActivity : Activity() {
 
     private fun showServerPicker() {
         destroyActiveWebView()
-        monetization.setBrowsingServer(false)
         activeServer = null
         activeAddress = null
         browserScreen.visibility = View.GONE
@@ -223,7 +207,6 @@ class MainActivity : Activity() {
 
     private fun showEditor(server: SavedServer?) {
         destroyActiveWebView()
-        monetization.setBrowsingServer(false)
         activeServer = null
         activeAddress = null
         editingServerId = server?.id
@@ -317,10 +300,9 @@ class MainActivity : Activity() {
     }
 
     private fun startBrowser(server: SavedServer, address: ParsedServerAddress) {
-        val cappedMode = BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE
         if (!CappedUsePolicy.canStartServerSession(
-                cappedMode = cappedMode,
-                lifetimeUnlocked = monetization.isLifetimeUnlocked,
+                previewEnabled = BuildConfig.BILLING_ENABLED,
+                lifetimeUnlocked = lifetimeUnlock.isLifetimeUnlocked,
                 sessionAlreadyStartedThisLaunch = trialSessionStartedThisLaunch,
                 usedSessions = trialUsageStore.usedSessions,
                 sessionLimit = BuildConfig.FREE_SESSION_LIMIT,
@@ -336,7 +318,6 @@ class MainActivity : Activity() {
         serverPicker.visibility = View.GONE
         serverEditor.visibility = View.GONE
         browserScreen.visibility = View.VISIBLE
-        monetization.setBrowsingServer(true)
         errorPanel.visibility = View.GONE
         activeServerName.text = server.name
         httpBadge.visibility = if (address.isHttps) View.GONE else View.VISIBLE
@@ -504,8 +485,8 @@ class MainActivity : Activity() {
             if (view != webView) return
             pageProgress.visibility = View.GONE
             if (!activeMainFrameLoadFailed &&
-                BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE &&
-                !monetization.isLifetimeUnlocked &&
+                BuildConfig.BILLING_ENABLED &&
+                !lifetimeUnlock.isLifetimeUnlocked &&
                 !trialSessionStartedThisLaunch &&
                 trialUsageStore.consumeSession()
             ) {
@@ -707,44 +688,24 @@ class MainActivity : Activity() {
 
     private fun renderLifetimeUnlock(unlocked: Boolean) {
         val purchasesVisible = BuildConfig.BILLING_ENABLED
-        val cappedMode = BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE
         lifetimeUnlockDescription.visibility = if (purchasesVisible) View.VISIBLE else View.GONE
-        lifetimeUnlockDescription.setText(
-            if (cappedMode) R.string.lifetime_unlock_description_capped
-            else R.string.lifetime_unlock_description_ads,
-        )
+        lifetimeUnlockDescription.setText(R.string.lifetime_unlock_description)
         lifetimeUnlockButton.visibility = if (purchasesVisible && !unlocked) View.VISIBLE else View.GONE
         lifetimeUnlockMessage.visibility = if (purchasesVisible && unlocked) View.VISIBLE else View.GONE
-        lifetimeUnlockMessage.setText(
-            if (cappedMode) R.string.lifetime_unlock_active_capped
-            else R.string.lifetime_unlock_active_ads,
-        )
+        lifetimeUnlockMessage.setText(R.string.lifetime_unlock_active)
         restorePurchasesButton.visibility = if (purchasesVisible) View.VISIBLE else View.GONE
-        lifetimeUnlockButton.text = getString(
-            if (cappedMode) R.string.lifetime_unlock_button_capped
-            else R.string.lifetime_unlock_button_ads,
-        )
+        lifetimeUnlockButton.setText(R.string.lifetime_unlock_button)
         renderTrialUsageStatus()
     }
 
     private fun renderLifetimeUnlockPrice(localizedPrice: String?) {
-        val priceString = if (BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE) {
-            R.string.lifetime_unlock_button_capped_with_price
-        } else {
-            R.string.lifetime_unlock_button_ads_with_price
-        }
-        val defaultString = if (BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE) {
-            R.string.lifetime_unlock_button_capped
-        } else {
-            R.string.lifetime_unlock_button_ads
-        }
-        lifetimeUnlockButton.text = localizedPrice?.let { getString(priceString, it) } ?: getString(defaultString)
+        lifetimeUnlockButton.text = localizedPrice?.let { getString(R.string.lifetime_unlock_button_with_price, it) }
+            ?: getString(R.string.lifetime_unlock_button)
     }
 
     private fun renderTrialUsageStatus() {
-        val cappedMode = BuildConfig.MONETIZATION_MODE == CAPPED_MONETIZATION_MODE
-        trialUsageStatus.visibility = if (cappedMode) View.VISIBLE else View.GONE
-        if (!cappedMode) return
+        trialUsageStatus.visibility = if (BuildConfig.BILLING_ENABLED) View.VISIBLE else View.GONE
+        if (!BuildConfig.BILLING_ENABLED) return
 
         val remaining = trialUsageStore.remainingSessions
         when {
@@ -761,8 +722,8 @@ class MainActivity : Activity() {
             .setMessage(R.string.trial_complete_message)
             .setNegativeButton(R.string.later, null)
         if (BuildConfig.BILLING_ENABLED) {
-            dialog.setPositiveButton(R.string.lifetime_unlock_button_capped) { _, _ ->
-                monetization.purchaseLifetimeUnlock()
+            dialog.setPositiveButton(R.string.lifetime_unlock_button) { _, _ ->
+                lifetimeUnlock.purchaseLifetimeUnlock()
             }
         }
         dialog.show()
@@ -875,7 +836,6 @@ class MainActivity : Activity() {
         const val FILE_CHOOSER_REQUEST = 45217
         const val DOWNLOAD_PERMISSION_REQUEST = 45218
         const val FALLBACK_SERVER_ID = "fallback_server_id"
-        const val CAPPED_MONETIZATION_MODE = "capped"
         const val TRIAL_SESSION_STARTED_KEY = "trial_session_started_this_launch"
     }
 }

@@ -292,10 +292,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
-          ADMOB_BANNER_AD_UNIT_ID: ${{ vars.ADMOB_BANNER_AD_UNIT_ID }}
           ENABLE_PLAY_BILLING: ${{ vars.ENABLE_PLAY_BILLING }}
-          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release
 
@@ -495,17 +492,11 @@ jobs:
         shell: bash
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
-          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
           IOS_ADHOC_SIGNING_ENABLED: ${{ vars.IOS_ADHOC_SIGNING_ENABLED }}
           IOS_APPSTORE_SIGNING_ENABLED: ${{ vars.IOS_APPSTORE_SIGNING_ENABLED }}
         run: |
           set -euo pipefail
           release_dir='dist-release'
-          case "$ANDROID_MONETIZATION_MODE" in
-            ads) android_asset_suffix='android' ;;
-            capped) android_asset_suffix='android-capped' ;;
-            *) echo "ANDROID_MONETIZATION_MODE must be 'ads' or 'capped'." >&2; exit 2 ;;
-          esac
           downloads="$release_dir/downloaded"
           while IFS= read -r -d '' file; do
             filename="${file##*/}"
@@ -520,7 +511,7 @@ jobs:
               seerrng-windows-x64) expected_archives=("seerrng-${TAG}-windows-x64.zip") ;;
               seerrng-windows-arm64) expected_archives=("seerrng-${TAG}-windows-arm64.zip") ;;
               seerrng-android)
-                expected_archives=("seerrng-${TAG}-${android_asset_suffix}.apk" "seerrng-${TAG}-${android_asset_suffix}.aab")
+                expected_archives=("seerrng-${TAG}-android.apk" "seerrng-${TAG}-android.aab")
                 ;;
               seerrng-ios-simulator) expected_archives=("seerrng-${TAG}-ios-simulator.zip") ;;
               seerrng-ios-adhoc) expected_archives=("seerrng-${TAG}-ios-adhoc.ipa") ;;
@@ -571,14 +562,8 @@ jobs:
         shell: bash
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
-          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
         run: |
           set -euo pipefail
-          case "$ANDROID_MONETIZATION_MODE" in
-            ads) android_asset_suffix='android' ;;
-            capped) android_asset_suffix='android-capped' ;;
-            *) echo "ANDROID_MONETIZATION_MODE must be 'ads' or 'capped'." >&2; exit 2 ;;
-          esac
           expected=(
             "seerrng-${TAG}-linux-x64.tar.gz"
             "seerrng-${TAG}-linux-arm64.tar.gz"
@@ -590,8 +575,8 @@ jobs:
             "seerrng-jellyfin-bridge-${TAG}.zip"
           )
           expected+=(
-            "seerrng-${TAG}-${android_asset_suffix}.apk"
-            "seerrng-${TAG}-${android_asset_suffix}.aab"
+            "seerrng-${TAG}-android.apk"
+            "seerrng-${TAG}-android.aab"
           )
           if [[ "$IOS_ADHOC_SIGNING_ENABLED" == 'true' ]]; then
             expected+=("seerrng-${TAG}-ios-adhoc.ipa")

@@ -2,9 +2,6 @@ package org.snapetech.seerrng
 
 import android.app.Activity
 import android.content.Context
-import android.os.Bundle
-import android.view.View
-import android.widget.FrameLayout
 import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingFlowParams
@@ -15,23 +12,11 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
-import com.google.android.gms.ads.AdListener
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.AdSize
-import com.google.android.gms.ads.AdView
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.MobileAds
-import com.google.ads.mediation.admob.AdMobAdapter
-import com.google.android.ump.ConsentInformation
-import com.google.android.ump.ConsentRequestParameters
-import com.google.android.ump.UserMessagingPlatform
 
-internal class MonetizationManager(
+internal class LifetimeUnlockManager(
     private val activity: Activity,
-    private val adContainer: FrameLayout,
     private val onLifetimeUnlockChanged: (Boolean) -> Unit,
     private val onPriceChanged: (String?) -> Unit,
-    private val onPrivacyOptionsChanged: (Boolean) -> Unit,
     private val onMessage: (Int) -> Unit,
 ) {
     private val preferences = activity.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -43,21 +28,13 @@ internal class MonetizationManager(
         preferences.getBoolean(LEGACY_NO_ADS_UNLOCKED_KEY, false)
     private var billingClient: BillingClient? = null
     private var billingConnecting = false
-    private var browsingServer = false
     private var released = false
-    private var consentRequestInProgress = false
-    private var mobileAdsInitializing = false
-    private var mobileAdsInitialized = false
-    private var bannerRequestPending = false
-    private var consentInformation: ConsentInformation? = null
-    private var adView: AdView? = null
 
     val isLifetimeUnlocked: Boolean
         get() = lifetimeUnlocked
 
     fun start() {
         onLifetimeUnlockChanged(lifetimeUnlocked)
-        onPrivacyOptionsChanged(false)
         if (BuildConfig.BILLING_ENABLED && playStoreInstalled) {
             billingClient = BillingClient.newBuilder(activity)
                 .setListener(PurchasesUpdatedListener(::onPurchasesUpdated))
@@ -72,32 +49,12 @@ internal class MonetizationManager(
         }
     }
 
-    fun setBrowsingServer(visible: Boolean) {
-        browsingServer = visible
-        if (visible && BuildConfig.ADS_ENABLED) requestConsentUpdate()
-        updateBanner()
-    }
-
     fun onResume() {
         if (released) return
-        adView?.resume()
         connectBilling()
         if (BuildConfig.BILLING_ENABLED && billingClient?.isReady == true) {
             queryOwnedPurchases(manualRestore = false)
             queryProductDetails()
-        }
-        if (browsingServer && BuildConfig.ADS_ENABLED) requestConsentUpdate()
-        updateBanner()
-    }
-
-    fun onPause() {
-        adView?.pause()
-    }
-
-    fun onConfigurationChanged() {
-        if (adView != null) {
-            destroyBanner()
-            updateBanner()
         }
     }
 
@@ -153,26 +110,8 @@ internal class MonetizationManager(
         queryOwnedPurchases(manualRestore = true)
     }
 
-    fun showPrivacyOptions() {
-        val information = consentInformation
-        if (!BuildConfig.ADS_ENABLED || information == null ||
-            information.privacyOptionsRequirementStatus != ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
-        ) {
-            onMessage(R.string.ad_privacy_unavailable)
-            return
-        }
-
-        UserMessagingPlatform.showPrivacyOptionsForm(activity) { error ->
-            if (released) return@showPrivacyOptionsForm
-            if (error != null) onMessage(R.string.ad_privacy_unavailable)
-            updatePrivacyOptionsVisibility()
-            updateBanner()
-        }
-    }
-
     fun close() {
         released = true
-        destroyBanner()
         billingClient?.endConnection()
         billingClient = null
     }
@@ -282,10 +221,8 @@ internal class MonetizationManager(
         val params = AcknowledgePurchaseParams.newBuilder()
             .setPurchaseToken(purchase.purchaseToken)
             .build()
-        client.acknowledgePurchase(params) { result ->
-            if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-                // A later purchase query retries acknowledgement if Play is temporarily unavailable.
-            }
+        client.acknowledgePurchase(params) { _ ->
+            // A later purchase query retries acknowledgement if Play is temporarily unavailable.
         }
     }
 
@@ -295,146 +232,6 @@ internal class MonetizationManager(
             preferences.edit().putBoolean(LIFETIME_UNLOCKED_KEY, unlocked).apply()
             onLifetimeUnlockChanged(unlocked)
         }
-        updateBanner()
-    }
-
-    private fun requestConsentUpdate() {
-        if (!BuildConfig.ADS_ENABLED || released || consentRequestInProgress) return
-        val information = consentInformation
-            ?: UserMessagingPlatform.getConsentInformation(activity).also { consentInformation = it }
-        consentRequestInProgress = true
-        val parameters = ConsentRequestParameters.Builder().build()
-        information.requestConsentInfoUpdate(
-            activity,
-            parameters,
-            {
-                if (released || !browsingServer || activity.isFinishing || activity.isDestroyed) {
-                    consentRequestInProgress = false
-                    updatePrivacyOptionsVisibility()
-                    return@requestConsentInfoUpdate
-                }
-                UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { _ ->
-                    consentRequestInProgress = false
-                    if (released) return@loadAndShowConsentFormIfRequired
-                    updatePrivacyOptionsVisibility()
-                    initializeMobileAdsIfAllowed()
-                }
-            },
-            {
-                consentRequestInProgress = false
-                if (released) return@requestConsentInfoUpdate
-                updatePrivacyOptionsVisibility()
-                initializeMobileAdsIfAllowed()
-            },
-        )
-        initializeMobileAdsIfAllowed()
-    }
-
-    private fun initializeMobileAdsIfAllowed() {
-        val information = consentInformation ?: return
-        if (!BuildConfig.ADS_ENABLED || !information.canRequestAds() || mobileAdsInitializing || mobileAdsInitialized) {
-            updateBanner()
-            return
-        }
-
-        mobileAdsInitializing = true
-        MobileAds.initialize(activity) {
-            activity.runOnUiThread {
-                mobileAdsInitializing = false
-                mobileAdsInitialized = true
-                updateBanner()
-            }
-        }
-    }
-
-    private fun updatePrivacyOptionsVisibility() {
-        val required = BuildConfig.ADS_ENABLED &&
-            consentInformation?.privacyOptionsRequirementStatus == ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
-        onPrivacyOptionsChanged(required)
-    }
-
-    private fun updateBanner() {
-        if (released) return
-        val allowedByApp = MonetizationPolicy.shouldShowBanner(
-            adsEnabled = BuildConfig.ADS_ENABLED,
-            browsingServer = browsingServer,
-            lifetimeUnlocked = lifetimeUnlocked,
-        )
-        val allowedByConsent = consentInformation?.canRequestAds() == true
-        if (!allowedByApp || !allowedByConsent) {
-            destroyBanner()
-            return
-        }
-        if (!mobileAdsInitialized || adView != null || bannerRequestPending) return
-
-        bannerRequestPending = true
-        adContainer.visibility = View.GONE
-        adContainer.post {
-            if (released ||
-                !BuildConfig.ADS_ENABLED ||
-                consentInformation?.canRequestAds() != true ||
-                adView != null ||
-                adContainer.width <= 0 ||
-                !browsingServer ||
-                lifetimeUnlocked ||
-                !mobileAdsInitialized
-            ) {
-                bannerRequestPending = false
-                return@post
-            }
-
-            val density = activity.resources.displayMetrics.density
-            val widthDp = (adContainer.width / density).toInt().coerceAtLeast(1)
-            @Suppress("DEPRECATION")
-            val bannerSize = AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(activity, widthDp)
-            val view = AdView(activity).apply {
-                adUnitId = BuildConfig.ADMOB_BANNER_AD_UNIT_ID
-                setAdSize(bannerSize)
-                adListener = object : AdListener() {
-                    override fun onAdLoaded() {
-                        bannerRequestPending = false
-                        if (adView === this@apply && browsingServer && !lifetimeUnlocked) {
-                            adContainer.visibility = View.VISIBLE
-                        }
-                    }
-
-                    override fun onAdFailedToLoad(error: LoadAdError) {
-                        bannerRequestPending = false
-                        if (adView === this@apply) {
-                            adContainer.visibility = View.GONE
-                            adContainer.removeView(this@apply)
-                            destroy()
-                            adView = null
-                        }
-                    }
-                }
-            }
-            adView = view
-            adContainer.removeAllViews()
-            adContainer.addView(
-                view,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-            val nonPersonalizedExtras = Bundle().apply { putString("npa", "1") }
-            view.loadAd(
-                AdRequest.Builder()
-                    .addNetworkExtrasBundle(AdMobAdapter::class.java, nonPersonalizedExtras)
-                    .build(),
-            )
-        }
-    }
-
-    private fun destroyBanner() {
-        bannerRequestPending = false
-        adContainer.visibility = View.GONE
-        adView?.let { view ->
-            adContainer.removeView(view)
-            view.destroy()
-        }
-        adView = null
     }
 
     private fun Purchase.toStorePurchase(): StorePurchase = StorePurchase(

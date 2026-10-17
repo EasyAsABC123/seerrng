@@ -1,6 +1,6 @@
 # SeerrNG mobile store listing draft
 
-This is draft copy for a future listing. Replace it with final text after the review build, demo server, privacy declarations, content policy, screenshots, and monetization choice are settled.
+This is draft copy for the Google Play and Apple listings. Store product metadata, screenshots, ratings, privacy declarations, reviewer access, and server-content policy still need review before submission.
 
 ## Google Play
 
@@ -18,7 +18,7 @@ You need access to a working SeerrNG server to use the app. Server availability,
 
 HTTPS is recommended. The app warns before saving an HTTP address because HTTP does not encrypt sign-in details or session cookies in transit.
 
-If the capped-preview build is selected, it includes 20 successful server sessions per installation. Google Play manages any optional lifetime unlock shown in the Play version. Availability and localized price appear in Google Play before purchase.
+The app is free to download and includes 20 successful server sessions per installation. After the free preview, an optional one-time Google Play purchase unlocks unlimited sessions for the purchasing Play account. The recommended US price is $4.99; Google Play displays the current localized price before checkout. The app contains no ads.
 
 **Support URL:** `https://github.com/snapetech-org/seerrng/issues`
 
@@ -28,7 +28,7 @@ If the capped-preview build is selected, it includes 20 successful server sessio
 
 **Category:** Entertainment (confirm with the final store listing and primary app function).
 
-**Content rating / target audience / Data safety / ads:** Complete in Play Console after the store build and server-content policy are finalized.
+**Content rating / target audience / Data safety / no-ads declaration:** Complete in Play Console after the store build and server-content policy are finalized.
 
 ## Apple App Store
 
@@ -48,7 +48,7 @@ A working SeerrNG server and permission to access it are required. The server op
 
 HTTPS is recommended. If you choose an HTTP address, the app explains that sign-in details and session cookies are not encrypted in transit before it saves the address.
 
-The capped-preview build includes 20 successful server sessions per installation. Any optional lifetime unlock is processed by Apple and uses the localized price shown before purchase.
+The app includes 20 successful server sessions per installation. An optional one-time App Store purchase unlocks unlimited sessions for the purchasing Apple account. The App Store shows the localized price before purchase. The app contains no ads.
 
 **Support URL:** `https://github.com/snapetech-org/seerrng/issues`
 
@@ -58,13 +58,11 @@ The capped-preview build includes 20 successful server sessions per installation
 
 **Category:** Entertainment (confirm against the final primary function).
 
-**Age rating / App Privacy answers:** Complete in App Store Connect after the content policy, purchase behavior, and final integrations are reviewed.
+**Age rating / App Privacy answers:** Complete in App Store Connect from the final build and privacy policy.
 
-## Assets and review notes still needed
+## Before submission
 
-- Make current screenshots using the release app connected to an isolated demo server. Do not use real account names, URLs, or server data.
-- Provide an active reviewer login and keep the demo server reachable throughout App Review, or build a full demo mode.
-- Make the listing clear that the user must already have a SeerrNG server.
-- Do not show pricing in the app description; let each store display its localized product price.
-- Revisit all copy after deciding whether the store version uses a capped preview, ads, or a free full client.
-- Confirm the final category and age rating after the server content and adult-media access path are controlled.
+- Confirm the $4.99 US base price and regional price tiers in each store. Android and iOS purchases are separate and do not share entitlements.
+- Replace or confirm the demo/reviewer access instructions and verify a working SeerrNG server.
+- Confirm server-content rules, age/content ratings, and each store's current review requirements.
+- Recheck the linked privacy policy and the final store Data safety / App Privacy answers against the submitted binaries.

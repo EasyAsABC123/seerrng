@@ -48,18 +48,10 @@ class MonetizationPolicyTest {
     }
 
     @Test
-    fun bannerAppearsOnlyWhenConfiguredWhileBrowsingWithoutLifetimeUnlock() {
-        assertTrue(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = true, lifetimeUnlocked = false))
-        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = false, browsingServer = true, lifetimeUnlocked = false))
-        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = false, lifetimeUnlocked = false))
-        assertFalse(MonetizationPolicy.shouldShowBanner(adsEnabled = true, browsingServer = true, lifetimeUnlocked = true))
-    }
-
-    @Test
     fun cappedUseAllowsOneSessionPerLaunchUntilLifetimeUnlock() {
         assertTrue(
             CappedUsePolicy.canStartServerSession(
-                cappedMode = true,
+                previewEnabled = true,
                 lifetimeUnlocked = false,
                 sessionAlreadyStartedThisLaunch = false,
                 usedSessions = 19,
@@ -68,7 +60,7 @@ class MonetizationPolicyTest {
         )
         assertTrue(
             CappedUsePolicy.canStartServerSession(
-                cappedMode = true,
+                previewEnabled = true,
                 lifetimeUnlocked = false,
                 sessionAlreadyStartedThisLaunch = true,
                 usedSessions = 20,
@@ -77,7 +69,7 @@ class MonetizationPolicyTest {
         )
         assertFalse(
             CappedUsePolicy.canStartServerSession(
-                cappedMode = true,
+                previewEnabled = true,
                 lifetimeUnlocked = false,
                 sessionAlreadyStartedThisLaunch = false,
                 usedSessions = 20,
@@ -86,16 +78,20 @@ class MonetizationPolicyTest {
         )
         assertTrue(
             CappedUsePolicy.canStartServerSession(
-                cappedMode = true,
+                previewEnabled = true,
                 lifetimeUnlocked = true,
                 sessionAlreadyStartedThisLaunch = false,
                 usedSessions = 20,
                 sessionLimit = 20,
             ),
         )
+    }
+
+    @Test
+    fun appWithoutConfiguredStoreBillingDoesNotLockUsersOut() {
         assertTrue(
             CappedUsePolicy.canStartServerSession(
-                cappedMode = false,
+                previewEnabled = false,
                 lifetimeUnlocked = false,
                 sessionAlreadyStartedThisLaunch = false,
                 usedSessions = 20,

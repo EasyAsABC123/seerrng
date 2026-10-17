@@ -952,7 +952,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag || github.ref_name }}
-          ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
           IOS_ADHOC_SIGNING_ENABLED: ${{ vars.IOS_ADHOC_SIGNING_ENABLED }}
           IOS_APPSTORE_SIGNING_ENABLED: ${{ vars.IOS_APPSTORE_SIGNING_ENABLED }}
         run: |
@@ -962,11 +961,6 @@ jobs:
             exit 0
           fi
           version="${TAG#v}"
-          case "$ANDROID_MONETIZATION_MODE" in
-            ads) android_asset_suffix='android' ;;
-            capped) android_asset_suffix='android-capped' ;;
-            *) echo "ANDROID_MONETIZATION_MODE must be 'ads' or 'capped'." >&2; exit 2 ;;
-          esac
           for attempt in {1..20}; do
             assets="$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' 2>/dev/null || true)"
             required=(
@@ -992,10 +986,10 @@ jobs:
               "SeerrNG-${version}-x86_64.flatpak.sha256"
             )
             required+=(
-              "seerrng-${TAG}-${android_asset_suffix}.apk"
-              "seerrng-${TAG}-${android_asset_suffix}.sha256"
-              "seerrng-${TAG}-${android_asset_suffix}.aab"
-              "seerrng-${TAG}-${android_asset_suffix}-aab.sha256"
+              "seerrng-${TAG}-android.apk"
+              "seerrng-${TAG}-android.sha256"
+              "seerrng-${TAG}-android.aab"
+              "seerrng-${TAG}-android-aab.sha256"
             )
             if [[ "$IOS_ADHOC_SIGNING_ENABLED" == 'true' ]]; then
               required+=("seerrng-${TAG}-ios-adhoc.ipa" "seerrng-${TAG}-ios-adhoc.sha256")
