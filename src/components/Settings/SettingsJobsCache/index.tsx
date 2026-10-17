@@ -15,7 +15,6 @@ import { formatBytes } from '@app/utils/numberHelpers';
 import { Transition } from '@headlessui/react';
 import { NoSymbolIcon, PlayIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { CheckIcon, PencilIcon } from '@heroicons/react/24/solid';
-import { MediaServerType } from '@server/constants/server';
 import type {
   CacheItem,
   CacheResponse,
@@ -28,6 +27,7 @@ import { Fragment, useReducer, useState } from 'react';
 import type { MessageDescriptor } from 'react-intl';
 import { FormattedRelativeTime, useIntl } from 'react-intl';
 import useSWR from 'swr';
+import { getJobMessage } from './jobMessages';
 import { getMinuteScheduleOptions, getScheduleMinutes } from './jobSchedule';
 
 const messages: { [messageName: string]: MessageDescriptor } = defineMessages(
@@ -84,32 +84,6 @@ const messages: { [messageName: string]: MessageDescriptor } = defineMessages(
     ipv4Fallbacks: 'IPv4 Fallbacks',
     hitRate: 'Hit Rate',
     unknownJob: 'Unknown Job',
-    'plex-recently-added-scan': 'Plex Recently Added Scan',
-    'plex-full-scan': 'Plex Full Library Scan',
-    'plex-watchlist-sync': 'Plex Watchlist Sync',
-    'plex-refresh-token': 'Plex Refresh Token',
-    'jellyfin-full-scan': 'Jellyfin Full Library Scan',
-    'jellyfin-recently-added-scan': 'Jellyfin Recently Added Scan',
-    'availability-sync': 'Media Availability Sync',
-    'radarr-scan': 'Radarr Scan',
-    'sonarr-scan': 'Sonarr Scan',
-    'lidarr-scan': 'Lidarr Scan',
-    'readarr-scan': 'Bookshelf Scan',
-    'readarr-request-retry': 'Bookshelf Request Retry',
-    'mylar-scan': 'Mylar Comics Scan',
-    'kapowarr-scan': 'Kapowarr Comics Scan',
-    'backissue-scan': 'BackIssue Comics Scan',
-    'magazine-scan': 'LazyLibrarian Magazine Scan',
-    'adult-scan': 'Whisparr Adult Scene Scan',
-    'download-sync': 'Download Sync',
-    'software-request-reconciliation': 'Software Request Reconciliation',
-    'live-tv-sync': 'Live TV Sync',
-    'soulseek-sync': 'Soulseek Sync',
-    'download-recovery': 'Download Recovery',
-    'download-sync-reset': 'Download Sync Reset',
-    'image-cache-cleanup': 'Image Cache Cleanup',
-    'process-blocklisted-tags': 'Process Blocklisted Tags',
-    'release-calendar-history': 'Release Calendar History',
     editJobSchedule: 'Modify Job',
     jobScheduleEditSaved: 'Job edited successfully!',
     jobScheduleEditFailed: 'Something went wrong while saving the job.',
@@ -229,20 +203,6 @@ const SettingsJobs = () => {
   const [isSaving, setIsSaving] = useState(false);
   const settings = useSettings();
 
-  if (settings.currentSettings.mediaServerType === MediaServerType.EMBY) {
-    messages['jellyfin-recently-added-scan'] = {
-      id: 'jellyfin-recently-added-scan',
-      defaultMessage: 'Emby Recently Added Scan',
-    };
-  }
-
-  if (settings.currentSettings.mediaServerType === MediaServerType.EMBY) {
-    messages['jellyfin-full-scan'] = {
-      id: 'jellyfin-full-scan',
-      defaultMessage: 'Emby Full Library Scan',
-    };
-  }
-
   if (!data && !error) {
     return <LoadingSpinner />;
   }
@@ -251,7 +211,13 @@ const SettingsJobs = () => {
     await axios.post(`/api/v1/settings/jobs/${job.id}/run`);
     addToast(
       intl.formatMessage(messages.jobstarted, {
-        jobname: intl.formatMessage(messages[job.id] ?? messages.unknownJob),
+        jobname: intl.formatMessage(
+          getJobMessage(
+            job.id,
+            settings.currentSettings.mediaServerType,
+            messages.unknownJob
+          )
+        ),
       }),
       {
         appearance: 'success',
@@ -265,7 +231,13 @@ const SettingsJobs = () => {
     await axios.post(`/api/v1/settings/jobs/${job.id}/cancel`);
     addToast(
       intl.formatMessage(messages.jobcancelled, {
-        jobname: intl.formatMessage(messages[job.id] ?? messages.unknownJob),
+        jobname: intl.formatMessage(
+          getJobMessage(
+            job.id,
+            settings.currentSettings.mediaServerType,
+            messages.unknownJob
+          )
+        ),
       }),
       {
         appearance: 'error',
@@ -283,7 +255,13 @@ const SettingsJobs = () => {
     });
     addToast(
       intl.formatMessage(enabled ? messages.jobenabled : messages.jobdisabled, {
-        jobname: intl.formatMessage(messages[job.id] ?? messages.unknownJob),
+        jobname: intl.formatMessage(
+          getJobMessage(
+            job.id,
+            settings.currentSettings.mediaServerType,
+            messages.unknownJob
+          )
+        ),
       }),
       {
         appearance: enabled ? 'success' : 'warning',
@@ -546,7 +524,11 @@ const SettingsJobs = () => {
                   <div className="flex items-center text-xs leading-4">
                     <span>
                       {intl.formatMessage(
-                        messages[job.id] ?? messages.unknownJob
+                        getJobMessage(
+                          job.id,
+                          settings.currentSettings.mediaServerType,
+                          messages.unknownJob
+                        )
                       )}
                     </span>
                     {!job.enabled && (
