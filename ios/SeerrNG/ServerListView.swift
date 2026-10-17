@@ -9,6 +9,7 @@ struct ServerListView: View {
 
     @State private var showingEditor = false
     @State private var editingServer: ServerEndpoint?
+    @State private var serverPendingDeletion: ServerEndpoint?
 
     var body: some View {
         List {
@@ -28,10 +29,11 @@ struct ServerListView: View {
                         serverRow(server)
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
-                                    serverStore.remove(id: server.id)
+                                    serverPendingDeletion = server
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
+                                .accessibilityLabel("Delete \(server.name)")
                                 Button {
                                     editingServer = server
                                     showingEditor = true
@@ -69,6 +71,24 @@ struct ServerListView: View {
         .sheet(isPresented: $showingEditor, onDismiss: { editingServer = nil }) {
             ServerEditorView(server: editingServer) { serverStore.save($0) }
         }
+        .alert(
+            "Delete server?",
+            isPresented: Binding(
+                get: { serverPendingDeletion != nil },
+                set: { if !$0 { serverPendingDeletion = nil } }
+            ),
+            presenting: serverPendingDeletion
+        ) { server in
+            Button("Cancel", role: .cancel) {
+                serverPendingDeletion = nil
+            }
+            Button("Delete", role: .destructive) {
+                serverStore.remove(id: server.id)
+                serverPendingDeletion = nil
+            }
+        } message: { server in
+            Text("Remove \(server.name) from this device?")
+        }
     }
 
     @ViewBuilder
@@ -104,10 +124,11 @@ struct ServerListView: View {
                     Label("Edit", systemImage: "pencil")
                 }
                 Button(role: .destructive) {
-                    serverStore.remove(id: server.id)
+                    serverPendingDeletion = server
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .accessibilityLabel("Delete \(server.name)")
             } label: {
                 Image(systemName: "ellipsis")
                     .frame(width: 44, height: 44)
