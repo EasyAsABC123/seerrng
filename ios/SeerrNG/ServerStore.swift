@@ -37,6 +37,8 @@ final class ServerStore: ObservableObject {
         let removed = servers.remove(at: index)
         persist()
         Task {
+            // Let SwiftUI release any web view using this server before deleting its store.
+            try? await Task.sleep(for: .milliseconds(300))
             try? await WKWebsiteDataStore.remove(forIdentifier: id)
         }
         return removed
