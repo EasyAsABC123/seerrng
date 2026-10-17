@@ -70,13 +70,46 @@ describe('Movie Details', () => {
     cy.wait('@followAvailability');
     cy.get('button[aria-label="Stop Availability Notifications"]')
       .should('be.visible')
-      .and('have.attr', 'aria-pressed', 'true');
+      .and('have.attr', 'aria-pressed', 'true')
+      .then(($button) => {
+        const button = $button[0];
+        const bounds = button.getBoundingClientRect();
+        expect(bounds.left).to.be.gte(0);
+        expect(bounds.right).to.be.lte(390);
+        expect(bounds.top).to.be.gte(0);
+        expect(bounds.bottom).to.be.lte(844);
+        const hit = button.ownerDocument.elementFromPoint(
+          bounds.left + bounds.width / 2,
+          bounds.top + bounds.height / 2
+        );
+        const hitDescription = hit
+          ? `${hit.tagName.toLowerCase()}${
+              hit instanceof HTMLElement && hit.classList.length
+                ? `.${[...hit.classList].join('.')}`
+                : ''
+            }`
+          : 'no element';
+        expect(
+          button.contains(hit),
+          `tap hit ${hitDescription} (pointer-events: ${hit && getComputedStyle(hit).pointerEvents})`
+        ).to.eq(true);
+      });
 
     cy.get('button[aria-label="Stop Availability Notifications"]').click();
     cy.wait('@unfollowAvailability');
     cy.get('button[aria-label="Notify Me When Available"]')
       .should('be.visible')
       .and('have.attr', 'aria-pressed', 'false');
+    cy.get('button[aria-label="Dismiss this notification"]').then(
+      ($dismissButtons) => {
+        const previousCount = $dismissButtons.length;
+        cy.wrap($dismissButtons.last()).click();
+        cy.get('button[aria-label="Dismiss this notification"]').should(
+          'have.length.lessThan',
+          previousCount
+        );
+      }
+    );
   });
 
   it('shows standard and 4K requests in one segmented control', () => {

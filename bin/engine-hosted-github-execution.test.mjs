@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { GITHUB_ACTIONS_WORKER_CAP } from '../tools/validation-engine/runtime/cpu-capacity.mjs';
 import {
   admitHostedGithubUnit as admitHostedGithubUnitCore,
   executeHostedTestLane as executeHostedTestLaneCore,
@@ -1506,7 +1507,7 @@ test('Vitest materialization binds one admitted shard at exactly GitHub N', () =
   assert.match(source, /passWithNoTests: false/);
 });
 
-test('engine executes one planned native Node shard at exactly GitHub N', async () => {
+test('engine uses bounded GitHub worker capacity for a planned Node shard', async () => {
   const { root, plan, environment } = fixture();
   const reportFile = path.join(root, 'seerrng-engine-node-tests.json');
   const receiptDir = path.join(root, 'receipts');
@@ -1570,7 +1571,7 @@ test('engine executes one planned native Node shard at exactly GitHub N', async 
   assert.equal(result.capacity.githubActions, true);
   assert.equal(
     result.capacity.configuredWorkers,
-    result.capacity.effectiveLogicalCpus
+    Math.min(result.capacity.effectiveLogicalCpus, GITHUB_ACTIONS_WORKER_CAP)
   );
   assert.equal(result.caseLedger.counts.failed, 0);
   assert.ok(result.caseLedger.counts.passed >= 1);

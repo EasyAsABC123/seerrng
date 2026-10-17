@@ -26,9 +26,13 @@ const Toast = ({
     transitionState === 'exiting' || transitionState === 'exited';
 
   return (
-    <div className="toast pointer-events-none flex max-w-full items-end justify-center px-2 py-2 sm:items-start sm:justify-end">
+    <div
+      className="toast pointer-events-none flex max-w-full items-end justify-center px-2 py-2 sm:items-start sm:justify-end"
+      style={{ pointerEvents: 'none' }}
+    >
       <div
-        className={`pointer-events-auto w-full max-w-sm transform-gpu rounded-lg bg-gray-800 shadow-lg ring-1 ring-gray-500 transition duration-150 ${
+        style={{ pointerEvents: 'none' }}
+        className={`pointer-events-none w-full max-w-sm transform-gpu rounded-lg bg-gray-800 shadow-lg ring-1 ring-gray-500 transition duration-150 ${
           isExiting ? 'scale-90 opacity-0' : 'scale-100 opacity-100'
         }`}
       >
@@ -49,14 +53,20 @@ const Toast = ({
                   <ExclamationTriangleIcon className="h-6 w-6 text-orange-400" />
                 )}
               </div>
-              <div className="ml-3 w-0 flex-1 text-white">{children}</div>
+              <div
+                className="ml-3 w-0 flex-1 text-white"
+                style={{ pointerEvents: 'none' }}
+              >
+                {children}
+              </div>
               <div className="ml-4 flex flex-shrink-0">
                 <button
                   onClick={() => onDismiss()}
                   aria-label={intl.formatMessage(
                     globalMessages.dismissNotification
                   )}
-                  className="inline-flex text-gray-400 transition duration-150 ease-in-out focus:text-gray-500 focus:outline-none"
+                  className="pointer-events-auto inline-flex text-gray-400 transition duration-150 ease-in-out focus:text-gray-500 focus:outline-none"
+                  style={{ pointerEvents: 'auto' }}
                 >
                   <XMarkIcon className="h-5 w-5" />
                 </button>

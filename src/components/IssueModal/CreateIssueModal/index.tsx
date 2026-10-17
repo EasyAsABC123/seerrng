@@ -257,7 +257,11 @@ const CreateIssueModal = ({
                   })}
                 </div>
                 <Link href={getIssueListHref(newIssue.data.id)} legacyBehavior>
-                  <Button as="a" className="mt-4">
+                  <Button
+                    as="a"
+                    className="mt-4"
+                    style={{ pointerEvents: 'auto' }}
+                  >
                     <span>{intl.formatMessage(messages.toastviewdetails)}</span>
                     <ArrowRightCircleIcon />
                   </Button>
