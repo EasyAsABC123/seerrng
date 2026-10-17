@@ -92,7 +92,14 @@ jobs:
           git config user.email "$GIT_ACTOR@users.noreply.github.com"
 
       - name: Bump package.json
-        run: npm version "$TAG_VERSION" --ignore-scripts --no-commit-hooks --no-git-tag-version
+        run: |
+          current_version="$(node -p 'require("./package.json").version')"
+          target_version="${TAG_VERSION#v}"
+          if [[ "$current_version" == "$target_version" ]]; then
+            echo "package.json is already at $TAG_VERSION; skipping version bump"
+          else
+            npm version "$TAG_VERSION" --ignore-scripts --no-commit-hooks --no-git-tag-version
+          fi
 
       - name: Sync Helm chart release metadata
         run: |
