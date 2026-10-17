@@ -77,6 +77,32 @@ test('keeps an already-correct app version badge to one informational suffix', a
   assert.doesNotMatch(readme, /informational-informational/u);
 });
 
+test('does not increment the chart version again when release prep is retried', async (t) => {
+  const chartDirectory = await createChartFixture(t);
+  const firstResult = await updateHelmReleaseMetadata(
+    'v3.58.0',
+    chartDirectory
+  );
+  const chartFile = path.join(chartDirectory, 'Chart.yaml');
+  const readmeFile = path.join(chartDirectory, 'README.md');
+  const firstFiles = await Promise.all([
+    fs.readFile(chartFile, 'utf8'),
+    fs.readFile(readmeFile, 'utf8'),
+  ]);
+
+  const retryResult = await updateHelmReleaseMetadata(
+    'v3.58.0',
+    chartDirectory
+  );
+  const retryFiles = await Promise.all([
+    fs.readFile(chartFile, 'utf8'),
+    fs.readFile(readmeFile, 'utf8'),
+  ]);
+
+  assert.deepEqual(retryResult, firstResult);
+  assert.deepEqual(retryFiles, firstFiles);
+});
+
 test('refuses incomplete documentation without changing either file', async (t) => {
   const chartDirectory = await createChartFixture(t, {
     appBadge: 'AppVersion-v3.57.0?style=rounded',

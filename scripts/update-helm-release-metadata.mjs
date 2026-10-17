@@ -50,12 +50,20 @@ export async function updateHelmReleaseMetadata(
     fs.readFile(readmeFile, 'utf8'),
   ]);
   const chartVersionMatch = /^version: ([^\r\n]+)$/mu.exec(chart);
+  const appVersionMatch = /^appVersion: '([^'\r\n]+)'$/mu.exec(chart);
   if (!chartVersionMatch) {
     throw new Error('Expected exactly one chart version in Chart.yaml.');
   }
+  if (!appVersionMatch) {
+    throw new Error('Expected exactly one application version in Chart.yaml.');
+  }
 
   const chartVersion = chartVersionMatch[1];
-  const nextChartVersion = incrementChartVersion(chartVersion);
+  const currentAppVersion = appVersionMatch[1];
+  const nextChartVersion =
+    currentAppVersion === tagVersion
+      ? chartVersion
+      : incrementChartVersion(chartVersion);
   const nextChart = replaceExactlyOnce(
     chart,
     /^version: [^\r\n]+$/mu,
