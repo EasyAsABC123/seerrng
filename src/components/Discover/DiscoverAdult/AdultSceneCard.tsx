@@ -19,9 +19,17 @@ const messages = defineMessages('components.Discover.DiscoverAdult', {
 
 interface AdultSceneCardProps {
   scene: AdultResult;
+  returnQuery?: string;
+  returnServerId?: string;
+  returnPage?: string;
 }
 
-const AdultSceneCard = ({ scene }: AdultSceneCardProps) => {
+const AdultSceneCard = ({
+  scene,
+  returnQuery,
+  returnServerId,
+  returnPage,
+}: AdultSceneCardProps) => {
   const intl = useIntl();
   const sceneStatus = scene.mediaInfo?.status;
   const statusLabel =
@@ -38,7 +46,12 @@ const AdultSceneCard = ({ scene }: AdultSceneCardProps) => {
     <Link
       href={{
         pathname: `/adult/${encodeApiPathSegment(scene.id)}`,
-        query: { serverId: String(scene.serviceId) },
+        query: {
+          serverId: String(scene.serviceId),
+          ...(returnQuery ? { fromQuery: returnQuery } : {}),
+          ...(returnServerId ? { fromServerId: returnServerId } : {}),
+          ...(returnPage ? { fromPage: returnPage } : {}),
+        },
       }}
       className="app-card-main refreshed-card-surface group overflow-hidden rounded-lg border border-gray-700 transition hover:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400"
     >

@@ -140,7 +140,23 @@ adultRoutes.get('/search', async (req, res) => {
     return res.status(400).json({ status: 400, message: 'Query is too long.' });
   }
   const page = parsePositiveInt(req.query.page, 1, 500);
-  const services = orderServices(getExternalRuntimeConfig().whisparr);
+  const requestedServiceId = parseRequestedServiceId(req.query.serverId);
+  if (requestedServiceId === null) {
+    return res
+      .status(400)
+      .json({ status: 400, message: 'Whisparr server ID is invalid.' });
+  }
+  const configuredServices = orderServices(getExternalRuntimeConfig().whisparr);
+  const selectedService =
+    requestedServiceId === undefined
+      ? undefined
+      : configuredServices.find(({ id }) => id === requestedServiceId);
+  if (requestedServiceId !== undefined && !selectedService) {
+    return res
+      .status(404)
+      .json({ status: 404, message: 'Whisparr server was not found.' });
+  }
+  const services = selectedService ? [selectedService] : configuredServices;
   let failedServices = 0;
 
   try {

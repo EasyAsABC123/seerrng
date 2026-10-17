@@ -8,6 +8,7 @@ import RequestModal from '@app/components/RequestModal';
 import { Permission, useUser } from '@app/hooks/useUser';
 import { encodeApiPathSegment } from '@app/utils/apiPath';
 import defineMessages from '@app/utils/defineMessages';
+import { ArrowLeftIcon } from '@heroicons/react/24/solid';
 import { MediaStatus } from '@server/constants/media';
 import type { WhisparrServiceOption } from '@server/interfaces/api/serviceInterfaces';
 import type { AdultDetails as AdultDetailsModel } from '@server/models/Adult';
@@ -20,9 +21,13 @@ import useSWR from 'swr';
 const messages = defineMessages('components.AdultDetails', {
   notFound: 'This scene could not be found in Whisparr.',
   unavailable: 'Adult scene details are unavailable right now.',
+  retryDetails: 'Try again',
   request: 'Request scene',
+  requestOnServer: 'Request on {server}',
   requestAnotherService: 'Request on another Whisparr server',
   activeRequest: 'Manage your request',
+  backToResults: 'Back to Adult results',
+  browseAdult: 'Browse Adult scenes',
   available: 'This scene is already available on this Whisparr server.',
   processing: 'This scene is already being processed on this server.',
   noPermission: 'You do not have permission to request adult media.',
@@ -53,9 +58,11 @@ const AdultDetails = () => {
     { type: 'or' }
   );
   const defaultServiceId = services?.find((service) => service.isDefault)?.id;
-  const selectedServerId = canChooseService
-    ? requestedServerId
-    : defaultServiceId?.toString();
+  // The scene card identifies the library that supplied its metadata. Keep
+  // that source for details even when the viewer can only request to default.
+  const selectedServerId =
+    requestedServerId ??
+    (!canChooseService ? defaultServiceId?.toString() : undefined);
   const detailUrl = sceneId
     ? `/api/v1/adult/${encodeApiPathSegment(sceneId)}${
         selectedServerId
@@ -68,12 +75,41 @@ const AdultDetails = () => {
     [Permission.ADMIN, Permission.MANAGE_REQUESTS, Permission.REQUEST_ADULT],
     { type: 'or' }
   );
-  const activeRequestId = data?.mediaInfo?.requestId;
+  const isOnDefaultServer = data?.serviceId === defaultServiceId;
+  const activeRequestId =
+    canChooseService || isOnDefaultServer
+      ? data?.mediaInfo?.requestId
+      : undefined;
   const isAvailable =
     data?.mediaInfo?.status === MediaStatus.AVAILABLE ||
     data?.mediaInfo?.status === MediaStatus.PARTIALLY_AVAILABLE;
   const isProcessing = data?.mediaInfo?.status === MediaStatus.PROCESSING;
   const isSatisfied = isAvailable || isProcessing;
+  const isSatisfiedAtRequestDestination =
+    isSatisfied && (canChooseService || isOnDefaultServer);
+  const defaultServiceName = services?.find(
+    (service) => service.id === defaultServiceId
+  )?.name;
+  const returnQuery =
+    typeof router.query.fromQuery === 'string'
+      ? router.query.fromQuery
+      : undefined;
+  const returnServerId =
+    typeof router.query.fromServerId === 'string'
+      ? router.query.fromServerId
+      : undefined;
+  const returnPage =
+    typeof router.query.fromPage === 'string'
+      ? router.query.fromPage
+      : undefined;
+  const returnHref = {
+    pathname: '/discover/adult',
+    query: {
+      ...(returnQuery ? { query: returnQuery } : {}),
+      ...(returnServerId ? { serverId: returnServerId } : {}),
+      ...(returnPage ? { page: returnPage } : {}),
+    },
+  };
 
   if (error) {
     const status = (error as { response?: { status?: number } }).response
@@ -84,7 +120,28 @@ const AdultDetails = () => {
           status === 404 ? messages.notFound : messages.unavailable
         )}
         type="warning"
-      />
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            buttonType="default"
+            buttonSize="sm"
+            buttonIcon="retry"
+            onClick={() => void mutate()}
+          >
+            {intl.formatMessage(messages.retryDetails)}
+          </Button>
+          <Link
+            href={returnHref}
+            className="text-sm font-medium text-indigo-200 underline decoration-indigo-300/40 underline-offset-4 hover:text-white"
+          >
+            {intl.formatMessage(
+              returnQuery || returnServerId || returnPage
+                ? messages.backToResults
+                : messages.browseAdult
+            )}
+          </Link>
+        </div>
+      </Alert>
     );
   }
 
@@ -103,7 +160,8 @@ const AdultDetails = () => {
   }
 
   const canOpenRequest = Boolean(
-    activeRequestId || (canRequest && (!isSatisfied || canChooseService))
+    activeRequestId ||
+    (canRequest && (!isSatisfiedAtRequestDestination || canChooseService))
   );
 
   return (
@@ -112,6 +170,17 @@ const AdultDetails = () => {
       <div className="media-page space-y-5">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <section className="order-2 space-y-5 lg:order-1">
+            <Link
+              href={returnHref}
+              className="inline-flex min-h-10 items-center gap-2 rounded-md text-sm font-medium text-indigo-200 transition hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+            >
+              <ArrowLeftIcon aria-hidden="true" className="h-4 w-4" />
+              {intl.formatMessage(
+                returnQuery || returnServerId || returnPage
+                  ? messages.backToResults
+                  : messages.browseAdult
+              )}
+            </Link>
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
                 <MediaTypeBadge mediaType="adult" variant="compact" />
@@ -143,7 +212,10 @@ const AdultDetails = () => {
                     <Link
                       href={{
                         pathname: '/discover/adult',
-                        query: { query: data.studio },
+                        query: {
+                          query: data.studio,
+                          serverId: returnServerId,
+                        },
                       }}
                       className="text-sm text-indigo-200 underline decoration-indigo-300/40 underline-offset-4 hover:text-white"
                       aria-label={intl.formatMessage(messages.searchStudio, {
@@ -166,7 +238,10 @@ const AdultDetails = () => {
                         key={performer}
                         href={{
                           pathname: '/discover/adult',
-                          query: { query: performer },
+                          query: {
+                            query: performer,
+                            serverId: returnServerId,
+                          },
                         }}
                         className="rounded-full border border-gray-700 bg-gray-900/70 px-3 py-1 text-sm text-gray-200 transition hover:border-indigo-400 hover:text-white"
                         aria-label={intl.formatMessage(
@@ -195,13 +270,17 @@ const AdultDetails = () => {
                 buttonType="primary"
                 onClick={() => setShowRequestModal(true)}
               >
-                {intl.formatMessage(
-                  activeRequestId
-                    ? messages.activeRequest
-                    : isSatisfied
-                      ? messages.requestAnotherService
-                      : messages.request
-                )}
+                {activeRequestId
+                  ? intl.formatMessage(messages.activeRequest)
+                  : isSatisfiedAtRequestDestination
+                    ? intl.formatMessage(messages.requestAnotherService)
+                    : !canChooseService &&
+                        defaultServiceName &&
+                        !isOnDefaultServer
+                      ? intl.formatMessage(messages.requestOnServer, {
+                          server: defaultServiceName,
+                        })
+                      : intl.formatMessage(messages.request)}
               </Button>
             ) : (
               <Alert type="info">
@@ -238,7 +317,9 @@ const AdultDetails = () => {
             type="adult"
             adultId={data.id}
             adultRequestId={activeRequestId}
-            adultRequestStatus={data.mediaInfo?.requestStatus}
+            adultRequestStatus={
+              activeRequestId ? data.mediaInfo?.requestStatus : undefined
+            }
             initialServerId={data.serviceId}
             show
             onCancel={() => setShowRequestModal(false)}

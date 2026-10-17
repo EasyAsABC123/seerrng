@@ -42,9 +42,10 @@ const messages = defineMessages('components.RequestModal.Adult', {
   service: 'Whisparr server',
   defaultService: 'Default ({name})',
   noService: 'No Whisparr server is configured.',
+  serviceUnavailable:
+    'No usable Whisparr destination is available. Ask an administrator to check the service settings.',
   available: 'This scene is already available on this server.',
   processing: 'This scene is already being processed on this server.',
-  serviceUnavailable: 'This Whisparr server is not available.',
 });
 
 interface AdultRequestModalProps {
@@ -85,12 +86,14 @@ const AdultRequestModal = ({
     { type: 'or' }
   );
   const defaultService = services?.find((service) => service.isDefault);
-  const serviceUnavailable = Boolean(
-    servicesError || (services && services.length === 0)
-  );
   const serviceIdForDetails = canUseAdvancedOptions
     ? (selectedServerId ?? defaultService?.id)
     : defaultService?.id;
+  const serviceUnavailable = Boolean(
+    servicesError ||
+    (services &&
+      (services.length === 0 || (!canUseAdvancedOptions && !defaultService)))
+  );
   const detailUrl = `/api/v1/adult/${encodeApiPathSegment(adultId)}${
     serviceIdForDetails !== undefined ? `?serverId=${serviceIdForDetails}` : ''
   }`;
@@ -102,7 +105,8 @@ const AdultRequestModal = ({
   const { data: quota, error: quotaError } = useSWR<QuotaResponse>(
     user ? `/api/v1/user/${user.id}/quota` : null
   );
-  const requestId = editRequest?.id ?? adultRequestId;
+  const requestId =
+    editRequest?.id ?? adultRequestId ?? data?.mediaInfo?.requestId;
   const canRequest = hasPermission(
     [Permission.ADMIN, Permission.MANAGE_REQUESTS, Permission.REQUEST_ADULT],
     { type: 'or' }
@@ -249,9 +253,12 @@ const AdultRequestModal = ({
     }
   };
 
-  if (editRequest || adultRequestId !== undefined) {
+  if (editRequest || requestId !== undefined) {
     const isOwner = !editRequest || editRequest.requestedBy.id === user?.id;
-    const requestStatus = editRequest?.status ?? adultRequestStatus;
+    const requestStatus =
+      editRequest?.status ??
+      adultRequestStatus ??
+      data?.mediaInfo?.requestStatus;
     const isApproved = requestStatus === MediaRequestStatus.APPROVED;
     return (
       <Modal

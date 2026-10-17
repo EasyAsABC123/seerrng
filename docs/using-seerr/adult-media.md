@@ -59,9 +59,12 @@ scenes from their Whisparr libraries or search across configured Whisparr
 servers by title, performer, or studio. Results include scene artwork, studio,
 performers, library state, and the server that supplied the result. Opening a
 scene shows its details and links performers and studios back to related Adult
-searches. SeerrNG checks the StashDB identity against library and request state
-before accepting another request. Request Status shows Adult requests alongside
-the other request types and has a dedicated Adult media filter.
+searches. With multiple Whisparr instances, the server filter can focus on one
+library or search all configured servers. The scene page links back to the same
+search and server scope. SeerrNG checks the StashDB identity against library and
+request state before accepting another request. Request Status shows Adult
+requests alongside the other request types and has a dedicated Adult media
+filter.
 
 Users with advanced request options can choose which Whisparr server receives a
 request. The chosen server is carried from a catalog result through scene

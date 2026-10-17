@@ -9,10 +9,12 @@ import { useSearchActivityReporter } from '@app/hooks/useSearchActivity';
 import { useBatchUpdateQueryParams } from '@app/hooks/useUpdateQueryParams';
 import defineMessages from '@app/utils/defineMessages';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/solid';
+import type { WhisparrServiceOption } from '@server/interfaces/api/serviceInterfaces';
 import type { AdultResult } from '@server/models/Adult';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
+import useSWR from 'swr';
 
 const messages = defineMessages('components.Discover.DiscoverAdult', {
   title: 'Adult',
@@ -26,10 +28,15 @@ const messages = defineMessages('components.Discover.DiscoverAdult', {
   partialResults:
     'Some Whisparr servers could not be searched. Results may be incomplete.',
   unavailable: 'Adult scene search is unavailable right now.',
+  retrySearch: 'Try again',
   noResults: 'No scenes match this search.',
+  clearSearch: 'Clear search',
   noLibraryScenes:
     'No scenes are in your Whisparr libraries yet. Search above to browse the scene catalog.',
+  serverFilter: 'Browse server',
+  allServers: 'All Whisparr servers',
   loadMore: 'Load more scenes',
+  loadingMore: 'Loading more scenes…',
 });
 
 const DiscoverAdult = () => {
@@ -38,14 +45,19 @@ const DiscoverAdult = () => {
   const update = useBatchUpdateQueryParams({});
   const query =
     typeof router.query.query === 'string' ? router.query.query : '';
+  const selectedServerId =
+    typeof router.query.serverId === 'string' ? router.query.serverId : '';
   const [search, setSearch] = useState(query);
+  const { data: services } = useSWR<WhisparrServiceOption[]>(
+    '/api/v1/service/whisparr'
+  );
   useEffect(() => {
     setSearch(query);
   }, [query]);
 
   const discover = useDiscover<AdultResult, { partial?: boolean }>(
     '/api/v1/adult/search',
-    { query },
+    { query, ...(selectedServerId ? { serverId: selectedServerId } : {}) },
     {
       hideAvailable: false,
       hideBlocklisted: false,
@@ -110,6 +122,34 @@ const DiscoverAdult = () => {
               className="app-filter-search-input"
             />
           </label>
+          {(services?.length ?? 0) > 1 && (
+            <label className="discover-filter-control">
+              <span className="discover-filter-control-label">
+                {intl.formatMessage(messages.serverFilter)}
+              </span>
+              <select
+                className="request-form-control compact-control max-w-[15rem]"
+                aria-label={intl.formatMessage(messages.serverFilter)}
+                value={selectedServerId}
+                onChange={(event) =>
+                  update({
+                    query: search.trim() || undefined,
+                    serverId: event.target.value || undefined,
+                    page: undefined,
+                  })
+                }
+              >
+                <option value="">
+                  {intl.formatMessage(messages.allServers)}
+                </option>
+                {services?.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <Button buttonType="primary" buttonSize="sm" type="submit">
             {intl.formatMessage(messages.search)}
           </Button>
@@ -119,7 +159,16 @@ const DiscoverAdult = () => {
         <Alert
           title={providerMessage ?? intl.formatMessage(messages.unavailable)}
           type="warning"
-        />
+        >
+          <Button
+            buttonType="default"
+            buttonSize="sm"
+            onClick={() => discover.mutate?.()}
+            disabled={discover.isValidating}
+          >
+            {intl.formatMessage(messages.retrySearch)}
+          </Button>
+        </Alert>
       )}
       {discover.firstResultData?.partial && (
         <Alert type="info">{intl.formatMessage(messages.partialResults)}</Alert>
@@ -131,7 +180,7 @@ const DiscoverAdult = () => {
           )}
         </h2>
         {!discover.isLoadingInitialData && resultCount > 0 && (
-          <span className="text-sm text-gray-400">
+          <span aria-live="polite" className="text-sm text-gray-400">
             {intl.formatMessage(messages.resultCount, { count: resultCount })}
           </span>
         )}
@@ -140,7 +189,18 @@ const DiscoverAdult = () => {
         !discover.error &&
         !discover.isLoadingInitialData &&
         discover.isEmpty && (
-          <Alert type="info">{intl.formatMessage(messages.noResults)}</Alert>
+          <Alert title={intl.formatMessage(messages.noResults)} type="info">
+            <Button
+              buttonType="default"
+              buttonSize="sm"
+              onClick={() => {
+                setSearch('');
+                update({ query: undefined, page: undefined });
+              }}
+            >
+              {intl.formatMessage(messages.clearSearch)}
+            </Button>
+          </Alert>
         )}
       {!query.trim() &&
         !discover.error &&
@@ -176,6 +236,13 @@ const DiscoverAdult = () => {
             <AdultSceneCard
               key={`${scene.serviceId}:${scene.id}`}
               scene={scene}
+              returnQuery={query || undefined}
+              returnServerId={selectedServerId || undefined}
+              returnPage={
+                typeof router.query.page === 'string'
+                  ? router.query.page
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -186,9 +253,14 @@ const DiscoverAdult = () => {
             buttonType="default"
             buttonSize="sm"
             onClick={discover.fetchMore}
-            disabled={discover.isLoadingMore}
+            disabled={discover.isLoadingMore || discover.isValidating}
+            aria-busy={discover.isLoadingMore || discover.isValidating}
           >
-            {intl.formatMessage(messages.loadMore)}
+            {intl.formatMessage(
+              discover.isLoadingMore || discover.isValidating
+                ? messages.loadingMore
+                : messages.loadMore
+            )}
           </Button>
         </div>
       )}
