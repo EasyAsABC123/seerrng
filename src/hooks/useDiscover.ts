@@ -165,7 +165,7 @@ const useDiscover = <
     showErrorToast = true,
     shouldRetryOnError = true,
     hideErrorWithResults = true,
-    revalidateOnMount = false,
+    revalidateOnMount,
     dedupingInterval = 30000,
   }: {
     enabled?: boolean;

@@ -58,7 +58,15 @@ const ComicsProbe = () => {
   );
 };
 
-const renderProbe = () =>
+const DefaultDiscoveryProbe = () => {
+  useDiscover<{ id: number; mediaType: string }>('/api/v1/discover/movies', {
+    query: '',
+  });
+
+  return <output data-testid="default-discovery">mounted</output>;
+};
+
+const renderProbe = (probe = <ComicsProbe />) =>
   root.render(
     <SWRConfig
       value={{
@@ -77,9 +85,7 @@ const renderProbe = () =>
         dedupingInterval: 30_000,
       }}
     >
-      <IntlProvider locale="en">
-        <ComicsProbe />
-      </IntlProvider>
+      <IntlProvider locale="en">{probe}</IntlProvider>
     </SWRConfig>
   );
 
@@ -104,7 +110,13 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe('Comic discovery cache refresh', () => {
+describe('Discover SWR behavior', () => {
+  it('fetches the first page when a discovery consumer uses default options', async () => {
+    await act(async () => renderProbe(<DefaultDiscoveryProbe />));
+
+    expect(fetchCount).toBe(1);
+  });
+
   it('rechecks ComicVine configuration when returning after saving the key', async () => {
     await act(async () => renderProbe());
     expect(host.querySelector('[data-testid="configured"]')?.textContent).toBe(
