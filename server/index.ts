@@ -57,7 +57,13 @@ import {
 } from '@server/routes/auth';
 import avatarproxy from '@server/routes/avatarproxy';
 import imageproxy from '@server/routes/imageproxy';
-import { appDataPermissions } from '@server/utils/appDataVolume';
+import {
+  appDataPath,
+  appDataPermissions,
+  appDataStatus,
+  appDataWritable,
+  misplacedConfigMount,
+} from '@server/utils/appDataVolume';
 import { getAppVersion } from '@server/utils/appVersion';
 import {
   trackBackgroundTask,
@@ -196,6 +202,20 @@ Promise.resolve()
     if (!appDataPermissions()) {
       logger.error(
         'Something went wrong while checking config folder! Please ensure the config folder is set up properly.\nhttps://github.com/snapetech-org/seerrng/tree/main/docs/getting-started'
+      );
+    } else if (!appDataWritable()) {
+      logger.error(
+        `The data directory ${appDataPath()} is not readable and writable by this process (running as UID ${process.getuid?.() ?? 'unknown'}). Set the host directory ownership to UID 1000 and GID 1000, for example: chown -R 1000:1000 <host appdata path>`
+      );
+    }
+    if (!appDataStatus()) {
+      const misplaced = misplacedConfigMount();
+      logger.error(
+        `${appDataPath()} is not a mounted volume, so settings and the database will be lost when the container is recreated.${
+          misplaced
+            ? ` Files were found at ${misplaced}: SeerrNG stores data at ${appDataPath()}, so map your host appdata directory to ${appDataPath()} instead of ${misplaced}.`
+            : ''
+        }`
       );
     }
 

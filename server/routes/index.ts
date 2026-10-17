@@ -36,6 +36,8 @@ import {
   appDataPath,
   appDataPermissions,
   appDataStatus,
+  appDataWritable,
+  misplacedConfigMount,
 } from '@server/utils/appDataVolume';
 import { getAppVersion, getCommitTag } from '@server/utils/appVersion';
 import restartFlag from '@server/utils/restartFlag';
@@ -385,6 +387,8 @@ router.get(
       appData: appDataStatus(),
       appDataPath: appDataPath(),
       appDataPermissions: appDataPermissions(),
+      appDataWritable: appDataWritable(),
+      misplacedConfigMount: misplacedConfigMount() ?? null,
     });
   }
 );

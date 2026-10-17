@@ -1,3 +1,4 @@
+import AppDataWarning from '@app/components/AppDataWarning';
 import DiscoveryModeTabs, {
   discoveryMediaTypeForPath,
 } from '@app/components/Discover/DiscoveryModeTabs';
@@ -285,6 +286,7 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="mb-6">
             <div className="max-w-8xl mx-auto" data-page-layout-part="content">
               <UserWarnings />
+              {hasPermission(Permission.ADMIN) && <AppDataWarning />}
               {discoveryMediaType && currentSettings.swipeEnabled !== false && (
                 <div className="app-filter-section-gap">
                   <DiscoveryModeTabs
