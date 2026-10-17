@@ -563,7 +563,7 @@ const Swipe = () => {
   // Load a compact stack from each category catalog; a new page appends picks.
   useEffect(() => {
     if (!deck || !decisionData) return;
-    const key = `${mediaType}:${page}:${shuffleSeed}:${catalogCards.map((card) => card.id).join(',')}`;
+    const key = `${catalogSessionKey}:${page}:${catalogCards.map((card) => card.id).join(',')}`;
     if (lastLoaded.current === key) return;
     lastLoaded.current = key;
     setCards((current) => {
@@ -572,7 +572,7 @@ const Swipe = () => {
       const seen = new Set(current.map((card) => card.id));
       return [...current, ...catalogCards.filter((card) => !seen.has(card.id))];
     });
-  }, [catalogCards, decisionData, deck, mediaType, page, shuffleSeed]);
+  }, [catalogCards, catalogSessionKey, decisionData, deck, mediaType, page]);
 
   useEffect(() => {
     setCards([]);

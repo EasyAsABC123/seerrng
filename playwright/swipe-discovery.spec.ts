@@ -666,6 +666,7 @@ test('Swipe controls support keyboard actions, undo, and pointer gestures', asyn
   await expect(topTitle).toHaveText('Swipe action two');
   await expect.poll(() => decisions[0]?.decision).toBe('pass');
 
+  await page.getByTestId('swipe-request').focus();
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => requests.length).toBe(1);
   expect(requests[0]).toEqual({ mediaType: 'movie', mediaId: 602 });
