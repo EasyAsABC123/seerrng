@@ -802,6 +802,25 @@ test('release assets build supported native archive platforms', () => {
     ).run,
     /scripts\/build-ios-release\.sh/u
   );
+  const iosScheme = fs.readFileSync(
+    path.join(
+      rootDirectory,
+      'ios/SeerrNG.xcodeproj/xcshareddata/xcschemes/SeerrNG.xcscheme'
+    ),
+    'utf8'
+  );
+  assert.match(
+    iosScheme,
+    /BlueprintIdentifier="A10000000000000000000002" BuildableName="SeerrNG\.app"/u
+  );
+  assert.match(
+    iosScheme,
+    /BlueprintIdentifier="A10000000000000000000003" BuildableName="SeerrNGTests\.xctest"/u
+  );
+  assert.match(
+    iosScheme,
+    /BlueprintIdentifier="A10000000000000000000004" BuildableName="SeerrNGUITests\.xctest"/u
+  );
   assert.equal(downloadAssets.with.path, 'dist-release/downloaded');
   assert.equal(downloadAssets.with['merge-multiple'], undefined);
   assert.match(flattenAssets.run, /Unexpected file in release artifact/u);
