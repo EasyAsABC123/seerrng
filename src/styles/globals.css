@@ -2950,13 +2950,14 @@
     max-width: min(28rem, calc(100vw - 2rem));
     white-space: normal;
     overflow-wrap: anywhere;
-    pointer-events: auto;
+    pointer-events: none;
   }
 
   .app-tooltip[data-interactive='true'] {
     box-sizing: border-box;
     max-height: min(24rem, var(--app-tooltip-available-height, 80vh));
     overflow-y: auto;
+    pointer-events: auto;
   }
 
   .manage-action-selection {
