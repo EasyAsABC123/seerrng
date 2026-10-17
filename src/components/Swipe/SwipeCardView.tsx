@@ -1,5 +1,6 @@
 import Badge from '@app/components/Common/Badge';
 import CachedImage from '@app/components/Common/CachedImage';
+import type { SwipeCardData } from '@app/components/Swipe/swipeCatalog';
 import defineMessages from '@app/utils/defineMessages';
 import type { CSSProperties, PointerEvent } from 'react';
 import { useRef, useState } from 'react';
@@ -7,19 +8,7 @@ import { useIntl } from 'react-intl';
 
 export type SwipeDirection = 'right' | 'left' | 'up';
 
-export interface SwipeCardData {
-  mediaType: 'movie' | 'tv' | 'book';
-  id: string;
-  title: string;
-  subtitle?: string;
-  year?: number;
-  overview?: string;
-  imageUrl?: string;
-  rating?: number;
-  authorId?: string;
-  because?: string;
-  reason?: string;
-}
+export type { SwipeCardData } from '@app/components/Swipe/swipeCatalog';
 
 const messages = defineMessages('components.Swipe.SwipeCardView', {
   want: 'Request',
@@ -148,7 +137,15 @@ const SwipeCardView = ({
       <div className="swipe-card-artwork">
         {card.imageUrl && (
           <CachedImage
-            type={card.mediaType === 'book' ? 'book' : 'tmdb'}
+            type={
+              card.mediaType === 'book' || card.mediaType === 'audiobook'
+                ? 'book'
+                : card.mediaType === 'adult'
+                  ? 'adult'
+                  : card.mediaType === 'music'
+                    ? 'music'
+                    : 'tmdb'
+            }
             src={card.imageUrl}
             alt=""
             fill
@@ -170,7 +167,7 @@ const SwipeCardView = ({
           {card.rating !== undefined && (
             <Badge>
               {intl.formatMessage(
-                card.mediaType === 'book'
+                card.mediaType === 'book' || card.mediaType === 'audiobook'
                   ? messages.bookRating
                   : messages.rating,
                 { rating: card.rating }

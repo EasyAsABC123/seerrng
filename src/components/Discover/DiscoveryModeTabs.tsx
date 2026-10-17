@@ -7,7 +7,16 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
 
-export type SwipeContextMediaType = 'movie' | 'tv' | 'book' | 'audiobook';
+export type SwipeContextMediaType =
+  | 'movie'
+  | 'tv'
+  | 'book'
+  | 'audiobook'
+  | 'comic'
+  | 'magazine'
+  | 'music'
+  | 'sports'
+  | 'adult';
 
 const messages = defineMessages('components.Discover.DiscoveryModeTabs', {
   discover: 'Discover',
@@ -16,6 +25,11 @@ const messages = defineMessages('components.Discover.DiscoveryModeTabs', {
   series: 'Series',
   books: 'Books',
   audiobooks: 'Audiobooks',
+  comics: 'Comics',
+  magazines: 'Magazines',
+  music: 'Music',
+  sports: 'Sports',
+  adult: 'Adult',
   navigation: '{mediaType} Discovery Modes',
 });
 
@@ -24,6 +38,11 @@ const canonicalDiscoverPaths: Record<SwipeContextMediaType, string> = {
   tv: '/discover/tv',
   book: '/discover/books',
   audiobook: '/discover/audiobooks',
+  comic: '/discover/comics',
+  magazine: '/discover/magazines',
+  music: '/discover/music',
+  sports: '/discover/sports',
+  adult: '/discover/adult',
 };
 
 export const discoveryMediaTypeForPath = (
@@ -50,6 +69,36 @@ export const discoveryMediaTypeForPath = (
   ) {
     return 'audiobook';
   }
+  if (
+    pathname === '/discover/comics' ||
+    pathname.startsWith('/discover/comics/')
+  ) {
+    return 'comic';
+  }
+  if (
+    pathname === '/discover/magazines' ||
+    pathname.startsWith('/discover/magazines/')
+  ) {
+    return 'magazine';
+  }
+  if (
+    pathname === '/discover/music' ||
+    pathname.startsWith('/discover/music/')
+  ) {
+    return 'music';
+  }
+  if (
+    pathname === '/discover/sports' ||
+    pathname.startsWith('/discover/sports/')
+  ) {
+    return 'sports';
+  }
+  if (
+    pathname === '/discover/adult' ||
+    pathname.startsWith('/discover/adult/')
+  ) {
+    return 'adult';
+  }
 
   return undefined;
 };
@@ -69,7 +118,7 @@ export const safeSwipeReturnTo = (value: unknown): string | undefined => {
     const target = new URL(value, base);
     if (
       target.origin !== base ||
-      !/^\/discover\/(?:movies|tv|books|audiobooks)(?:\/|$)/.test(
+      !/^\/discover\/(?:movies|tv|books|audiobooks|comics|magazines|music|sports|adult)(?:\/|$)/.test(
         target.pathname
       )
     ) {
@@ -106,7 +155,11 @@ const DiscoveryModeTabs = ({
     return () => router.events.off('routeChangeComplete', updatePath);
   }, [router]);
 
-  if (!hasPermission(Permission.REQUEST)) {
+  if (
+    !hasPermission([Permission.REQUEST, Permission.REQUEST_ADULT], {
+      type: 'or',
+    })
+  ) {
     return null;
   }
 
@@ -137,7 +190,17 @@ const DiscoveryModeTabs = ({
         ? messages.books
         : mediaType === 'audiobook'
           ? messages.audiobooks
-          : messages.movies
+          : mediaType === 'comic'
+            ? messages.comics
+            : mediaType === 'magazine'
+              ? messages.magazines
+              : mediaType === 'music'
+                ? messages.music
+                : mediaType === 'sports'
+                  ? messages.sports
+                  : mediaType === 'adult'
+                    ? messages.adult
+                    : messages.movies
   );
 
   return (

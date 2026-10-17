@@ -11,11 +11,16 @@ describe('discoveryMediaTypeForPath', () => {
     ['/discover/tv/network/1', 'tv'],
     ['/discover/books', 'book'],
     ['/discover/audiobooks', 'audiobook'],
+    ['/discover/comics', 'comic'],
+    ['/discover/magazines', 'magazine'],
+    ['/discover/music', 'music'],
+    ['/discover/sports', 'sports'],
+    ['/discover/adult', 'adult'],
   ] as const)('identifies the media type for %s', (pathname, mediaType) => {
     expect(discoveryMediaTypeForPath(pathname)).toBe(mediaType);
   });
 
-  it.each(['/discover', '/discover/magazines', '/discover/movieshelf'])(
+  it.each(['/discover', '/discover/movieshelf'])(
     'does not add Swipe to unrelated route %s',
     (pathname) => {
       expect(discoveryMediaTypeForPath(pathname)).toBeUndefined();
@@ -29,6 +34,7 @@ describe('safeSwipeReturnTo', () => {
     '/discover/tv/genre/18?language=en',
     '/discover/books?format=all',
     '/discover/audiobooks?search=mystery',
+    '/discover/magazines?catalog=tracked',
   ])('preserves in-app discovery context for %s', (returnTo) => {
     expect(safeSwipeReturnTo(returnTo)).toBe(returnTo);
   });

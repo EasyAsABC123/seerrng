@@ -1,7 +1,9 @@
 import { getRepository } from '@server/datasource';
 import SwipeDecision, {
+  type SwipeCardSnapshot,
   type SwipeDecisionKind,
   type SwipeMediaType,
+  type SwipeRecommendationMediaType,
 } from '@server/entity/SwipeDecision';
 import SwipeProfile from '@server/entity/SwipeProfile';
 import { getSettings } from '@server/lib/settings';
@@ -20,7 +22,7 @@ interface CachedDeck {
   ranked: boolean;
   builtAt: number;
   /** Recently decided cards, newest last, so undo can restore them whole. */
-  history: SwipeCard[];
+  history: SwipeCardSnapshot[];
 }
 
 const MAX_HISTORY = 20;
@@ -54,7 +56,7 @@ export const getSwipeProfile = async (userId: number) =>
 
 const buildDeck = async (
   userId: number,
-  mediaType: SwipeMediaType
+  mediaType: SwipeRecommendationMediaType
 ): Promise<CachedDeck> => {
   const [candidates, signals, profile] = await Promise.all([
     buildCandidates(userId, mediaType),
@@ -86,7 +88,7 @@ const buildDeck = async (
 /** The user's current deck, rebuilt when stale, empty, or on request. */
 export const getSwipeDeck = async (
   userId: number,
-  mediaType: SwipeMediaType,
+  mediaType: SwipeRecommendationMediaType,
   refresh = false
 ): Promise<CachedDeck> => {
   const key = deckKey(userId, mediaType);
@@ -123,12 +125,16 @@ export const recordSwipeDecision = async (
   userId: number,
   mediaType: SwipeMediaType,
   itemId: string,
-  decision: SwipeDecisionKind
+  decision: SwipeDecisionKind,
+  externalCard?: SwipeCardSnapshot
 ): Promise<SwipeDecision> => {
   const key = deckKey(userId, mediaType);
   const deck = decks.get(key);
-  const card = deck?.cards.find((item) => item.id === itemId);
-  if (!card) {
+  const rememberedCard = deck?.cards.find((item) => item.id === itemId);
+  const card =
+    rememberedCard ??
+    (externalCard ? { ...externalCard, score: 0 } : undefined);
+  if (!card || card.mediaType !== mediaType || card.id !== itemId) {
     throw new SwipeError('That card is no longer in your deck.', 404);
   }
   const repository = getRepository(SwipeDecision);
@@ -143,12 +149,28 @@ export const recordSwipeDecision = async (
       title: card.title.slice(0, 512),
       decision,
       tags: card.tags.join('|').slice(0, 1024) || null,
+      cardData: {
+        mediaType,
+        id: itemId,
+        title: card.title.slice(0, 512),
+        ...(card.subtitle ? { subtitle: card.subtitle.slice(0, 512) } : {}),
+        ...(card.year ? { year: card.year } : {}),
+        ...(card.overview ? { overview: card.overview.slice(0, 800) } : {}),
+        ...(card.imageUrl ? { imageUrl: card.imageUrl.slice(0, 2048) } : {}),
+        ...(card.rating !== undefined ? { rating: card.rating } : {}),
+        ...(card.authorId ? { authorId: card.authorId.slice(0, 128) } : {}),
+        ...(card.serviceId !== undefined ? { serviceId: card.serviceId } : {}),
+        tags: card.tags.slice(0, 16).map((tag) => tag.slice(0, 128)),
+        ...(card.because ? { because: card.because.slice(0, 512) } : {}),
+        ...(card.reason ? { reason: card.reason.slice(0, 512) } : {}),
+        ...(card.software ? { software: card.software } : {}),
+      },
       createdAt: new Date(),
     })
   );
-  if (deck) {
+  if (deck && rememberedCard) {
     deck.cards = deck.cards.filter((item) => item.id !== itemId);
-    deck.history = [...deck.history, card].slice(-MAX_HISTORY);
+    deck.history = [...deck.history, rememberedCard].slice(-MAX_HISTORY);
   }
   return saved;
 };
@@ -160,7 +182,7 @@ export const recordSwipeDecision = async (
 export const undoLastSwipe = async (
   userId: number,
   mediaType: SwipeMediaType
-): Promise<SwipeCard | undefined> => {
+): Promise<SwipeCardSnapshot | undefined> => {
   const repository = getRepository(SwipeDecision);
   const [last] = await repository.find({
     where: { userId, mediaType },
@@ -177,16 +199,33 @@ export const undoLastSwipe = async (
   await repository.remove(last);
   const deck = decks.get(deckKey(userId, mediaType));
   const remembered = deck?.history.find((item) => item.id === last.itemId);
-  const card: SwipeCard = remembered ?? {
-    mediaType,
-    id: last.itemId,
-    title: last.title,
-    tags: last.tags ? last.tags.split('|') : [],
-    score: 0,
-  };
+  const card: SwipeCardSnapshot =
+    remembered ??
+    (last.cardData
+      ? last.cardData
+      : {
+          mediaType,
+          id: last.itemId,
+          title: last.title,
+          tags: last.tags ? last.tags.split('|') : [],
+        });
   if (deck) {
     deck.history = deck.history.filter((item) => item.id !== card.id);
-    deck.cards = [card, ...deck.cards.filter((item) => item.id !== card.id)];
+    if (
+      card.mediaType === 'movie' ||
+      card.mediaType === 'tv' ||
+      card.mediaType === 'book'
+    ) {
+      const recommendationCard: SwipeCard = {
+        ...card,
+        mediaType: card.mediaType as SwipeRecommendationMediaType,
+        score: 0,
+      };
+      deck.cards = [
+        recommendationCard,
+        ...deck.cards.filter((item) => item.id !== card.id),
+      ];
+    }
   }
   return card;
 };

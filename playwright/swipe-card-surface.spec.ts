@@ -35,7 +35,16 @@ test('Swipe card details have an opaque surface above the stacked cards', async 
   ]);
 
   await page.route('**/api/v1/swipe/status', (route) =>
-    route.fulfill({ json: { aiRanking: false } })
+    route.fulfill({
+      json: {
+        aiRanking: false,
+        mediaTypes: ['movie'],
+        bookFormats: ['ebook', 'audiobook'],
+      },
+    })
+  );
+  await page.route('**/api/v1/swipe/decisions*', (route) =>
+    route.fulfill({ json: { decisions: [] } })
   );
   await page.route('**/api/v1/swipe/profile', (route) =>
     route.fulfill({
@@ -59,6 +68,7 @@ test('Swipe card details have an opaque surface above the stacked cards', async 
             mediaType: 'movie',
             id: '101',
             title: 'Top Card With Long Details',
+            tags: [],
             subtitle: 'Top card subtitle',
             overview:
               'The top card details occupy the panel while stacked cards remain behind this text.',
@@ -67,6 +77,7 @@ test('Swipe card details have an opaque surface above the stacked cards', async 
             mediaType: 'movie',
             id: '102',
             title: 'Second Stacked Card',
+            tags: [],
             subtitle: 'Second card subtitle',
             overview: 'Text from the card behind the top panel.',
           },
@@ -74,6 +85,7 @@ test('Swipe card details have an opaque surface above the stacked cards', async 
             mediaType: 'movie',
             id: '103',
             title: 'Third Stacked Card',
+            tags: [],
             overview: 'Additional background card text.',
           },
         ],

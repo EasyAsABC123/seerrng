@@ -241,4 +241,162 @@ describe('Swipe routes', () => {
     });
     assert.equal((await as(viewer).get('/swipe/status')).status, 403);
   });
+
+  it('keeps adult Swipe and its history private to users with adult access', async () => {
+    const settings = getSettings();
+    const previousWhisparr = settings.whisparr;
+    const previousCategories = { ...settings.main.enabledMediaCategories };
+    try {
+      settings.whisparr = [
+        {
+          id: 6,
+          name: 'Test Whisparr',
+          hostname: 'localhost',
+          port: 6969,
+          useSsl: false,
+          baseUrl: '',
+          apiKey: 'test',
+          isDefault: true,
+        } as (typeof settings.whisparr)[number],
+      ];
+      settings.main.enabledMediaCategories = {
+        ...settings.main.enabledMediaCategories,
+        adult: true,
+      };
+      await getRepository(User).update(friend.id, {
+        permissions: Permission.REQUEST_ADULT,
+      });
+      const adultUser = await getRepository(User).findOneByOrFail({
+        id: friend.id,
+      });
+      const status = await as(adultUser).get('/swipe/status');
+      assert.equal(status.status, 200);
+      assert.deepEqual(status.body.mediaTypes, ['adult']);
+
+      const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const saved = await as(adultUser).post('/swipe/decisions', {
+        mediaType: 'adult',
+        id,
+        decision: 'pass',
+        card: {
+          mediaType: 'adult',
+          id,
+          title: 'Private scene title',
+          serviceId: 6,
+          tags: [],
+        },
+      });
+      assert.equal(saved.status, 200);
+      const history = await as(adultUser).get('/swipe/history?mediaType=adult');
+      assert.equal(history.status, 200);
+      assert.equal(history.body.decisions[0].title, 'Private scene title');
+
+      await getRepository(User).update(friend.id, {
+        permissions: Permission.REQUEST,
+      });
+      const regularUser = await getRepository(User).findOneByOrFail({
+        id: friend.id,
+      });
+      assert.equal(
+        (await as(regularUser).get('/swipe/history?mediaType=adult')).status,
+        404
+      );
+      const privateHistory = await as(regularUser).get('/swipe/history');
+      assert.ok(
+        privateHistory.body.decisions.every(
+          (item: { mediaType: string }) => item.mediaType !== 'adult'
+        )
+      );
+    } finally {
+      settings.whisparr = previousWhisparr;
+      settings.main.enabledMediaCategories = previousCategories;
+    }
+  });
+
+  it('restores catalog decisions and clears only passes and seen titles', async () => {
+    const settings = getSettings();
+    const previousWhisparr = settings.whisparr;
+    const previousCategories = { ...settings.main.enabledMediaCategories };
+    try {
+      settings.whisparr = [
+        {
+          id: 6,
+          name: 'Test Whisparr',
+          hostname: 'localhost',
+          port: 6969,
+          useSsl: false,
+          baseUrl: '',
+          apiKey: 'test',
+          isDefault: true,
+        } as (typeof settings.whisparr)[number],
+      ];
+      settings.main.enabledMediaCategories = {
+        ...settings.main.enabledMediaCategories,
+        adult: true,
+      };
+      await getRepository(User).update(friend.id, {
+        permissions: Permission.REQUEST_ADULT,
+      });
+      const adultUser = await getRepository(User).findOneByOrFail({
+        id: friend.id,
+      });
+      const saveDecision = async (
+        id: string,
+        title: string,
+        decision: 'want' | 'pass' | 'seen'
+      ) =>
+        as(adultUser).post('/swipe/decisions', {
+          mediaType: 'adult',
+          id,
+          decision,
+          card: { mediaType: 'adult', id, title, serviceId: 6, tags: [] },
+        });
+      const passedId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const seenId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const requestedId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+      assert.equal(
+        (await saveDecision(passedId, 'Passed scene', 'pass')).status,
+        200
+      );
+      assert.equal(
+        (await saveDecision(seenId, 'Seen scene', 'seen')).status,
+        200
+      );
+      assert.equal(
+        (await saveDecision(requestedId, 'Requested scene', 'want')).status,
+        200
+      );
+
+      const restored = await as(adultUser).post('/swipe/history/restore', {
+        mediaType: 'adult',
+        id: passedId,
+      });
+      assert.equal(restored.status, 200);
+      const afterRestore = await as(adultUser).get(
+        '/swipe/history?mediaType=adult'
+      );
+      assert.deepEqual(
+        afterRestore.body.decisions
+          .map((item: { id: string }) => item.id)
+          .sort(),
+        [seenId, requestedId].sort()
+      );
+
+      const cleared = await request(app)
+        .delete('/swipe/history?mediaType=adult')
+        .set('x-test-user', String(adultUser.id));
+      assert.equal(cleared.status, 200);
+      assert.equal(cleared.body.cleared, 1);
+      const afterClear = await as(adultUser).get(
+        '/swipe/history?mediaType=adult'
+      );
+      assert.deepEqual(
+        afterClear.body.decisions.map((item: { id: string }) => item.id),
+        [requestedId]
+      );
+    } finally {
+      settings.whisparr = previousWhisparr;
+      settings.main.enabledMediaCategories = previousCategories;
+    }
+  });
 });

@@ -14,7 +14,8 @@ import MediaIdentifier, {
 } from '@server/entity/MediaIdentifier';
 import { MediaRequest } from '@server/entity/MediaRequest';
 import SwipeDecision, {
-  type SwipeMediaType,
+  type SwipeCardSnapshot,
+  type SwipeRecommendationMediaType,
 } from '@server/entity/SwipeDecision';
 import SwipeProfile, {
   type SwipeFavoriteSeed,
@@ -28,7 +29,7 @@ import { In } from 'typeorm';
 
 /** A card in a swipe deck. Every card is a real, requestable catalog item. */
 export interface SwipeCard {
-  mediaType: SwipeMediaType;
+  mediaType: SwipeRecommendationMediaType;
   /** TMDB ID (as a string) or Open Library work ID such as `OL45883W`. */
   id: string;
   title: string;
@@ -40,6 +41,8 @@ export interface SwipeCard {
   /** Book subjects or TMDB genre IDs, kept as taste signals. */
   tags: string[];
   authorId?: string;
+  serviceId?: number;
+  software?: SwipeCardSnapshot['software'];
   /** Why this card is in the deck, e.g. "Because you liked Alien". */
   because?: string;
   /** AI explanation, when an AI provider ranked the deck. */
@@ -173,7 +176,7 @@ const bookCard = (
 /** Items the user already decided on, requested, or already has. */
 const excludedIds = async (
   userId: number,
-  mediaType: SwipeMediaType,
+  mediaType: SwipeRecommendationMediaType,
   ids: string[]
 ): Promise<Set<string>> => {
   const excluded = new Set<string>();
@@ -184,7 +187,7 @@ const excludedIds = async (
   });
   decisions.forEach((decision) => excluded.add(decision.itemId));
 
-  if (mediaType !== 'book') {
+  if (mediaType === 'movie' || mediaType === 'tv') {
     const tmdbIds = ids.map(Number).filter(Number.isSafeInteger);
     const media = await getRepository(Media).find({
       select: { tmdbId: true, status: true },
@@ -207,7 +210,7 @@ const excludedIds = async (
 /** The user's liked and passed items, newest first, for seeds and ranking. */
 export const loadTasteSignals = async (
   userId: number,
-  mediaType: SwipeMediaType
+  mediaType: SwipeRecommendationMediaType
 ): Promise<TasteSignals> => {
   const decisions = await getRepository(SwipeDecision).find({
     where: { userId, mediaType },
@@ -449,7 +452,7 @@ const buildBookCandidates = async (
 /** Builds an unranked deck for the user, excluding anything already decided. */
 export const buildCandidates = async (
   userId: number,
-  mediaType: SwipeMediaType
+  mediaType: SwipeRecommendationMediaType
 ): Promise<SwipeCard[]> => {
   const profile =
     (await getRepository(SwipeProfile).findOne({ where: { userId } })) ??
@@ -471,7 +474,7 @@ export const buildCandidates = async (
 /** Favorites available to the signed-in user: their own library, requests, and prior likes. */
 export const getSwipeFavoriteOptions = async (
   userId: number,
-  mediaType: SwipeMediaType
+  mediaType: SwipeRecommendationMediaType
 ): Promise<SwipeFavoriteSeed[]> => {
   const options = new Map<string, SwipeFavoriteSeed>();
   const decisions = await getRepository(SwipeDecision).find({
