@@ -310,7 +310,7 @@ describe('ROMarrNG software acquisition integration', () => {
 
   it('previews platform matches and saves a manual override', () => {
     cy.viewport(1280, 720);
-    cy.visit('/settings/services');
+    cy.visit('/settings/services?serviceCategory=tools-other');
     cy.wait('@overrideRuleSettings')
       .its('response.statusCode')
       .should('eq', 200);

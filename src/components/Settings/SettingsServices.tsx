@@ -52,6 +52,7 @@ import type {
 } from '@server/lib/settings';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/router';
 import { Fragment, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR, { mutate } from 'swr';
@@ -99,6 +100,14 @@ const WhisparrModal = dynamic(
 
 const messages = defineMessages('components.Settings', {
   services: 'Services',
+  chooseServiceCategory: 'Choose what you want to set up',
+  serviceCategoryTvMovies: 'TV & Movies',
+  serviceCategoryBooks: 'Audiobooks & Books',
+  serviceCategoryMusic: 'Music',
+  serviceCategoryTools: 'Tools & Other',
+  serviceCategories: 'Service categories',
+  spotifyPlaylistSettings:
+    'Configure Spotify playlist access in General settings',
   setupAssistantTitle: 'Connect your apps',
   setupAssistantDescription:
     'Generate a Docker Compose starter, discover apps on a Docker network, probe common ports on a selected host, or create a manual report. Import suggestions to prefill hostnames and ports, then test each API connection before saving.',
@@ -192,6 +201,31 @@ const messages = defineMessages('components.Settings', {
     'Override rules allow you to specify properties that will be replaced if a request matches the rule.',
   addrule: 'New Override Rule',
 });
+
+type ServiceCategory =
+  'tv-movies' | 'audiobooks-books' | 'music' | 'tools-other';
+
+const serviceCategoryFromSearchTarget = (
+  targetId: string | undefined
+): ServiceCategory | undefined => {
+  if (!targetId) return undefined;
+  if (targetId === 'prowlarr' || targetId.startsWith('download-clients-')) {
+    return 'tools-other';
+  }
+  if (targetId.startsWith('slskdn-')) return 'music';
+  if (targetId.startsWith('tunerr-')) return 'tv-movies';
+  if (targetId.startsWith('reader-') || targetId.startsWith('readmeabook-')) {
+    return 'audiobooks-books';
+  }
+  if (targetId === 'steamApiKey') return 'tools-other';
+  return undefined;
+};
+
+const isServiceCategory = (value: unknown): value is ServiceCategory =>
+  value === 'tv-movies' ||
+  value === 'audiobooks-books' ||
+  value === 'music' ||
+  value === 'tools-other';
 
 interface ServerInstanceProps {
   name: string;
@@ -400,6 +434,32 @@ const ServerInstance = ({
 
 const SettingsServices = () => {
   const intl = useIntl();
+  const router = useRouter();
+  const searchTargetCategory = serviceCategoryFromSearchTarget(
+    typeof router.query.settingsSearchTarget === 'string'
+      ? router.query.settingsSearchTarget
+      : undefined
+  );
+  const activeServiceCategory =
+    searchTargetCategory ??
+    (isServiceCategory(router.query.serviceCategory)
+      ? router.query.serviceCategory
+      : 'tv-movies');
+
+  const selectServiceCategory = (category: ServiceCategory) => {
+    const query = { ...router.query };
+    delete query.settingsSearch;
+    delete query.settingsSearchTarget;
+    void router.push(
+      {
+        pathname: router.pathname,
+        query: { ...query, serviceCategory: category },
+      },
+      undefined,
+      { shallow: true, scroll: false }
+    );
+  };
+
   const {
     data: radarrData,
     error: radarrError,
@@ -643,1092 +703,1138 @@ const SettingsServices = () => {
           intl.formatMessage(globalMessages.settings),
         ]}
       />
-      <section className="app-card-sub section">
-        <h2 className="heading">
-          {intl.formatMessage(messages.setupAssistantTitle)}
-        </h2>
-        <p className="description">
-          {intl.formatMessage(messages.setupAssistantDescription)}
-        </p>
-        <Button
-          as="a"
-          href="https://github.com/snapetech-org/seerrng/blob/main/docs/using-seerr/setup-assistant.md"
-          target="_blank"
-          rel="noopener noreferrer"
-          buttonType="default"
-          buttonSize="standard"
-        >
-          {intl.formatMessage(messages.setupAssistantGuide)}
-        </Button>
-        <SetupConnectionsImport />
-      </section>
       <div className="mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.radarrsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.videoServiceSettingsDescription, {
-            serverType: 'Radarr',
-          })}
+        <p className="description mb-3">
+          {intl.formatMessage(messages.chooseServiceCategory)}
         </p>
-      </div>
-      {editRadarrModal.open && (
-        <RadarrModal
-          radarr={editRadarrModal.radarr}
-          onClose={() => {
-            if (!overrideRuleModal.open)
-              setEditRadarrModal({ open: false, radarr: null });
-          }}
-          onSave={() => {
-            revalidateRadarr();
-            mutate('/api/v1/settings/public');
-            setEditRadarrModal({ open: false, radarr: null });
-          }}
-        />
-      )}
-      {editSonarrModal.open && (
-        <SonarrModal
-          sonarr={editSonarrModal.sonarr}
-          onClose={() => {
-            if (!overrideRuleModal.open)
-              setEditSonarrModal({ open: false, sonarr: null });
-          }}
-          onSave={() => {
-            revalidateSonarr();
-            mutate('/api/v1/settings/public');
-            setEditSonarrModal({ open: false, sonarr: null });
-          }}
-        />
-      )}
-      {editWhisparrModal.open && (
-        <WhisparrModal
-          whisparr={editWhisparrModal.whisparr}
-          onClose={() => setEditWhisparrModal({ open: false, whisparr: null })}
-          onSave={() => {
-            revalidateWhisparr();
-            mutate('/api/v1/settings/public');
-            setEditWhisparrModal({ open: false, whisparr: null });
-          }}
-        />
-      )}
-      {editSportarrModal.open && (
-        <SportarrModal
-          settings={editSportarrModal.sportarr}
-          onClose={() => setEditSportarrModal({ open: false, sportarr: null })}
-          onSave={() => {
-            revalidateSportarr();
-            mutate('/api/v1/settings/public');
-            setEditSportarrModal({ open: false, sportarr: null });
-          }}
-        />
-      )}
-      {editLidarrModal.open && (
-        <LidarrModal
-          lidarr={editLidarrModal.lidarr}
-          onClose={() => setEditLidarrModal({ open: false, lidarr: null })}
-          onSave={() => {
-            revalidateLidarr();
-            mutate('/api/v1/settings/public');
-            setEditLidarrModal({ open: false, lidarr: null });
-          }}
-        />
-      )}
-      {editReadarrModal.open && (
-        <ReadarrModal
-          readarr={editReadarrModal.readarr}
-          copyFrom={editReadarrModal.copyFrom}
-          copyFormat={editReadarrModal.copyFormat}
-          onClose={() => setEditReadarrModal({ open: false, readarr: null })}
-          onSave={() => {
-            revalidateReadarr();
-            mutate('/api/v1/settings/public');
-            setEditReadarrModal({ open: false, readarr: null });
-          }}
-        />
-      )}
-      {editJellystatModal && (
-        <JellystatModal
-          settings={jellystatData ?? null}
-          onClose={() => setEditJellystatModal(false)}
-          onSave={() => {
-            revalidateJellystat();
-            setEditJellystatModal(false);
-          }}
-        />
-      )}
-      {editNavidromeModal && (
-        <NavidromeModal
-          settings={navidromeData ?? null}
-          onClose={() => setEditNavidromeModal(false)}
-          onSave={() => {
-            revalidateNavidrome();
-            setEditNavidromeModal(false);
-          }}
-        />
-      )}
-      {editAudiobookshelfModal && (
-        <AudiobookshelfModal
-          settings={audiobookshelfData ?? null}
-          onClose={() => setEditAudiobookshelfModal(false)}
-          onSave={() => {
-            revalidateAudiobookshelf();
-            mutate('/api/v1/settings/public');
-            setEditAudiobookshelfModal(false);
-          }}
-        />
-      )}
-      {editMylarModal.open && (
-        <MylarModal
-          mylar={editMylarModal.mylar}
-          onClose={() => setEditMylarModal({ open: false, mylar: null })}
-          onSave={() => {
-            revalidateMylar();
-            revalidateKapowarr();
-            revalidateBackIssue();
-            mutate('/api/v1/settings/public');
-            setEditMylarModal({ open: false, mylar: null });
-          }}
-        />
-      )}
-      {editKapowarrModal.open && (
-        <KapowarrModal
-          kapowarr={editKapowarrModal.kapowarr}
-          onClose={() => setEditKapowarrModal({ open: false, kapowarr: null })}
-          onSave={() => {
-            revalidateKapowarr();
-            revalidateMylar();
-            revalidateBackIssue();
-            mutate('/api/v1/settings/public');
-            setEditKapowarrModal({ open: false, kapowarr: null });
-          }}
-        />
-      )}
-      {editBackIssueModal.open && (
-        <BackIssueModal
-          backissue={editBackIssueModal.backissue}
-          onClose={() =>
-            setEditBackIssueModal({ open: false, backissue: null })
-          }
-          onSave={() => {
-            revalidateBackIssue();
-            revalidateMylar();
-            revalidateKapowarr();
-            mutate('/api/v1/settings/public');
-            setEditBackIssueModal({ open: false, backissue: null });
-          }}
-        />
-      )}
-      {editLazyLibrarianModal.open && (
-        <LazyLibrarianModal
-          lazylibrarian={editLazyLibrarianModal.lazylibrarian}
-          onClose={() =>
-            setEditLazyLibrarianModal({ open: false, lazylibrarian: null })
-          }
-          onSave={() => {
-            revalidateLazyLibrarian();
-            mutate('/api/v1/settings/public');
-            setEditLazyLibrarianModal({ open: false, lazylibrarian: null });
-          }}
-        />
-      )}
-      <Transition as={Fragment} show={deleteServerModal.open}>
-        <Modal
-          okText={intl.formatMessage(globalMessages.delete)}
-          okButtonType="danger"
-          okButtonProps={{ buttonIcon: 'delete' }}
-          onOk={() => deleteServer()}
-          onCancel={() =>
-            setDeleteServerModal({
-              open: false,
-              serverId: null,
-              type: 'radarr',
-            })
-          }
-          title={intl.formatMessage(messages.deleteServer, {
-            serverType:
-              deleteServerModal.type === 'radarr'
-                ? 'Radarr'
-                : deleteServerModal.type === 'whisparr'
-                  ? 'Whisparr'
-                  : deleteServerModal.type === 'sonarr'
-                    ? 'Sonarr'
-                    : deleteServerModal.type === 'sportarr'
-                      ? 'Sportarr'
-                      : deleteServerModal.type === 'lidarr'
-                        ? 'Lidarr'
-                        : deleteServerModal.type === 'backissue'
-                          ? 'BackIssue'
-                          : deleteServerModal.type === 'audiobookshelf'
-                            ? 'Audiobookshelf'
-                            : deleteServerModal.type === 'navidrome'
-                              ? 'Navidrome'
-                              : deleteServerModal.type === 'jellystat'
-                                ? 'Jellystat'
-                                : 'Bookshelf',
-          })}
+        <nav
+          aria-label={intl.formatMessage(messages.serviceCategories)}
+          className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap"
         >
-          {intl.formatMessage(messages.deleteserverconfirm)}
-        </Modal>
-      </Transition>
-      <div className="app-card-sub section settings-service-section">
-        {!radarrData && !radarrError && <LoadingSpinner />}
-        {radarrData && !radarrError && (
-          <>
-            {radarrData.length > 0 &&
-              (!radarrData.some((radarr) => radarr.isDefault) ? (
-                <Alert
-                  title={intl.formatMessage(messages.noDefaultServer, {
-                    serverType: 'Radarr',
-                    mediaType: intl.formatMessage(messages.mediaTypeMovie),
-                  })}
-                />
-              ) : !radarrData.some(
-                  (radarr) => radarr.isDefault && !radarr.is4k
-                ) ? (
-                <Alert
-                  title={intl.formatMessage(messages.noDefaultNon4kServer, {
-                    serverType: 'Radarr',
-                    strong: (msg: React.ReactNode) => (
-                      <strong className="font-semibold text-white">
-                        {msg}
-                      </strong>
-                    ),
-                  })}
-                />
-              ) : (
-                radarrData.some((radarr) => radarr.is4k) &&
-                !radarrData.some(
-                  (radarr) => radarr.isDefault && radarr.is4k
-                ) && (
+          {(
+            [
+              {
+                id: 'tv-movies',
+                label: messages.serviceCategoryTvMovies,
+                Icon: FilmIcon,
+              },
+              {
+                id: 'audiobooks-books',
+                label: messages.serviceCategoryBooks,
+                Icon: BookOpenIcon,
+              },
+              {
+                id: 'music',
+                label: messages.serviceCategoryMusic,
+                Icon: MusicalNoteIcon,
+              },
+              {
+                id: 'tools-other',
+                label: messages.serviceCategoryTools,
+                Icon: Square3Stack3DIcon,
+              },
+            ] as const
+          ).map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              className={`app-filter-button w-full sm:w-auto ${
+                activeServiceCategory === id
+                  ? 'app-filter-button-active'
+                  : 'app-filter-button-idle'
+              }`}
+              aria-pressed={activeServiceCategory === id}
+              onClick={() => selectServiceCategory(id)}
+            >
+              <Icon aria-hidden="true" />
+              {intl.formatMessage(label)}
+            </button>
+          ))}
+        </nav>
+      </div>
+      <div
+        data-settings-category="tools-other"
+        hidden={activeServiceCategory !== 'tools-other'}
+        className={activeServiceCategory === 'tools-other' ? '' : 'hidden'}
+      >
+        <section className="app-card-sub section">
+          <h2 className="heading">
+            {intl.formatMessage(messages.setupAssistantTitle)}
+          </h2>
+          <p className="description">
+            {intl.formatMessage(messages.setupAssistantDescription)}
+          </p>
+          <Button
+            as="a"
+            href="https://github.com/snapetech-org/seerrng/blob/main/docs/using-seerr/setup-assistant.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            buttonType="default"
+            buttonSize="standard"
+          >
+            {intl.formatMessage(messages.setupAssistantGuide)}
+          </Button>
+          <SetupConnectionsImport />
+        </section>
+      </div>
+      <div
+        data-settings-category="tv-movies"
+        hidden={activeServiceCategory !== 'tv-movies'}
+        className={activeServiceCategory === 'tv-movies' ? '' : 'hidden'}
+      >
+        <div className="mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.radarrsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.videoServiceSettingsDescription, {
+              serverType: 'Radarr',
+            })}
+          </p>
+        </div>
+        {editRadarrModal.open && (
+          <RadarrModal
+            radarr={editRadarrModal.radarr}
+            onClose={() => {
+              if (!overrideRuleModal.open)
+                setEditRadarrModal({ open: false, radarr: null });
+            }}
+            onSave={() => {
+              revalidateRadarr();
+              mutate('/api/v1/settings/public');
+              setEditRadarrModal({ open: false, radarr: null });
+            }}
+          />
+        )}
+        {editSonarrModal.open && (
+          <SonarrModal
+            sonarr={editSonarrModal.sonarr}
+            onClose={() => {
+              if (!overrideRuleModal.open)
+                setEditSonarrModal({ open: false, sonarr: null });
+            }}
+            onSave={() => {
+              revalidateSonarr();
+              mutate('/api/v1/settings/public');
+              setEditSonarrModal({ open: false, sonarr: null });
+            }}
+          />
+        )}
+        {editWhisparrModal.open && (
+          <WhisparrModal
+            whisparr={editWhisparrModal.whisparr}
+            onClose={() =>
+              setEditWhisparrModal({ open: false, whisparr: null })
+            }
+            onSave={() => {
+              revalidateWhisparr();
+              mutate('/api/v1/settings/public');
+              setEditWhisparrModal({ open: false, whisparr: null });
+            }}
+          />
+        )}
+        {editSportarrModal.open && (
+          <SportarrModal
+            settings={editSportarrModal.sportarr}
+            onClose={() =>
+              setEditSportarrModal({ open: false, sportarr: null })
+            }
+            onSave={() => {
+              revalidateSportarr();
+              mutate('/api/v1/settings/public');
+              setEditSportarrModal({ open: false, sportarr: null });
+            }}
+          />
+        )}
+        {editLidarrModal.open && (
+          <LidarrModal
+            lidarr={editLidarrModal.lidarr}
+            onClose={() => setEditLidarrModal({ open: false, lidarr: null })}
+            onSave={() => {
+              revalidateLidarr();
+              mutate('/api/v1/settings/public');
+              setEditLidarrModal({ open: false, lidarr: null });
+            }}
+          />
+        )}
+        {editReadarrModal.open && (
+          <ReadarrModal
+            readarr={editReadarrModal.readarr}
+            copyFrom={editReadarrModal.copyFrom}
+            copyFormat={editReadarrModal.copyFormat}
+            onClose={() => setEditReadarrModal({ open: false, readarr: null })}
+            onSave={() => {
+              revalidateReadarr();
+              mutate('/api/v1/settings/public');
+              setEditReadarrModal({ open: false, readarr: null });
+            }}
+          />
+        )}
+        {editJellystatModal && (
+          <JellystatModal
+            settings={jellystatData ?? null}
+            onClose={() => setEditJellystatModal(false)}
+            onSave={() => {
+              revalidateJellystat();
+              setEditJellystatModal(false);
+            }}
+          />
+        )}
+        {editNavidromeModal && (
+          <NavidromeModal
+            settings={navidromeData ?? null}
+            onClose={() => setEditNavidromeModal(false)}
+            onSave={() => {
+              revalidateNavidrome();
+              setEditNavidromeModal(false);
+            }}
+          />
+        )}
+        {editAudiobookshelfModal && (
+          <AudiobookshelfModal
+            settings={audiobookshelfData ?? null}
+            onClose={() => setEditAudiobookshelfModal(false)}
+            onSave={() => {
+              revalidateAudiobookshelf();
+              mutate('/api/v1/settings/public');
+              setEditAudiobookshelfModal(false);
+            }}
+          />
+        )}
+        {editMylarModal.open && (
+          <MylarModal
+            mylar={editMylarModal.mylar}
+            onClose={() => setEditMylarModal({ open: false, mylar: null })}
+            onSave={() => {
+              revalidateMylar();
+              revalidateKapowarr();
+              revalidateBackIssue();
+              mutate('/api/v1/settings/public');
+              setEditMylarModal({ open: false, mylar: null });
+            }}
+          />
+        )}
+        {editKapowarrModal.open && (
+          <KapowarrModal
+            kapowarr={editKapowarrModal.kapowarr}
+            onClose={() =>
+              setEditKapowarrModal({ open: false, kapowarr: null })
+            }
+            onSave={() => {
+              revalidateKapowarr();
+              revalidateMylar();
+              revalidateBackIssue();
+              mutate('/api/v1/settings/public');
+              setEditKapowarrModal({ open: false, kapowarr: null });
+            }}
+          />
+        )}
+        {editBackIssueModal.open && (
+          <BackIssueModal
+            backissue={editBackIssueModal.backissue}
+            onClose={() =>
+              setEditBackIssueModal({ open: false, backissue: null })
+            }
+            onSave={() => {
+              revalidateBackIssue();
+              revalidateMylar();
+              revalidateKapowarr();
+              mutate('/api/v1/settings/public');
+              setEditBackIssueModal({ open: false, backissue: null });
+            }}
+          />
+        )}
+        {editLazyLibrarianModal.open && (
+          <LazyLibrarianModal
+            lazylibrarian={editLazyLibrarianModal.lazylibrarian}
+            onClose={() =>
+              setEditLazyLibrarianModal({ open: false, lazylibrarian: null })
+            }
+            onSave={() => {
+              revalidateLazyLibrarian();
+              mutate('/api/v1/settings/public');
+              setEditLazyLibrarianModal({ open: false, lazylibrarian: null });
+            }}
+          />
+        )}
+        <Transition as={Fragment} show={deleteServerModal.open}>
+          <Modal
+            okText={intl.formatMessage(globalMessages.delete)}
+            okButtonType="danger"
+            okButtonProps={{ buttonIcon: 'delete' }}
+            onOk={() => deleteServer()}
+            onCancel={() =>
+              setDeleteServerModal({
+                open: false,
+                serverId: null,
+                type: 'radarr',
+              })
+            }
+            title={intl.formatMessage(messages.deleteServer, {
+              serverType:
+                deleteServerModal.type === 'radarr'
+                  ? 'Radarr'
+                  : deleteServerModal.type === 'whisparr'
+                    ? 'Whisparr'
+                    : deleteServerModal.type === 'sonarr'
+                      ? 'Sonarr'
+                      : deleteServerModal.type === 'sportarr'
+                        ? 'Sportarr'
+                        : deleteServerModal.type === 'lidarr'
+                          ? 'Lidarr'
+                          : deleteServerModal.type === 'backissue'
+                            ? 'BackIssue'
+                            : deleteServerModal.type === 'audiobookshelf'
+                              ? 'Audiobookshelf'
+                              : deleteServerModal.type === 'navidrome'
+                                ? 'Navidrome'
+                                : deleteServerModal.type === 'jellystat'
+                                  ? 'Jellystat'
+                                  : 'Bookshelf',
+            })}
+          >
+            {intl.formatMessage(messages.deleteserverconfirm)}
+          </Modal>
+        </Transition>
+        <div className="app-card-sub section settings-service-section">
+          {!radarrData && !radarrError && <LoadingSpinner />}
+          {radarrData && !radarrError && (
+            <>
+              {radarrData.length > 0 &&
+                (!radarrData.some((radarr) => radarr.isDefault) ? (
                   <Alert
-                    title={intl.formatMessage(messages.noDefault4kServer, {
+                    title={intl.formatMessage(messages.noDefaultServer, {
                       serverType: 'Radarr',
                       mediaType: intl.formatMessage(messages.mediaTypeMovie),
                     })}
                   />
-                )
-              ))}
-            <ul className="settings-service-grid">
-              {radarrData.map((radarr) => (
-                <ServerInstance
-                  key={`radarr-config-${radarr.id}`}
-                  name={radarr.name}
-                  hostname={radarr.hostname}
-                  port={radarr.port}
-                  profileName={radarr.activeProfileName}
-                  isSSL={radarr.useSsl}
-                  isDefault={radarr.isDefault}
-                  is4k={radarr.is4k}
-                  externalUrl={radarr.externalUrl}
-                  onEdit={() => setEditRadarrModal({ open: true, radarr })}
-                  onDelete={() =>
-                    setDeleteServerModal({
-                      open: true,
-                      serverId: radarr.id,
-                      type: 'radarr',
-                    })
-                  }
-                />
-              ))}
-              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-                <div className="flex h-full w-full items-center justify-center">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    className="mt-3 mb-3"
-                    onClick={() =>
-                      setEditRadarrModal({ open: true, radarr: null })
-                    }
-                  >
-                    <PlusIcon />
-                    <span>{intl.formatMessage(messages.addradarr)}</span>
-                  </Button>
-                </div>
-              </li>
-            </ul>
-          </>
-        )}
-      </div>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.whisparrsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.adultServiceSettingsDescription)}
-        </p>
-      </div>
-      <div className="app-card-sub section settings-service-section">
-        {!whisparrData && !whisparrError && <LoadingSpinner />}
-        {whisparrData && !whisparrError && (
-          <>
-            {whisparrData.length > 0 &&
-              !whisparrData.some((service) => service.isDefault) && (
-                <Alert
-                  title={intl.formatMessage(messages.noDefaultServer, {
-                    serverType: 'Whisparr',
-                    mediaType: intl.formatMessage(messages.mediaTypeAdult),
-                  })}
-                />
-              )}
-            <ul className="settings-service-grid">
-              {whisparrData.map((service) => (
-                <ServerInstance
-                  key={`whisparr-config-${service.id}`}
-                  name={service.name}
-                  hostname={service.hostname}
-                  port={service.port}
-                  profileName={service.activeProfileName}
-                  isSSL={service.useSsl}
-                  isDefault={service.isDefault}
-                  isAdult
-                  externalUrl={service.externalUrl}
-                  onEdit={() =>
-                    setEditWhisparrModal({ open: true, whisparr: service })
-                  }
-                  onDelete={() =>
-                    setDeleteServerModal({
-                      open: true,
-                      serverId: service.id,
-                      type: 'whisparr',
-                    })
-                  }
-                />
-              ))}
-              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-                <div className="flex h-full w-full items-center justify-center">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    className="mt-3 mb-3"
-                    onClick={() =>
-                      setEditWhisparrModal({ open: true, whisparr: null })
-                    }
-                  >
-                    <PlusIcon />
-                    <span>{intl.formatMessage(messages.addWhisparr)}</span>
-                  </Button>
-                </div>
-              </li>
-            </ul>
-          </>
-        )}
-      </div>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.sonarrsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.videoServiceSettingsDescription, {
-            serverType: 'Sonarr',
-          })}
-        </p>
-      </div>
-      <div className="app-card-sub section settings-service-section">
-        {!sonarrData && !sonarrError && <LoadingSpinner />}
-        {sonarrData && !sonarrError && (
-          <>
-            {sonarrData.length > 0 &&
-              (!sonarrData.some((sonarr) => sonarr.isDefault) ? (
-                <Alert
-                  title={intl.formatMessage(messages.noDefaultServer, {
-                    serverType: 'Sonarr',
-                    mediaType: intl.formatMessage(messages.mediaTypeSeries),
-                  })}
-                />
-              ) : !sonarrData.some(
-                  (sonarr) => sonarr.isDefault && !sonarr.is4k
-                ) ? (
-                <Alert
-                  title={intl.formatMessage(messages.noDefaultNon4kServer, {
-                    serverType: 'Sonarr',
-                    strong: (msg: React.ReactNode) => (
-                      <strong className="font-semibold text-white">
-                        {msg}
-                      </strong>
-                    ),
-                  })}
-                />
-              ) : (
-                sonarrData.some((sonarr) => sonarr.is4k) &&
-                !sonarrData.some(
-                  (sonarr) => sonarr.isDefault && sonarr.is4k
-                ) && (
+                ) : !radarrData.some(
+                    (radarr) => radarr.isDefault && !radarr.is4k
+                  ) ? (
                   <Alert
-                    title={intl.formatMessage(messages.noDefault4kServer, {
-                      serverType: 'Sonarr',
-                      mediaType: intl.formatMessage(messages.mediaTypeSeries),
-                    })}
-                  />
-                )
-              ))}
-            <ul className="settings-service-grid">
-              {sonarrData.map((sonarr) => (
-                <ServerInstance
-                  key={`sonarr-config-${sonarr.id}`}
-                  name={sonarr.name}
-                  hostname={sonarr.hostname}
-                  port={sonarr.port}
-                  profileName={sonarr.activeProfileName}
-                  animeProfileName={sonarr.activeAnimeProfileName}
-                  isSSL={sonarr.useSsl}
-                  isSonarr
-                  isDefault={sonarr.isDefault}
-                  is4k={sonarr.is4k}
-                  externalUrl={sonarr.externalUrl}
-                  onEdit={() => setEditSonarrModal({ open: true, sonarr })}
-                  onDelete={() =>
-                    setDeleteServerModal({
-                      open: true,
-                      serverId: sonarr.id,
-                      type: 'sonarr',
-                    })
-                  }
-                />
-              ))}
-              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-                <div className="flex h-full w-full items-center justify-center">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    onClick={() =>
-                      setEditSonarrModal({ open: true, sonarr: null })
-                    }
-                  >
-                    <PlusIcon />
-                    <span>{intl.formatMessage(messages.addsonarr)}</span>
-                  </Button>
-                </div>
-              </li>
-            </ul>
-          </>
-        )}
-      </div>
-      <div className="settings-service-heading">
-        <h3 className="heading">
-          {intl.formatMessage(messages.sportarrsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.sportarrDescription)}
-        </p>
-      </div>
-      <div className="app-card-sub section settings-service-section">
-        {!sportarrData && !sportarrError && <LoadingSpinner />}
-        {sportarrData && !sportarrError && (
-          <>
-            {sportarrData.length > 0 &&
-              !sportarrData.some((instance) => instance.isDefault) && (
-                <Alert title={intl.formatMessage(messages.noDefaultSportarr)} />
-              )}
-            <ul className="settings-service-grid">
-              {sportarrData.map((instance) => (
-                <ServerInstance
-                  key={`sportarr-config-${instance.id}`}
-                  name={instance.name}
-                  hostname={instance.hostname}
-                  port={instance.port}
-                  profileName={instance.activeProfileName}
-                  isSSL={instance.useSsl}
-                  isSportarr
-                  isDefault={instance.isDefault}
-                  externalUrl={instance.externalUrl}
-                  onEdit={() =>
-                    setEditSportarrModal({ open: true, sportarr: instance })
-                  }
-                  onDelete={() =>
-                    setDeleteServerModal({
-                      open: true,
-                      serverId: instance.id,
-                      type: 'sportarr',
-                    })
-                  }
-                />
-              ))}
-              <li className="settings-service-add-card">
-                <div className="settings-service-add-card-content">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    onClick={() =>
-                      setEditSportarrModal({ open: true, sportarr: null })
-                    }
-                  >
-                    <PlusIcon
-                      className="settings-service-add-icon"
-                      aria-hidden="true"
-                    />
-                    <span>{intl.formatMessage(messages.addSportarr)}</span>
-                  </Button>
-                </div>
-              </li>
-            </ul>
-          </>
-        )}
-      </div>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.lidarrsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.musicServiceSettingsDescription, {
-            serverType: 'Lidarr',
-          })}
-        </p>
-      </div>
-      <div className="app-card-sub section settings-service-section">
-        {!lidarrData && !lidarrError && <LoadingSpinner />}
-        {lidarrData && !lidarrError && (
-          <>
-            {lidarrData.length > 0 &&
-              (!lidarrData.some((lidarr) => lidarr.isDefault) ? (
-                <Alert
-                  title={intl.formatMessage(messages.noDefaultServer, {
-                    serverType: 'Lidarr',
-                    mediaType: intl.formatMessage(messages.mediaTypeMusic),
-                  })}
-                />
-              ) : null)}
-            <ul className="settings-service-grid">
-              {lidarrData.map((lidarr) => (
-                <ServerInstance
-                  key={`lidarr-config-${lidarr.id}`}
-                  name={lidarr.name}
-                  hostname={lidarr.hostname}
-                  port={lidarr.port}
-                  profileName={lidarr.activeProfileName}
-                  isSSL={lidarr.useSsl}
-                  isLidarr={true}
-                  isDefault={lidarr.isDefault}
-                  externalUrl={lidarr.externalUrl}
-                  onEdit={() => setEditLidarrModal({ open: true, lidarr })}
-                  onDelete={() =>
-                    setDeleteServerModal({
-                      open: true,
-                      serverId: lidarr.id,
-                      type: 'lidarr',
-                    })
-                  }
-                />
-              ))}
-              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-                <div className="flex h-full w-full items-center justify-center">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    onClick={() =>
-                      setEditLidarrModal({ open: true, lidarr: null })
-                    }
-                  >
-                    <PlusIcon />
-                    <span>{intl.formatMessage(messages.addlidarr)}</span>
-                  </Button>
-                </div>
-              </li>
-            </ul>
-          </>
-        )}
-      </div>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.readarrsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.bookServiceSettingsDescription, {
-            serverType: 'Bookshelf',
-          })}
-        </p>
-      </div>
-      <div className="app-card-sub section settings-service-section">
-        {!readarrData && !readarrError && <LoadingSpinner />}
-        {readarrData && !readarrError && (
-          <>
-            {readarrData.length === 0 && (
-              <p className="mb-4 text-sm text-gray-300">
-                {intl.formatMessage(messages.bookFreshSetup)}
-              </p>
-            )}
-            {missingBookFormat && bookConnectionToCopy && (
-              <div className="mb-4 flex flex-wrap items-center gap-3">
-                <p className="text-sm text-gray-300">
-                  {intl.formatMessage(messages.bookAddMissingFormat, {
-                    format: intl.formatMessage(
-                      missingBookFormat === 'ebook'
-                        ? messages.ebook
-                        : messages.audiobook
-                    ),
-                  })}
-                </p>
-                <Button
-                  buttonType="primary"
-                  buttonSize="sm"
-                  onClick={() =>
-                    setEditReadarrModal({
-                      open: true,
-                      readarr: null,
-                      copyFrom: bookConnectionToCopy,
-                      copyFormat: missingBookFormat,
-                    })
-                  }
-                >
-                  {intl.formatMessage(messages.bookAddOtherFormat, {
-                    format: intl.formatMessage(
-                      missingBookFormat === 'ebook'
-                        ? messages.ebook
-                        : messages.audiobook
-                    ),
-                  })}
-                </Button>
-              </div>
-            )}
-            {hasReadarrEbook && hasReadarrAudiobook && (
-              <p className="mb-4 text-sm text-gray-300">
-                {intl.formatMessage(
-                  hasSharedBookshelf
-                    ? messages.bookSharedSetup
-                    : messages.bookSplitUpgrade
-                )}{' '}
-                {!hasSharedBookshelf && (
-                  <a
-                    className="text-primary-400 hover:underline"
-                    href="https://github.com/snapetech-org/seerrng/blob/main/docs/using-seerr/bookshelf-backend.md"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {intl.formatMessage(messages.bookCombineGuide)}
-                  </a>
-                )}
-              </p>
-            )}
-            {readarrData.length > 0 && (
-              <>
-                {hasReadarrEbook && !hasDefaultReadarrEbook && (
-                  <Alert
-                    title={intl.formatMessage(messages.noDefaultServer, {
-                      serverType: 'Bookshelf',
-                      mediaType: intl.formatMessage(messages.mediaTypeEbook),
-                    })}
-                  />
-                )}
-                {hasReadarrAudiobook && !hasDefaultReadarrAudiobook && (
-                  <Alert
-                    title={intl.formatMessage(messages.noDefaultServer, {
-                      serverType: 'Bookshelf',
-                      mediaType: intl.formatMessage(
-                        messages.mediaTypeAudiobook
+                    title={intl.formatMessage(messages.noDefaultNon4kServer, {
+                      serverType: 'Radarr',
+                      strong: (msg: React.ReactNode) => (
+                        <strong className="font-semibold text-white">
+                          {msg}
+                        </strong>
                       ),
                     })}
                   />
-                )}
-                {!hasReadarrEbook && !hasReadarrAudiobook && (
-                  <Alert
-                    title={intl.formatMessage(messages.noDefaultServer, {
-                      serverType: 'Bookshelf',
-                      mediaType: intl.formatMessage(messages.mediaTypeBook),
-                    })}
-                  />
-                )}
-              </>
-            )}
-            <ul className="settings-service-grid">
-              {readarrData.map((readarr) => (
-                <ServerInstance
-                  key={`readarr-config-${readarr.id}`}
-                  name={readarr.name}
-                  hostname={readarr.hostname}
-                  port={readarr.port}
-                  profileName={readarr.activeProfileName}
-                  isSSL={readarr.useSsl}
-                  isReadarr={true}
-                  serviceFormat={readarr.serviceType ?? 'ebook'}
-                  isDefault={readarr.isDefault}
-                  externalUrl={readarr.externalUrl}
-                  onEdit={() => setEditReadarrModal({ open: true, readarr })}
-                  onDelete={() =>
-                    setDeleteServerModal({
-                      open: true,
-                      serverId: readarr.id,
-                      type: 'readarr',
-                    })
-                  }
-                />
-              ))}
-              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-                <div className="flex h-full w-full items-center justify-center">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    onClick={() =>
-                      setEditReadarrModal({ open: true, readarr: null })
+                ) : (
+                  radarrData.some((radarr) => radarr.is4k) &&
+                  !radarrData.some(
+                    (radarr) => radarr.isDefault && radarr.is4k
+                  ) && (
+                    <Alert
+                      title={intl.formatMessage(messages.noDefault4kServer, {
+                        serverType: 'Radarr',
+                        mediaType: intl.formatMessage(messages.mediaTypeMovie),
+                      })}
+                    />
+                  )
+                ))}
+              <ul className="settings-service-grid">
+                {radarrData.map((radarr) => (
+                  <ServerInstance
+                    key={`radarr-config-${radarr.id}`}
+                    name={radarr.name}
+                    hostname={radarr.hostname}
+                    port={radarr.port}
+                    profileName={radarr.activeProfileName}
+                    isSSL={radarr.useSsl}
+                    isDefault={radarr.isDefault}
+                    is4k={radarr.is4k}
+                    externalUrl={radarr.externalUrl}
+                    onEdit={() => setEditRadarrModal({ open: true, radarr })}
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: radarr.id,
+                        type: 'radarr',
+                      })
                     }
-                  >
-                    <PlusIcon />
-                    <span>{intl.formatMessage(messages.addreadarr)}</span>
-                  </Button>
-                </div>
-              </li>
-            </ul>
-            <div className="mt-8 mb-4">
-              <h4 className="text-lg font-semibold">
-                {intl.formatMessage(messages.audiobookshelfsettings)}
-              </h4>
-              <p className="description">
-                {intl.formatMessage(messages.audiobookshelfDescription)}
-              </p>
-            </div>
-            <ul className="settings-service-grid">
-              {audiobookshelfData && (
-                <ServerInstance
-                  name={`${audiobookshelfData.name} · ${audiobookshelfData.libraryName}`}
-                  hostname={audiobookshelfData.hostname}
-                  port={audiobookshelfData.port}
-                  isSSL={audiobookshelfData.useSsl}
-                  isAudiobookshelf
-                  externalUrl={audiobookshelfData.externalUrl}
-                  onEdit={() => setEditAudiobookshelfModal(true)}
-                  onDelete={() =>
-                    setDeleteServerModal({
-                      open: true,
-                      serverId: audiobookshelfData.id,
-                      type: 'audiobookshelf',
-                    })
-                  }
-                />
-              )}
-              {!audiobookshelfData && (
+                  />
+                ))}
                 <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
                   <div className="flex h-full w-full items-center justify-center">
                     <Button
                       buttonType="success"
                       buttonSize="standard"
-                      onClick={() => setEditAudiobookshelfModal(true)}
+                      className="mt-3 mb-3"
+                      onClick={() =>
+                        setEditRadarrModal({ open: true, radarr: null })
+                      }
                     >
                       <PlusIcon />
-                      <span>
-                        {intl.formatMessage(messages.addAudiobookshelf)}
-                      </span>
+                      <span>{intl.formatMessage(messages.addradarr)}</span>
                     </Button>
                   </div>
                 </li>
-              )}
-            </ul>
-          </>
-        )}
-      </div>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.navidromesettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.navidromeDescription)}
-        </p>
-      </div>
-      <ul className="settings-service-grid">
-        {navidromeData &&
-          (() => {
-            const url = new URL(navidromeData.url);
-            return (
-              <ServerInstance
-                name={`${navidromeData.username} · Navidrome`}
-                hostname={url.hostname}
-                port={
-                  url.port
-                    ? Number(url.port)
-                    : url.protocol === 'https:'
-                      ? 443
-                      : 80
-                }
-                isSSL={url.protocol === 'https:'}
-                onEdit={() => setEditNavidromeModal(true)}
-                onDelete={() =>
-                  setDeleteServerModal({
-                    open: true,
-                    serverId: null,
-                    type: 'navidrome',
-                  })
-                }
-              />
-            );
-          })()}
-        {!navidromeData && (
-          <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-            <div className="flex h-full w-full items-center justify-center">
-              <Button
-                buttonType="success"
-                buttonSize="standard"
-                onClick={() => setEditNavidromeModal(true)}
-              >
-                <PlusIcon />
-                <span>{intl.formatMessage(messages.addNavidrome)}</span>
-              </Button>
-            </div>
-          </li>
-        )}
-      </ul>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.jellystatsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.jellystatDescription)}
-        </p>
-      </div>
-      <ul className="settings-service-grid">
-        {jellystatData &&
-          (() => {
-            const url = new URL(jellystatData.url);
-            return (
-              <ServerInstance
-                name="Jellystat"
-                hostname={url.hostname}
-                port={
-                  url.port
-                    ? Number(url.port)
-                    : url.protocol === 'https:'
-                      ? 443
-                      : 80
-                }
-                isSSL={url.protocol === 'https:'}
-                onEdit={() => setEditJellystatModal(true)}
-                onDelete={() =>
-                  setDeleteServerModal({
-                    open: true,
-                    serverId: null,
-                    type: 'jellystat',
-                  })
-                }
-              />
-            );
-          })()}
-        {!jellystatData && (
-          <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-            <div className="flex h-full w-full items-center justify-center">
-              <Button
-                buttonType="success"
-                buttonSize="standard"
-                onClick={() => setEditJellystatModal(true)}
-              >
-                <PlusIcon />
-                <span>{intl.formatMessage(messages.addJellystat)}</span>
-              </Button>
-            </div>
-          </li>
-        )}
-      </ul>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.mylarsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.comicServiceSettingsDescription, {
-            serverType: 'Mylar',
-          })}
-        </p>
-      </div>
-      {mylarData &&
-        kapowarrData &&
-        backissueData &&
-        mylarData.length + kapowarrData.length + backissueData.length > 0 &&
-        !mylarData.some((mylar) => mylar.isDefault) &&
-        !kapowarrData.some((kapowarr) => kapowarr.isDefault) &&
-        !backissueData.some((backissue) => backissue.isDefault) && (
-          <Alert
-            title={intl.formatMessage(messages.noDefaultServer, {
-              serverType: 'Mylar, Kapowarr, or BackIssue',
-              mediaType: intl.formatMessage(messages.mediaTypeComic),
+              </ul>
+            </>
+          )}
+        </div>
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.whisparrsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.adultServiceSettingsDescription)}
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          {!whisparrData && !whisparrError && <LoadingSpinner />}
+          {whisparrData && !whisparrError && (
+            <>
+              {whisparrData.length > 0 &&
+                !whisparrData.some((service) => service.isDefault) && (
+                  <Alert
+                    title={intl.formatMessage(messages.noDefaultServer, {
+                      serverType: 'Whisparr',
+                      mediaType: intl.formatMessage(messages.mediaTypeAdult),
+                    })}
+                  />
+                )}
+              <ul className="settings-service-grid">
+                {whisparrData.map((service) => (
+                  <ServerInstance
+                    key={`whisparr-config-${service.id}`}
+                    name={service.name}
+                    hostname={service.hostname}
+                    port={service.port}
+                    profileName={service.activeProfileName}
+                    isSSL={service.useSsl}
+                    isDefault={service.isDefault}
+                    isAdult
+                    externalUrl={service.externalUrl}
+                    onEdit={() =>
+                      setEditWhisparrModal({ open: true, whisparr: service })
+                    }
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: service.id,
+                        type: 'whisparr',
+                      })
+                    }
+                  />
+                ))}
+                <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      className="mt-3 mb-3"
+                      onClick={() =>
+                        setEditWhisparrModal({ open: true, whisparr: null })
+                      }
+                    >
+                      <PlusIcon />
+                      <span>{intl.formatMessage(messages.addWhisparr)}</span>
+                    </Button>
+                  </div>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.sonarrsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.videoServiceSettingsDescription, {
+              serverType: 'Sonarr',
             })}
-          />
-        )}
-      <div className="app-card-sub section settings-service-section">
-        {!mylarData && !mylarError && <LoadingSpinner />}
-        {mylarData && !mylarError && (
-          <>
-            <ul className="settings-service-grid">
-              {mylarData.map((mylar) => (
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          {!sonarrData && !sonarrError && <LoadingSpinner />}
+          {sonarrData && !sonarrError && (
+            <>
+              {sonarrData.length > 0 &&
+                (!sonarrData.some((sonarr) => sonarr.isDefault) ? (
+                  <Alert
+                    title={intl.formatMessage(messages.noDefaultServer, {
+                      serverType: 'Sonarr',
+                      mediaType: intl.formatMessage(messages.mediaTypeSeries),
+                    })}
+                  />
+                ) : !sonarrData.some(
+                    (sonarr) => sonarr.isDefault && !sonarr.is4k
+                  ) ? (
+                  <Alert
+                    title={intl.formatMessage(messages.noDefaultNon4kServer, {
+                      serverType: 'Sonarr',
+                      strong: (msg: React.ReactNode) => (
+                        <strong className="font-semibold text-white">
+                          {msg}
+                        </strong>
+                      ),
+                    })}
+                  />
+                ) : (
+                  sonarrData.some((sonarr) => sonarr.is4k) &&
+                  !sonarrData.some(
+                    (sonarr) => sonarr.isDefault && sonarr.is4k
+                  ) && (
+                    <Alert
+                      title={intl.formatMessage(messages.noDefault4kServer, {
+                        serverType: 'Sonarr',
+                        mediaType: intl.formatMessage(messages.mediaTypeSeries),
+                      })}
+                    />
+                  )
+                ))}
+              <ul className="settings-service-grid">
+                {sonarrData.map((sonarr) => (
+                  <ServerInstance
+                    key={`sonarr-config-${sonarr.id}`}
+                    name={sonarr.name}
+                    hostname={sonarr.hostname}
+                    port={sonarr.port}
+                    profileName={sonarr.activeProfileName}
+                    animeProfileName={sonarr.activeAnimeProfileName}
+                    isSSL={sonarr.useSsl}
+                    isSonarr
+                    isDefault={sonarr.isDefault}
+                    is4k={sonarr.is4k}
+                    externalUrl={sonarr.externalUrl}
+                    onEdit={() => setEditSonarrModal({ open: true, sonarr })}
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: sonarr.id,
+                        type: 'sonarr',
+                      })
+                    }
+                  />
+                ))}
+                <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      onClick={() =>
+                        setEditSonarrModal({ open: true, sonarr: null })
+                      }
+                    >
+                      <PlusIcon />
+                      <span>{intl.formatMessage(messages.addsonarr)}</span>
+                    </Button>
+                  </div>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
+        <div className="settings-service-heading">
+          <h3 className="heading">
+            {intl.formatMessage(messages.sportarrsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.sportarrDescription)}
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          {!sportarrData && !sportarrError && <LoadingSpinner />}
+          {sportarrData && !sportarrError && (
+            <>
+              {sportarrData.length > 0 &&
+                !sportarrData.some((instance) => instance.isDefault) && (
+                  <Alert
+                    title={intl.formatMessage(messages.noDefaultSportarr)}
+                  />
+                )}
+              <ul className="settings-service-grid">
+                {sportarrData.map((instance) => (
+                  <ServerInstance
+                    key={`sportarr-config-${instance.id}`}
+                    name={instance.name}
+                    hostname={instance.hostname}
+                    port={instance.port}
+                    profileName={instance.activeProfileName}
+                    isSSL={instance.useSsl}
+                    isSportarr
+                    isDefault={instance.isDefault}
+                    externalUrl={instance.externalUrl}
+                    onEdit={() =>
+                      setEditSportarrModal({ open: true, sportarr: instance })
+                    }
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: instance.id,
+                        type: 'sportarr',
+                      })
+                    }
+                  />
+                ))}
+                <li className="settings-service-add-card">
+                  <div className="settings-service-add-card-content">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      onClick={() =>
+                        setEditSportarrModal({ open: true, sportarr: null })
+                      }
+                    >
+                      <PlusIcon
+                        className="settings-service-add-icon"
+                        aria-hidden="true"
+                      />
+                      <span>{intl.formatMessage(messages.addSportarr)}</span>
+                    </Button>
+                  </div>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
+      <div
+        data-settings-category="music"
+        hidden={activeServiceCategory !== 'music'}
+        className={activeServiceCategory === 'music' ? '' : 'hidden'}
+      >
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.lidarrsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.musicServiceSettingsDescription, {
+              serverType: 'Lidarr',
+            })}
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          {!lidarrData && !lidarrError && <LoadingSpinner />}
+          {lidarrData && !lidarrError && (
+            <>
+              {lidarrData.length > 0 &&
+                (!lidarrData.some((lidarr) => lidarr.isDefault) ? (
+                  <Alert
+                    title={intl.formatMessage(messages.noDefaultServer, {
+                      serverType: 'Lidarr',
+                      mediaType: intl.formatMessage(messages.mediaTypeMusic),
+                    })}
+                  />
+                ) : null)}
+              <ul className="settings-service-grid">
+                {lidarrData.map((lidarr) => (
+                  <ServerInstance
+                    key={`lidarr-config-${lidarr.id}`}
+                    name={lidarr.name}
+                    hostname={lidarr.hostname}
+                    port={lidarr.port}
+                    profileName={lidarr.activeProfileName}
+                    isSSL={lidarr.useSsl}
+                    isLidarr={true}
+                    isDefault={lidarr.isDefault}
+                    externalUrl={lidarr.externalUrl}
+                    onEdit={() => setEditLidarrModal({ open: true, lidarr })}
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: lidarr.id,
+                        type: 'lidarr',
+                      })
+                    }
+                  />
+                ))}
+                <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      onClick={() =>
+                        setEditLidarrModal({ open: true, lidarr: null })
+                      }
+                    >
+                      <PlusIcon />
+                      <span>{intl.formatMessage(messages.addlidarr)}</span>
+                    </Button>
+                  </div>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
+      <div
+        data-settings-category="audiobooks-books"
+        hidden={activeServiceCategory !== 'audiobooks-books'}
+        className={activeServiceCategory === 'audiobooks-books' ? '' : 'hidden'}
+      >
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.readarrsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.bookServiceSettingsDescription, {
+              serverType: 'Bookshelf',
+            })}
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          {!readarrData && !readarrError && <LoadingSpinner />}
+          {readarrData && !readarrError && (
+            <>
+              {readarrData.length === 0 && (
+                <p className="mb-4 text-sm text-gray-300">
+                  {intl.formatMessage(messages.bookFreshSetup)}
+                </p>
+              )}
+              {missingBookFormat && bookConnectionToCopy && (
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-gray-300">
+                    {intl.formatMessage(messages.bookAddMissingFormat, {
+                      format: intl.formatMessage(
+                        missingBookFormat === 'ebook'
+                          ? messages.ebook
+                          : messages.audiobook
+                      ),
+                    })}
+                  </p>
+                  <Button
+                    buttonType="primary"
+                    buttonSize="sm"
+                    onClick={() =>
+                      setEditReadarrModal({
+                        open: true,
+                        readarr: null,
+                        copyFrom: bookConnectionToCopy,
+                        copyFormat: missingBookFormat,
+                      })
+                    }
+                  >
+                    {intl.formatMessage(messages.bookAddOtherFormat, {
+                      format: intl.formatMessage(
+                        missingBookFormat === 'ebook'
+                          ? messages.ebook
+                          : messages.audiobook
+                      ),
+                    })}
+                  </Button>
+                </div>
+              )}
+              {hasReadarrEbook && hasReadarrAudiobook && (
+                <p className="mb-4 text-sm text-gray-300">
+                  {intl.formatMessage(
+                    hasSharedBookshelf
+                      ? messages.bookSharedSetup
+                      : messages.bookSplitUpgrade
+                  )}{' '}
+                  {!hasSharedBookshelf && (
+                    <a
+                      className="text-primary-400 hover:underline"
+                      href="https://github.com/snapetech-org/seerrng/blob/main/docs/using-seerr/bookshelf-backend.md"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {intl.formatMessage(messages.bookCombineGuide)}
+                    </a>
+                  )}
+                </p>
+              )}
+              {readarrData.length > 0 && (
+                <>
+                  {hasReadarrEbook && !hasDefaultReadarrEbook && (
+                    <Alert
+                      title={intl.formatMessage(messages.noDefaultServer, {
+                        serverType: 'Bookshelf',
+                        mediaType: intl.formatMessage(messages.mediaTypeEbook),
+                      })}
+                    />
+                  )}
+                  {hasReadarrAudiobook && !hasDefaultReadarrAudiobook && (
+                    <Alert
+                      title={intl.formatMessage(messages.noDefaultServer, {
+                        serverType: 'Bookshelf',
+                        mediaType: intl.formatMessage(
+                          messages.mediaTypeAudiobook
+                        ),
+                      })}
+                    />
+                  )}
+                  {!hasReadarrEbook && !hasReadarrAudiobook && (
+                    <Alert
+                      title={intl.formatMessage(messages.noDefaultServer, {
+                        serverType: 'Bookshelf',
+                        mediaType: intl.formatMessage(messages.mediaTypeBook),
+                      })}
+                    />
+                  )}
+                </>
+              )}
+              <ul className="settings-service-grid">
+                {readarrData.map((readarr) => (
+                  <ServerInstance
+                    key={`readarr-config-${readarr.id}`}
+                    name={readarr.name}
+                    hostname={readarr.hostname}
+                    port={readarr.port}
+                    profileName={readarr.activeProfileName}
+                    isSSL={readarr.useSsl}
+                    isReadarr={true}
+                    serviceFormat={readarr.serviceType ?? 'ebook'}
+                    isDefault={readarr.isDefault}
+                    externalUrl={readarr.externalUrl}
+                    onEdit={() => setEditReadarrModal({ open: true, readarr })}
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: readarr.id,
+                        type: 'readarr',
+                      })
+                    }
+                  />
+                ))}
+                <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      onClick={() =>
+                        setEditReadarrModal({ open: true, readarr: null })
+                      }
+                    >
+                      <PlusIcon />
+                      <span>{intl.formatMessage(messages.addreadarr)}</span>
+                    </Button>
+                  </div>
+                </li>
+              </ul>
+              <div className="mt-8 mb-4">
+                <h4 className="text-lg font-semibold">
+                  {intl.formatMessage(messages.audiobookshelfsettings)}
+                </h4>
+                <p className="description">
+                  {intl.formatMessage(messages.audiobookshelfDescription)}
+                </p>
+              </div>
+              <ul className="settings-service-grid">
+                {audiobookshelfData && (
+                  <ServerInstance
+                    name={`${audiobookshelfData.name} · ${audiobookshelfData.libraryName}`}
+                    hostname={audiobookshelfData.hostname}
+                    port={audiobookshelfData.port}
+                    isSSL={audiobookshelfData.useSsl}
+                    isAudiobookshelf
+                    externalUrl={audiobookshelfData.externalUrl}
+                    onEdit={() => setEditAudiobookshelfModal(true)}
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: audiobookshelfData.id,
+                        type: 'audiobookshelf',
+                      })
+                    }
+                  />
+                )}
+                {!audiobookshelfData && (
+                  <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                    <div className="flex h-full w-full items-center justify-center">
+                      <Button
+                        buttonType="success"
+                        buttonSize="standard"
+                        onClick={() => setEditAudiobookshelfModal(true)}
+                      >
+                        <PlusIcon />
+                        <span>
+                          {intl.formatMessage(messages.addAudiobookshelf)}
+                        </span>
+                      </Button>
+                    </div>
+                  </li>
+                )}
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
+      <div
+        data-settings-category="music"
+        hidden={activeServiceCategory !== 'music'}
+        className={activeServiceCategory === 'music' ? '' : 'hidden'}
+      >
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.navidromesettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.navidromeDescription)}
+          </p>
+        </div>
+        <ul className="settings-service-grid">
+          {navidromeData &&
+            (() => {
+              const url = new URL(navidromeData.url);
+              return (
                 <ServerInstance
-                  key={`mylar-config-${mylar.id}`}
-                  name={mylar.name}
-                  hostname={mylar.hostname}
-                  port={mylar.port}
-                  profileName={mylar.rootFolder ?? ''}
-                  isSSL={mylar.useSsl}
-                  isComics={true}
-                  isDefault={mylar.isDefault}
-                  externalUrl={mylar.externalUrl}
-                  onEdit={() => setEditMylarModal({ open: true, mylar })}
+                  name={`${navidromeData.username} · Navidrome`}
+                  hostname={url.hostname}
+                  port={
+                    url.port
+                      ? Number(url.port)
+                      : url.protocol === 'https:'
+                        ? 443
+                        : 80
+                  }
+                  isSSL={url.protocol === 'https:'}
+                  onEdit={() => setEditNavidromeModal(true)}
                   onDelete={() =>
                     setDeleteServerModal({
                       open: true,
-                      serverId: mylar.id,
-                      type: 'mylar',
+                      serverId: null,
+                      type: 'navidrome',
                     })
                   }
                 />
-              ))}
-              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-                <div className="flex h-full w-full items-center justify-center">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    onClick={() =>
-                      setEditMylarModal({ open: true, mylar: null })
-                    }
-                  >
-                    <PlusIcon />
-                    <span>{intl.formatMessage(messages.addmylar)}</span>
-                  </Button>
-                </div>
-              </li>
-            </ul>
-          </>
-        )}
-      </div>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.kapowarrsettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.comicServiceSettingsDescription, {
-            serverType: 'Kapowarr',
-          })}
-        </p>
-      </div>
-      <div className="app-card-sub section settings-service-section">
-        {!kapowarrData && !kapowarrError && <LoadingSpinner />}
-        {kapowarrData && !kapowarrError && (
-          <>
-            <ul className="settings-service-grid">
-              {kapowarrData.map((kapowarr) => (
-                <ServerInstance
-                  key={`kapowarr-config-${kapowarr.id}`}
-                  name={kapowarr.name}
-                  hostname={kapowarr.hostname}
-                  port={kapowarr.port}
-                  profileName={kapowarr.rootFolder ?? ''}
-                  isSSL={kapowarr.useSsl}
-                  isComics={true}
-                  isDefault={kapowarr.isDefault}
-                  externalUrl={kapowarr.externalUrl}
-                  onEdit={() => setEditKapowarrModal({ open: true, kapowarr })}
-                  onDelete={() =>
-                    setDeleteServerModal({
-                      open: true,
-                      serverId: kapowarr.id,
-                      type: 'kapowarr',
-                    })
-                  }
-                />
-              ))}
-              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-                <div className="flex h-full w-full items-center justify-center">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    onClick={() =>
-                      setEditKapowarrModal({ open: true, kapowarr: null })
-                    }
-                  >
-                    <PlusIcon />
-                    <span>{intl.formatMessage(messages.addkapowarr)}</span>
-                  </Button>
-                </div>
-              </li>
-            </ul>
-          </>
-        )}
-      </div>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.backissuesettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.comicServiceSettingsDescription, {
-            serverType: 'BackIssue',
-          })}
-        </p>
-      </div>
-      <div className="app-card-sub section settings-service-section">
-        {!backissueData && !backissueError && <LoadingSpinner />}
-        {backissueData && !backissueError && (
-          <ul className="settings-service-grid">
-            {backissueData.map((backissue) => (
-              <ServerInstance
-                key={`backissue-config-${backissue.id}`}
-                name={backissue.name}
-                hostname={backissue.hostname}
-                port={backissue.port}
-                isSSL={backissue.useSsl}
-                isComics={true}
-                isDefault={backissue.isDefault}
-                externalUrl={backissue.externalUrl}
-                onEdit={() => setEditBackIssueModal({ open: true, backissue })}
-                onDelete={() =>
-                  setDeleteServerModal({
-                    open: true,
-                    serverId: backissue.id,
-                    type: 'backissue',
-                  })
-                }
-              />
-            ))}
+              );
+            })()}
+          {!navidromeData && (
             <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
               <div className="flex h-full w-full items-center justify-center">
                 <Button
                   buttonType="success"
                   buttonSize="standard"
-                  onClick={() =>
-                    setEditBackIssueModal({ open: true, backissue: null })
-                  }
+                  onClick={() => setEditNavidromeModal(true)}
                 >
                   <PlusIcon />
-                  <span>{intl.formatMessage(messages.addbackissue)}</span>
+                  <span>{intl.formatMessage(messages.addNavidrome)}</span>
                 </Button>
               </div>
             </li>
-          </ul>
-        )}
-      </div>
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.lazylibrariansettings)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.magazineServiceSettingsDescription)}
+          )}
+        </ul>
+        <p className="mt-6 text-sm text-gray-300">
+          <a
+            className="text-indigo-300 underline hover:text-indigo-200"
+            href="/settings/main?settingsSearchTarget=spotifyClientId#spotifyClientId"
+          >
+            {intl.formatMessage(messages.spotifyPlaylistSettings)}
+          </a>
         </p>
       </div>
-      <div className="app-card-sub section settings-service-section">
-        {!lazyLibrarianData && !lazyLibrarianError && <LoadingSpinner />}
-        {lazyLibrarianData && !lazyLibrarianError && (
-          <>
-            {lazyLibrarianData.length > 0 &&
-              !lazyLibrarianData.some(({ isDefault }) => isDefault) && (
-                <Alert
-                  title={intl.formatMessage(messages.noDefaultServer, {
-                    serverType: 'LazyLibrarian',
-                    mediaType: intl.formatMessage(messages.mediaTypeMagazine),
-                  })}
-                />
-              )}
-            <ul className="settings-service-grid">
-              {lazyLibrarianData.map((lazylibrarian) => (
+      <div
+        data-settings-category="tv-movies"
+        hidden={activeServiceCategory !== 'tv-movies'}
+        className={activeServiceCategory === 'tv-movies' ? '' : 'hidden'}
+      >
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.jellystatsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.jellystatDescription)}
+          </p>
+        </div>
+        <ul className="settings-service-grid">
+          {jellystatData &&
+            (() => {
+              const url = new URL(jellystatData.url);
+              return (
                 <ServerInstance
-                  key={`lazylibrarian-config-${lazylibrarian.id}`}
-                  name={lazylibrarian.name}
-                  hostname={lazylibrarian.hostname}
-                  port={lazylibrarian.port}
-                  isSSL={lazylibrarian.useSsl}
-                  isMagazines={true}
-                  isDefault={lazylibrarian.isDefault}
-                  externalUrl={lazylibrarian.externalUrl}
-                  onEdit={() =>
-                    setEditLazyLibrarianModal({
+                  name="Jellystat"
+                  hostname={url.hostname}
+                  port={
+                    url.port
+                      ? Number(url.port)
+                      : url.protocol === 'https:'
+                        ? 443
+                        : 80
+                  }
+                  isSSL={url.protocol === 'https:'}
+                  onEdit={() => setEditJellystatModal(true)}
+                  onDelete={() =>
+                    setDeleteServerModal({
                       open: true,
-                      lazylibrarian,
+                      serverId: null,
+                      type: 'jellystat',
                     })
+                  }
+                />
+              );
+            })()}
+          {!jellystatData && (
+            <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+              <div className="flex h-full w-full items-center justify-center">
+                <Button
+                  buttonType="success"
+                  buttonSize="standard"
+                  onClick={() => setEditJellystatModal(true)}
+                >
+                  <PlusIcon />
+                  <span>{intl.formatMessage(messages.addJellystat)}</span>
+                </Button>
+              </div>
+            </li>
+          )}
+        </ul>
+      </div>
+      <div
+        data-settings-category="audiobooks-books"
+        hidden={activeServiceCategory !== 'audiobooks-books'}
+        className={activeServiceCategory === 'audiobooks-books' ? '' : 'hidden'}
+      >
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.mylarsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.comicServiceSettingsDescription, {
+              serverType: 'Mylar',
+            })}
+          </p>
+        </div>
+        {mylarData &&
+          kapowarrData &&
+          backissueData &&
+          mylarData.length + kapowarrData.length + backissueData.length > 0 &&
+          !mylarData.some((mylar) => mylar.isDefault) &&
+          !kapowarrData.some((kapowarr) => kapowarr.isDefault) &&
+          !backissueData.some((backissue) => backissue.isDefault) && (
+            <Alert
+              title={intl.formatMessage(messages.noDefaultServer, {
+                serverType: 'Mylar, Kapowarr, or BackIssue',
+                mediaType: intl.formatMessage(messages.mediaTypeComic),
+              })}
+            />
+          )}
+        <div className="app-card-sub section settings-service-section">
+          {!mylarData && !mylarError && <LoadingSpinner />}
+          {mylarData && !mylarError && (
+            <>
+              <ul className="settings-service-grid">
+                {mylarData.map((mylar) => (
+                  <ServerInstance
+                    key={`mylar-config-${mylar.id}`}
+                    name={mylar.name}
+                    hostname={mylar.hostname}
+                    port={mylar.port}
+                    profileName={mylar.rootFolder ?? ''}
+                    isSSL={mylar.useSsl}
+                    isComics={true}
+                    isDefault={mylar.isDefault}
+                    externalUrl={mylar.externalUrl}
+                    onEdit={() => setEditMylarModal({ open: true, mylar })}
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: mylar.id,
+                        type: 'mylar',
+                      })
+                    }
+                  />
+                ))}
+                <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      onClick={() =>
+                        setEditMylarModal({ open: true, mylar: null })
+                      }
+                    >
+                      <PlusIcon />
+                      <span>{intl.formatMessage(messages.addmylar)}</span>
+                    </Button>
+                  </div>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.kapowarrsettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.comicServiceSettingsDescription, {
+              serverType: 'Kapowarr',
+            })}
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          {!kapowarrData && !kapowarrError && <LoadingSpinner />}
+          {kapowarrData && !kapowarrError && (
+            <>
+              <ul className="settings-service-grid">
+                {kapowarrData.map((kapowarr) => (
+                  <ServerInstance
+                    key={`kapowarr-config-${kapowarr.id}`}
+                    name={kapowarr.name}
+                    hostname={kapowarr.hostname}
+                    port={kapowarr.port}
+                    profileName={kapowarr.rootFolder ?? ''}
+                    isSSL={kapowarr.useSsl}
+                    isComics={true}
+                    isDefault={kapowarr.isDefault}
+                    externalUrl={kapowarr.externalUrl}
+                    onEdit={() =>
+                      setEditKapowarrModal({ open: true, kapowarr })
+                    }
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: kapowarr.id,
+                        type: 'kapowarr',
+                      })
+                    }
+                  />
+                ))}
+                <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      onClick={() =>
+                        setEditKapowarrModal({ open: true, kapowarr: null })
+                      }
+                    >
+                      <PlusIcon />
+                      <span>{intl.formatMessage(messages.addkapowarr)}</span>
+                    </Button>
+                  </div>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.backissuesettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.comicServiceSettingsDescription, {
+              serverType: 'BackIssue',
+            })}
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          {!backissueData && !backissueError && <LoadingSpinner />}
+          {backissueData && !backissueError && (
+            <ul className="settings-service-grid">
+              {backissueData.map((backissue) => (
+                <ServerInstance
+                  key={`backissue-config-${backissue.id}`}
+                  name={backissue.name}
+                  hostname={backissue.hostname}
+                  port={backissue.port}
+                  isSSL={backissue.useSsl}
+                  isComics={true}
+                  isDefault={backissue.isDefault}
+                  externalUrl={backissue.externalUrl}
+                  onEdit={() =>
+                    setEditBackIssueModal({ open: true, backissue })
                   }
                   onDelete={() =>
                     setDeleteServerModal({
                       open: true,
-                      serverId: lazylibrarian.id,
-                      type: 'lazylibrarian',
+                      serverId: backissue.id,
+                      type: 'backissue',
                     })
                   }
                 />
@@ -1739,54 +1845,151 @@ const SettingsServices = () => {
                     buttonType="success"
                     buttonSize="standard"
                     onClick={() =>
-                      setEditLazyLibrarianModal({
-                        open: true,
-                        lazylibrarian: null,
-                      })
+                      setEditBackIssueModal({ open: true, backissue: null })
                     }
                   >
                     <PlusIcon />
-                    <span>{intl.formatMessage(messages.addlazylibrarian)}</span>
+                    <span>{intl.formatMessage(messages.addbackissue)}</span>
                   </Button>
                 </div>
               </li>
             </ul>
-          </>
-        )}
-      </div>
-      <ReaderDeliverySettings />
-      <div className="mt-10 mb-6">
-        <h3 className="heading">
-          {intl.formatMessage(messages.overrideRules)}
-        </h3>
-        <p className="description">
-          {intl.formatMessage(messages.overrideRulesDescription, {
-            serverType: 'Sonarr',
-          })}
-        </p>
-      </div>
-      <div className="app-card-sub section settings-service-section">
-        <ul className="settings-service-grid">
-          {rules && radarrData && sonarrData && lidarrData && readarrData && (
-            <OverrideRuleTiles
-              rules={rules}
-              radarrServices={radarrData}
-              sonarrServices={sonarrData}
-              lidarrServices={lidarrData}
-              readarrServices={readarrData}
-              setOverrideRuleModal={setOverrideRuleModal}
-              revalidate={revalidate}
-            />
           )}
-        </ul>
+        </div>
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.lazylibrariansettings)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.magazineServiceSettingsDescription)}
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          {!lazyLibrarianData && !lazyLibrarianError && <LoadingSpinner />}
+          {lazyLibrarianData && !lazyLibrarianError && (
+            <>
+              {lazyLibrarianData.length > 0 &&
+                !lazyLibrarianData.some(({ isDefault }) => isDefault) && (
+                  <Alert
+                    title={intl.formatMessage(messages.noDefaultServer, {
+                      serverType: 'LazyLibrarian',
+                      mediaType: intl.formatMessage(messages.mediaTypeMagazine),
+                    })}
+                  />
+                )}
+              <ul className="settings-service-grid">
+                {lazyLibrarianData.map((lazylibrarian) => (
+                  <ServerInstance
+                    key={`lazylibrarian-config-${lazylibrarian.id}`}
+                    name={lazylibrarian.name}
+                    hostname={lazylibrarian.hostname}
+                    port={lazylibrarian.port}
+                    isSSL={lazylibrarian.useSsl}
+                    isMagazines={true}
+                    isDefault={lazylibrarian.isDefault}
+                    externalUrl={lazylibrarian.externalUrl}
+                    onEdit={() =>
+                      setEditLazyLibrarianModal({
+                        open: true,
+                        lazylibrarian,
+                      })
+                    }
+                    onDelete={() =>
+                      setDeleteServerModal({
+                        open: true,
+                        serverId: lazylibrarian.id,
+                        type: 'lazylibrarian',
+                      })
+                    }
+                  />
+                ))}
+                <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      onClick={() =>
+                        setEditLazyLibrarianModal({
+                          open: true,
+                          lazylibrarian: null,
+                        })
+                      }
+                    >
+                      <PlusIcon />
+                      <span>
+                        {intl.formatMessage(messages.addlazylibrarian)}
+                      </span>
+                    </Button>
+                  </div>
+                </li>
+              </ul>
+            </>
+          )}
+        </div>
+        <ReaderDeliverySettings />
       </div>
-      <SettingsProwlarr />
-      <SettingsDownloadClients />
-      <SettingsTunerr />
-      <SettingsSlskdn />
-      <SettingsReadMeABook />
-      <SettingsSwipe />
-      <SettingsSoftwareAcquisition />
+      <div
+        data-settings-category="tools-other"
+        hidden={activeServiceCategory !== 'tools-other'}
+        className={activeServiceCategory === 'tools-other' ? '' : 'hidden'}
+      >
+        <div className="mt-10 mb-6">
+          <h3 className="heading">
+            {intl.formatMessage(messages.overrideRules)}
+          </h3>
+          <p className="description">
+            {intl.formatMessage(messages.overrideRulesDescription, {
+              serverType: 'Sonarr',
+            })}
+          </p>
+        </div>
+        <div className="app-card-sub section settings-service-section">
+          <ul className="settings-service-grid">
+            {rules && radarrData && sonarrData && lidarrData && readarrData && (
+              <OverrideRuleTiles
+                rules={rules}
+                radarrServices={radarrData}
+                sonarrServices={sonarrData}
+                lidarrServices={lidarrData}
+                readarrServices={readarrData}
+                setOverrideRuleModal={setOverrideRuleModal}
+                revalidate={revalidate}
+              />
+            )}
+          </ul>
+        </div>
+        <SettingsProwlarr />
+        <SettingsDownloadClients />
+      </div>
+      <div
+        data-settings-category="tv-movies"
+        hidden={activeServiceCategory !== 'tv-movies'}
+        className={activeServiceCategory === 'tv-movies' ? '' : 'hidden'}
+      >
+        <SettingsTunerr />
+      </div>
+      <div
+        data-settings-category="music"
+        hidden={activeServiceCategory !== 'music'}
+        className={activeServiceCategory === 'music' ? '' : 'hidden'}
+      >
+        <SettingsSlskdn />
+      </div>
+      <div
+        data-settings-category="audiobooks-books"
+        hidden={activeServiceCategory !== 'audiobooks-books'}
+        className={activeServiceCategory === 'audiobooks-books' ? '' : 'hidden'}
+      >
+        <SettingsReadMeABook />
+      </div>
+      <div
+        data-settings-category="tools-other"
+        hidden={activeServiceCategory !== 'tools-other'}
+        className={activeServiceCategory === 'tools-other' ? '' : 'hidden'}
+      >
+        <SettingsSwipe />
+        <SettingsSoftwareAcquisition />
+      </div>
       {overrideRuleModal.open &&
         radarrData &&
         sonarrData &&

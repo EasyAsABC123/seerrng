@@ -751,11 +751,14 @@ describe('Books and Music discover parity', () => {
     cy.visit('/settings/services');
 
     cy.contains('h3', 'Radarr Settings').should('be.visible');
+    cy.contains('button[aria-pressed="false"]', 'Music').click();
     cy.contains('h3', 'Lidarr Settings').scrollIntoView().should('be.visible');
+    cy.contains('button[aria-pressed="false"]', 'Audiobooks & Books').click();
     cy.contains('h3', 'Bookshelf Settings')
       .scrollIntoView()
       .should('be.visible');
 
+    cy.contains('button[aria-pressed="false"]', 'Music').click();
     cy.contains('button', 'Add Lidarr Server').click();
     cy.contains('[data-testid=modal-title]', 'Add New Lidarr Server').should(
       'be.visible'
@@ -850,7 +853,7 @@ describe('Books and Music discover parity', () => {
     ]);
     cy.intercept('GET', '/api/v1/overrideRule', []);
 
-    cy.visit('/settings/services');
+    cy.visit('/settings/services?serviceCategory=audiobooks-books');
 
     cy.contains('h3', 'Bookshelf Settings')
       .scrollIntoView()
@@ -906,14 +909,17 @@ describe('Books and Music discover parity', () => {
     ]);
     cy.intercept('GET', '/api/v1/overrideRule', []);
 
-    cy.visit('/settings/services');
+    cy.visit('/settings/services?serviceCategory=music');
 
     cy.contains(
       'At least one Lidarr server must be marked as default in order for music requests to be processed.'
     )
       .scrollIntoView()
       .should('be.visible');
-    cy.contains('series requests').should('not.exist');
+    cy.get('[data-settings-category="music"]')
+      .contains('series requests')
+      .should('not.exist');
+    cy.contains('button[aria-pressed="false"]', 'Audiobooks & Books').click();
     cy.contains(
       'At least one Bookshelf server must be marked as default in order for book requests to be processed.'
     )

@@ -320,6 +320,35 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
     focusTarget.focus({ preventScroll: true });
   };
 
+  const focusSettingsSearchResult = (element: HTMLElement) => {
+    const categoryPanel = element.closest<HTMLElement>(
+      '[data-settings-category]'
+    );
+    const category = categoryPanel?.dataset.settingsCategory;
+
+    if (categoryPanel?.hidden && category) {
+      void router
+        .replace(
+          {
+            pathname: router.pathname,
+            query: { ...router.query, serviceCategory: category },
+          },
+          undefined,
+          { shallow: true, scroll: false }
+        )
+        .then(() => {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              if (element.isConnected) focusSetting(element);
+            });
+          });
+        });
+      return;
+    }
+
+    focusSetting(element);
+  };
+
   const handleSettingsSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const query = keywordSearch.trim();
@@ -340,7 +369,7 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
           ? document.getElementById(matchingLabel.htmlFor)
           : matchingLabel;
       if (control instanceof HTMLElement) {
-        focusSetting(control);
+        focusSettingsSearchResult(control);
         return;
       }
     }

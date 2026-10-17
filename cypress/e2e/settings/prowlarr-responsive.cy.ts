@@ -131,7 +131,7 @@ describe('Prowlarr settings on a short mobile screen', () => {
   });
 
   it('keeps save reachable after scrolling the long indexer report', () => {
-    cy.visit('/settings/services');
+    cy.visit('/settings/services?serviceCategory=tools-other');
     cy.wait('@prowlarrSettings').then(({ response }) => {
       expect(response?.statusCode).to.equal(200);
       expect(response?.body).to.deep.equal(prowlarrSettings);
@@ -172,7 +172,7 @@ describe('Prowlarr settings on a short mobile screen', () => {
   });
 
   it('shows setup assistance without horizontal overflow on a narrow screen', () => {
-    cy.visit('/settings/services');
+    cy.visit('/settings/services?serviceCategory=tools-other');
 
     cy.contains('section.app-card-sub', 'Connect your apps')
       .should('be.visible')
@@ -194,7 +194,7 @@ describe('Prowlarr settings on a short mobile screen', () => {
 
   it('shows setup assistance at desktop width', () => {
     cy.viewport(1280, 720);
-    cy.visit('/settings/services');
+    cy.visit('/settings/services?serviceCategory=tools-other');
 
     cy.contains('section.app-card-sub', 'Connect your apps').should(
       'be.visible'
@@ -218,7 +218,7 @@ describe('Prowlarr settings on a short mobile screen', () => {
   });
 
   it('imports a discovered address into the matching add form without importing credentials', () => {
-    cy.visit('/settings/services');
+    cy.visit('/settings/services?serviceCategory=tools-other');
 
     const report = {
       network: 'seerrng-shared',
@@ -243,6 +243,7 @@ describe('Prowlarr settings on a short mobile screen', () => {
     );
 
     cy.contains('Loaded suggestions for 1 app').should('be.visible');
+    cy.contains('button[aria-pressed="false"]', 'TV & Movies').click();
     cy.contains('button', 'Add Radarr Server').scrollIntoView().click();
     cy.get('input[name="hostname"]').should('have.value', 'radarr');
     cy.get('input[name="port"]').should('have.value', '7878');

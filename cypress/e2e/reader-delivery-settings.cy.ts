@@ -41,7 +41,7 @@ describe('Reader app delivery settings', () => {
   });
 
   it('saves reader addresses, exposes working catalog links, and fits mobile', () => {
-    cy.visit('/settings/services');
+    cy.visit('/settings/services?serviceCategory=audiobooks-books');
     cy.viewport(1280, 900);
     cy.window().its('innerWidth').should('eq', 1280);
     cy.window().its('innerHeight').should('eq', 900);
