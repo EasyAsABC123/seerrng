@@ -81,7 +81,7 @@ jobs:
             -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect > "$RUNNER_TEMP/android-emulator.log" 2>&1 &
           emulator_pid=$!
-          trap 'adb emu kill >/dev/null 2>&1 || true; wait "$emulator_pid" 2>/dev/null || true' EXIT
+          echo "ANDROID_EMULATOR_PID=$emulator_pid" >> "$GITHUB_ENV"
           timeout 300s adb wait-for-device || {
             cat "$RUNNER_TEMP/android-emulator.log" >&2
             echo 'Android emulator did not register with ADB.' >&2
@@ -134,7 +134,25 @@ jobs:
           ENABLE_PLAY_BILLING: ${{ vars.ENABLE_PLAY_BILLING }}
           ANDROID_MONETIZATION_MODE: ${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}
           RUNNER_TEMP: ${{ runner.temp }}
-        run: bash scripts/build-android-release.sh "v3.62.0-ci.${GITHUB_RUN_NUMBER}" dist-android-release
+        run: |
+          set -euo pipefail
+          bash scripts/build-android-release.sh "v3.62.0-ci.${GITHUB_RUN_NUMBER}" dist-android-release
+          signed_apk="$(find dist-android-release -maxdepth 1 -type f -name 'seerrng-*-android*.apk' -print -quit)"
+          test -n "$signed_apk"
+          adb install -r "$signed_apk"
+          adb shell am start -n org.snapetech.seerrng/.MainActivity
+          for attempt in {1..15}; do
+            if adb shell pidof org.snapetech.seerrng >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          adb shell pidof org.snapetech.seerrng >/dev/null
+          if adb logcat -d -s AndroidRuntime:E | grep -F 'FATAL EXCEPTION' >/dev/null; then
+            echo 'Signed Android release candidate crashed during first launch.' >&2
+            exit 1
+          fi
+          echo "Installed and launched the signed release APK: $signed_apk"
 
       - name: Upload signed Android release candidate
         if: github.event_name != 'pull_request'
@@ -143,3 +161,12 @@ jobs:
           name: android-release-candidate
           path: dist-android-release/seerrng-*
           if-no-files-found: error
+
+      - name: Stop Android emulator
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${ANDROID_EMULATOR_PID:-}" ]]; then
+            adb emu kill >/dev/null 2>&1 || true
+            kill "$ANDROID_EMULATOR_PID" 2>/dev/null || true
+          fi

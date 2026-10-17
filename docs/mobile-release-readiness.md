@@ -50,7 +50,7 @@ An iOS app cannot use a self-signed certificate for ordinary installation. Ad Ho
 
 ### Automated checks
 
-- `.github/workflows/android.yml` runs Android unit tests, emulator UI tests, a debug build, then a signed APK/AAB candidate on non-PR pushes.
+- `.github/workflows/android.yml` runs Android unit and emulator UI tests in both `ads` and capped modes, then installs and launches the signed APK on the API 36 emulator before uploading the APK/AAB candidate.
 - `.github/workflows/ios.yml` runs iOS unit and UI tests on GitHub's macOS 26 runner and retains the Simulator package plus test results.
 - Tagged releases validate checksums and attach the Android APK/AAB and iOS Simulator package. Signed iOS IPAs are conditional on the signing variables and secrets.
 - The standard release workflow only builds tags reachable from `main`; pushing this feature branch does not create a public release.

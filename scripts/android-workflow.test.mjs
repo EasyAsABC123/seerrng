@@ -30,6 +30,9 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   const releaseCandidate = job.steps.find(
     (step) => step.name === 'Build signed APK and Play App Bundle'
   );
+  const stopEmulator = job.steps.find(
+    (step) => step.name === 'Stop Android emulator'
+  );
 
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   assert.ok(workflow.on.pull_request.paths.includes('android/**'));
@@ -52,10 +55,14 @@ test('Android workflow builds, tests on an emulator, and creates a debug APK', (
   assert.match(build.run, /-PandroidMonetizationMode=capped/u);
   assert.match(build.run, /-PfreeSessionLimit=2/u);
   assert.match(build.run, /:app:assembleDebug/u);
-  assert.match(build.run, /trap .*adb emu kill/u);
+  assert.match(build.run, /ANDROID_EMULATOR_PID=\$emulator_pid/u);
   assert.equal(
     releaseCandidate.env.ANDROID_MONETIZATION_MODE,
     "${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}"
   );
   assert.match(releaseCandidate.run, /scripts\/build-android-release\.sh/u);
+  assert.match(releaseCandidate.run, /adb install -r/u);
+  assert.match(releaseCandidate.run, /org\.snapetech\.seerrng\/\.MainActivity/u);
+  assert.equal(stopEmulator.if, 'always()');
+  assert.match(stopEmulator.run, /adb emu kill/u);
 });
