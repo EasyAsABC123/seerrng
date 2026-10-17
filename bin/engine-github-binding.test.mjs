@@ -245,6 +245,7 @@ test('direct native jobs execute only after admission and preserve sealed receip
   const jobs = ci.workflow.jobs;
   const nativeValidation = {
     'jellyfin-plugin': [
+      'Test Jellyfin smoke-test startup retries',
       'Build plugin',
       'Smoke test plugin in Jellyfin 10.11.11',
     ],

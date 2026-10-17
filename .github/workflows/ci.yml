@@ -136,6 +136,10 @@ jobs:
           --receipt-dir "$RUNNER_TEMP/seerrng-engine-${GITHUB_REPOSITORY_ID}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-${SEERRNG_ENGINE_CASE_ID:-${SEERRNG_ENGINE_CASE:-single}}/receipts"
           --json
 
+      - name: Test Jellyfin smoke-test startup retries
+        if: steps.engine-admission.outputs.execute == 'true'
+        run: python3 -m unittest discover -s integrations/jellyfin-plugin/tests -p 'test_*.py'
+
       - name: Build plugin
         if: steps.engine-admission.outputs.execute == 'true'
         run: >-

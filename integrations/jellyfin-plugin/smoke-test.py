@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import shutil
@@ -74,7 +75,15 @@ def api_request(
         with urllib.request.urlopen(request, timeout=10) as response:
             return response.status, response.read()
     except urllib.error.HTTPError as error:
-        return error.code, error.read()
+        try:
+            body = error.read()
+        except http.client.IncompleteRead as read_error:
+            body = read_error.partial
+        except (http.client.HTTPException, OSError):
+            body = b""
+        finally:
+            error.close()
+        return error.code, body
     except (OSError, TimeoutError, urllib.error.URLError) as error:
         raise SmokeTestError(f"Jellyfin request failed: {method} {path}") from error
 

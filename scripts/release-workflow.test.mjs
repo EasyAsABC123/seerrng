@@ -363,6 +363,32 @@ test('all container vulnerability scans use an available pinned Trivy release', 
   );
 });
 
+test('Jellyfin CI tests incomplete startup responses before the live smoke test', () => {
+  const ci = readWorkflow('ci.yml');
+  const plugin = ci.jobs['jellyfin-plugin'];
+  const startupRetryTest = plugin.steps.find(
+    (step) => step.name === 'Test Jellyfin smoke-test startup retries'
+  );
+  const liveSmokeTest = plugin.steps.find(
+    (step) => step.name === 'Smoke test plugin in Jellyfin 10.11.11'
+  );
+
+  assert.ok(startupRetryTest);
+  assert.ok(liveSmokeTest);
+  assert.equal(
+    startupRetryTest.if,
+    "steps.engine-admission.outputs.execute == 'true'"
+  );
+  assert.match(
+    startupRetryTest.run,
+    /python3 -m unittest discover -s integrations\/jellyfin-plugin\/tests/u
+  );
+  assert.ok(
+    plugin.steps.indexOf(startupRetryTest) < plugin.steps.indexOf(liveSmokeTest),
+    'the startup-response regression test must run before the Jellyfin container smoke test'
+  );
+});
+
 test('multi-architecture publishers perform the real build once and verify the index', () => {
   const ci = readWorkflow('ci.yml');
   const preview = readWorkflow('preview.yml');
