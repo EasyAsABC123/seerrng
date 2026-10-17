@@ -10,208 +10,6 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
-# Changelog
-
 ## [3.66.0](https://github.com/snapetech-org/seerrng/compare/v3.65.0..v3.66.0) - 2026-10-17
 
 ### User-facing changes
@@ -219,6 +17,7 @@ that are not called out here.
 #### Added
 
 - **Swipe:** Swipe now covers every enabled requestable catalog, with category-specific search, filters, request options, and private decision history. Adult picks stay outside AI ordering, and software requests include the right system or PC target.
+- **Settings:** Administrators can save named hostnames or IP addresses under Settings → Services → System and reuse them with one click in service connection forms. Each saved entry is shared across SeerrNG and leaves the service's port and connection settings unchanged.
 
 #### Changed
 
@@ -228,15 +27,22 @@ that are not called out here.
 #### Fixed
 
 - **Comics:** Comic discovery now refreshes its provider configuration when opened, so adding a ComicVine API key takes effect without leaving a stale missing-key message on screen.
+- **Settings:** Search Settings keeps a matching API key control on the open settings page in place, even when the same search term also matches the Seerr API key. Searching for Prowlarr from another tab still opens the dedicated Prowlarr settings page.
 - **Settings:** Settings Search now opens its known destination before checking similar wording on the current tab. Searching for the API key from Metadata, for example, now takes you to the General settings field instead of stopping on a matching note.
 - **Distribution:** The Community Apps template now calls out the SeerrNG image registry move. Existing installations can keep pointing at the old image path until the Repository field is updated, so the template and Unraid guide now explain how to switch without changing the config mount.
   - **Action required:** Update existing Unraid installs from ghcr.io/snapetech/seerrng to ghcr.io/snapetech-org/seerrng:latest while keeping the current /app/config host path.
+- **Discovery:** Discovery pages now load catalog results when opened, including after returning from another page, instead of starting with an empty results area.
 
 ### 🚀 Features
+- *(settings)* Add reusable service host presets - ([fcd5835](https://github.com/snapetech-org/seerrng/commit/fcd58357c9dfb8ef7273508ad9975eec40d02ac0))
 - *(swipe)* Support all requestable catalogs - ([4681da7](https://github.com/snapetech-org/seerrng/commit/4681da7697263911d14a779d3473e7cdb266af58))
 
 ### 🐛 Bug Fixes
 - *(comics)* Refresh ComicVine discovery configuration - ([dd5c23e](https://github.com/snapetech-org/seerrng/commit/dd5c23e2b2f33185748fe0f487ea4e6a1d5a8e45))
+- *(discover)* Preserve initial catalog fetches - ([1c75e53](https://github.com/snapetech-org/seerrng/commit/1c75e539e83d42c81c3fd30fc97fc60f7394c291))
+- *(release)* Preserve changelog history on retries - ([369cbdf](https://github.com/snapetech-org/seerrng/commit/369cbdfbbcf871bf24af802d681a642a249ce221))
+- *(release)* Allow retrying prepared version tags - ([229b461](https://github.com/snapetech-org/seerrng/commit/229b46117b67d481504c08e4e3fa95613c408326))
+- *(settings)* Preserve local search matches - ([482f736](https://github.com/snapetech-org/seerrng/commit/482f736f43f9a12b851d93f3529c914fcbf7eda3))
 - *(settings)* Prioritize indexed search destinations - ([b9fd412](https://github.com/snapetech-org/seerrng/commit/b9fd412e62de6e7be8a67183aa2c22c33667bfec))
 - *(settings)* Surface ChaptarrNG in Services - ([5a4bc22](https://github.com/snapetech-org/seerrng/commit/5a4bc228d9d2e76c7d994036b8bdae4a98f34065))
 - *(swipe)* Refresh history when reopened - ([41aa822](https://github.com/snapetech-org/seerrng/commit/41aa8222fd0548a12c0ffc2bc2bb89b8bb81d274))
@@ -246,9 +52,11 @@ that are not called out here.
 - *(swipe)* Preserve cards when undoing during exit - ([da85c24](https://github.com/snapetech-org/seerrng/commit/da85c247c57c484317609564b33f99a4acd010c3))
 
 ### 📖 Documentation
+- *(release)* Record settings search follow-up - ([69f909e](https://github.com/snapetech-org/seerrng/commit/69f909e7bc1c1331b43f08a05e66a6e661b854e3))
 - *(unraid)* Clarify image registry migration - ([8d620a9](https://github.com/snapetech-org/seerrng/commit/8d620a91c0035fb9a4f268c57b889c72af658642))
 
 ### 🧪 Testing
+- *(cypress)* Align Swipe and book service fixtures - ([d1f17b1](https://github.com/snapetech-org/seerrng/commit/d1f17b1449f96cda512fa9b32448feba14251c70))
 - *(swipe)* Stabilize catalog and keyboard journeys - ([6751d22](https://github.com/snapetech-org/seerrng/commit/6751d22bb3e3f2c1acc2bc2a0165e0d7adf76fff))
 
 ## [3.65.0](https://github.com/snapetech-org/seerrng/compare/v3.64.0..v3.65.0) - 2026-10-17
