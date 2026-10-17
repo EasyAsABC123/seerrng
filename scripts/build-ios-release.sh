@@ -20,7 +20,7 @@ if ! command -v xcodebuild >/dev/null 2>&1; then
   echo 'Xcode and xcodebuild are required. Run this script on a macOS host.' >&2
   exit 2
 fi
-xcode_version="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
+xcode_version="$(xcodebuild -version | awk '/^Xcode / { version = $2 } END { print version }')"
 xcode_major="${xcode_version%%.*}"
 if [[ ! "$xcode_major" =~ ^[0-9]+$ ]] || (( xcode_major < 26 )); then
   echo "Xcode 26 or newer is required for current App Store upload requirements; found ${xcode_version:-unknown}." >&2

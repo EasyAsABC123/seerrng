@@ -773,6 +773,11 @@ test('release assets build supported native archive platforms', () => {
   const iosBuild = assets.jobs['build-ios'];
   assert.equal(iosBuild.needs, 'resolve');
   assert.equal(iosBuild['runs-on'], 'macos-26');
+  const iosToolchainCheck = iosBuild.steps.find(
+    (step) => step.name === 'Verify Xcode release toolchain'
+  ).run;
+  assert.match(iosToolchainCheck, /xcode_version_output=/u);
+  assert.doesNotMatch(iosToolchainCheck, /xcodebuild -version \|/u);
   assert.equal(
     iosBuild.steps.find((step) => step.name === 'Test and package iOS Simulator app')
       .run,
@@ -780,6 +785,11 @@ test('release assets build supported native archive platforms', () => {
   );
   const iosClientWorkflow = readWorkflow('ios.yml');
   assert.equal(iosClientWorkflow.jobs.ios['runs-on'], 'macos-26');
+  const iosClientToolchainCheck = iosClientWorkflow.jobs.ios.steps.find(
+    (step) => step.name === 'Verify Xcode release toolchain'
+  ).run;
+  assert.match(iosClientToolchainCheck, /xcode_version_output=/u);
+  assert.doesNotMatch(iosClientToolchainCheck, /xcodebuild -version \|/u);
   assert.match(
     iosClientWorkflow.jobs.ios.steps.find(
       (step) => step.name === 'Run iOS unit and UI tests, then package Simulator app'

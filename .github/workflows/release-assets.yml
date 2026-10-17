@@ -322,9 +322,11 @@ jobs:
       - name: Verify Xcode release toolchain
         run: |
           set -euo pipefail
-          xcodebuild -version
-          xcodebuild -version | grep -Eq '^Xcode 2[6-9](\.|$)'
-          xcrun simctl list devices available | grep -F 'iPhone 17'
+          xcode_version_output="$(xcodebuild -version)"
+          printf '%s\n' "$xcode_version_output"
+          grep -Eq '^Xcode 2[6-9](\.|$)' <<<"$xcode_version_output"
+          available_simulators="$(xcrun simctl list devices available)"
+          grep -Fq 'iPhone 17' <<<"$available_simulators"
 
       - name: Test and package iOS Simulator app
         env:
