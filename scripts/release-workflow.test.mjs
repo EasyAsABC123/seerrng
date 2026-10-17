@@ -754,13 +754,15 @@ test('release assets build supported native archive platforms', () => {
   assert.equal(androidBuild.needs, 'resolve');
   assert.equal(
     androidBuild.steps.find(
-      (step) => step.name === 'Build, sign, and checksum the Android APK and AAB'
+      (step) =>
+        step.name === 'Build, sign, and checksum the Android APK and AAB'
     ).run,
     "bash scripts/build-android-release.sh '${{ needs.resolve.outputs.tag }}' dist-release"
   );
   assert.equal(
     androidBuild.steps.find(
-      (step) => step.name === 'Build, sign, and checksum the Android APK and AAB'
+      (step) =>
+        step.name === 'Build, sign, and checksum the Android APK and AAB'
     ).env.ANDROID_MONETIZATION_MODE,
     "${{ vars.ANDROID_MONETIZATION_MODE || 'ads' }}"
   );
@@ -779,8 +781,9 @@ test('release assets build supported native archive platforms', () => {
   assert.match(iosToolchainCheck, /xcode_version_output=/u);
   assert.doesNotMatch(iosToolchainCheck, /xcodebuild -version \|/u);
   assert.equal(
-    iosBuild.steps.find((step) => step.name === 'Test and package iOS Simulator app')
-      .run,
+    iosBuild.steps.find(
+      (step) => step.name === 'Test and package iOS Simulator app'
+    ).run,
     'bash scripts/build-ios-release.sh "$TAG" dist-release'
   );
   const iosClientWorkflow = readWorkflow('ios.yml');
@@ -798,7 +801,8 @@ test('release assets build supported native archive platforms', () => {
   );
   assert.match(
     iosClientWorkflow.jobs.ios.steps.find(
-      (step) => step.name === 'Run iOS unit and UI tests, then package Simulator app'
+      (step) =>
+        step.name === 'Run iOS unit and UI tests, then package Simulator app'
     ).run,
     /scripts\/build-ios-release\.sh/u
   );
@@ -1038,10 +1042,7 @@ test('release asset checksums match the builder sidecar names', () => {
   assert.match(assetsText, /archive_base="\$\{archive_base%\.zip\}"/u);
   assert.match(assetsText, /archive_base="\$\{archive_base%\.apk\}"/u);
   assert.match(assetsText, /archive_base="\$\{archive_base%\.aab\}-aab"/u);
-  assert.match(
-    assetsText,
-    /checksum_base="\$\{checksum_base%\.aab\}-aab"/u
-  );
+  assert.match(assetsText, /checksum_base="\$\{checksum_base%\.aab\}-aab"/u);
 });
 
 test('pull-request CI publishes the exact release-note preview', () => {
