@@ -764,6 +764,7 @@ test('hosted GitHub plan is deterministic and binds the distributed native DAG',
   assert.deepEqual(playwright.cases, ['default']);
   assert.equal(playwright.caseAssignments[0].mode, 'full');
   assert.deepEqual(playwright.caseAssignments[0].lanes[0].files, [
+    'playwright/adult-discover.spec.ts',
     'playwright/audiobookshelf-settings.spec.ts',
     'playwright/request-edit-without-media.spec.ts',
     'playwright/settings-search.spec.ts',
