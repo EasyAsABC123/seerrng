@@ -136,7 +136,10 @@ The first pass of App Store and Play listing text is in [mobile-store-listing-dr
 ## Official references
 
 - [Google Play Console setup and fee](https://support.google.com/googleplay/android-developer/answer/6112435)
+- [Google Play device verification requirements](https://support.google.com/googleplay/android-developer/answer/14316361)
 - [Google Play personal account closed-test requirement](https://support.google.com/googleplay/android-developer/answer/14151465)
+- [Google Play one-time product setup](https://support.google.com/googleplay/android-developer/answer/16430488)
+- [Create and set up an app in Play Console](https://support.google.com/googleplay/android-developer/answer/9859152)
 - [Google Play target API level requirements](https://support.google.com/googleplay/android-developer/answer/11926878)
 - [Android app signing and Play App Signing](https://developer.android.com/studio/publish/app-signing)
 - [Apple Developer Program membership](https://developer.apple.com/programs/)
