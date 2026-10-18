@@ -10,6 +10,39 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.67.0](https://github.com/snapetech-org/seerrng/compare/v3.66.0..v3.67.0) - 2026-10-18
+
+### User-facing changes
+
+#### Added
+
+- **Age Gate:** Administrators can flag accounts as restricted so Adult content and mature movies, series, and tagged titles in every category are hidden and unrequestable, with a rating ceiling and a family-sharing warning on the Adult switch.
+  - **Action required:** Flag family accounts as restricted under each user's Permissions, or set a default in Settings → Media Categories → Age Gate.
+
+#### Fixed
+
+- **Docker:** Administrators now see a warning in the app and a specific startup error when the data folder is not a mounted volume, when files sit at /config instead of /app/config, or when the folder is not writable by the container user.
+  - **Action required:** Map the host appdata folder to /app/config and make it writable by UID 1000 and GID 1000.
+- **Requests:** Choosing a non-default Sonarr or Radarr instance in the request modal's advanced options now sticks instead of snapping back to the default instance.
+
+### 🚀 Features
+- *(age-gate)* Restrict mature content for flagged accounts - ([5625f17](https://github.com/snapetech-org/seerrng/commit/5625f175735a1f9b10e73f8e6feb569f24872228))
+
+### 🐛 Bug Fixes
+- *(docker)* Warn clearly about misplaced or unwritable appdata - ([8b4c082](https://github.com/snapetech-org/seerrng/commit/8b4c082867d90f8a62ae01c4a5191efad61619f7))
+- *(requests)* Keep chosen Sonarr/Radarr instance in request modal - ([ad3dee4](https://github.com/snapetech-org/seerrng/commit/ad3dee49a288d64a5e9aea8aa2575acfdd754f26))
+
+### 📖 Documentation
+- Add Snapetech MCP integration guide - ([ed75f80](https://github.com/snapetech-org/seerrng/commit/ed75f80717faccace0d4ce27b61145cca7d3fe56))
+
+### 🧪 Testing
+- *(requests)* Cover non-default Sonarr selection - ([c8af7ba](https://github.com/snapetech-org/seerrng/commit/c8af7ba354bb7e4c2451e9d8e998e1de7544614f))
+
+### ⚙️ Miscellaneous Tasks
+- *(settings)* Use shared fields for age gate - ([4411c61](https://github.com/snapetech-org/seerrng/commit/4411c61fd756f1d899df9fab53a5bdce1e68c195))
+- Add isolated public fork PR checks - ([64f9f84](https://github.com/snapetech-org/seerrng/commit/64f9f84dfc1ef6f53000d33ded381db5bb3604f6))
+- Route container builds to kspld0 - ([e97cb09](https://github.com/snapetech-org/seerrng/commit/e97cb099701c849b99c7833b663b44a9d6c250ea))
+
 ## [3.66.0](https://github.com/snapetech-org/seerrng/compare/v3.65.0..v3.66.0) - 2026-10-17
 
 ### User-facing changes
