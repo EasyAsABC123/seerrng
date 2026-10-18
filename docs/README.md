@@ -78,6 +78,7 @@ connects to.
 - [Back up SeerrNG](/using-seerr/backups/)
 
 ## Integrate and contribute
+- [Setup experience contract](/maintainers/setup-experience-contract): evolve the existing first-run, category, and service surfaces.
 
 - [Why SeerrNG maintains a fork and what a replacement must provide](/fork-rationale/)
 - [REST API reference](/api/seerr-api/)

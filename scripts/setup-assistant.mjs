@@ -409,6 +409,47 @@ export const profiles = {
   },
 };
 
+export const setupCategories = {
+  'movies-tv': { title: 'Movies and TV', profile: 'movies-tv' },
+  books: { title: 'Books and audiobooks', profile: 'books' },
+  music: { title: 'Music', profile: 'music' },
+  comics: { title: 'Comics', profile: 'comics' },
+  magazines: { title: 'Magazines', profile: 'magazines' },
+  software: { title: 'PC games and emulation ROMs', profile: 'software' },
+};
+
+export const appsForSetupCategories = (requestedCategories) => {
+  const categoryNames = [
+    ...new Set(
+      requestedCategories
+        .split(',')
+        .map((category) => category.trim())
+        .filter(Boolean)
+    ),
+  ];
+  if (!categoryNames.length) {
+    throw new Error('Select one or more categories.');
+  }
+
+  const selectedApps = new Set(['seerrng']);
+  for (const category of categoryNames) {
+    const selectedCategory = setupCategories[category];
+    if (!selectedCategory) {
+      throw new Error(`Unknown category "${category}". Use --list-categories.`);
+    }
+    for (const app of profiles[selectedCategory.profile].apps) {
+      selectedApps.add(app);
+    }
+  }
+
+  return {
+    title: categoryNames
+      .map((category) => setupCategories[category].title)
+      .join(' + '),
+    apps: [...selectedApps],
+  };
+};
+
 const quote = (value) => JSON.stringify(value);
 
 export const renderCompose = (selectedApps, sharedNetwork) => {
@@ -952,7 +993,7 @@ const detectComposeApps = async (outputDirectory) => {
 
 const help = () => {
   stdout.write(
-    `SeerrNG setup assistant\n\nUsage: pnpm setup:assistant [options]\n\nOptions:\n  --profile <name>  choose a media profile (see --list-profiles)\n  --apps <changes>  add app IDs or remove with - (comma-separated)\n  --network <name>  join or discover apps on an explicitly named Docker network\n  --host <host>     target host for a manual connection report\n  --connections     create a manual report without requiring Docker\n  --probe-host <host> probe common app ports on one explicitly named host\n  --output <path>   output folder (default: ./seerrng-stack)\n  --yes             create files without interactive prompts\n  --start           start the stack after creating files\n  --detect          report containers in an existing Compose stack\n  --discover        identify supported apps attached to --network\n  --list-profiles   print available profiles\n  --help            show this help\n\nUse --connections to create an importable report for apps installed on Windows, macOS, Linux, or another reachable host. It does not require Docker.\nUse --probe-host <host> to check only the common default ports on one explicitly named host. TCP reachability is a suggestion, not app identification; API keys are never requested.\nUse --discover --network <name> for Docker discovery. API keys stay in each app and are entered in SeerrNG.\nWithout --profile, choose a Docker starter profile from the interactive menu.\n`
+    `SeerrNG setup assistant\n\nUsage: pnpm setup:assistant [options]\n\nOptions:\n  --profile <name>  choose a starter profile (see --list-profiles)\n  --categories <names> recommend apps for one or more categories (see --list-categories)\n  --apps <changes>  add app IDs or remove with - (comma-separated)\n  --network <name>  join or discover apps on an explicitly named Docker network\n  --host <host>     target host for a manual connection report\n  --connections     create a manual report without requiring Docker\n  --probe-host <host> probe common app ports on one explicitly named host\n  --output <path>   output folder (default: ./seerrng-stack)\n  --yes             create files without interactive prompts\n  --start           start the stack after creating files\n  --detect          report containers in an existing Compose stack\n  --discover        identify supported apps attached to --network\n  --list-profiles   print available profiles\n  --list-categories print categories accepted by --categories\n  --help            show this help\n\nUse --connections to create an importable report for apps installed on Windows, macOS, Linux, or another reachable host. It does not require Docker.\nUse --probe-host <host> to check only the common default ports on one explicitly named host. TCP reachability is a suggestion, not app identification; API keys are never requested.\nUse --discover --network <name> for Docker discovery. API keys stay in each app and are entered in SeerrNG.\nUse --categories movies-tv,books to combine only the apps selected for those categories. Without --profile or --categories, choose a starter profile from the interactive menu.\n`
   );
 };
 
@@ -965,6 +1006,12 @@ const run = async () => {
   if (args.includes('--list-profiles')) {
     for (const [key, profile] of Object.entries(profiles)) {
       stdout.write(`${key}\t${profile.title}\n`);
+    }
+    return;
+  }
+  if (args.includes('--list-categories')) {
+    for (const [key, category] of Object.entries(setupCategories)) {
+      stdout.write(`${key}\t${category.title}\n`);
     }
     return;
   }
@@ -1037,32 +1084,46 @@ const run = async () => {
       return;
     }
 
-    let profileName = optionValue('--profile');
-    if (!profileName) {
+    const profileName = optionValue('--profile');
+    const requestedCategories = optionValue('--categories');
+    if (profileName && requestedCategories) {
+      throw new Error('Choose either --profile or --categories, not both.');
+    }
+    let selection;
+    if (requestedCategories) {
+      selection = appsForSetupCategories(requestedCategories);
+    } else if (profileName) {
+      const profile = profiles[profileName];
+      if (!profile) {
+        throw new Error(
+          `Unknown profile "${profileName}". Use --list-profiles.`
+        );
+      }
+      selection = profile;
+    } else {
       stdout.write('Choose a starter profile:\n');
       Object.entries(profiles).forEach(([key, profile], index) => {
         stdout.write(`  ${index + 1}. ${profile.title} (${key})\n`);
       });
       const answer = await rl.question('Profile number: ');
-      profileName = Object.keys(profiles)[Number(answer) - 1];
+      const selectedProfileName = Object.keys(profiles)[Number(answer) - 1];
+      selection = profiles[selectedProfileName];
     }
 
-    const profile = profiles[profileName];
-    if (!profile)
-      throw new Error(`Unknown profile "${profileName}". Use --list-profiles.`);
-    const selected = [...profile.apps];
+    if (!selection) throw new Error('Choose a valid profile or category.');
+    const selected = [...selection.apps];
     const nonInteractive = args.includes('--yes');
-    if (nonInteractive && !optionValue('--profile')) {
-      throw new Error('--yes requires --profile.');
+    if (nonInteractive && !profileName && !requestedCategories) {
+      throw new Error('--yes requires --profile or --categories.');
     }
     let changes = optionValue('--apps', '');
     if (!nonInteractive && !changes) {
       stdout.write(
-        `\nApps in this profile: ${selected.map((id) => `${id} (${apps[id].title})`).join(', ')}\n`
+        `\nApps in this setup: ${selected.map((id) => `${id} (${apps[id].title})`).join(', ')}\n`
       );
       stdout.write(`Available app IDs: ${Object.keys(apps).join(', ')}\n`);
       changes = await rl.question(
-        'Optional app IDs to add, or prefix with - to remove (comma-separated; Enter keeps this profile): '
+        'Optional app IDs to add, or prefix with - to remove (comma-separated; Enter keeps this setup): '
       );
     }
     for (const change of changes
@@ -1097,7 +1158,7 @@ const run = async () => {
       optionValue('--output', './seerrng-stack')
     );
     stdout.write(
-      `\nSelected: ${profile.title}\nApps: ${selected.map((id) => apps[id].title).join(', ')}\nOutput: ${outputDirectory}\n`
+      `\nSelected: ${selection.title}\nApps: ${selected.map((id) => apps[id].title).join(', ')}\nOutput: ${outputDirectory}\n`
     );
     const confirm = nonInteractive
       ? 'y'
@@ -1129,7 +1190,7 @@ const run = async () => {
     try {
       await writeFile(
         guidePath,
-        renderGuide(selected, profile.title, sharedNetwork),
+        renderGuide(selected, selection.title, sharedNetwork),
         { flag: 'wx' }
       );
     } catch (error) {
