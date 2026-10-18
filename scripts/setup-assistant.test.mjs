@@ -8,6 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   apps,
+  appsForSetupCategories,
   buildManualConnections,
   connectionAppIds,
   discoverNetworkApps,
@@ -19,6 +20,7 @@ import {
   renderGuide,
   renderManualConnections,
   renderProbedConnections,
+  setupCategories,
 } from './setup-assistant.mjs';
 
 test('manual connection suggestions cover native installs without Docker', () => {
@@ -176,6 +178,32 @@ test('profiles and optional app additions cover each supported media category', 
   assert.ok(profiles.software.apps.includes('questarrng'));
   assert.ok(profiles.software.apps.includes('romarrng'));
   assert.ok(apps.kapowarr && apps.backissue);
+});
+
+test('category recommendations combine only selected category apps', () => {
+  const selected = appsForSetupCategories('movies-tv,books,books');
+  assert.deepEqual(selected.apps, [
+    'seerrng',
+    'radarr',
+    'sonarr',
+    'prowlarr',
+    'qbittorrent',
+    'chaptarrng',
+  ]);
+  assert.equal(selected.title, 'Movies and TV + Books and audiobooks');
+  assert.deepEqual(Object.keys(setupCategories), [
+    'movies-tv',
+    'books',
+    'music',
+    'comics',
+    'magazines',
+    'software',
+  ]);
+  assert.throws(() => appsForSetupCategories(''), /one or more categories/);
+  assert.throws(
+    () => appsForSetupCategories('movies,books'),
+    /Unknown category/
+  );
 });
 
 test('generated Compose uses persistent named volumes and configurable local web ports', () => {
@@ -448,6 +476,47 @@ test('interactive setup writes the selected profile and refuses to overwrite it'
     );
     assert.doesNotMatch(appOnlyCompose, /\n  seerrng:/);
     assert.match(appOnlyCompose, /name: "existing-seerr-network"/);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('category-based setup writes only the selected companion app groups', async () => {
+  const temporaryDirectory = await mkdtemp(
+    path.join(tmpdir(), 'seerrng-category-setup-')
+  );
+  const outputDirectory = path.join(temporaryDirectory, 'stack');
+  const scriptPath = fileURLToPath(
+    new URL('./setup-assistant.mjs', import.meta.url)
+  );
+
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--categories',
+        'music,comics',
+        '--output',
+        outputDirectory,
+        '--yes',
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const compose = await readFile(
+      path.join(outputDirectory, 'compose.yaml'),
+      'utf8'
+    );
+    const guide = await readFile(
+      path.join(outputDirectory, 'SETUP.md'),
+      'utf8'
+    );
+    assert.match(compose, /lidarr:/);
+    assert.match(compose, /mylar3:/);
+    assert.doesNotMatch(compose, /radarr:|chaptarrng:/);
+    assert.match(guide, /Music \+ Comics/);
+    assert.doesNotMatch(guide, /api[_ -]?key\s*[:=]\s*\S+/i);
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }

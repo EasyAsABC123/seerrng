@@ -45,6 +45,19 @@ location directly:
 node scripts/setup-assistant.mjs --profile movies-tv --output ./my-media-stack
 ```
 
+For a combination of request categories, ask for only the matching companion
+apps. The supported category names are `movies-tv`, `books`, `music`,
+`comics`, `magazines`, and `software`:
+
+```text
+node scripts/setup-assistant.mjs --categories movies-tv,books --output ./my-media-stack
+```
+
+Use `--list-categories` to print the accepted names. Categories combine the
+existing SeerrNG starter profiles and include SeerrNG plus shared tools only
+once. `--apps` can still add or remove individual services. The generated
+guide links to the existing Settings forms; it never writes API-key values.
+
 For unattended file generation, add `--yes`; the assistant will write the
 files but will not start containers. Add `--start` to explicitly start the
 generated stack with Docker Compose.
@@ -163,7 +176,7 @@ the live API probe: it verifies that SeerrNG can reach the selected service
 with the supplied credentials and loads its profiles, root folders, or
 capabilities before saving.
 
-After choosing a profile, enter app IDs to add or prefix an ID with `-` to
+After choosing a profile or category set, enter app IDs to add or prefix an ID with `-` to
 remove it. For example, add `lidarr` to a Movies and TV profile or enter
 `-qbittorrent` to omit its download client. Available app IDs are `seerrng`,
 `radarr`, `sonarr`, `lidarr`, `bookshelf`,
