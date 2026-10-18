@@ -15,7 +15,7 @@ import type { MediaCategoryKey } from '@server/constants/mediaCategories';
 import { DEFAULT_ENABLED_MEDIA_CATEGORIES } from '@server/constants/mediaCategories';
 import type { MainSettings } from '@server/lib/settings';
 import axios from 'axios';
-import { Field, Form, Formik } from 'formik';
+import { Form, Formik } from 'formik';
 import { useIntl } from 'react-intl';
 import useSWR, { mutate } from 'swr';
 
@@ -224,7 +224,7 @@ const SettingsCategories = () => {
                     messages.ageGateMovieMaxDescription
                   )}
                 >
-                  <Field
+                  <SettingsField
                     as="select"
                     id="ageGate.maxMovieCertification"
                     name="ageGate.maxMovieCertification"
@@ -234,7 +234,7 @@ const SettingsCategories = () => {
                         {rating}
                       </option>
                     ))}
-                  </Field>
+                  </SettingsField>
                 </SettingsFormRow>
                 <SettingsFormRow
                   htmlFor="ageGate.maxTvCertification"
@@ -243,7 +243,7 @@ const SettingsCategories = () => {
                     messages.ageGateTvMaxDescription
                   )}
                 >
-                  <Field
+                  <SettingsField
                     as="select"
                     id="ageGate.maxTvCertification"
                     name="ageGate.maxTvCertification"
@@ -253,7 +253,7 @@ const SettingsCategories = () => {
                         {rating}
                       </option>
                     ))}
-                  </Field>
+                  </SettingsField>
                 </SettingsFormRow>
                 <SettingsFormRow
                   htmlFor="ageGate.certificationCountry"
@@ -262,7 +262,7 @@ const SettingsCategories = () => {
                     messages.ageGateCountryDescription
                   )}
                 >
-                  <Field
+                  <SettingsField
                     id="ageGate.certificationCountry"
                     name="ageGate.certificationCountry"
                     type="text"
