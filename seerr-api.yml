@@ -690,13 +690,17 @@ components:
           targetName,
           groupName,
           remoteGroupId,
+          remoteKoboCollectionId,
           isPublic,
           syncToKobo,
+          koboSyncStatus,
+          koboSyncError,
           status,
           lastMatchCount,
           countVerified,
           lastError,
           lastSyncedAt,
+          lastKoboSyncedAt,
           serviceUrl,
         ]
       properties:
@@ -718,10 +722,20 @@ components:
         remoteGroupId:
           type: string
           nullable: true
+        remoteKoboCollectionId:
+          type: string
+          nullable: true
         isPublic:
           type: boolean
         syncToKobo:
           type: boolean
+          description: For BookOrbit, enables SeerrNG to maintain a companion regular Collection and sync its membership to Kobo.
+        koboSyncStatus:
+          type: string
+          enum: [disabled, pending, ready, error]
+        koboSyncError:
+          type: string
+          nullable: true
         status:
           type: string
           enum: [pending, ready, error]
@@ -734,6 +748,10 @@ components:
           type: string
           nullable: true
         lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastKoboSyncedAt:
           type: string
           format: date-time
           nullable: true
@@ -787,6 +805,7 @@ components:
           type: boolean
         syncToKobo:
           type: boolean
+          description: When true for BookOrbit, SeerrNG maintains a Kobo-synced companion Collection and reconciles it every 15 minutes.
         allowEmpty:
           type: boolean
           description: Must be true to create a rule when the current preview has no matches.

@@ -11,6 +11,8 @@ export type ReaderGroupingProvider = 'grimmory' | 'bookorbit';
 export type ReaderGroupingTargetType =
   'author' | 'book-series' | 'comic-series';
 export type ReaderGroupingStatus = 'pending' | 'ready' | 'error';
+export type ReaderGroupingKoboSyncStatus =
+  'disabled' | 'pending' | 'ready' | 'error';
 
 @Entity('reader_delivery_grouping')
 @Index(
@@ -44,11 +46,21 @@ export default class ReaderDeliveryGrouping {
   @Column({ type: 'varchar', length: 255, nullable: true })
   public remoteGroupId: string | null;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  public remoteKoboCollectionId: string | null;
+
   @Column({ type: 'boolean', default: true })
   public isPublic: boolean;
 
+  /** Whether SeerrNG maintains a Kobo-synced companion BookOrbit Collection. */
   @Column({ type: 'boolean', default: false })
   public syncToKobo: boolean;
+
+  @Column({ type: 'varchar', length: 16, default: 'disabled' })
+  public koboSyncStatus: ReaderGroupingKoboSyncStatus;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  public koboSyncError: string | null;
 
   @Column({ type: 'varchar', length: 16, default: 'pending' })
   public status: ReaderGroupingStatus;
@@ -64,6 +76,9 @@ export default class ReaderDeliveryGrouping {
 
   @DbAwareColumn({ type: 'datetime', nullable: true })
   public lastSyncedAt: Date | null;
+
+  @DbAwareColumn({ type: 'datetime', nullable: true })
+  public lastKoboSyncedAt: Date | null;
 
   @DbAwareColumn({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
   public createdAt: Date;

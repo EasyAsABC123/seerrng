@@ -45,11 +45,50 @@
   API responses. OPDS reader credentials, scan results, device state, reading
   progress, and annotations remain in the companion app.
 
+## BookOrbit Kobo Collection sync
+
+- BookOrbit keeps two separate concepts: SmartScopes apply live rules, while
+  regular Collections hold explicit membership and can sync to Kobo. SeerrNG
+  keeps its SmartScope for browsing and creates a companion regular Collection
+  only when the administrator opts into Kobo sync.
+- The companion Collection has a deterministic SeerrNG name and marker. The
+  database stores its remote ID separately from the SmartScope ID. SeerrNG
+  queries matching BookOrbit book IDs, pages through current Collection
+  membership, adds missing matches first, and then removes stale members. The
+  reconciler only changes that managed Collection; unrelated BookOrbit
+  Collections and library files are untouched.
+- Saving or updating a grouping reconciles the companion Collection
+  immediately. The scheduled **BookOrbit Kobo Collection Sync** job repeats
+  this every 15 minutes by default, using the operator's Settings > Jobs
+  schedule, so later library changes reach the Kobo shelf. The Collection's
+  native BookOrbit Kobo flag is enabled, and the user still needs a Kobo paired
+  in BookOrbit. Turning the option off disables native Kobo sync but retains
+  the managed Collection and its current membership. Removing the managed
+  grouping removes both remote objects.
+- SmartScope status and Kobo Collection status are stored independently.
+  Partial Kobo failures retain the successful SmartScope and remote Collection
+  ID so the next scheduled run can retry. Collection reconciliation refuses
+  to process more than 50,000 matches or members rather than partially applying
+  a truncated list.
+- SQLite and PostgreSQL migrations add the companion ID, sync state, error,
+  and last-sync time. Existing persisted BookOrbit opt-ins are marked pending
+  so the scheduled job creates their companion Collections after upgrade.
+- `server/api/readerDelivery.test.ts`,
+  `server/lib/readerDeliveryKobo.test.ts`, and
+  `server/routes/settings/readerDelivery.test.ts` cover the BookOrbit native
+  Collection API contract, pagination and bounded batch updates, membership
+  diff, partial failure, and the settings route. A live BookOrbit/Kobo device
+  round trip still requires an actual configured service and paired device.
+
 ## File record
 
 - server/lib/settings/index.ts: added the reader-delivery type, empty URL
   defaults, Grimmory preference, settings field, and getter. This file also
   contains pre-existing external-request-list changes; those are user-owned.
+- server/lib/readerDeliveryKobo.ts and server/job/schedule.ts: reconcile
+  BookOrbit Collection membership against SmartScope rules at save time and on
+  the configurable 15-minute scheduled job; store retryable sync errors
+  separately from live shelf status.
 - server/routes/settings/readerDelivery.ts: added admin-only settings
   retrieval and persistence, redacted account credentials, URL validation,
   normalization of pasted OPDS addresses, connection checks, rule previews,
@@ -58,13 +97,15 @@
   server/api/readerDelivery.test.ts: cover secret redaction, access controls,
   provider-specific filters and payloads, preview/count states, empty-rule
   consent, upserts, BookOrbit visibility constraints, and managed deletion.
-- server/entity/ReaderDeliveryGrouping.ts and the SQLite/Postgres
-  `1791030000000-CreateReaderDeliveryGroupings` migrations: persist only the
-  target-to-provider shelf mapping and operation status; reader files and
-  catalog contents stay in the reader service.
+- server/entity/ReaderDeliveryGrouping.ts and the SQLite/Postgres reader
+  grouping migrations: persist the target-to-provider shelf mapping, remote
+  SmartScope ID, optional companion Kobo Collection ID, sync state, and
+  operation status; reader files and catalog contents stay in the reader
+  service.
 - src/components/Common/ReaderGroupingAction.tsx and
   src/components/Settings/ReaderDeliverySettings.tsx: expose shelf preview,
-  save, visibility/Kobo options, status/count, and removal to administrators.
+  save, visibility and Kobo-sync options, status/count, and removal to
+  administrators.
 - AuthorDetails, BookSeriesDetails, and ComicDetails: add the shelf action to
   relevant author and series pages.
 - seerr-api.yml: documents the admin reader settings, connection test, managed

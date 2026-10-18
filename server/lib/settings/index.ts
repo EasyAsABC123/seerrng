@@ -825,6 +825,7 @@ export type JobId =
   | 'release-calendar-history'
   | 'availability-sync'
   | 'external-request-list-sync'
+  | 'reader-delivery-kobo-sync'
   | 'process-blocklisted-tags';
 
 export interface DiscoveryIntegrationsSettings {
@@ -1173,6 +1174,9 @@ class Settings {
         },
         'external-request-list-sync': {
           schedule: '0 0 3 * * *',
+        },
+        'reader-delivery-kobo-sync': {
+          schedule: '0 */15 * * * *',
         },
         'plex-refresh-token': {
           schedule: '0 0 5 * * *',
@@ -2206,6 +2210,9 @@ class Settings {
         },
         'external-request-list-sync': {
           schedule: '0 0 3 * * *',
+        },
+        'reader-delivery-kobo-sync': {
+          schedule: '0 */15 * * * *',
         },
         'plex-refresh-token': {
           schedule: '0 0 5 * * *',

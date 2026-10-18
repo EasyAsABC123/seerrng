@@ -132,6 +132,28 @@ describe('scheduled job lifecycle', () => {
     assert.equal(typeof backissueJob.cancelFn, 'function');
   });
 
+  it('registers BookOrbit Kobo Collection reconciliation with the operator schedule', () => {
+    const settings = getSettings();
+    const previousSchedule =
+      settings.jobs['reader-delivery-kobo-sync'].schedule;
+
+    try {
+      settings.jobs['reader-delivery-kobo-sync'].schedule = '0 */30 * * * *';
+      startJobs();
+      const koboSyncJob = scheduledJobs.find(
+        (job) => job.id === 'reader-delivery-kobo-sync'
+      );
+
+      assert.ok(koboSyncJob);
+      assert.equal(koboSyncJob.name, 'BookOrbit Kobo Collection Sync');
+      assert.equal(koboSyncJob.type, 'process');
+      assert.equal(koboSyncJob.interval, 'minutes');
+      assert.equal(koboSyncJob.cronSchedule, '0 */30 * * * *');
+    } finally {
+      settings.jobs['reader-delivery-kobo-sync'].schedule = previousSchedule;
+    }
+  });
+
   it('cancels future invocations and waits for active work', async () => {
     let cancelCalled = false;
     let release: (() => void) | undefined;

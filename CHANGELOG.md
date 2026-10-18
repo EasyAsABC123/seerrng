@@ -1045,7 +1045,7 @@ that are not called out here.
 - **Games:** My Games now tracks ownership, progress, and Steam playtime alongside software requests. Link Steam to import your library, then choose which owned titles to share and find games multiple household members can play.
   - **Action required:** Configure an optional Steam Web API key to enable imports.
 - **Requests:** Connect a public IMDb watchlist or Goodreads to-read shelf to your account. New titles are checked daily and enter your normal request flow, honoring your permissions, quotas, and approval settings.
-- **Bookshelf:** Readers can open the selected Grimmory or BookOrbit library, use its supported ebook, audiobook, comic, and PDF readers, or download available requested files to the current device. Administrators can preview and manage live author and series shelves, including public OPDS scopes and BookOrbit Kobo sync scopes.
+- **Bookshelf:** Readers can open the selected Grimmory or BookOrbit library, use its supported ebook, audiobook, comic, and PDF readers, or download available requested files to the current device. Administrators can preview and manage live author and series shelves, including public OPDS scopes. BookOrbit SmartScopes remain dynamic; use BookOrbit Collections for Kobo sync.
 
 #### Changed
 

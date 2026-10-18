@@ -103,6 +103,26 @@ const getSampleTitles = (value: unknown): string[] =>
     .filter(Boolean)
     .slice(0, 5);
 
+const READER_BOOK_PAGE_SIZE = 100;
+const MAX_KOBO_COLLECTION_BOOKS = 50_000;
+
+const getReaderBookIds = (value: unknown): number[] => {
+  const items = getCollection(value);
+  if (!items) {
+    throw new Error('BookOrbit returned an invalid book list.');
+  }
+
+  return items.map((item) => {
+    const record = asRecord(item);
+    const id = record?.id;
+    const parsed = typeof id === 'string' ? Number(id) : id;
+    if (!Number.isSafeInteger(parsed) || (parsed as number) < 1) {
+      throw new Error('BookOrbit returned a book without a valid ID.');
+    }
+    return parsed as number;
+  });
+};
+
 export const parseReaderGroupingPreview = (
   value: unknown,
   arrayIsComplete = true
@@ -117,7 +137,7 @@ export const getReaderGroupingRemoteId = (
 ): string | undefined => {
   const record = asRecord(value);
   if (!record) return undefined;
-  for (const key of ['id', 'magicShelfId', 'smartScopeId']) {
+  for (const key of ['id', 'magicShelfId', 'smartScopeId', 'collectionId']) {
     const id = record[key];
     if (typeof id === 'number' && Number.isSafeInteger(id) && id > 0) {
       return String(id);
@@ -126,7 +146,7 @@ export const getReaderGroupingRemoteId = (
       return id.trim();
     }
   }
-  for (const key of ['data', 'magicShelf', 'smartScope']) {
+  for (const key of ['data', 'magicShelf', 'smartScope', 'collection']) {
     const nested = getReaderGroupingRemoteId(record[key]);
     if (nested) return nested;
   }
@@ -204,10 +224,14 @@ export class ReaderDeliveryApi extends ExternalAPI {
     body?: unknown,
     params?: Record<string, unknown>
   ): Promise<T> {
-    const response = await this.request<T>(method, endpoint, body, {
+    const requestConfig = {
       headers: token ? { Authorization: 'Bearer ' + token } : undefined,
       params,
       maxRedirects: 0,
+      ...(method === 'DELETE' && body !== undefined ? { data: body } : {}),
+    };
+    const response = await this.request<T>(method, endpoint, body, {
+      ...requestConfig,
     });
     return response.data;
   }
@@ -302,7 +326,6 @@ export class ReaderDeliveryApi extends ExternalAPI {
       name: string;
       filter: ReaderGroupingFilter;
       isPublic: boolean;
-      syncToKobo: boolean;
     }
   ): Promise<string> {
     const payload =
@@ -320,7 +343,6 @@ export class ReaderDeliveryApi extends ExternalAPI {
             icon: 'books',
             filter: group.filter,
             isPublic: group.isPublic,
-            syncToKobo: group.syncToKobo,
           };
     const endpoint =
       provider === 'grimmory'
@@ -385,5 +407,178 @@ export class ReaderDeliveryApi extends ExternalAPI {
         ? '/api/magic-shelves/' + encodeURIComponent(remoteId)
         : '/api/v1/smart-scopes/' + encodeURIComponent(remoteId);
     await this.call<unknown>('DELETE', endpoint, token);
+  }
+
+  public async findBookOrbitCollectionIdByName(
+    token: string,
+    name: string,
+    managedDescription: string
+  ): Promise<string | undefined> {
+    const response = await this.call<unknown>(
+      'GET',
+      '/api/v1/collections',
+      token
+    );
+    const collection = getCollection(response)?.find((item) => {
+      const record = asRecord(item);
+      return record?.name === name;
+    });
+    if (!collection) return undefined;
+
+    const record = asRecord(collection);
+    const description = record?.description;
+    if (
+      typeof description !== 'string' ||
+      !description.startsWith(managedDescription)
+    ) {
+      throw new Error(
+        'A BookOrbit Collection already uses the managed Kobo collection name.'
+      );
+    }
+
+    return getReaderGroupingRemoteId(collection);
+  }
+
+  public async saveBookOrbitCollection(
+    token: string,
+    collection: {
+      id?: string;
+      name: string;
+      description: string;
+      isPublic: boolean;
+      syncToKobo: boolean;
+    }
+  ): Promise<string> {
+    const response = await this.call<unknown>(
+      collection.id ? 'PATCH' : 'POST',
+      collection.id
+        ? '/api/v1/collections/' + encodeURIComponent(collection.id)
+        : '/api/v1/collections',
+      token,
+      {
+        name: collection.name,
+        icon: 'books',
+        description: collection.description,
+        isPublic: collection.isPublic,
+        syncToKobo: collection.syncToKobo,
+      }
+    );
+    const id = getReaderGroupingRemoteId(response) ?? collection.id;
+    if (!id) {
+      throw new Error('BookOrbit did not return a Kobo collection ID.');
+    }
+    return id;
+  }
+
+  public async deleteBookOrbitCollection(
+    token: string,
+    remoteId: string
+  ): Promise<void> {
+    await this.call<unknown>(
+      'DELETE',
+      '/api/v1/collections/' + encodeURIComponent(remoteId),
+      token
+    );
+  }
+
+  private async getBookOrbitBookIds(
+    token: string,
+    endpoint: string,
+    filter?: ReaderGroupingFilter
+  ): Promise<number[]> {
+    const ids = new Set<number>();
+    let page = 0;
+    let expectedCount: number | undefined;
+
+    for (;;) {
+      const response = filter
+        ? await this.call<unknown>('POST', endpoint, token, {
+            filter,
+            sort: [],
+            pagination: { page, size: READER_BOOK_PAGE_SIZE },
+          })
+        : await this.call<unknown>('GET', endpoint, token, undefined, {
+            page,
+            size: READER_BOOK_PAGE_SIZE,
+          });
+      const items = getCollection(response);
+      if (!items) {
+        throw new Error('BookOrbit returned an invalid paginated book list.');
+      }
+
+      const total = getCount(response, false);
+      if (total !== undefined) expectedCount = total;
+      if (
+        expectedCount !== undefined &&
+        expectedCount > MAX_KOBO_COLLECTION_BOOKS
+      ) {
+        throw new Error(
+          'This BookOrbit Kobo collection exceeds SeerrNG’s safe 50,000-book sync limit.'
+        );
+      }
+
+      for (const id of getReaderBookIds(items)) ids.add(id);
+      if (ids.size > MAX_KOBO_COLLECTION_BOOKS) {
+        throw new Error(
+          'This BookOrbit Kobo collection exceeds SeerrNG’s safe 50,000-book sync limit.'
+        );
+      }
+
+      const reachedEnd =
+        items.length < READER_BOOK_PAGE_SIZE ||
+        (expectedCount !== undefined && ids.size >= expectedCount);
+      if (reachedEnd) {
+        if (expectedCount !== undefined && ids.size !== expectedCount) {
+          throw new Error(
+            'BookOrbit returned an incomplete paginated book list.'
+          );
+        }
+        return [...ids];
+      }
+
+      page += 1;
+      if (page * READER_BOOK_PAGE_SIZE > MAX_KOBO_COLLECTION_BOOKS) {
+        throw new Error(
+          'This BookOrbit Kobo collection exceeds SeerrNG’s safe 50,000-book sync limit.'
+        );
+      }
+    }
+  }
+
+  public async getBookOrbitMatchedBookIds(
+    token: string,
+    filter: ReaderGroupingFilter
+  ): Promise<number[]> {
+    return this.getBookOrbitBookIds(token, '/api/v1/books/query', filter);
+  }
+
+  public async getBookOrbitCollectionBookIds(
+    token: string,
+    remoteId: string
+  ): Promise<number[]> {
+    return this.getBookOrbitBookIds(
+      token,
+      '/api/v1/collections/' + encodeURIComponent(remoteId) + '/books'
+    );
+  }
+
+  public async changeBookOrbitCollectionBooks(
+    token: string,
+    remoteId: string,
+    action: 'add' | 'remove',
+    bookIds: number[]
+  ): Promise<void> {
+    const endpoint =
+      '/api/v1/collections/' + encodeURIComponent(remoteId) + '/books';
+    const method = action === 'add' ? 'POST' : 'DELETE';
+    for (
+      let index = 0;
+      index < bookIds.length;
+      index += READER_BOOK_PAGE_SIZE
+    ) {
+      await this.call<unknown>(method, endpoint, token, {
+        bookIds: bookIds.slice(index, index + READER_BOOK_PAGE_SIZE),
+      });
+    }
   }
 }

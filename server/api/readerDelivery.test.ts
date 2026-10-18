@@ -222,7 +222,6 @@ describe('ReaderDeliveryApi', () => {
         name: 'SeerrNG series',
         filter,
         isPublic: true,
-        syncToKobo: false,
       }),
       '51'
     );
@@ -245,7 +244,6 @@ describe('ReaderDeliveryApi', () => {
         name: 'SeerrNG series',
         filter,
         isPublic: false,
-        syncToKobo: true,
       }),
       'scope/51'
     );
@@ -259,7 +257,6 @@ describe('ReaderDeliveryApi', () => {
       icon: 'books',
       filter,
       isPublic: false,
-      syncToKobo: true,
     });
   });
 
@@ -289,5 +286,137 @@ describe('ReaderDeliveryApi', () => {
     );
     assert.deepEqual(api.calls[0].config?.params, { page: 0, size: 1 });
     assert.equal(api.calls[1].config?.headers?.Authorization, 'Bearer token');
+  });
+
+  it('creates, updates, finds, and deletes native BookOrbit Collections', async () => {
+    const api = new InspectReaderDeliveryApi([
+      {
+        data: [
+          { id: 42, name: 'Managed shelf', description: 'Managed by SeerrNG.' },
+        ],
+      },
+      { id: 43 },
+      undefined,
+      undefined,
+    ]);
+
+    assert.equal(
+      await api.findBookOrbitCollectionIdByName(
+        'token',
+        'Managed shelf',
+        'Managed by SeerrNG.'
+      ),
+      '42'
+    );
+    assert.equal(
+      await api.saveBookOrbitCollection('token', {
+        name: 'Managed shelf',
+        description: 'Managed by SeerrNG.',
+        isPublic: true,
+        syncToKobo: true,
+      }),
+      '43'
+    );
+    assert.equal(
+      await api.saveBookOrbitCollection('token', {
+        id: '43',
+        name: 'Managed shelf',
+        description: 'Managed by SeerrNG.',
+        isPublic: true,
+        syncToKobo: false,
+      }),
+      '43'
+    );
+    await api.deleteBookOrbitCollection('token', '43');
+
+    assert.deepEqual(
+      api.calls.map(({ method, endpoint }) => ({ method, endpoint })),
+      [
+        { method: 'GET', endpoint: '/api/v1/collections' },
+        { method: 'POST', endpoint: '/api/v1/collections' },
+        { method: 'PATCH', endpoint: '/api/v1/collections/43' },
+        { method: 'DELETE', endpoint: '/api/v1/collections/43' },
+      ]
+    );
+    assert.deepEqual(api.calls[1].data, {
+      name: 'Managed shelf',
+      icon: 'books',
+      description: 'Managed by SeerrNG.',
+      isPublic: true,
+      syncToKobo: true,
+    });
+    assert.equal(api.calls[3].config?.headers?.Authorization, 'Bearer token');
+  });
+
+  it('pages BookOrbit matches and current Collection membership, then diffs by book ID', async () => {
+    const filter = buildReaderGroupingFilter('bookorbit', seriesTarget);
+    const api = new InspectReaderDeliveryApi([
+      {
+        items: [
+          { id: 1, title: 'One' },
+          { id: 3, title: 'Three' },
+        ],
+        total: 2,
+      },
+      {
+        items: [
+          { id: 2, title: 'Two' },
+          { id: 3, title: 'Three' },
+        ],
+        total: 2,
+      },
+    ]);
+
+    assert.deepEqual(
+      await api.getBookOrbitMatchedBookIds('token', filter),
+      [1, 3]
+    );
+    assert.deepEqual(
+      await api.getBookOrbitCollectionBookIds('token', '42'),
+      [2, 3]
+    );
+    assert.deepEqual(
+      api.calls.map(({ method, endpoint }) => ({ method, endpoint })),
+      [
+        { method: 'POST', endpoint: '/api/v1/books/query' },
+        { method: 'GET', endpoint: '/api/v1/collections/42/books' },
+      ]
+    );
+    assert.deepEqual(api.calls[0].data, {
+      filter,
+      sort: [],
+      pagination: { page: 0, size: 100 },
+    });
+    assert.deepEqual(api.calls[1].config?.params, { page: 0, size: 100 });
+  });
+
+  it('batches BookOrbit Collection membership updates into bounded requests', async () => {
+    const ids = Array.from({ length: 201 }, (_, index) => index + 1);
+    const api = new InspectReaderDeliveryApi([undefined, undefined, undefined]);
+
+    await api.changeBookOrbitCollectionBooks('token', '42/1', 'add', ids);
+
+    assert.equal(api.calls.length, 3);
+    assert.ok(
+      api.calls.every(
+        (call) => call.endpoint === '/api/v1/collections/42%2F1/books'
+      )
+    );
+    assert.deepEqual(
+      api.calls.map(
+        (call) => (call.data as { bookIds: number[] }).bookIds.length
+      ),
+      [100, 100, 1]
+    );
+
+    const removal = new InspectReaderDeliveryApi([undefined]);
+    await removal.changeBookOrbitCollectionBooks(
+      'token',
+      '42',
+      'remove',
+      [7, 8]
+    );
+    assert.equal(removal.calls[0].method, 'DELETE');
+    assert.deepEqual(removal.calls[0].config?.data, { bookIds: [7, 8] });
   });
 });

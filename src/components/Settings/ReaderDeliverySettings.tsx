@@ -80,17 +80,23 @@ const messages = defineMessages('components.ReaderDeliverySettings', {
   groupingCount: '{count, plural, one {# item} other {# items}}',
   groupingCountUnverified:
     'Preview found {count} items; final count not confirmed',
+  groupingKoboSyncDisabled: 'Kobo Collection sync is off',
+  groupingKoboSyncPending: 'Kobo Collection is updating',
+  groupingKoboSyncReady: 'Kobo Collection is synced to BookOrbit',
+  groupingKoboSyncError: 'Kobo Collection sync needs attention',
+  groupingKoboSyncLast: 'Last Kobo sync: {time}',
   deleteGrouping: 'Remove managed shelf',
   confirmDeleteGrouping:
     'Remove this SeerrNG-managed grouping from the reader service? Books and library files are not deleted.',
+  confirmDeleteBookOrbitGrouping:
+    'Remove this SeerrNG-managed grouping and its companion Kobo Collection from the reader service? Books and library files are not deleted.',
   groupingDeleted: 'Managed reader shelf removed.',
   groupingDeleteError: 'The managed reader shelf could not be removed.',
   scopeVisibilityNote:
-    'BookOrbit sets visibility when a scope is first created. Grimmory sharing can be updated here.',
+    'BookOrbit locks SmartScope visibility when the scope is created. If Kobo sync is on, SeerrNG also maintains a regular Collection and reconciles its membership every 15 minutes.',
   open: 'Open {serviceName}',
   sharedVisibility: 'Shared with reader-service users',
   privateVisibility: 'Private to the connected account',
-  koboEnabled: 'Kobo sync enabled for the connected account',
   groupingsLoadError: 'Managed reader shelves could not be loaded.',
 });
 
@@ -119,6 +125,9 @@ interface ReaderDeliveryGroupingRecord {
   groupName: string;
   isPublic: boolean;
   syncToKobo: boolean;
+  koboSyncStatus: 'disabled' | 'pending' | 'ready' | 'error';
+  koboSyncError: string | null;
+  lastKoboSyncedAt: string | null;
   status: 'pending' | 'ready' | 'error';
   lastMatchCount: number;
   countVerified: boolean;
@@ -245,7 +254,11 @@ const ReaderDeliverySettings = () => {
   };
 
   const removeGrouping = async (grouping: ReaderDeliveryGroupingRecord) => {
-    if (!window.confirm(intl.formatMessage(messages.confirmDeleteGrouping))) {
+    const confirmation =
+      grouping.provider === 'bookorbit'
+        ? messages.confirmDeleteBookOrbitGrouping
+        : messages.confirmDeleteGrouping;
+    if (!window.confirm(intl.formatMessage(confirmation))) {
       return;
     }
     setGroupingActionError(undefined);
@@ -786,13 +799,49 @@ const ReaderDeliverySettings = () => {
                             {grouping.lastError}
                           </p>
                         )}
+                        {grouping.provider === 'bookorbit' && (
+                          <>
+                            <p className="settings-form-row-description">
+                              {intl.formatMessage(
+                                grouping.koboSyncStatus === 'ready'
+                                  ? messages.groupingKoboSyncReady
+                                  : grouping.koboSyncStatus === 'pending'
+                                    ? messages.groupingKoboSyncPending
+                                    : grouping.koboSyncStatus === 'error'
+                                      ? messages.groupingKoboSyncError
+                                      : messages.groupingKoboSyncDisabled
+                              )}
+                            </p>
+                            {grouping.lastKoboSyncedAt && (
+                              <p className="settings-form-row-description">
+                                {intl.formatMessage(
+                                  messages.groupingKoboSyncLast,
+                                  {
+                                    time: intl.formatDate(
+                                      grouping.lastKoboSyncedAt,
+                                      {
+                                        dateStyle: 'short',
+                                        timeStyle: 'short',
+                                      }
+                                    ),
+                                  }
+                                )}
+                              </p>
+                            )}
+                            {grouping.koboSyncError && (
+                              <p
+                                className="settings-form-row-description"
+                                role="status"
+                              >
+                                {grouping.koboSyncError}
+                              </p>
+                            )}
+                          </>
+                        )}
                         <p className="settings-form-row-description">
                           {grouping.isPublic
                             ? intl.formatMessage(messages.sharedVisibility)
                             : intl.formatMessage(messages.privateVisibility)}
-                          {grouping.provider === 'bookorbit' &&
-                            grouping.syncToKobo &&
-                            ' · ' + intl.formatMessage(messages.koboEnabled)}
                         </p>
                         <div className="settings-card-actions">
                           {safeServiceUrl && (

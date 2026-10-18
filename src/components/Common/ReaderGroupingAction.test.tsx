@@ -109,6 +109,8 @@ const readerShelfResponse = (verified = true) => ({
       targetId: target.id,
       isPublic: true,
       syncToKobo: false,
+      koboSyncStatus: 'disabled',
+      koboSyncError: null,
       status: 'ready',
       lastMatchCount: 2,
       countVerified: verified,
@@ -136,7 +138,7 @@ it('shows the grouping action only to administrators and uses the preferred prov
       ?.value
   ).toBe('bookorbit');
   expect(document.body.textContent).toContain(
-    'Sync this BookOrbit scope to the connected Kobo account'
+    'When enabled, SeerrNG creates a managed BookOrbit Collection and reconciles its members with this live rule every 15 minutes.'
   );
 });
 
@@ -216,7 +218,7 @@ it('requires an explicit opt-in before saving a rule with no current matches', a
   expect(state.post.mock.calls[1][1].allowEmpty).toBe(true);
 });
 
-it('keeps BookOrbit visibility immutable for an existing scope while allowing Kobo sync to be updated', async () => {
+it('keeps BookOrbit visibility immutable and restores the current Kobo sync setting', async () => {
   state.settings = { preferredProvider: 'bookorbit' };
   state.groupings = [
     {
@@ -225,7 +227,9 @@ it('keeps BookOrbit visibility immutable for an existing scope while allowing Ko
       targetType: 'book-series',
       targetId: target.id,
       isPublic: false,
-      syncToKobo: false,
+      syncToKobo: true,
+      koboSyncStatus: 'ready',
+      koboSyncError: null,
     },
   ];
   await render();
@@ -236,17 +240,104 @@ it('keeps BookOrbit visibility immutable for an existing scope while allowing Ko
   expect(document.body.textContent).toContain(
     'BookOrbit locks visibility when the scope is created.'
   );
-  await act(async () => (checkboxes[1] as HTMLInputElement).click());
-  state.post.mockResolvedValueOnce({
-    data: {
-      provider: 'bookorbit',
-      matchedCount: 1,
-      sampleTitles: ['The Fifth Season'],
-      ruleSummary: 'Book series: The Broken Earth',
-    },
-  });
+  expect(document.body.textContent).toContain(
+    'When enabled, SeerrNG creates a managed BookOrbit Collection and reconciles its members with this live rule every 15 minutes.'
+  );
+  expect(checkboxes).toHaveLength(2);
+  expect((checkboxes[1] as HTMLInputElement).checked).toBe(true);
+  state.post
+    .mockResolvedValueOnce({
+      data: {
+        provider: 'bookorbit',
+        matchedCount: 1,
+        sampleTitles: ['The Fifth Season'],
+        ruleSummary: 'Book series: The Broken Earth',
+      },
+    })
+    .mockResolvedValueOnce({
+      data: {
+        grouping: {
+          id: 12,
+          provider: 'bookorbit',
+          targetType: 'book-series',
+          targetId: target.id,
+          isPublic: false,
+          syncToKobo: true,
+          koboSyncStatus: 'ready',
+          koboSyncError: null,
+          status: 'ready',
+          lastMatchCount: 1,
+          countVerified: true,
+          lastError: null,
+          serviceUrl: 'https://bookorbit.example',
+          groupName: 'SeerrNG · Book Series · The Broken Earth',
+        },
+        previewCount: 1,
+        sampleTitles: ['The Fifth Season'],
+        ruleSummary: 'Book series: The Broken Earth',
+      },
+    });
   await click('Preview matches');
   expect(state.post.mock.calls[0][1].provider).toBe('bookorbit');
+  await click('Save shelf updates');
+  expect(state.post.mock.calls[1][1].syncToKobo).toBe(true);
+});
+
+it('lets an administrator opt a BookOrbit live rule into its managed Kobo Collection', async () => {
+  state.settings = { preferredProvider: 'bookorbit' };
+  state.post
+    .mockResolvedValueOnce({
+      data: {
+        provider: 'bookorbit',
+        matchedCount: 2,
+        sampleTitles: ['The Fifth Season', 'The Obelisk Gate'],
+        ruleSummary: 'Book series: The Broken Earth',
+      },
+    })
+    .mockResolvedValueOnce({
+      data: {
+        grouping: {
+          id: 17,
+          provider: 'bookorbit',
+          targetType: 'book-series',
+          targetId: target.id,
+          isPublic: true,
+          syncToKobo: true,
+          koboSyncStatus: 'ready',
+          koboSyncError: null,
+          status: 'ready',
+          lastMatchCount: 2,
+          countVerified: true,
+          lastError: null,
+          serviceUrl: 'https://bookorbit.example',
+          groupName: 'SeerrNG · Book Series · The Broken Earth [12345678]',
+        },
+        previewCount: 2,
+        sampleTitles: ['The Fifth Season', 'The Obelisk Gate'],
+        ruleSummary: 'Book series: The Broken Earth',
+      },
+    });
+
+  await render();
+  await click('Create reader shelf');
+  const checkbox = [
+    ...document.querySelectorAll('input[type="checkbox"]'),
+  ].find((input) =>
+    input.parentElement?.textContent?.includes('Sync this live rule to Kobo')
+  ) as HTMLInputElement | undefined;
+  expect(checkbox).toBeDefined();
+  await act(async () => checkbox!.click());
+  await click('Preview matches');
+  await click('Create shelf');
+
+  expect(state.post.mock.calls[1][1]).toMatchObject({
+    provider: 'bookorbit',
+    target,
+    syncToKobo: true,
+  });
+  expect(document.body.textContent).toContain(
+    'The managed BookOrbit Collection is synced to Kobo.'
+  );
 });
 
 it('discards a preview response when navigation changes the target mid-request', async () => {

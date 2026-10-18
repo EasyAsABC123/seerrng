@@ -96,17 +96,23 @@ or OPDS account belongs to a different reader-service user than the account
 connected in SeerrNG. The reader account also needs access to the matching
 library. BookOrbit public scopes appear in OPDS feeds; private scopes are only
 visible to their owner. BookOrbit locks a scope's visibility when it is
-created, so SeerrNG cannot change that choice later. For BookOrbit v2.2 or
-later, **Sync this BookOrbit scope to the connected Kobo account** enables
-sync for the service account configured in SeerrNG. Grimmory's Kobo inclusion
-shelf is separate and is left unchanged. SeerrNG reports the saved grouping
-status and item count when the service confirms it. If there are no current
-matches, you must explicitly allow an empty rule before saving so books added
-later can appear.
+created, so SeerrNG cannot change that choice later. BookOrbit SmartScopes
+remain live as the library changes, but BookOrbit does not sync SmartScopes to
+Kobo. When **Sync this live rule to Kobo** is enabled, SeerrNG creates a
+companion regular BookOrbit Collection, enables BookOrbit's native Kobo sync,
+and reconciles that Collection's membership with the SmartScope matches every
+15 minutes by default. BookOrbit must have a Kobo account paired. The refresh
+schedule can be adjusted under **Settings > Jobs**. The managed Collection is
+reserved for SeerrNG; manual membership changes are replaced on the next
+refresh. Turning Kobo sync off leaves the Collection in BookOrbit but disables
+its Kobo sync. Grimmory's separate Kobo inclusion shelf is left unchanged.
+SeerrNG reports the SmartScope and Kobo Collection statuses independently. If
+there are no current matches, you must explicitly allow an empty rule before
+saving so books added later can appear.
 
 Remove a SeerrNG-managed shelf under **Settings > Services > Reader Apps**.
-This removes the reader-service grouping and SeerrNG's mapping only; it does not
-delete books or library files.
+For BookOrbit, this also removes its SeerrNG-managed companion Kobo Collection.
+This does not delete books or library files.
 
 ## 3. Download or browse from a media page
 

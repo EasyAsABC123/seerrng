@@ -32,6 +32,9 @@ interface ReaderGroupingRecord {
   targetId: string;
   isPublic: boolean;
   syncToKobo: boolean;
+  koboSyncStatus: 'disabled' | 'pending' | 'ready' | 'error';
+  koboSyncError: string | null;
+  lastKoboSyncedAt?: string | null;
   status: 'pending' | 'ready' | 'error';
   lastMatchCount: number;
   countVerified: boolean;
@@ -61,9 +64,10 @@ const messages = defineMessages('components.ReaderGroupingAction', {
   share: 'Show this grouping to other reader-service users',
   shareHelp:
     'If your reader or OPDS account belongs to another reader-service user, share this grouping so that account can see it. The reader account still needs access to the matching library.',
-  kobo: 'Sync this BookOrbit scope to the connected Kobo account',
-  koboHelp:
-    'This enables Kobo sync for the connected BookOrbit account only. Other users must enable sync for their own Kobo accounts.',
+  syncToKobo: 'Sync this live rule to Kobo',
+  syncToKoboHelp:
+    'When enabled, SeerrNG creates a managed BookOrbit Collection and reconciles its members with this live rule every 15 minutes. Pair the Kobo account in BookOrbit.',
+  koboSyncReady: 'The managed BookOrbit Collection is synced to Kobo.',
   grimmoryKobo:
     'Grimmory Kobo delivery uses its separate inclusion shelf. SeerrNG leaves that provider setting unchanged.',
   preview: 'Preview matches',
@@ -126,6 +130,7 @@ const ReaderGroupingAction = ({ target }: { target: ReaderGroupingTarget }) => {
     setResult(undefined);
     setError(undefined);
     setAllowEmpty(false);
+    setSyncToKobo(false);
     setIsBusy(false);
   }, [targetIdentity]);
 
@@ -149,7 +154,7 @@ const ReaderGroupingAction = ({ target }: { target: ReaderGroupingTarget }) => {
   useEffect(() => {
     if (!isOpen || !existingGrouping) return;
     setIsPublic(existingGrouping.isPublic);
-    setSyncToKobo(existingGrouping.syncToKobo);
+    setSyncToKobo(existingGrouping.syncToKobo ?? false);
   }, [existingGrouping, isOpen]);
 
   const resetPreview = () => {
@@ -291,9 +296,16 @@ const ReaderGroupingAction = ({ target }: { target: ReaderGroupingTarget }) => {
                     })}
                   </p>
                 )}
-                {result.warning && (
-                  <p>{intl.formatMessage(messages.warning)}</p>
+                {result.grouping.koboSyncStatus === 'ready' && (
+                  <p>{intl.formatMessage(messages.koboSyncReady)}</p>
                 )}
+                {result.grouping.koboSyncError && (
+                  <p>{result.grouping.koboSyncError}</p>
+                )}
+                {result.warning &&
+                  result.warning !== result.grouping.koboSyncError && (
+                    <p>{intl.formatMessage(messages.warning)}</p>
+                  )}
               </Alert>
               {openHref && (
                 <Button
@@ -324,6 +336,7 @@ const ReaderGroupingAction = ({ target }: { target: ReaderGroupingTarget }) => {
                         setProvider(
                           event.currentTarget.value as ReaderGroupingProvider
                         );
+                        setSyncToKobo(false);
                         resetPreview();
                       }}
                     >
@@ -365,25 +378,26 @@ const ReaderGroupingAction = ({ target }: { target: ReaderGroupingTarget }) => {
                 </div>
               </div>
               {provider === 'bookorbit' ? (
-                <div className="form-row">
-                  <div className="form-input-area">
-                    <label className="form-input-field">
-                      <input
-                        type="checkbox"
-                        checked={syncToKobo}
-                        disabled={isBusy}
-                        onChange={(event) => {
-                          setSyncToKobo(event.currentTarget.checked);
-                          resetPreview();
-                        }}
-                      />
-                      <span>{intl.formatMessage(messages.kobo)}</span>
-                    </label>
-                    <p className="settings-form-row-description">
-                      {intl.formatMessage(messages.koboHelp)}
-                    </p>
+                <>
+                  <div className="form-row">
+                    <div className="form-input-area">
+                      <label className="form-input-field">
+                        <input
+                          type="checkbox"
+                          checked={syncToKobo}
+                          disabled={isBusy}
+                          onChange={(event) =>
+                            setSyncToKobo(event.currentTarget.checked)
+                          }
+                        />
+                        <span>{intl.formatMessage(messages.syncToKobo)}</span>
+                      </label>
+                      <p className="settings-form-row-description">
+                        {intl.formatMessage(messages.syncToKoboHelp)}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </>
               ) : (
                 <Alert type="info">
                   {intl.formatMessage(messages.grimmoryKobo)}

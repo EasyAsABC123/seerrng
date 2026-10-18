@@ -11,6 +11,7 @@ import {
 import { getRepository } from '@server/datasource';
 import ReaderDeliveryGrouping from '@server/entity/ReaderDeliveryGrouping';
 import { Permission } from '@server/lib/permissions';
+import { syncBookOrbitKoboGrouping } from '@server/lib/readerDeliveryKobo';
 import type {
   ReaderDeliverySettings,
   ReaderDeliveryProvider as SettingReaderGroupingProvider,
@@ -233,8 +234,12 @@ const toPublicGrouping = (
   targetName: grouping.targetName,
   groupName: grouping.groupName,
   remoteGroupId: grouping.remoteGroupId,
+  remoteKoboCollectionId: grouping.remoteKoboCollectionId,
   isPublic: grouping.isPublic,
   syncToKobo: grouping.syncToKobo,
+  koboSyncStatus: grouping.koboSyncStatus,
+  koboSyncError: grouping.koboSyncError,
+  lastKoboSyncedAt: grouping.lastKoboSyncedAt,
   status: grouping.status,
   lastMatchCount: grouping.lastMatchCount,
   countVerified: grouping.countVerified,
@@ -452,10 +457,13 @@ readerDeliveryRoutes.post(
       req.body.isPublic,
       'Share with users'
     );
-    const syncToKobo = parseOptionalBoolean(req.body.syncToKobo, 'Kobo sync');
     const allowEmpty = parseOptionalBoolean(
       req.body.allowEmpty,
       'Create empty grouping'
+    );
+    const syncToKobo = parseOptionalBoolean(
+      req.body.syncToKobo,
+      'Sync to Kobo'
     );
     if (!provider)
       return res.status(400).json({ error: 'Choose a reader service.' });
@@ -464,10 +472,15 @@ readerDeliveryRoutes.post(
     }
     if ('error' in isPublic)
       return res.status(400).json({ error: isPublic.error });
-    if ('error' in syncToKobo)
-      return res.status(400).json({ error: syncToKobo.error });
     if ('error' in allowEmpty)
       return res.status(400).json({ error: allowEmpty.error });
+    if ('error' in syncToKobo)
+      return res.status(400).json({ error: syncToKobo.error });
+    if (provider !== 'bookorbit' && syncToKobo.value === true) {
+      return res.status(400).json({
+        error: 'Kobo Collection sync is only available with BookOrbit.',
+      });
+    }
 
     const target = parsedTarget.target;
     const settings =
@@ -536,8 +549,12 @@ readerDeliveryRoutes.post(
         targetName: target.name,
         groupName: createGroupName(provider, target),
         remoteGroupId: null,
+        remoteKoboCollectionId: null,
         isPublic: resolvedIsPublic,
         syncToKobo: resolvedSyncToKobo,
+        koboSyncStatus: 'disabled',
+        koboSyncError: null,
+        lastKoboSyncedAt: null,
         status: 'pending',
         lastMatchCount: preview.matchedCount,
         countVerified: false,
@@ -579,7 +596,6 @@ readerDeliveryRoutes.post(
           name: grouping.groupName,
           filter: buildReaderGroupingFilter(provider, target),
           isPublic: resolvedIsPublic,
-          syncToKobo: resolvedSyncToKobo,
         }
       );
       grouping.remoteGroupId = remoteGroupId;
@@ -597,6 +613,16 @@ readerDeliveryRoutes.post(
       } catch {
         warning =
           'The grouping was saved, but the reader service did not confirm its final item count. Open the service and refresh this grouping to check it.';
+      }
+
+      if (provider === 'bookorbit') {
+        const koboSync = await syncBookOrbitKoboGrouping(
+          login.api,
+          login.token,
+          grouping,
+          (value) => repository.save(value)
+        );
+        warning ??= koboSync.warning;
       }
 
       grouping.status = 'ready';
@@ -639,21 +665,46 @@ readerDeliveryRoutes.delete(
       return res.status(404).json({ error: 'Grouping not found.' });
     const settings =
       getSettings().readerDelivery ?? defaultReaderDeliverySettings();
-    if (grouping.remoteGroupId) {
+    if (grouping.remoteGroupId || grouping.remoteKoboCollectionId) {
       try {
         const result = await performLogin(grouping.provider, settings);
         if ('error' in result) return res.status(400).json(result);
-        await result.api.deleteGrouping(
-          grouping.provider,
-          result.token,
-          grouping.remoteGroupId
-        );
-      } catch (error) {
-        if (!(axios.isAxiosError(error) && error.response?.status === 404)) {
-          return res.status(502).json({
-            error: getProviderError(error, grouping.provider),
-          });
+        if (
+          grouping.provider === 'bookorbit' &&
+          grouping.remoteKoboCollectionId
+        ) {
+          try {
+            await result.api.deleteBookOrbitCollection(
+              result.token,
+              grouping.remoteKoboCollectionId
+            );
+          } catch (error) {
+            if (!(
+              axios.isAxiosError(error) && error.response?.status === 404
+            )) {
+              throw error;
+            }
+          }
         }
+        if (grouping.remoteGroupId) {
+          try {
+            await result.api.deleteGrouping(
+              grouping.provider,
+              result.token,
+              grouping.remoteGroupId
+            );
+          } catch (error) {
+            if (!(
+              axios.isAxiosError(error) && error.response?.status === 404
+            )) {
+              throw error;
+            }
+          }
+        }
+      } catch (error) {
+        return res.status(502).json({
+          error: getProviderError(error, grouping.provider),
+        });
       }
     }
     await repository.remove(grouping);

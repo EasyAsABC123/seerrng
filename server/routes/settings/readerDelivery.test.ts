@@ -232,6 +232,23 @@ describe('reader delivery settings API', () => {
     });
   });
 
+  it('does not accept Kobo Collection sync for Grimmory groupings', async () => {
+    const response = await request(createApp())
+      .post('/settings/reader-delivery/groupings')
+      .send({
+        provider: 'grimmory',
+        target: {
+          type: 'book-series',
+          id: 'series-42',
+          name: 'The Broken Earth',
+        },
+        syncToKobo: true,
+      })
+      .expect(400);
+
+    assert.match(response.body.error, /only available with BookOrbit/);
+  });
+
   it('previews and upserts only a SeerrNG-managed grouping, then confirms its provider count', async () => {
     const app = createApp();
     await getSettings().persistSection('readerDelivery', {
@@ -285,6 +302,8 @@ describe('reader delivery settings API', () => {
     assert.equal(created.body.grouping.lastMatchCount, 2);
     assert.equal(created.body.grouping.countVerified, true);
     assert.equal(created.body.grouping.status, 'ready');
+    assert.equal(created.body.grouping.syncToKobo, false);
+    assert.equal(created.body.grouping.koboSyncStatus, 'disabled');
     assert.equal(findManaged.mock.callCount(), 1);
     assert.equal(saveManaged.mock.callCount(), 1);
 
@@ -303,6 +322,112 @@ describe('reader delivery settings API', () => {
     assert.equal(managed.body.length, 1);
     assert.equal(managed.body[0].targetName, 'Earthsea');
     assert.equal(managed.body[0].remoteGroupId, '47');
+    assert.equal(managed.body[0].syncToKobo, false);
+  });
+
+  it('creates a live BookOrbit SmartScope and keeps its native Kobo Collection reconciled', async () => {
+    const app = createApp();
+    const target = {
+      type: 'book-series',
+      id: 'series:42',
+      name: 'The Broken Earth',
+    } as const;
+    await getSettings().persistSection('readerDelivery', {
+      ...defaultReaderDeliverySettings(),
+      bookorbitUrl: 'https://bookorbit.example',
+      bookorbitUsername: 'admin',
+      bookorbitPassword: 'password',
+    });
+    mock.method(
+      ReaderDeliveryApi.prototype,
+      'login',
+      async () => 'reader-token'
+    );
+    mock.method(ReaderDeliveryApi.prototype, 'preview', async () => ({
+      matchedCount: 2,
+      sampleTitles: ['The Fifth Season', 'The Obelisk Gate'],
+    }));
+    mock.method(
+      ReaderDeliveryApi.prototype,
+      'findGroupingIdByName',
+      async () => undefined
+    );
+    mock.method(
+      ReaderDeliveryApi.prototype,
+      'saveGrouping',
+      async () => 'scope-42'
+    );
+    mock.method(ReaderDeliveryApi.prototype, 'getGroupingCount', async () => 2);
+    mock.method(
+      ReaderDeliveryApi.prototype,
+      'findBookOrbitCollectionIdByName',
+      async () => undefined
+    );
+    const saveCollection = mock.method(
+      ReaderDeliveryApi.prototype,
+      'saveBookOrbitCollection',
+      async () => 'collection-42'
+    );
+    mock.method(
+      ReaderDeliveryApi.prototype,
+      'getBookOrbitMatchedBookIds',
+      async () => [101, 102]
+    );
+    mock.method(
+      ReaderDeliveryApi.prototype,
+      'getBookOrbitCollectionBookIds',
+      async () => []
+    );
+    const updateCollectionBooks = mock.method(
+      ReaderDeliveryApi.prototype,
+      'changeBookOrbitCollectionBooks',
+      async () => undefined
+    );
+
+    const response = await request(app)
+      .post('/settings/reader-delivery/groupings')
+      .send({ provider: 'bookorbit', target, syncToKobo: true })
+      .expect(200);
+
+    assert.equal(response.body.grouping.remoteGroupId, 'scope-42');
+    assert.equal(
+      response.body.grouping.remoteKoboCollectionId,
+      'collection-42'
+    );
+    assert.equal(response.body.grouping.syncToKobo, true);
+    assert.equal(response.body.grouping.koboSyncStatus, 'ready');
+    assert.equal(response.body.grouping.status, 'ready');
+    assert.equal(saveCollection.mock.callCount(), 1);
+    const firstCollectionSave = saveCollection.mock.calls[0];
+    assert.ok(firstCollectionSave);
+    const firstCollectionDefinition = firstCollectionSave.arguments[1];
+    assert.ok(firstCollectionDefinition);
+    assert.equal(firstCollectionDefinition.syncToKobo, true);
+    assert.deepEqual(
+      updateCollectionBooks.mock.calls.map((call) => call.arguments[2]),
+      ['add']
+    );
+    assert.deepEqual(
+      updateCollectionBooks.mock.calls[0].arguments[3],
+      [101, 102]
+    );
+
+    const disabled = await request(app)
+      .post('/settings/reader-delivery/groupings')
+      .send({ provider: 'bookorbit', target, syncToKobo: false })
+      .expect(200);
+    assert.equal(disabled.body.grouping.syncToKobo, false);
+    assert.equal(disabled.body.grouping.koboSyncStatus, 'disabled');
+    assert.equal(
+      disabled.body.grouping.remoteKoboCollectionId,
+      'collection-42'
+    );
+    const secondCollectionSave = saveCollection.mock.calls[1];
+    assert.ok(secondCollectionSave);
+    const secondCollectionDefinition = secondCollectionSave.arguments[1];
+    assert.ok(secondCollectionDefinition);
+    assert.equal(secondCollectionDefinition.syncToKobo, false);
+    assert.equal(updateCollectionBooks.mock.callCount(), 1);
   });
 
   it('keeps provider shelf names within the provider 255-character limit', async () => {
@@ -468,6 +593,54 @@ describe('reader delivery settings API', () => {
       .expect(200);
     assert.equal(allowed.body.grouping.lastMatchCount, 0);
     assert.equal(allowed.body.grouping.countVerified, true);
+  });
+
+  it('removes both SeerrNG-managed BookOrbit remote objects without touching books', async () => {
+    await getSettings().persistSection('readerDelivery', {
+      ...defaultReaderDeliverySettings(),
+      bookorbitUrl: 'https://bookorbit.example',
+      bookorbitUsername: 'admin',
+      bookorbitPassword: 'password',
+    });
+    const repository = getRepository(ReaderDeliveryGrouping);
+    const grouping = await repository.save(
+      repository.create({
+        provider: 'bookorbit',
+        targetType: 'book-series',
+        targetId: 'series:remove',
+        targetName: 'Remove Me',
+        groupName: 'SeerrNG · Book Series · Remove Me [123456789abc]',
+        remoteGroupId: 'scope-42',
+        remoteKoboCollectionId: 'collection-42',
+        isPublic: true,
+        syncToKobo: true,
+        koboSyncStatus: 'ready',
+        status: 'ready',
+      })
+    );
+    mock.method(
+      ReaderDeliveryApi.prototype,
+      'login',
+      async () => 'reader-token'
+    );
+    const deleteCollection = mock.method(
+      ReaderDeliveryApi.prototype,
+      'deleteBookOrbitCollection',
+      async () => undefined
+    );
+    const deleteScope = mock.method(
+      ReaderDeliveryApi.prototype,
+      'deleteGrouping',
+      async () => undefined
+    );
+
+    await request(createApp())
+      .delete('/settings/reader-delivery/groupings/' + grouping.id)
+      .expect(200, { deleted: true });
+
+    assert.equal(deleteCollection.mock.calls[0].arguments[1], 'collection-42');
+    assert.equal(deleteScope.mock.calls[0].arguments[2], 'scope-42');
+    assert.equal(await repository.count(), 0);
   });
 
   it('does not let ordinary users manage reader service credentials or groupings', async () => {

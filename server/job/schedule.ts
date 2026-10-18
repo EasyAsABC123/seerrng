@@ -14,6 +14,7 @@ import {
   syncRecordings,
 } from '@server/lib/liveTv/recordings';
 import { syncSportsFollows } from '@server/lib/liveTv/sports';
+import { syncBookOrbitKoboCollections } from '@server/lib/readerDeliveryKobo';
 import refreshToken from '@server/lib/refreshToken';
 import { captureReleaseCalendarHistory } from '@server/lib/releaseCalendar/history';
 import { reconcileActiveRequests } from '@server/lib/requestStatus';
@@ -208,6 +209,27 @@ export const startJobs = (): void => {
         return runTrackedJob(
           'External Request List Sync',
           syncAllExternalRequestLists,
+          { logCompletion: true }
+        );
+      }
+    ),
+  });
+
+  scheduledJobs.push({
+    id: 'reader-delivery-kobo-sync',
+    name: 'BookOrbit Kobo Collection Sync',
+    type: 'process',
+    interval: 'minutes',
+    cronSchedule: jobs['reader-delivery-kobo-sync'].schedule,
+    job: schedule.scheduleJob(
+      jobs['reader-delivery-kobo-sync'].schedule,
+      () => {
+        logger.info('Starting scheduled job: BookOrbit Kobo Collection Sync', {
+          label: 'Jobs',
+        });
+        return runTrackedJob(
+          'BookOrbit Kobo Collection Sync',
+          syncBookOrbitKoboCollections,
           { logCompletion: true }
         );
       }
