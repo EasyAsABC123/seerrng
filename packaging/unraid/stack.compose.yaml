@@ -17,7 +17,7 @@ services:
 
   bookshelf-ebooks:
     profiles: [bookshelf]
-    image: ghcr.io/snapetech-org/bookshelfng:main
+    image: ghcr.io/snapetech-org/bookshelfng:latest
     restart: unless-stopped
     ports:
       - '${BOOKSHELF_EBOOKS_PORT:-8787}:8787'
@@ -35,7 +35,7 @@ services:
 
   bookshelf-audiobooks:
     profiles: [bookshelf]
-    image: ghcr.io/snapetech-org/bookshelfng:main
+    image: ghcr.io/snapetech-org/bookshelfng:latest
     restart: unless-stopped
     ports:
       - '${BOOKSHELF_AUDIOBOOKS_PORT:-8788}:8787'
@@ -98,7 +98,7 @@ services:
 
   romarrng:
     profiles: [software]
-    image: ghcr.io/snapetech-org/romarrng:main
+    image: ghcr.io/snapetech-org/romarrng:latest
     restart: unless-stopped
     ports:
       - '${ROMARRNG_PORT:-6868}:6868'
@@ -114,7 +114,7 @@ services:
 
   questarrng:
     profiles: [software]
-    image: ghcr.io/snapetech-org/questarrng:main
+    image: ghcr.io/snapetech-org/questarrng:latest
     restart: unless-stopped
     ports:
       - '${QUESTARRNG_PORT:-5000}:5000'

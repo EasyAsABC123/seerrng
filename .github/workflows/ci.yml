@@ -390,8 +390,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.GHCR_IMAGE }}
+          flavor: latest=false
           tags: |
-            type=raw,value=${{ steps.channel.outputs.CHANNEL }}
             type=sha
           labels: |
             org.opencontainers.image.created=${{ steps.ts.outputs.TIMESTAMP }}
@@ -492,7 +492,6 @@ jobs:
         run: |
           set -euo pipefail
           image_name="${GHCR_IMAGE}"
-          scripts/verify-container-manifest.sh --require-provenance "${image_name}:main" linux/amd64 linux/arm64
           scripts/verify-container-manifest.sh --require-provenance "${image_name}:sha-${GITHUB_SHA::7}" linux/amd64 linux/arm64
 
       - name: Resolve published image digest
@@ -503,7 +502,7 @@ jobs:
           image_name="${GHCR_IMAGE}"
           for attempt in 1 2 3 4 5; do
             echo "Resolving published image digest (attempt ${attempt}/5)"
-            if digest=$(docker buildx imagetools inspect "${image_name}:main" --format '{{json .Manifest.Digest}}' | tr -d '"') &&
+            if digest=$(docker buildx imagetools inspect "${image_name}:sha-${GITHUB_SHA::7}" --format '{{json .Manifest.Digest}}' | tr -d '"') &&
               [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
               echo "image_digest=$digest" >> "$GITHUB_OUTPUT"
               exit 0

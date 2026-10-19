@@ -384,6 +384,8 @@ jobs:
             type=semver,pattern={{raw}},value=${{ env.VERSION }}
             type=semver,pattern=v{{major}}.{{minor}},value=${{ env.VERSION }}
             type=semver,pattern=v{{major}},value=${{ env.VERSION }}
+            type=raw,value=main
+            type=raw,value=latest
           labels: |
             org.opencontainers.image.created=${{ steps.ts.outputs.TIMESTAMP }}
             org.opencontainers.image.revision=${{ steps.release.outputs.SHA }}

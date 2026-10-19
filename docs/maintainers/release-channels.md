@@ -86,11 +86,17 @@ archive.
 on the deployment host, and that container is replaced only when the deployment path
 pulls and starts a new image.
 
-Main CI builds and publishes `ghcr.io/snapetech-org/seerrng:main`. It no longer
-preflights or deploys to `seerr.home`, because those operations required direct
-access to the deployment host. Live deployment must be performed manually on
-that host until a remote deployment channel is configured. The published image
-may be newer than the live service until deployment is complete.
+Main CI builds, scans, and records commit-specific images in GHCR. It does not
+move the stable `:main` or `:latest` aliases. A validated stable release assigns
+the same release image to its version tags and to `:main` and `:latest` in both
+GHCR and Docker Hub. This keeps either stable alias on the latest stable release
+while allowing main-branch CI to check untagged commits.
+
+Main CI no longer preflights or deploys to `seerr.home`, because those
+operations required direct access to the deployment host. Live deployment must
+be performed manually on that host until a remote deployment channel is
+configured. The published image may be newer than the live service until
+deployment is complete.
 
 `scripts/verify-live-deployment.sh` checks that the running container and image
 report the expected commit after a manual deployment.
