@@ -126,6 +126,9 @@ const collectExpression = (rawNode, state, seen = new Set()) => {
     ts.isElementAccessExpression(node)
   ) {
     const object = unwrap(node.expression);
+    if (ts.isIdentifier(object) && state.cssModuleBindings.has(object.text)) {
+      return;
+    }
     if (ts.isIdentifier(object)) {
       const initializer = state.bindings.get(object.text);
       if (initializer && ts.isObjectLiteralExpression(unwrap(initializer))) {
@@ -158,6 +161,20 @@ export const auditTailwindClassExpressions = ({ path, source }) => {
   const state = {
     sourceFile,
     bindings: localBindings(sourceFile),
+    cssModuleBindings: new Set(
+      sourceFile.statements.flatMap((statement) => {
+        if (
+          !ts.isImportDeclaration(statement) ||
+          !ts.isStringLiteral(statement.moduleSpecifier) ||
+          !statement.moduleSpecifier.text.endsWith('.module.css')
+        ) {
+          return [];
+        }
+
+        const name = statement.importClause?.name?.text;
+        return name ? [name] : [];
+      })
+    ),
     tokens: new Set(),
     unresolved: new Set(),
   };

@@ -2,6 +2,7 @@ import CollectionSummaryCard from '@app/components/CollectionDetails/CollectionS
 import DetailDisclosureButton from '@app/components/MediaDetails/DetailDisclosureButton';
 import ExpandableCreditList from '@app/components/MediaDetails/ExpandableCreditList';
 import MediaDetailArtwork from '@app/components/MediaDetails/MediaDetailArtwork';
+import detailLayoutStyles from '@app/components/MediaDetails/MediaDetailsLayout.module.css';
 import MediaQualitySelect from '@app/components/MediaDetails/MediaQualitySelect';
 import MetadataAttribution from '@app/components/MediaDetails/MetadataAttribution';
 import MovieSummaryCard from '@app/components/MediaDetails/MovieSummaryCard';
@@ -226,8 +227,11 @@ const MovieDetailsLayout = ({
             show4kAvailability={show4kAvailability}
             watchedStatus={watchedStatus}
           />
-          <div className="media-detail-body-grid" data-detail-layout="movie">
-            <div className="media-detail-information-column">
+          <div
+            className={detailLayoutStyles.bodyGrid}
+            data-detail-layout="movie"
+          >
+            <div className={detailLayoutStyles.informationColumn}>
               <section className="app-card-inset refreshed-inset-surface card-spacing-before rounded-lg border border-gray-700 p-3">
                 <h2 className="media-inset-heading">
                   {intl.formatMessage(messages.overview)}
@@ -482,10 +486,12 @@ const MovieDetailsLayout = ({
               )}
             </div>
             <aside
-              className="media-detail-actions-column"
+              className={detailLayoutStyles.actionsColumn}
               aria-label={intl.formatMessage(messages.requestAndPlayback)}
             >
-              <section className="media-detail-action-panel app-card-inset refreshed-inset-surface">
+              <section
+                className={`${detailLayoutStyles.actionPanel} app-card-inset refreshed-inset-surface`}
+              >
                 <div className="media-rating-row">
                   <MediaQualitySelect
                     value={selectedQuality}

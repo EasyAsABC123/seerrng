@@ -2299,6 +2299,16 @@ test('detail layout and credit/table consumers use global asset roles without ut
   }
 });
 
+test('details layout CSS module references are not mistaken for Tailwind utilities', () => {
+  const report = auditTailwindClassExpressions({
+    path: 'fixture.tsx',
+    source:
+      "import detailStyles from './MediaDetailsLayout.module.css'; <div className={detailStyles.bodyGrid} />",
+  });
+  assert.deepEqual(report.utilities, []);
+  assert.deepEqual(report.unresolved, []);
+});
+
 test('shared table variants own columns, stacked values and footer placement', () => {
   assert.match(
     css,

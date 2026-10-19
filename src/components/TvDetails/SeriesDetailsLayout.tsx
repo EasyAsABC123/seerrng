@@ -12,6 +12,7 @@ import AvailabilityValue from '@app/components/MediaDetails/AvailabilityValue';
 import DetailDisclosureButton from '@app/components/MediaDetails/DetailDisclosureButton';
 import ExpandableCreditList from '@app/components/MediaDetails/ExpandableCreditList';
 import MediaDetailArtwork from '@app/components/MediaDetails/MediaDetailArtwork';
+import detailLayoutStyles from '@app/components/MediaDetails/MediaDetailsLayout.module.css';
 import MediaQualitySelect from '@app/components/MediaDetails/MediaQualitySelect';
 import MetadataAttribution from '@app/components/MediaDetails/MetadataAttribution';
 import ReorderableDisclosureRow, {
@@ -665,8 +666,8 @@ const SeriesDetailsLayout = ({
             </div>
           </div>
 
-          <div className="media-detail-body-grid" data-detail-layout="tv">
-            <div className="media-detail-information-column">
+          <div className={detailLayoutStyles.bodyGrid} data-detail-layout="tv">
+            <div className={detailLayoutStyles.informationColumn}>
               {showInformationControls && (
                 <ReorderableDisclosureRow
                   distributed
@@ -1145,10 +1146,12 @@ const SeriesDetailsLayout = ({
               </OrderedDisclosurePanels>
             </div>
             <aside
-              className="media-detail-actions-column"
+              className={detailLayoutStyles.actionsColumn}
               aria-label={intl.formatMessage(messages.requestAndPlayback)}
             >
-              <section className="media-detail-action-panel app-card-inset refreshed-inset-surface">
+              <section
+                className={`${detailLayoutStyles.actionPanel} app-card-inset refreshed-inset-surface`}
+              >
                 <div className="media-primary-action-row">
                   {primaryActions}
                   {reportIssueAction}
