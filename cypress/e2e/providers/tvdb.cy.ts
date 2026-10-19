@@ -4,7 +4,6 @@ import { openTitleDetailsFromSearch } from '../../support/titleFixtures';
 describe('TVDB Integration', () => {
   // Constants for routes and selectors
   const ROUTES = {
-    home: '/',
     metadataSettings: '/settings/metadata',
     tomorrowIsOursTvShow: '/tv/72879',
     monsterTvShow: '/tv/225634',
@@ -12,9 +11,6 @@ describe('TVDB Integration', () => {
   };
 
   const SELECTORS = {
-    sidebarToggle: '[data-testid=sidebar-toggle]',
-    sidebarSettingsMobile: '[data-testid=sidebar-menu-settings-mobile]',
-    settingsNav: 'nav[aria-label="Tabs"]',
     metadataTestButton: '[data-testid="metadata-test-button"]',
     metadataSaveButton: '[data-testid="settings-save-button"]',
     tmdbStatus: '[data-testid="tmdb-status"]',
@@ -59,12 +55,11 @@ describe('TVDB Integration', () => {
 
   // Reusable commands
   const navigateToMetadataSettings = () => {
-    cy.visit(ROUTES.home);
-    cy.get(SELECTORS.sidebarToggle).click();
-    cy.get(SELECTORS.sidebarSettingsMobile).click();
-    cy.get(
-      `${SELECTORS.settingsNav} a[href="${ROUTES.metadataSettings}"]`
-    ).click();
+    // The provider form test is independent of responsive sidebar behavior.
+    // Navigate directly so viewport state left by another spec cannot hide
+    // the mobile-only Settings link or block the form controls.
+    cy.viewport(1280, 720);
+    cy.visit(ROUTES.metadataSettings);
   };
 
   const testAndVerifyMetadataConnection = () => {

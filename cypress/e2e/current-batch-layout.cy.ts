@@ -15,7 +15,7 @@ describe('Current batch layout standards', () => {
     cy.get('.settings-page-content .heading, .settings-group-heading').each(
       ($heading) => {
         const styles = getComputedStyle($heading[0]);
-        expect(styles.fontSize).to.eq('14px');
+        expect(styles.fontSize, $heading.text().trim()).to.eq('14px');
         expect(styles.color).to.eq('rgb(255, 255, 255)');
       }
     );
