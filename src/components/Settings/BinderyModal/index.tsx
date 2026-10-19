@@ -15,7 +15,13 @@ import {
 import type { ReadarrSettings } from '@server/lib/settings';
 import axios from 'axios';
 import { Formik } from 'formik';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useIntl } from 'react-intl';
 import * as Yup from 'yup';
 
@@ -372,7 +378,10 @@ const BinderyModal = ({ settings, onClose, onSave }: BinderyModalProps) => {
                     as="field"
                     id="apiKey"
                     name="apiKey"
-                    onChange={() => setIsValidated(false)}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                      setIsValidated(false);
+                      void setFieldValue('apiKey', event.currentTarget.value);
+                    }}
                   />
                   <Button
                     buttonType="default"
