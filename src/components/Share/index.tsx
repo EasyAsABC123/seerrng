@@ -144,6 +144,13 @@ const Share = () => {
   const fileInput = useRef<HTMLInputElement>(null);
   const resultsHeading = useRef<HTMLHeadingElement>(null);
 
+  // Move focus to the results so keyboard and screen-reader users land on them
+  // instead of searching the page. Done in an effect because the heading only
+  // exists once the response has rendered.
+  useEffect(() => {
+    if (response) resultsHeading.current?.focus();
+  }, [response]);
+
   const acceptImage = useCallback(
     async (file: File) => {
       setImage(file);
@@ -218,9 +225,6 @@ const Share = () => {
 
   const applyResponse = (result: ResolveResponse) => {
     setResponse(result);
-    // Move focus to the results so keyboard and screen-reader users land on
-    // them instead of searching the page.
-    window.setTimeout(() => resultsHeading.current?.focus(), 0);
     setChoices(
       Object.fromEntries(
         result.groups.map((group, index) => [index, group.autoSelected ?? -1])
