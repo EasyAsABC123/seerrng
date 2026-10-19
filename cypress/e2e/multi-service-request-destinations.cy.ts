@@ -9,6 +9,20 @@ const requestServices = (services: string[]) => {
   });
 };
 
+// Chromium dispatches this ResizeObserver notification when the anchored
+// Headless UI options portal opens. The menu remains interactive; keep this
+// exact exception filter local to these selector tests and assert the full flow.
+Cypress.on('uncaught:exception', (error) => {
+  if (
+    error.message.includes(
+      'ResizeObserver loop completed with undelivered notifications'
+    )
+  ) {
+    return false;
+  }
+  return undefined;
+});
+
 const videoServices = (serviceType: 'radarr' | 'sonarr') => {
   const name = serviceType === 'radarr' ? 'Radarr' : 'Sonarr';
   const service = (id: number, overrides: Record<string, unknown> = {}) => ({
