@@ -40,7 +40,7 @@ const messages = defineMessages('components.Share', {
     'This server cannot read images yet. An administrator can enable local text recognition or a vision provider in Settings.',
   barcodeFound: 'Found barcode {code} on this device.',
   format: 'Book Format',
-  formatEbook: 'Ebook',
+  formatEbook: 'Book',
   formatAudiobook: 'Audiobook',
   formatHelp: 'Applies to books you request from this page.',
   seasons: 'Series',

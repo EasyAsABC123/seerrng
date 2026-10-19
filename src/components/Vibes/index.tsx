@@ -39,7 +39,7 @@ const messages = defineMessages('components.Vibes', {
   seriesPart: '{series} #{position}',
   request: 'Request',
   format: 'Format',
-  ebook: 'Ebook',
+  ebook: 'Book',
   audiobook: 'Audiobook',
   noMatch: 'We could not find “{title}” in the catalog yet.',
   createHeading: 'Create Your Own Vibe',

@@ -77,7 +77,7 @@ const messages = defineMessages('components.Setup', {
   categoryMovie: 'Movies',
   categoryTv: 'TV',
   categoryMusic: 'Music',
-  categoryEbook: 'Ebooks',
+  categoryEbook: 'Books',
   categoryAudiobook: 'Audiobooks',
   categoryComic: 'Comics',
   categoryMagazine: 'Magazines',

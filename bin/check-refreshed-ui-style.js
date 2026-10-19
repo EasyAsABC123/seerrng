@@ -21,12 +21,20 @@ const componentFiles = Object.fromEntries(
     fs.readFileSync(fullPath, 'utf8'),
   ])
 );
+// globals.css pulls split-out role families in with relative @import rules
+// (for example crossMedia.css); their definitions count as global CSS.
+const stylesDirectory = path.join(root, 'src', 'styles');
+const globalCss = fs.readFileSync(
+  path.join(stylesDirectory, 'globals.css'),
+  'utf8'
+);
+const importedCss = Array.from(
+  globalCss.matchAll(/^@import\s+['"](\.\/[^'"]+\.css)['"];/gm),
+  (match) => fs.readFileSync(path.join(stylesDirectory, match[1]), 'utf8')
+);
 const files = {
   ...componentFiles,
-  'src/styles/globals.css': fs.readFileSync(
-    path.join(root, 'src', 'styles', 'globals.css'),
-    'utf8'
-  ),
+  'src/styles/globals.css': [globalCss, ...importedCss].join('\n'),
 };
 const { errors, scopedFileCount } = validateRefreshedUiStyleBoundaries(files);
 
