@@ -1861,6 +1861,24 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       }
 
       const artistPath = `${rootFolder}/${albumInfo.artist.artistName}`;
+      const wantedRelease = entity.variantKey?.trim().toLowerCase();
+      const chosenRelease = wantedRelease
+        ? albumInfo.releases?.find(
+            (release) =>
+              normalizeMusicBrainzId(release.foreignReleaseId).toLowerCase() ===
+              wantedRelease
+          )
+        : undefined;
+      if (wantedRelease && !chosenRelease) {
+        logger.warn(
+          'The chosen album release is not in Lidarr metadata; any release will be accepted',
+          {
+            label: 'Media Request',
+            requestId: entity.id,
+            release: wantedRelease,
+          }
+        );
+      }
       const addAlbumPayload: LidarrAlbumOptions = {
         title: albumInfo.title,
         disambiguation: albumInfo.disambiguation || '',
@@ -1868,7 +1886,9 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         artistId: albumInfo.artist.id,
         foreignAlbumId: albumInfo.foreignAlbumId,
         monitored: true,
-        anyReleaseOk: true,
+        // A chosen release (standard, deluxe, a remaster) pins that exact
+        // release in Lidarr; otherwise any release is acceptable.
+        anyReleaseOk: !chosenRelease,
         profileId: qualityProfile,
         duration: albumInfo.duration || 0,
         albumType: albumInfo.albumType,
@@ -1876,7 +1896,12 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         mediumCount: albumInfo.mediumCount || 0,
         ratings: albumInfo.ratings,
         releaseDate: albumInfo.releaseDate,
-        releases: [],
+        releases: chosenRelease
+          ? (albumInfo.releases ?? []).map((release) => ({
+              ...release,
+              monitored: release === chosenRelease,
+            }))
+          : [],
         genres: albumInfo.genres,
         media: [],
         artist: {
@@ -2452,6 +2477,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
             : bookInfo.author,
           editions: bookEditions,
           useRequestedEdition: !!(preferredEditionId || preferredIsbn),
+          editionPolicy: entity.editionPolicy ?? undefined,
           addOptions: {
             // Let Bookshelf own acquisition. Seerr only checks for the file
             // through library availability tracking.

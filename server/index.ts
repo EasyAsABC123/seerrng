@@ -443,6 +443,13 @@ Promise.resolve()
       server.use('/imageproxy', clearCookies, imageproxy);
       server.use('/avatarproxy', clearCookies, avatarproxy);
 
+      // The Share menu posts here. The service worker normally answers it;
+      // without one (first launch, a browser that skipped it) the share page
+      // opens empty rather than failing, and the person can paste instead.
+      server.post('/share-target', (_req, res) => {
+        res.redirect(303, '/share');
+      });
+
       server.get('*path', (req, res) => {
         if (!dev) {
           setStaticAssetCacheControl(req, res);

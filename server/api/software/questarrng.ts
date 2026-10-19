@@ -1,10 +1,14 @@
 import ExternalAPI from '@server/api/externalapi';
+import type { SoftwareSelection } from '@server/entity/SoftwareRequest';
 import cacheManager from '@server/lib/cache';
 import type { SoftwareProviderSettings } from '@server/lib/settings';
 import { buildServiceUrl } from '@server/utils/serviceUrl';
 import axios from 'axios';
 import { Readable } from 'node:stream';
 import type {
+  GameDiscoverFilters,
+  GameDiscoverPage,
+  GameEditionsResponse,
   PcGameVariant,
   SoftwareAssetsResponse,
   SoftwareCatalogGame,
@@ -215,14 +219,55 @@ export class QuestarrNGAPI extends ExternalAPI {
     externalRequestId: string,
     title: string,
     variant: PcGameVariant,
-    igdbId?: number
+    igdbId?: number,
+    selection?: SoftwareSelection | null
   ): Promise<SoftwareProviderRequest> {
     return this.post('/api/integration/seerrng/v1/requests', {
       externalRequestId,
       title,
       variant,
       ...(igdbId ? { igdbId } : {}),
+      ...(selection?.kind === 'game-content' ? { selection } : {}),
     });
+  }
+
+  /** Editions, what each includes, and standalone add-ons for one game. */
+  public getGameEditions(igdbId: number): Promise<GameEditionsResponse> {
+    return this.get(
+      `/api/integration/seerrng/v1/catalog/games/${igdbId}/editions`,
+      {},
+      600
+    );
+  }
+
+  /** Attribute-driven discovery: themes, modes, perspectives, languages. */
+  public discoverGames(
+    filters: GameDiscoverFilters,
+    limit = 24,
+    cursor?: string
+  ): Promise<GameDiscoverPage> {
+    const list = (values?: string[]) => values?.join(',') || undefined;
+    return this.get(
+      '/api/integration/seerrng/v1/catalog/discover',
+      {
+        params: {
+          q: filters.q,
+          themes: list(filters.themes),
+          gameModes: list(filters.gameModes),
+          perspectives: list(filters.perspectives),
+          genres: list(filters.genres),
+          languages: list(filters.languages),
+          excludeThemes: list(filters.excludeThemes),
+          excludeGameModes: list(filters.excludeGameModes),
+          excludeGenres: list(filters.excludeGenres),
+          maxHoursToBeat: filters.maxHoursToBeat,
+          minYear: filters.minYear,
+          limit,
+          ...(cursor ? { cursor } : {}),
+        },
+      },
+      900
+    );
   }
 
   public getRequest(

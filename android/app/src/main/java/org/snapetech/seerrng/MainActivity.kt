@@ -66,6 +66,7 @@ class MainActivity : Activity() {
     private var trialSessionStartedThisLaunch = false
     private var activeMainFrameLoadFailed = false
 
+    private var pendingShare: SharedContent? = null
     private var editingServerId: String? = null
     private var activeServer: SavedServer? = null
     private var activeAddress: ParsedServerAddress? = null
@@ -131,7 +132,33 @@ class MainActivity : Activity() {
         } else {
             showServerPicker()
         }
+        acceptShare(intent)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        acceptShare(intent)
+    }
+
+    /**
+     * Keeps content from the system Share menu until a server is connected,
+     * then opens that server's share page. A single saved server connects at
+     * once; with several, the person chooses where the share goes.
+     */
+    private fun acceptShare(incoming: Intent?) {
+        val content = ShareIntent.from(incoming) ?: return
+        pendingShare = content
+        val servers = serverStore.all()
+        when {
+            servers.isEmpty() -> Toast.makeText(this, R.string.share_needs_server, Toast.LENGTH_LONG).show()
+            servers.size == 1 -> connect(servers.first())
+            else -> {
+                showServerPicker()
+                Toast.makeText(this, R.string.share_choose_server, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun openPrivacyPolicy() {
@@ -343,7 +370,23 @@ class MainActivity : Activity() {
             view,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
-        view.loadUrl(address.url)
+        val share = pendingShare
+        view.loadUrl(if (share != null) ShareIntent.shareUrl(address.url, share) else address.url)
+    }
+
+    /** Hands a shared image to the share page once it has loaded. */
+    private fun deliverSharedImage(view: WebView, url: String?) {
+        val share = pendingShare ?: return
+        if (!ShareIntent.isSharePage(url)) return
+        pendingShare = null
+        val uri = share.imageUri ?: return
+        val mime = share.imageMime ?: return
+        val bytes = ShareIntent.readImage(contentResolver, uri)
+        if (bytes == null) {
+            Toast.makeText(this, R.string.share_image_unreadable, Toast.LENGTH_LONG).show()
+            return
+        }
+        view.evaluateJavascript(ShareIntent.imageScript(bytes, mime), null)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -484,6 +527,7 @@ class MainActivity : Activity() {
         override fun onPageFinished(view: WebView, url: String?) {
             if (view != webView) return
             pageProgress.visibility = View.GONE
+            deliverSharedImage(view, url)
             if (!activeMainFrameLoadFailed &&
                 BuildConfig.BILLING_ENABLED &&
                 !lifetimeUnlock.isLifetimeUnlocked &&

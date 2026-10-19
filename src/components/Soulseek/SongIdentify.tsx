@@ -65,6 +65,15 @@ const SongIdentify = () => {
     '/api/v1/soulseek/status'
   );
   const [source, setSource] = useState('');
+  const querySource =
+    typeof router.query.source === 'string'
+      ? router.query.source.slice(0, 2048)
+      : '';
+  useEffect(() => {
+    if (router.isReady && querySource) {
+      setSource((current) => current || querySource);
+    }
+  }, [router.isReady, querySource]);
   const [runId, setRunId] = useState<string>();
   const [starting, setStarting] = useState(false);
   const [requested, setRequested] = useState<Set<string>>(new Set());

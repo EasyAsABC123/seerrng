@@ -82,10 +82,25 @@ export interface SlskdnSongIdRun {
   tracks?: SlskdnSongIdTrack[];
 }
 
+export interface SlskdnTasteRecommendation {
+  workRef: {
+    domain: string;
+    title: string;
+    creator?: string | null;
+    year?: number | null;
+    externalIds?: Record<string, string>;
+  };
+  score: number;
+  trustedSourceCount: number;
+  lastSeenAt: string;
+  reasons: string[];
+}
+
 export interface SlskdnFeatures {
   wishlist: boolean;
   libraryHealth: boolean;
   songId: boolean;
+  taste: boolean;
 }
 
 export class SlskdnError extends Error {
@@ -209,12 +224,13 @@ export default class SlskdnAPI {
         throw error;
       }
     };
-    const [wishlist, libraryHealth, songId] = await Promise.all([
+    const [wishlist, libraryHealth, songId, taste] = await Promise.all([
       probe('/api/v0/wishlist'),
       probe('/api/v0/library/health/summary'),
       probe('/api/v0/songid/capabilities'),
+      probe('/api/v0/taste-recommendations/capabilities'),
     ]);
-    return { wishlist, libraryHealth, songId };
+    return { wishlist, libraryHealth, songId, taste };
   }
 
   public async createWishlistItem(input: {
@@ -330,5 +346,55 @@ export default class SlskdnAPI {
     );
     if (response.status === 404) return undefined;
     return this.ok(response, 'SongID');
+  }
+
+  /** Releases that collectors you follow are sharing, with the reasons. */
+  public async getTasteRecommendations(
+    limit = 20,
+    minimumTrustedSources = 2
+  ): Promise<SlskdnTasteRecommendation[]> {
+    const response = await this.request<{
+      recommendations?: SlskdnTasteRecommendation[];
+    }>('POST', '/api/v0/taste-recommendations', 'taste recommendations', {
+      data: {
+        limit,
+        minimumTrustedSources,
+        includeSourceActors: false,
+        includeGraphEvidence: false,
+      },
+    });
+    const data = this.ok(response, 'taste recommendations');
+    return Array.isArray(data?.recommendations)
+      ? data.recommendations.slice(0, limit)
+      : [];
+  }
+
+  /** Follows an artist's release radar on slskdN. */
+  public async subscribeReleaseRadar(input: {
+    artistId?: string;
+    title: string;
+    creator?: string;
+  }): Promise<{ created: boolean; subscriptionId?: string }> {
+    const response = await this.request<{
+      created?: boolean;
+      subscriptionId?: string | null;
+    }>('POST', '/api/v0/taste-recommendations/release-radar', 'release radar', {
+      data: {
+        artistId: input.artistId,
+        scope: 'trusted',
+        workRef: {
+          domain: 'music',
+          title: input.title,
+          creator: input.creator,
+          externalIds: input.artistId ? { musicbrainz: input.artistId } : {},
+        },
+      },
+    });
+    if (response.status === 400) return { created: false };
+    const data = this.ok(response, 'release radar');
+    return {
+      created: data?.created === true,
+      subscriptionId: data?.subscriptionId ?? undefined,
+    };
   }
 }

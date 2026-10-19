@@ -21,6 +21,7 @@ import {
   BOOK_LANGUAGES,
 } from '@app/components/Discover/FilterPanel/libraryFilterUtils';
 import MediaFilterOption from '@app/components/Discover/MediaFilterOption';
+import { SeriesNarratorPlanner } from '@app/components/EditionCompare';
 import MediaDetailArtwork from '@app/components/MediaDetails/MediaDetailArtwork';
 import BulkRequestModal from '@app/components/RequestModal/BulkRequestModal';
 import useMediaFilterPin from '@app/hooks/useMediaFilterPin';
@@ -373,6 +374,7 @@ const BookSeriesDetails = ({ series }: { series?: BookSeriesDetailsType }) => {
           </section>
         </div>
       </article>
+      {hasAudiobookServer && <SeriesNarratorPlanner title={data.title} />}
     </>
   );
 };

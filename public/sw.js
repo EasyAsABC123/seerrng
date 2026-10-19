@@ -549,7 +549,51 @@ self.addEventListener('activate', (event) => {
   clients.claim();
 });
 
+// Web Share Target: the operating system's Share menu posts multipart form
+// data here. Images are parked in a short-lived cache so the signed-in page
+// can upload them to the recognition API; nothing is sent from the worker.
+const SHARE_INBOX_CACHE = 'seerrng-share-inbox';
+const SHARE_INBOX_IMAGE_KEY = '/__share-inbox/image';
+
+const handleShareTarget = async (request) => {
+  const params = new URLSearchParams();
+  try {
+    const form = await request.formData();
+    for (const field of ['title', 'text', 'url']) {
+      const value = form.get(field);
+      if (typeof value === 'string' && value) {
+        params.set(field, value.slice(0, 4000));
+      }
+    }
+    const image = form
+      .getAll('image')
+      .find((file) => file && typeof file === 'object' && file.size > 0);
+    const cache = await caches.open(SHARE_INBOX_CACHE);
+    await cache.delete(SHARE_INBOX_IMAGE_KEY);
+    if (image && image.size <= 20 * 1024 * 1024) {
+      await cache.put(
+        SHARE_INBOX_IMAGE_KEY,
+        new Response(image, {
+          headers: { 'Content-Type': image.type || 'application/octet-stream' },
+        })
+      );
+      params.set('image', '1');
+    }
+  } catch {
+    // An unreadable share still opens the share page, which explains it.
+  }
+  return Response.redirect(`/share?${params.toString()}`, 303);
+};
+
 self.addEventListener('fetch', (event) => {
+  if (
+    event.request.method === 'POST' &&
+    new URL(event.request.url).pathname === '/share-target'
+  ) {
+    event.respondWith(handleShareTarget(event.request));
+    return;
+  }
+
   const cacheType = getRuntimeCacheType(event.request);
 
   if (cacheType) {

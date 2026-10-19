@@ -136,6 +136,7 @@ import radarrRoutes from './radarr';
 import readarrRoutes from './readarr';
 import readerDeliveryRoutes from './readerDelivery';
 import readMeABookRoutes from './readmeabook';
+import recognitionSettingsRoutes from './recognition';
 import slskdnRoutes from './slskdn';
 import softwareAcquisitionRoutes from './softwareAcquisition';
 import sonarrRoutes from './sonarr';
@@ -1520,6 +1521,7 @@ settingsRoutes.use('/slskdn', slskdnRoutes);
 settingsRoutes.use('/readmeabook', readMeABookRoutes);
 settingsRoutes.use('/login-links', loginLinkRoutes);
 settingsRoutes.use('/swipe', swipeSettingsRoutes);
+settingsRoutes.use('/recognition', recognitionSettingsRoutes);
 settingsRoutes.use('/connection-hosts', connectionHostsRoutes);
 
 export const filteredMainSettings = (

@@ -145,3 +145,117 @@ export interface SoftwareProviderRequest {
   } | null;
   actions?: SoftwareProviderActions | null;
 }
+
+export type GameContentType =
+  | 'expansion'
+  | 'dlc'
+  | 'cosmetic'
+  | 'season-pass'
+  | 'bonus'
+  | 'soundtrack'
+  | 'unknown';
+
+/** One piece of content a game edition may include. */
+export interface GameContentItem {
+  igdbId: number;
+  title: string;
+  type: GameContentType;
+  /** True for story content, false for cosmetic, null when the catalog is silent. */
+  storyContent: boolean | null;
+  releaseDate?: string;
+  coverUrl?: string;
+  /** The library already holds this content. */
+  owned: boolean;
+}
+
+export interface GameEdition {
+  igdbId: number;
+  title: string;
+  summary?: string;
+  releaseDate?: string;
+  includes: GameContentItem[];
+  /** False when the catalog does not say what the edition contains. */
+  contentKnown: boolean;
+  owned: boolean;
+}
+
+export interface GameEditionsResponse {
+  base: { igdbId: number; title: string; owned: boolean; status?: string };
+  editions: GameEdition[];
+  /** Expansions and add-ons that can be requested on their own. */
+  addons: GameContentItem[];
+}
+
+export interface GameDiscoverFilters {
+  q?: string;
+  themes?: string[];
+  gameModes?: string[];
+  perspectives?: string[];
+  genres?: string[];
+  languages?: string[];
+  excludeThemes?: string[];
+  excludeGameModes?: string[];
+  excludeGenres?: string[];
+  maxHoursToBeat?: number;
+  minYear?: number;
+}
+
+export interface GameDiscoverGame extends SoftwareCatalogGame {
+  themes?: string[];
+  gameModes?: string[];
+  perspectives?: string[];
+  languages?: { audio?: string[]; subtitles?: string[]; interface?: string[] };
+}
+
+export interface GameDiscoverPage {
+  results: GameDiscoverGame[];
+  nextCursor: string | null;
+}
+
+export interface PatchVersion {
+  id: string;
+  version: string;
+  releasedAt?: string;
+  notes?: string;
+  /** Hash-pinned base revision the patch applies to. */
+  base: {
+    region?: string;
+    revision?: string;
+    sha1?: string;
+    available: boolean;
+  };
+  patchFormat?: 'ips' | 'bps' | 'ups' | 'xdelta' | 'ppf' | 'other';
+}
+
+export interface PatchProject {
+  id: string;
+  name: string;
+  kind: 'translation' | 'hack' | 'improvement';
+  /** Target language for translations. */
+  language?: string;
+  status: 'complete' | 'partial' | 'in-progress' | 'abandoned' | 'unknown';
+  /** 0..1 when the project reports it. Never inferred from file names. */
+  completeness?: number;
+  summary?: string;
+  author?: string;
+  url?: string;
+  game: { catalogKey?: string; title: string; platformSlug?: string };
+  differences?: string[];
+  versions: PatchVersion[];
+  latestVersionId?: string;
+  coverUrl?: string;
+}
+
+export interface PatchSearchPage {
+  results: PatchProject[];
+  nextCursor: string | null;
+}
+
+export interface PatchSearchFilters {
+  q?: string;
+  platformSlug?: string;
+  kind?: PatchProject['kind'];
+  language?: string;
+  completeOnly?: boolean;
+  catalogKey?: string;
+}

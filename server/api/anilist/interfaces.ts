@@ -37,6 +37,35 @@ export interface AnilistMedia {
   } | null;
 }
 
+export type AnilistRelationType =
+  | 'ADAPTATION'
+  | 'SOURCE'
+  | 'PREQUEL'
+  | 'SEQUEL'
+  | 'PARENT'
+  | 'SIDE_STORY'
+  | 'SPIN_OFF'
+  | 'ALTERNATIVE'
+  | 'SUMMARY'
+  | 'CHARACTER'
+  | 'CONTAINS'
+  | 'COMPILATION'
+  | 'OTHER';
+
+export interface AnilistRelationNode extends AnilistMedia {
+  type?: 'ANIME' | 'MANGA' | null;
+}
+
+export interface AnilistRelationEdge {
+  relationType: AnilistRelationType;
+  node: AnilistRelationNode;
+}
+
+export interface AnilistMediaWithRelations extends AnilistMedia {
+  type?: 'ANIME' | 'MANGA' | null;
+  relations?: { edges?: AnilistRelationEdge[] | null } | null;
+}
+
 export interface AnilistPageInfo {
   currentPage?: number;
   hasNextPage?: boolean;

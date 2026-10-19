@@ -49,6 +49,8 @@ export type MediaRequestBody = {
   isbn13?: string;
   preferredEditionId?: string;
   preferredIsbn13?: string;
+  editionPolicy?: 'only' | 'either' | 'alongside';
+  variantKey?: string;
   authorId?: string;
   userId?: number;
   tags?: number[];

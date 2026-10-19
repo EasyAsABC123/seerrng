@@ -312,6 +312,39 @@ export const defaultSwipeSettings = (): SwipeSettings => ({
   aiEffort: 'low',
 });
 
+export type RecognitionVisionProvider = 'none' | 'anthropic' | 'openai';
+
+/**
+ * Share-to-request recognition. Links, ISBNs, and pasted lists need no
+ * configuration. Images use local OCR when installed; an external vision
+ * provider is opt-in and requires explicit consent before any image leaves
+ * this server. `openai` accepts local servers such as Ollama or LM Studio.
+ */
+export interface RecognitionSettings {
+  enabled: boolean;
+  localOcr: boolean;
+  visionProvider: RecognitionVisionProvider;
+  visionApiKey: string;
+  visionModel: string;
+  visionBaseUrl: string;
+  /** The administrator accepts that uploaded images go to the provider. */
+  externalConsent: boolean;
+  maxImageBytes: number;
+}
+
+export const DEFAULT_RECOGNITION_MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+
+export const defaultRecognitionSettings = (): RecognitionSettings => ({
+  enabled: true,
+  localOcr: true,
+  visionProvider: 'none',
+  visionApiKey: '',
+  visionModel: '',
+  visionBaseUrl: DEFAULT_OPENAI_BASE_URL,
+  externalConsent: false,
+  maxImageBytes: DEFAULT_RECOGNITION_MAX_IMAGE_BYTES,
+});
+
 export interface DVRSettings {
   id: number;
   name: string;
@@ -826,6 +859,7 @@ export type JobId =
   | 'availability-sync'
   | 'external-request-list-sync'
   | 'reader-delivery-kobo-sync'
+  | 'follow-sync'
   | 'process-blocklisted-tags';
 
 export interface DiscoveryIntegrationsSettings {
@@ -874,6 +908,7 @@ export interface AllSettings {
   slskdn: SlskdnSettings;
   readmeabook: ReadMeABookSettings;
   swipe: SwipeSettings;
+  recognition: RecognitionSettings;
   discoveryIntegrations: DiscoveryIntegrationsSettings;
   public: PublicSettings;
   notifications: NotificationSettings;
@@ -1036,6 +1071,7 @@ class Settings {
       slskdn: defaultSlskdnSettings(),
       readmeabook: defaultReadMeABookSettings(),
       swipe: defaultSwipeSettings(),
+      recognition: defaultRecognitionSettings(),
       public: {
         initialized: false,
       },
@@ -1177,6 +1213,9 @@ class Settings {
         },
         'reader-delivery-kobo-sync': {
           schedule: '0 */15 * * * *',
+        },
+        'follow-sync': {
+          schedule: '0 */30 * * * *',
         },
         'plex-refresh-token': {
           schedule: '0 0 5 * * *',
@@ -1677,6 +1716,14 @@ class Settings {
     this.data.swipe = data;
   }
 
+  get recognition(): RecognitionSettings {
+    return this.data.recognition ?? defaultRecognitionSettings();
+  }
+
+  set recognition(data: RecognitionSettings) {
+    this.data.recognition = data;
+  }
+
   get public(): PublicSettings {
     return this.data.public;
   }
@@ -2073,6 +2120,7 @@ class Settings {
       slskdn: defaultSlskdnSettings(),
       readmeabook: defaultReadMeABookSettings(),
       swipe: defaultSwipeSettings(),
+      recognition: defaultRecognitionSettings(),
       public: {
         initialized: false,
       },
@@ -2213,6 +2261,9 @@ class Settings {
         },
         'reader-delivery-kobo-sync': {
           schedule: '0 */15 * * * *',
+        },
+        'follow-sync': {
+          schedule: '0 */30 * * * *',
         },
         'plex-refresh-token': {
           schedule: '0 0 5 * * *',

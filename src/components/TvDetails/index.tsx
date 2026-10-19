@@ -8,6 +8,7 @@ import MediaServerPlayButton from '@app/components/Common/MediaServerPlayButton'
 import PageErrorMessage from '@app/components/Common/PageErrorMessage';
 import PageTitle from '@app/components/Common/PageTitle';
 import Tooltip from '@app/components/Common/Tooltip';
+import { ContinuationButton } from '@app/components/Continuation';
 import DiscoverDetailNavigation from '@app/components/Discover/DiscoverDetailNavigation';
 import { canReportSeriesIssue } from '@app/components/IssueDetails/issueMediaFormat';
 import LiveTvButton from '@app/components/LiveTv/LiveTvButton';
@@ -83,6 +84,7 @@ const messages = defineMessages('components.TvDetails', {
   watchlistError: 'Something went wrong. Please try again.',
   removefromwatchlist: 'Remove From Watchlist',
   addtowatchlist: 'Add To Watchlist',
+  franchise: 'Franchise',
   selectToPlay: 'No playable episodes are currently available.',
 });
 
@@ -548,8 +550,33 @@ const TvDetails = ({
     <IndexerSearchLink category="tv" title={data.name} />
   );
 
+  const isAnime =
+    data.originalLanguage === 'ja' &&
+    data.genres.some((genre) => genre.id === 16);
+
   const secondaryActions = (
     <>
+      {isAnime && !embedded && (
+        <>
+          <ContinuationButton
+            tvId={data.id}
+            seasons={data.seasons
+              .filter((season) => season.seasonNumber > 0)
+              .map((season) => ({
+                seasonNumber: season.seasonNumber,
+                name: season.name,
+              }))}
+          />
+          <Button
+            as="a"
+            href={`/franchise/tv/${data.id}`}
+            buttonType="association"
+            buttonSize="sm"
+          >
+            {intl.formatMessage(messages.franchise)}
+          </Button>
+        </>
+      )}
       <LiveTvButton
         titles={[data.name, data.originalName]}
         mediaType="tv"

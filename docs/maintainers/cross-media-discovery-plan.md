@@ -4,7 +4,7 @@ Written 2026-10-18. Maps the seven-opportunity recommendation set onto SeerrNG,
 ChaptarrNG, BookshelfNG, QuestarrNG, ROMarrNG, and slskdN, and adds the shared
 foundations the recommendations did not cover.
 
-Status: **plan for review. No feature code is written.** File paths below were
+Status: **built as one release** (see "Build record" at the end). The sections below are the original plan; deviations are listed in the record. File paths below were
 confirmed to exist in this checkout on the date above. Sibling-repo file names
 come from the recommendation's inspected revisions and a directory listing;
 re-read each before starting its phase (the same rule as
@@ -305,3 +305,21 @@ done without a real run against a disposable local instance.
    SeerrNG extension.
 5. Companion changes: confirm the companions may receive API additions in the
    same release train, with SeerrNG degrading gracefully on older versions.
+
+
+## Build record
+
+Built in a single pass, not in phases, on 2026-10-18/19. Decisions that differ from the plan:
+
+- **Browser extension:** a separate, standalone repository, `seerrng-companion`, not an extension of Overseerr Assistant.
+- **Image recognition:** local Tesseract OCR plus an opt-in vision provider (Anthropic or any OpenAI-compatible server, including local Ollama/LM Studio) behind an explicit consent setting. The planned opt-in outcome counters were dropped; nothing is recorded about matches.
+- **Companion API additions:**
+  - ChaptarrNG: `GET /book/{id}/editions/catalog`, `GET /series/narrators/matrix`, three capability flags. The existing wanted-edition endpoint is reused for "alongside".
+  - BookshelfNG: read-only `editions/catalog` and the `editionCatalog` flag (a second performance cannot be tracked there).
+  - QuestarrNG: `catalog/games/{id}/editions`, `catalog/discover`, `selection` on requests, a wanted-content pass in the auto-search job, ledger column `selection`.
+  - ROMarrNG: `patches/search`, `patches/projects/{id}`, `selection` on requests, IPS/UPS/BPS preparation with checksum verification. No catalogue data is bundled.
+  - slskdN: `GET taste-recommendations/capabilities`. Release comparison uses MusicBrainz; the chosen release reaches slskdN through the Lidarr monitored release it already syncs, so no variants endpoint was added.
+- **AniList ids in ChaptarrNG:** not added. SeerrNG reads AniList and MAL ids from RanobeDB directly.
+- **MangaUpdates** documents the anime range per season (`Vol 7, Chap 61 (S2)`), so season boundaries are read per season rather than only for the latest one.
+- **Auto-request** from Follow is limited to books; other media need choices a background job must not guess.
+- **iOS:** documented Shortcut recipe only; no native share extension.
