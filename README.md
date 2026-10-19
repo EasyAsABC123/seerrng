@@ -360,10 +360,14 @@ can each handle Book and Audiobook formats; one BookshelfNG instance can serve
 both. QuestarrNG handles PC game acquisition, while ROMarrNG handles emulation
 systems and ROM acquisition.
 
-BookshelfNG's planned retirement in favor of ChaptarrNG is not released yet:
-there is no populated-library converter or old-channel bridge, so existing
-BookshelfNG installations should keep their current data and backup path.
-ChaptarrNG remains the maintained destination. Its later retirement into
+BookshelfNG's planned retirement in favor of ChaptarrNG is not released yet.
+ChaptarrNG `v0.9.977` includes single-database SQLite migration preview and
+conversion tooling, but apply remains frozen while migration, rollback,
+feature-parity, and installation-channel acceptance are open. Draft ChaptarrNG
+PR #131 has additional migration support and synthetic populated-data evidence,
+but remains unpublished. No legacy identity bridge has been published or
+enabled, so existing BookshelfNG installations should keep their current data
+and backup path. ChaptarrNG remains the maintained destination. Its later retirement into
 upstream Chaptarr must preserve both ChaptarrNG's maintained and actively added
 features, including unpublished work, and the BookshelfNG features carried
 over. That complete union blocks ChaptarrNG retirement as a whole. Each

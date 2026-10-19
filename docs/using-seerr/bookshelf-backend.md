@@ -22,8 +22,12 @@ For BookshelfNG's SeerrNG-specific API behavior, see
 [BookshelfNG interoperability](#bookshelfng-interoperability).
 
 BookshelfNG's planned retirement in favor of ChaptarrNG is not released yet.
-No populated-library converter or old-channel bridge is available, so keep the
-existing BookshelfNG database and installation until the
+ChaptarrNG `v0.9.977` includes single-database SQLite preview and conversion
+tools, but production apply remains frozen pending migration, rollback,
+feature-parity, and installation-channel acceptance. Draft ChaptarrNG PR #131
+adds further migration support and has passed synthetic populated-data checks;
+that candidate is unpublished. No legacy identity bridge has been published
+or enabled, so keep the existing BookshelfNG database and installation until the
 [feature, migration, and distribution gates](https://github.com/snapetech-org/bookshelfng/blob/main/docs/maintainers/chaptarr-consolidation.md)
 pass. BookshelfNG's retirement gate is its capabilities validated in
 ChaptarrNG. The later ChaptarrNG-to-Chaptarr gate is separate: all BookshelfNG
@@ -190,11 +194,13 @@ to the same ChaptarrNG instance, and cancels the pending author import only
 when no other request depends on it.
 
 The ChaptarrNG integration contract and restricted service key are covered by
-tests in both repositories. The ChaptarrNG repository also includes a
-cross-container Compose smoke test that runs SeerrNG's compiled API adapter
-against a locally built ChaptarrNG image, checks the format-scoped paged
-library, and verifies that administrative and unrelated command routes reject
-the SeerrNG credential. Run it with the instructions in
+tests in both repositories. ChaptarrNG's repeatable Compose smoke starts a
+disposable BookshelfNG migration-158 fixture against a locally built candidate
+image, verifies normal-startup conversion, checks that SeerrNG reads both
+migrated formats through the format-scoped API, verifies the restricted-key
+boundary, and exercises a pending request lifecycle. It uses synthetic
+placeholder media and does not establish operator-data or M4B processing
+acceptance. Run it with the instructions in
 [ChaptarrNG's SeerrNG integration guide](https://github.com/snapetech-org/chaptarrng/blob/main/docs/SEERRNG_INTEGRATION.md).
 Pin the ChaptarrNG image version in reproducible deployments because its
 Readarr-compatible surface can change between releases.
@@ -281,8 +287,10 @@ BACKUP_DIR=/path/to/private-backups \
 ```
 
 Apply writes an independent config archive and the converter keeps the original
-`readarr.db`. It supports one BookshelfNG migration-158 SQLite database;
-PostgreSQL, older schemas, and split ebook/audiobook databases are not accepted.
+`readarr.db`. The published `v0.9.977` helper accepts one supported SQLite
+source database and refuses PostgreSQL, pre-migration-14 databases, and split
+ebook/audiobook databases. PR #131 contains an unpublished older-schema and
+single-schema PostgreSQL candidate; neither is approved for operator use.
 The helper does not start ChaptarrNG or rewrite a Compose file. Point the regular
 ChaptarrNG service at the converted config directory and preserve media/download
 mounts, the saved port and URL base, and any environment-only credentials.
