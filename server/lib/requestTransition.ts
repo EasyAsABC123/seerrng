@@ -9,6 +9,7 @@ import {
 import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import { Permission } from '@server/lib/permissions';
 import { runAuthorizedUserSecurityMutation } from '@server/lib/userSecurityMutation';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 
 export class PendingRequestTransitionNotFoundError extends Error {
   public readonly status = 404;
@@ -83,10 +84,12 @@ export const validateExternalServiceConfiguration = (
     if (serverId === undefined || serverId === null) {
       const hasDefaultEbook = settings.readarr.some(
         (readarr) =>
-          readarr.isDefault && (readarr.serviceType ?? 'ebook') === 'ebook'
+          readarr.isDefault && readarrServiceSupportsFormat(readarr, 'ebook')
       );
       const hasDefaultAudiobook = settings.readarr.some(
-        (readarr) => readarr.isDefault && readarr.serviceType === 'audiobook'
+        (readarr) =>
+          readarr.isDefault &&
+          readarrServiceSupportsFormat(readarr, 'audiobook')
       );
 
       if (requestedFormat === 'both') {
@@ -122,14 +125,36 @@ export const validateExternalServiceConfiguration = (
     }
 
     if (requestedFormat === 'both') {
-      if ((selectedReadarr.serviceType ?? 'ebook') !== 'ebook') {
+      const supportsEbook = readarrServiceSupportsFormat(
+        selectedReadarr,
+        'ebook'
+      );
+      const supportsAudiobook = readarrServiceSupportsFormat(
+        selectedReadarr,
+        'audiobook'
+      );
+      if (!supportsEbook && !supportsAudiobook) {
         throw new ServiceConfigurationError(
-          'The selected Bookshelf server is configured for audiobook requests, not ebook requests.'
+          'The selected Bookshelf server is not configured for either requested book format.'
         );
       }
       if (
+        !supportsEbook &&
         !settings.readarr.some(
-          (readarr) => readarr.isDefault && readarr.serviceType === 'audiobook'
+          (readarr) =>
+            readarr.isDefault && readarrServiceSupportsFormat(readarr, 'ebook')
+        )
+      ) {
+        throw new ServiceConfigurationError(
+          'Both-format book requests require a default ebook Bookshelf service.'
+        );
+      }
+      if (
+        !supportsAudiobook &&
+        !settings.readarr.some(
+          (readarr) =>
+            readarr.isDefault &&
+            readarrServiceSupportsFormat(readarr, 'audiobook')
         )
       ) {
         throw new ServiceConfigurationError(
@@ -139,9 +164,9 @@ export const validateExternalServiceConfiguration = (
       return;
     }
 
-    const selectedReadarrServiceType = selectedReadarr.serviceType ?? 'ebook';
-
-    if (selectedReadarrServiceType !== requestedFormat) {
+    if (!readarrServiceSupportsFormat(selectedReadarr, requestedFormat)) {
+      const selectedReadarrServiceType =
+        selectedReadarr.serviceType === 'audiobook' ? 'audiobook' : 'ebook';
       throw new ServiceConfigurationError(
         `The selected Bookshelf server is configured for ${selectedReadarrServiceType} requests, not ${requestedFormat} requests.`
       );

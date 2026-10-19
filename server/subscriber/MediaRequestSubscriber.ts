@@ -1,3 +1,4 @@
+import BinderyAPI, { type BinderyBook } from '@server/api/bindery';
 import BackIssueAPI from '@server/api/comics/backissue';
 import KapowarrAPI from '@server/api/comics/kapowarr';
 import MylarAPI from '@server/api/comics/mylar';
@@ -96,6 +97,7 @@ import {
 } from '@server/utils/bookshelfLookup';
 import { mapWithConcurrency } from '@server/utils/concurrency';
 import { withNestedTransaction } from '@server/utils/nestedTransaction';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import { resolveSonarrMonitorNewItems } from '@server/utils/servarrSettings';
 import { isEqual } from 'lodash';
 import type {
@@ -273,6 +275,16 @@ const getRequestDispatchServiceSelection = (
     return { serviceType: 'sportarr', serviceIds: uniqueIds([selected?.id]) };
   }
 
+  const savedBookTargets = (request.serviceTargets ?? []).filter(
+    (target) => target.serviceType === 'readarr'
+  );
+  if (savedBookTargets.length > 0) {
+    return {
+      serviceType: 'readarr',
+      serviceIds: uniqueIds(savedBookTargets.map((target) => target.serverId)),
+    };
+  }
+
   const format = request.bookFormat ?? 'ebook';
   const targetFormats =
     format === 'both'
@@ -280,14 +292,20 @@ const getRequestDispatchServiceSelection = (
       : format === 'audiobook'
         ? (['audiobook'] as const)
         : (['ebook'] as const);
+  const selectedService =
+    request.serverId !== null && request.serverId >= 0
+      ? settings.readarr.find(({ id }) => id === request.serverId)
+      : undefined;
   const serviceIds = targetFormats.map((serviceType) => {
-    const allowOverride = format !== 'both' || serviceType === 'ebook';
-    if (allowOverride && request.serverId !== null && request.serverId >= 0) {
-      return settings.readarr.find(({ id }) => id === request.serverId)?.id;
+    if (
+      selectedService &&
+      readarrServiceSupportsFormat(selectedService, serviceType)
+    ) {
+      return selectedService.id;
     }
     return settings.readarr.find(
       (service) =>
-        service.isDefault && (service.serviceType ?? 'ebook') === serviceType
+        service.isDefault && readarrServiceSupportsFormat(service, serviceType)
     )?.id;
   });
   return { serviceType: 'readarr', serviceIds: uniqueIds(serviceIds) };
@@ -2089,6 +2107,19 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       const work = normalizedOpenLibraryId
         ? await openLibrary.getWork(normalizedOpenLibraryId)
         : undefined;
+      let openLibraryAuthorNamePromise: Promise<string | undefined> | undefined;
+      const getOpenLibraryAuthorName = (): Promise<string | undefined> => {
+        if (!openLibraryAuthorNamePromise) {
+          const authorKey = work?.authors?.[0]?.author?.key;
+          openLibraryAuthorNamePromise = authorKey
+            ? openLibrary
+                .getAuthor(normalizeOpenLibraryAuthorId(authorKey))
+                .then((author) => author?.name)
+                .catch(() => undefined)
+            : Promise.resolve(undefined);
+        }
+        return openLibraryAuthorNamePromise;
+      };
       const lookupTerms = [
         bookshelfLookupId,
         preferredIsbn,
@@ -2198,9 +2229,18 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
             target.serviceType === 'readarr' && target.format === serviceType
         );
         if (savedTarget) {
-          return settings.readarr.find(
+          const savedService = settings.readarr.find(
             (readarr) => readarr.id === savedTarget.serverId
           );
+          if (
+            savedService &&
+            !readarrServiceSupportsFormat(savedService, serviceType)
+          ) {
+            throw new Error(
+              `Selected Bookshelf server is not configured for ${serviceType}`
+            );
+          }
+          return savedService;
         }
         if (
           allowServerOverride &&
@@ -2214,7 +2254,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
 
           if (
             selectedReadarrSettings &&
-            (selectedReadarrSettings.serviceType ?? 'ebook') !== serviceType
+            !readarrServiceSupportsFormat(selectedReadarrSettings, serviceType)
           ) {
             throw new Error(
               `Selected Bookshelf server is not configured for ${serviceType}`
@@ -2227,8 +2267,266 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         return settings.readarr.find(
           (readarr) =>
             readarr.isDefault &&
-            (readarr.serviceType ?? 'ebook') === serviceType
+            readarrServiceSupportsFormat(readarr, serviceType)
         );
+      };
+      const resolveBinderyBook = async (
+        bindery: BinderyAPI
+      ): Promise<{
+        foreignBookId: string;
+        provider?: MediaIdentifierProvider;
+        book?: BinderyBook;
+      }> => {
+        const primaryProvider = await bindery.getPrimaryMetadataProvider();
+        const provider =
+          primaryProvider === 'openlibrary'
+            ? MediaIdentifierProvider.OPENLIBRARY
+            : primaryProvider === 'hardcover'
+              ? MediaIdentifierProvider.HARDCOVER
+              : primaryProvider === 'isbn'
+                ? MediaIdentifierProvider.ISBN
+                : undefined;
+        const primaryIdentifier = provider
+          ? media.identifiers?.find(
+              (identifier) => identifier.provider === provider
+            )
+          : undefined;
+        if (primaryIdentifier?.value.trim()) {
+          return {
+            foreignBookId:
+              provider === MediaIdentifierProvider.OPENLIBRARY
+                ? normalizeOpenLibraryWorkId(primaryIdentifier.value)
+                : provider === MediaIdentifierProvider.ISBN
+                  ? (normalizeValidIsbn(primaryIdentifier.value) ??
+                    primaryIdentifier.value.trim())
+                  : primaryIdentifier.value.trim(),
+            provider,
+          };
+        }
+
+        const isbnCandidates = [
+          preferredIsbn,
+          normalizeValidIsbn(isbn),
+          ...(media.identifiers ?? [])
+            .filter(
+              (identifier) =>
+                identifier.provider === MediaIdentifierProvider.ISBN
+            )
+            .map((identifier) => normalizeValidIsbn(identifier.value)),
+        ].filter(
+          (value, index, values): value is string =>
+            Boolean(value) && values.indexOf(value) === index
+        );
+        for (const candidateIsbn of isbnCandidates) {
+          const result = await bindery.lookupBookByIsbn(candidateIsbn);
+          if (result?.foreignBookId) {
+            return {
+              foreignBookId: result.foreignBookId,
+              provider,
+              book: result,
+            };
+          }
+        }
+
+        if (
+          provider === MediaIdentifierProvider.OPENLIBRARY &&
+          normalizedOpenLibraryId
+        ) {
+          return {
+            foreignBookId: normalizedOpenLibraryId,
+            provider,
+          };
+        }
+
+        const searchTerms = [...isbnCandidates, work?.title].filter(
+          (term, index, terms): term is string =>
+            !!term && terms.indexOf(term) === index
+        );
+        const normalizedTitle = (work?.title ?? '')
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, ' ')
+          .trim();
+        const resolvedAuthorName = await getOpenLibraryAuthorName();
+        const normalizedAuthor = resolvedAuthorName
+          ? resolvedAuthorName
+              .toLowerCase()
+              .replace(/[^\p{L}\p{N}]+/gu, ' ')
+              .trim()
+          : undefined;
+        for (const term of searchTerms) {
+          const results = await bindery.searchBooks(term);
+          const exactIsbnMatch = results.find((result) =>
+            [result.isbn, ...(result.isbns ?? [])]
+              .map((value) => normalizeValidIsbn(value))
+              .some((value) => value && isbnCandidates.includes(value))
+          );
+          if (exactIsbnMatch) {
+            return {
+              foreignBookId: exactIsbnMatch.foreignBookId,
+              provider,
+              book: exactIsbnMatch,
+            };
+          }
+
+          const exactTitleMatches = results.filter((result) => {
+            const resultTitle = result.title
+              .toLowerCase()
+              .replace(/[^\p{L}\p{N}]+/gu, ' ')
+              .trim();
+            if (resultTitle !== normalizedTitle) return false;
+            if (!normalizedAuthor) return true;
+            const author = (result.authorName ?? result.author?.name ?? '')
+              .toLowerCase()
+              .replace(/[^\p{L}\p{N}]+/gu, ' ')
+              .trim();
+            return author === normalizedAuthor;
+          });
+          if (exactTitleMatches.length === 1) {
+            return {
+              foreignBookId: exactTitleMatches[0].foreignBookId,
+              provider,
+              book: exactTitleMatches[0],
+            };
+          }
+          if (exactTitleMatches.length > 1) {
+            throw new Error(
+              `Bindery returned multiple exact matches for “${work?.title ?? 'this book'}”.`
+            );
+          }
+        }
+
+        throw new Error(
+          'Bindery could not resolve this book through its configured metadata provider. Check the provider setting or add a supported identifier.'
+        );
+      };
+      const dispatchBinderyFormats = async (
+        service: ReadarrSettings,
+        formats: ('ebook' | 'audiobook')[]
+      ): Promise<string | undefined> => {
+        const bindery = new BinderyAPI(service);
+        const status = await bindery.getSystemStatus();
+        const resolved = await resolveBinderyBook(bindery);
+        const binderyMediaType = formats.length === 2 ? 'both' : formats[0];
+        let localBookId: number | null;
+        let state: BookRequestSearch['state'] = 'monitoring';
+        let createdBook = false;
+        let createdAuthor = false;
+
+        if (bindery.supportsForUserRequests(status)) {
+          const candidates = new Set(
+            [
+              entity.requestedBy.username,
+              entity.requestedBy.plexUsername,
+              entity.requestedBy.jellyfinUsername,
+              entity.requestedBy.email,
+            ]
+              .filter((value): value is string => !!value?.trim())
+              .map((value) => value.trim().toLowerCase())
+          );
+          const matchedUsers = (await bindery.getUsers()).filter((user) =>
+            [user.username, user.email]
+              .filter((value): value is string => !!value?.trim())
+              .some((value) => candidates.has(value.trim().toLowerCase()))
+          );
+          if (matchedUsers.length !== 1) {
+            throw new Error(
+              matchedUsers.length === 0
+                ? 'Bindery supports requester-owned requests, but no Bindery account matches this SeerrNG user.'
+                : 'More than one Bindery account matches this SeerrNG user. Use matching unique usernames.'
+            );
+          }
+          const result = await bindery.createUserRequest(
+            {
+              foreignBookId: resolved.foreignBookId,
+              mediaType: binderyMediaType,
+              searchOnAdd: true,
+            },
+            matchedUsers[0].id
+          );
+          if (result.status === 'declined') {
+            throw new Error(
+              'Bindery declined the requester-owned book request.'
+            );
+          }
+          localBookId = result.resultBookId ?? null;
+          state = result.status === 'pending' ? 'pending' : 'monitoring';
+        } else {
+          const provider = await bindery.getPrimaryMetadataProvider();
+          const foreignAuthorId =
+            provider === 'openlibrary'
+              ? work?.authors?.[0]?.author?.key
+                ? normalizeOpenLibraryAuthorId(work.authors[0].author.key)
+                : undefined
+              : undefined;
+          const authorName =
+            provider === 'openlibrary'
+              ? await getOpenLibraryAuthorName()
+              : undefined;
+          const result = await bindery.addBook({
+            foreignBookId: resolved.foreignBookId,
+            ...(foreignAuthorId ? { foreignAuthorId } : {}),
+            ...(authorName ? { authorName } : {}),
+            mediaType: binderyMediaType,
+            searchOnAdd: true,
+          });
+          localBookId = result.id;
+          createdBook = true;
+          createdAuthor = Boolean(result.author?.foreignAuthorId);
+        }
+
+        const serviceSlug = resolved.book?.titleSlug ?? resolved.foreignBookId;
+        const bookSearchRepository = getRepository(BookRequestSearch);
+        for (const format of formats) {
+          const existingOperation = await bookSearchRepository.findOneBy({
+            requestId: entity.id,
+            format,
+          });
+          await bookSearchRepository.save(
+            new BookRequestSearch({
+              ...(existingOperation ? { id: existingOperation.id } : {}),
+              requestId: entity.id,
+              serviceId: service.id,
+              format,
+              bookId: localBookId,
+              providerBookId: resolved.foreignBookId,
+              providerEditionId: preferredEditionId ?? null,
+              pendingId: null,
+              authorId: null,
+              commandId: null,
+              createdBook,
+              createdAuthor,
+              providerManagedSearch: false,
+              state,
+            })
+          );
+
+          if (format === 'audiobook') {
+            media.audiobookExternalServiceId = localBookId;
+            media.audiobookExternalServiceSlug = serviceSlug;
+            media.audiobookServiceId = service.id;
+          } else {
+            media.externalServiceId = localBookId;
+            media.externalServiceSlug = serviceSlug;
+            media.serviceId = service.id;
+          }
+          await saveRequestServiceTarget(entity, {
+            serviceType: 'readarr',
+            format,
+            serverId: service.id,
+            profileId: null,
+            metadataProfileId: null,
+            rootFolder: null,
+            tags: null,
+            externalServiceId: localBookId,
+            externalServiceSlug: serviceSlug,
+            status:
+              state === 'pending'
+                ? MediaStatus.PENDING
+                : MediaStatus.PROCESSING,
+          });
+        }
+        await mediaRepository.save(media);
+        return lookupTerms[0];
       };
       const dispatchFormat = async (
         serviceType: 'ebook' | 'audiobook',
@@ -2243,6 +2541,10 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           throw new Error(
             `No default Bookshelf server configured for ${serviceType}`
           );
+        }
+
+        if (readarrSettings.backend === 'bindery') {
+          return dispatchBinderyFormats(readarrSettings, [serviceType]);
         }
 
         const readarr = new ReadarrAPI({
@@ -2621,28 +2923,39 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
             ? (['audiobook'] as const)
             : (['ebook'] as const);
       let lookupTerm: string | undefined;
-
-      for (const serviceType of targetFormats) {
-        if (
-          serviceType === 'ebook' &&
-          media.serviceId !== null &&
-          media.externalServiceId !== null
-        ) {
-          continue;
-        }
-
-        if (
-          serviceType === 'audiobook' &&
-          media.audiobookServiceId !== null &&
-          media.audiobookExternalServiceId !== null
-        ) {
-          continue;
-        }
-
-        lookupTerm = await dispatchFormat(
+      const formatsToDispatch = targetFormats.filter((serviceType) =>
+        serviceType === 'audiobook'
+          ? media.audiobookServiceId === null ||
+            media.audiobookExternalServiceId === null
+          : media.serviceId === null || media.externalServiceId === null
+      );
+      const selectedTargets = formatsToDispatch.map((serviceType) => ({
+        serviceType,
+        server: getReadarrSettings(
           serviceType,
           requestedBookFormat !== 'both' || serviceType === 'ebook'
+        ),
+      }));
+      const sharedBindery =
+        formatsToDispatch.length === 2 &&
+        selectedTargets[0].server?.backend === 'bindery' &&
+        selectedTargets[1].server?.backend === 'bindery' &&
+        selectedTargets[0].server.id === selectedTargets[1].server.id &&
+        readarrServiceSupportsFormat(selectedTargets[0].server, 'ebook') &&
+        readarrServiceSupportsFormat(selectedTargets[0].server, 'audiobook');
+
+      if (sharedBindery) {
+        lookupTerm = await dispatchBinderyFormats(
+          selectedTargets[0].server!,
+          formatsToDispatch
         );
+      } else {
+        for (const { serviceType } of selectedTargets) {
+          lookupTerm = await dispatchFormat(
+            serviceType,
+            requestedBookFormat !== 'both' || serviceType === 'ebook'
+          );
+        }
       }
 
       const requestRepository = getRepository(MediaRequest);

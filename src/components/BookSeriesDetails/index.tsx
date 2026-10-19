@@ -39,6 +39,7 @@ import type {
   BookResult,
   BookSeriesDetails as BookSeriesDetailsType,
 } from '@server/models/Book';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import { useRouter } from 'next/router';
 import { useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
@@ -202,11 +203,11 @@ const BookSeriesDetails = ({ series }: { series?: BookSeriesDetailsType }) => {
     { label: intl.formatMessage(messages.any), value: '' },
     ...BOOK_LANGUAGES.map(([value, label]) => ({ value, label })),
   ];
-  const hasEbookServer = (bookServices ?? []).some(
-    (service) => (service.serviceType ?? 'ebook') === 'ebook'
+  const hasEbookServer = (bookServices ?? []).some((service) =>
+    readarrServiceSupportsFormat(service, 'ebook')
   );
-  const hasAudiobookServer = (bookServices ?? []).some(
-    (service) => service.serviceType === 'audiobook'
+  const hasAudiobookServer = (bookServices ?? []).some((service) =>
+    readarrServiceSupportsFormat(service, 'audiobook')
   );
   const canRequest = hasPermission(
     [Permission.REQUEST, Permission.REQUEST_BOOK],

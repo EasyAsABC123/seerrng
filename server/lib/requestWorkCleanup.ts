@@ -11,6 +11,7 @@ import Media from '@server/entity/Media';
 import type { MediaRequest } from '@server/entity/MediaRequest';
 import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import requestDispatchManager from '@server/lib/requestDispatch';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 
 type CleanupQueueItem = {
   id: number;
@@ -69,6 +70,12 @@ class RequestWorkCleanupManager {
       throw new RequestWorkCleanupError(
         'The selected Bookshelf service is unavailable for cleanup.'
       );
+    }
+    if (server.backend === 'bindery') {
+      // Bindery owns acquisition once a request is accepted. Its request API
+      // does not expose cancellation, so leave that work and service link in
+      // place instead of sending Readarr cancellation or deletion calls.
+      return;
     }
     const api = new ReadarrAPI({
       apiKey: server.apiKey,
@@ -220,12 +227,15 @@ class RequestWorkCleanupManager {
       const server = getExternalRuntimeConfig().readarr.find(
         (candidate) =>
           candidate.id === serviceId &&
-          (candidate.serviceType ?? 'ebook') === format
+          readarrServiceSupportsFormat(candidate, format)
       );
       if (!server?.syncEnabled) {
         throw new RequestWorkCleanupError(
           'The selected Bookshelf service is unavailable for cleanup.'
         );
+      }
+      if (server.backend === 'bindery') {
+        continue;
       }
       const api = new ReadarrAPI({
         apiKey: server.apiKey,

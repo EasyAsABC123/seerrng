@@ -141,6 +141,7 @@ import {
   parseMusicSearchFilters,
 } from '@server/utils/musicSearchFilters';
 import { parsePositiveInt } from '@server/utils/pagination';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import { parsePositiveRouteId } from '@server/utils/routeId';
 import {
   matchesAllSearchTerms,
@@ -4125,8 +4126,11 @@ discoverRoutes.get('/books', async (req, res) => {
   };
   const canPageAudiobookBrowse =
     audiobookEnabled &&
-    getSettings().readarr.filter((server) => server.serviceType === 'audiobook')
-      .length === 1 &&
+    getSettings().readarr.filter(
+      (server) =>
+        server.backend !== 'bindery' &&
+        readarrServiceSupportsFormat(server, 'audiobook')
+    ).length === 1 &&
     !hasSearchQuery &&
     !authorQuery &&
     !narratorQuery &&
@@ -4414,7 +4418,10 @@ discoverRoutes.get('/books', async (req, res) => {
     return res.status(503).json({
       status: 503,
       message: getSettings().readarr.some(
-        (server) => audiobookEnabled && server.serviceType === 'audiobook'
+        (server) =>
+          audiobookEnabled &&
+          server.backend !== 'bindery' &&
+          readarrServiceSupportsFormat(server, 'audiobook')
       )
         ? 'Book discovery catalogs are unavailable right now. Please try again.'
         : 'Open Library, the service used for book searches, timed out or is unavailable. Please try again.',

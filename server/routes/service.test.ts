@@ -1948,6 +1948,7 @@ describe('Bookshelf settings routes', () => {
         activeProfileId: 12,
         activeMetadataProfileId: 23,
         activeTags: [8, 13],
+        backend: 'readarr',
         serviceType: 'ebook',
       },
     ]);

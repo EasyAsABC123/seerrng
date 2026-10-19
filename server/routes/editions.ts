@@ -71,7 +71,8 @@ editionRoutes.get('/series-narrators', async (req, res, next) => {
     return res.status(400).json({ status: 400, message: 'title is required.' });
   }
   const servers = getSettings().readarr.filter(
-    (server) => (server.serviceType ?? 'ebook') === 'audiobook'
+    (server) =>
+      server.backend !== 'bindery' && server.serviceType === 'audiobook'
   );
   try {
     for (const server of servers) {
@@ -126,7 +127,8 @@ editionRoutes.post('/series-narrators/prefer', async (req, res) => {
       .json({ error: 'A series and narrator are required.' });
   }
   const servers = getSettings().readarr.filter(
-    (server) => (server.serviceType ?? 'ebook') === 'audiobook'
+    (server) =>
+      server.backend !== 'bindery' && server.serviceType === 'audiobook'
   );
   for (const server of servers) {
     const api = new ReadarrAPI({

@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "id": 42,
+      "foreignBookId": "OL27448W",
+      "title": "The Hobbit",
+      "authorName": "J. R. R. Tolkien",
+      "mediaType": "both",
+      "formats": ["ebook"],
+      "statistics": { "ebookFileCount": 1, "audiobookFileCount": 0 }
+    }
+  ],
+  "total": 2,
+  "limit": 100,
+  "offset": 0
+}

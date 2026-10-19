@@ -25,6 +25,7 @@ import {
   getPreferredLanguage,
   languageNameMatchesCode,
 } from '@server/utils/preferredLanguage';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import axios from 'axios';
 import { isEqual } from 'lodash';
 import type { ReactNode } from 'react';
@@ -156,6 +157,8 @@ const messages = defineMessages('components.RequestModal.AdvancedRequester', {
   tags: 'Tags',
   selecttags: 'Select tags',
   notagoptions: 'No tags',
+  binderyDefaults:
+    'Bindery uses its own acquisition defaults for profiles, folders, and search.',
   ignoreQuotaTitle: 'Bypass User Quota',
   ignoreQuotaDescription:
     "This request will not count against the user's quota limits. Use with caution.",
@@ -347,7 +350,7 @@ const AdvancedRequester = ({
         (server) =>
           (allow4kServerSelection || Boolean(server.is4k) === is4k) &&
           (type !== 'book' ||
-            (server.serviceType ?? 'ebook') === bookServiceType)
+            readarrServiceSupportsFormat(server, bookServiceType))
       ),
     [allow4kServerSelection, bookServiceType, data, is4k, type]
   );
@@ -355,6 +358,10 @@ const AdvancedRequester = ({
     () => (data ?? []).find((server) => server.id === selectedServer),
     [data, selectedServer]
   );
+  const selectedIsBindery =
+    type === 'book' && selectedServerDetails?.backend === 'bindery';
+  const canCustomizeServiceRequest =
+    serviceOverridesEnabled && !selectedIsBindery;
   const selectedIs4k = allow4kServerSelection
     ? (selectedServerDetails?.is4k ?? is4k)
     : is4k;
@@ -400,14 +407,15 @@ const AdvancedRequester = ({
   useEffect(() => {
     let defaultServer = data?.find((server) => {
       const formatMatches =
-        type !== 'book' || (server.serviceType ?? 'ebook') === bookServiceType;
+        type !== 'book' ||
+        readarrServiceSupportsFormat(server, bookServiceType);
 
       return server.isDefault && Boolean(server.is4k) === is4k && formatMatches;
     });
 
     if (!defaultServer && type === 'book') {
-      defaultServer = data?.find(
-        (server) => (server.serviceType ?? 'ebook') === bookServiceType
+      defaultServer = data?.find((server) =>
+        readarrServiceSupportsFormat(server, bookServiceType)
       );
     }
 
@@ -672,15 +680,15 @@ const AdvancedRequester = ({
     if (selectedServer !== null || selectedUser) {
       onChange({
         folder:
-          serviceOverridesEnabled && selectedFolder !== ''
+          canCustomizeServiceRequest && selectedFolder !== ''
             ? selectedFolder
             : undefined,
         profile:
-          serviceOverridesEnabled && selectedProfile !== -1
+          canCustomizeServiceRequest && selectedProfile !== -1
             ? selectedProfile
             : undefined,
         metadataProfile:
-          serviceOverridesEnabled && selectedMetadataProfile !== -1
+          canCustomizeServiceRequest && selectedMetadataProfile !== -1
             ? selectedMetadataProfile
             : undefined,
         server: serviceOverridesEnabled
@@ -708,7 +716,7 @@ const AdvancedRequester = ({
               : defaultOverrides?.sonarrSeasonType
                 ? null
                 : undefined,
-        tags: serviceOverridesEnabled ? selectedTags : undefined,
+        tags: canCustomizeServiceRequest ? selectedTags : undefined,
         ignoreQuota: isIgnoreQuotaVisible && ignoreQuota ? true : undefined,
       });
     }
@@ -724,6 +732,7 @@ const AdvancedRequester = ({
     selectedSonarrSeasonType,
     selectedTags,
     serviceOverridesEnabled,
+    canCustomizeServiceRequest,
     ignoreQuota,
     isIgnoreQuotaVisible,
     defaultOverrides?.metadataLanguage,
@@ -739,7 +748,8 @@ const AdvancedRequester = ({
           type === 'music' ||
           (type === 'book' && bookFormat !== 'both')) &&
         !currentHasPermission([Permission.MANAGE_REQUESTS]) &&
-        serverData?.server.id === selectedServer
+        serverData?.server.id === selectedServer &&
+        !selectedIsBindery
       ) {
         try {
           const { data: override } = await axios.post<OverrideRulesResult>(
@@ -799,6 +809,7 @@ const AdvancedRequester = ({
     is4k,
     serverData?.server.id,
     selectedServer,
+    selectedIsBindery,
     selectedUserId,
     requestUser?.id,
     currentUser?.id,
@@ -989,12 +1000,17 @@ const AdvancedRequester = ({
                 {selectedService?.name ??
                   intl.formatMessage(globalMessages.loading)}
               </dd>
-              <dt className="font-medium text-gray-200">
-                {intl.formatMessage(messages.rootfolder)}:
-              </dt>
-              <dd className="m-0 truncate">
-                {selectedFolder || intl.formatMessage(globalMessages.loading)}
-              </dd>
+              {!selectedIsBindery && (
+                <>
+                  <dt className="font-medium text-gray-200">
+                    {intl.formatMessage(messages.rootfolder)}:
+                  </dt>
+                  <dd className="m-0 truncate">
+                    {selectedFolder ||
+                      intl.formatMessage(globalMessages.loading)}
+                  </dd>
+                </>
+              )}
             </dl>
           </div>
           <span className="flex-shrink-0 text-xs font-semibold text-indigo-300 group-open:hidden">
@@ -1043,7 +1059,13 @@ const AdvancedRequester = ({
                   loadingLabel={intl.formatMessage(globalMessages.loading)}
                 />
               )}
-              {(type === 'music' || type === 'book') &&
+              {selectedIsBindery && (
+                <p className="description">
+                  {intl.formatMessage(messages.binderyDefaults)}
+                </p>
+              )}
+              {canCustomizeServiceRequest &&
+                (type === 'music' || type === 'book') &&
                 (isValidating ||
                   !serverData ||
                   (serverData.metadataProfiles ?? []).length > 0) && (
@@ -1071,37 +1093,39 @@ const AdvancedRequester = ({
                     loadingLabel={intl.formatMessage(globalMessages.loading)}
                   />
                 )}
-              {(isValidating ||
-                !serverData ||
-                serverData.profiles.length > 0) && (
-                <RequestListboxControl
-                  id="profile"
-                  label={intl.formatMessage(messages.qualityprofile)}
-                  value={selectedProfile}
-                  options={(serverData?.profiles ?? [])
-                    .toSorted((a, b) =>
-                      a.name.localeCompare(b.name, intl.locale, {
-                        numeric: true,
-                        sensitivity: 'base',
-                      })
-                    )
-                    .map((profile) => ({
-                      value: profile.id,
-                      label: formatServiceLabel(profile.name),
-                    }))}
-                  onChange={(profileId) => {
-                    profileManuallySelected.current = true;
-                    setSelectedProfile(profileId);
-                  }}
-                  active={
-                    defaultProfileId !== undefined &&
-                    selectedProfile !== defaultProfileId
-                  }
-                  disabled={isValidating || !serverData}
-                  loadingLabel={intl.formatMessage(globalMessages.loading)}
-                />
-              )}
-              {!rootFolderTable &&
+              {canCustomizeServiceRequest &&
+                (isValidating ||
+                  !serverData ||
+                  serverData.profiles.length > 0) && (
+                  <RequestListboxControl
+                    id="profile"
+                    label={intl.formatMessage(messages.qualityprofile)}
+                    value={selectedProfile}
+                    options={(serverData?.profiles ?? [])
+                      .toSorted((a, b) =>
+                        a.name.localeCompare(b.name, intl.locale, {
+                          numeric: true,
+                          sensitivity: 'base',
+                        })
+                      )
+                      .map((profile) => ({
+                        value: profile.id,
+                        label: formatServiceLabel(profile.name),
+                      }))}
+                    onChange={(profileId) => {
+                      profileManuallySelected.current = true;
+                      setSelectedProfile(profileId);
+                    }}
+                    active={
+                      defaultProfileId !== undefined &&
+                      selectedProfile !== defaultProfileId
+                    }
+                    disabled={isValidating || !serverData}
+                    loadingLabel={intl.formatMessage(globalMessages.loading)}
+                  />
+                )}
+              {canCustomizeServiceRequest &&
+                !rootFolderTable &&
                 (isValidating ||
                   !serverData ||
                   serverData.rootFolders.length > 1) && (
@@ -1205,7 +1229,7 @@ const AdvancedRequester = ({
               )}
             </div>
           )}
-          {rootFolderTable && (
+          {rootFolderTable && canCustomizeServiceRequest && (
             <div className="card-spacing-after">
               <h4 className="card-table-heading card-spacing-after">
                 {intl.formatMessage(messages.availableRootFolders)}
@@ -1259,7 +1283,7 @@ const AdvancedRequester = ({
             </div>
           )}
           {selectedServer !== null &&
-            serviceOverridesEnabled &&
+            canCustomizeServiceRequest &&
             !isValidating &&
             !!serverData?.tags?.length && (
               <div

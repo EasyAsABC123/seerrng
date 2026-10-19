@@ -24,6 +24,7 @@ import {
   reconcileRequestedMusicAvailability,
 } from '@server/lib/musicAvailability';
 import logger from '@server/logger';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import type { EntityManager, Repository } from 'typeorm';
 import { In, MoreThan } from 'typeorm';
 import { isIncompleteRequestStatus } from './requestStatusIncomplete';
@@ -781,7 +782,7 @@ const getServiceName = (request: RequestLike): string | null => {
               : request.media.serviceId;
           return (
             server.id === serviceId &&
-            (server.serviceType ?? 'ebook') === format
+            readarrServiceSupportsFormat(server, format)
           );
         })?.name
       );

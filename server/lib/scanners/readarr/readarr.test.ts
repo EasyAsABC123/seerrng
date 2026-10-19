@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it, mock } from 'node:test';
 
+import BinderyAPI, { type BinderyBook } from '@server/api/bindery';
 import OpenLibraryAPI from '@server/api/openlibrary';
 import type { ReadarrBook, ReadarrEdition } from '@server/api/servarr/readarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
@@ -155,6 +156,93 @@ describe('Readarr Scanner', () => {
       where: { mediaType: MediaType.BOOK },
     });
     assert.strictEqual(updated.status, MediaStatus.AVAILABLE);
+  });
+
+  it('scans imported Bindery ebook and audiobook records into shared book availability', async () => {
+    const media = await getRepository(Media).save(
+      new Media({
+        tmdbId: 0,
+        mediaType: MediaType.BOOK,
+        status: MediaStatus.UNKNOWN,
+        status4k: MediaStatus.UNKNOWN,
+        identifiers: [
+          new MediaIdentifier({
+            provider: MediaIdentifierProvider.OPENLIBRARY,
+            value: 'OL123W',
+            canonical: true,
+          }),
+          new MediaIdentifier({
+            provider: MediaIdentifierProvider.ISBN,
+            value: '9780000000001',
+          }),
+        ],
+      })
+    );
+    configureReadarr([
+      { backend: 'bindery', serviceType: 'both', syncEnabled: true },
+    ]);
+    mock.method(
+      BinderyAPI.prototype,
+      'getPrimaryMetadataProvider',
+      async () => 'openlibrary'
+    );
+    const scannedFormats: string[] = [];
+    mock.method(
+      BinderyAPI.prototype,
+      'getImportedBooks',
+      async (format: 'ebook' | 'audiobook') => {
+        scannedFormats.push(format);
+        return [
+          {
+            id: 55,
+            foreignBookId: 'OL123W',
+            title: 'Test Book',
+            mediaType: format,
+            isbns: ['9780000000001'],
+          } satisfies BinderyBook,
+        ];
+      }
+    );
+
+    await readarrScanner.run();
+
+    const updated = await getRepository(Media).findOneByOrFail({
+      id: media.id,
+    });
+    assert.deepEqual(scannedFormats, ['ebook', 'audiobook']);
+    assert.equal(updated.status, MediaStatus.AVAILABLE);
+    assert.equal(updated.serviceId, 0);
+    assert.equal(updated.externalServiceId, 55);
+    assert.equal(updated.audiobookServiceId, 0);
+    assert.equal(updated.audiobookExternalServiceId, 55);
+  });
+
+  it('matches Bindery ISBN-provider book IDs as ISBN identities', async () => {
+    const media = await seedBook('9780000000001');
+    configureReadarr([
+      { backend: 'bindery', serviceType: 'ebook', syncEnabled: true },
+    ]);
+    mock.method(
+      BinderyAPI.prototype,
+      'getPrimaryMetadataProvider',
+      async () => 'isbn'
+    );
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => [
+      {
+        id: 56,
+        foreignBookId: '9780000000001',
+        title: 'Test Book',
+      } satisfies BinderyBook,
+    ]);
+
+    await readarrScanner.run();
+
+    const updated = await getRepository(Media).findOneByOrFail({
+      id: media.id,
+    });
+    assert.equal(updated.status, MediaStatus.AVAILABLE);
+    assert.equal(updated.serviceId, 0);
+    assert.equal(updated.externalServiceId, 56);
   });
 
   it('skips orphan cleanup when any Readarr server has sync disabled', async () => {

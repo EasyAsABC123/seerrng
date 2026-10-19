@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
+import BinderyAPI, {
+  type BinderyAddBookOptions,
+  type BinderyBook,
+} from '@server/api/bindery';
 import ExternalAPI from '@server/api/externalapi';
 import OpenLibraryAPI from '@server/api/openlibrary';
 import type { LidarrAlbumOptions } from '@server/api/servarr/lidarr';
@@ -2064,6 +2068,301 @@ describe('MediaRequestSubscriber service dispatch', () => {
       id: request.id,
     });
     assert.equal(savedRequest.status, MediaRequestStatus.COMPLETED);
+  });
+
+  it('dispatches a both-format Bindery request once with explicit format intent', async () => {
+    getSettings().readarr = [
+      {
+        id: 22,
+        name: 'Bindery',
+        hostname: 'bindery.local',
+        port: 8787,
+        apiKey: 'bindery-key',
+        useSsl: false,
+        baseUrl: '',
+        externalUrl: '',
+        activeProfileId: 0,
+        activeProfileName: 'Bindery managed',
+        activeMetadataProfileId: 0,
+        activeMetadataProfileName: 'Bindery managed',
+        activeDirectory: '/',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: true,
+        tagRequests: false,
+        overrideRule: [],
+        backend: 'bindery',
+        serviceType: 'both',
+      },
+    ];
+    const requestedBy = await getRequester();
+    const media = await getRepository(Media).save(
+      new Media({
+        mediaType: MediaType.BOOK,
+        tmdbId: 0,
+        status: MediaStatus.PENDING,
+        status4k: MediaStatus.UNKNOWN,
+        identifiers: [
+          new MediaIdentifier({
+            provider: MediaIdentifierProvider.OPENLIBRARY,
+            value: 'OL45804W',
+            canonical: true,
+          }),
+          new MediaIdentifier({
+            provider: MediaIdentifierProvider.ISBN,
+            value: '9780441478125',
+          }),
+        ],
+      })
+    );
+    const request = await createApprovedRequest(media, requestedBy);
+    request.bookFormat = 'both';
+    request.serverId = 22;
+    mock.method(OpenLibraryAPI.prototype, 'getWork', async () => ({
+      key: '/works/OL45804W',
+      title: 'The Left Hand of Darkness',
+    }));
+    mock.method(BinderyAPI.prototype, 'getSystemStatus', async () => ({}));
+    mock.method(
+      BinderyAPI.prototype,
+      'getPrimaryMetadataProvider',
+      async () => 'openlibrary'
+    );
+    const addCalls: BinderyAddBookOptions[] = [];
+    mock.method(
+      BinderyAPI.prototype,
+      'addBook',
+      async (options: BinderyAddBookOptions) => {
+        addCalls.push(options);
+        return {
+          id: 42,
+          foreignBookId: 'OL45804W',
+          title: 'The Left Hand of Darkness',
+          titleSlug: 'left-hand-darkness',
+        } satisfies BinderyBook;
+      }
+    );
+
+    await new MediaRequestSubscriber().sendToReadarr(request);
+
+    assert.deepEqual(addCalls, [
+      {
+        foreignBookId: 'OL45804W',
+        mediaType: 'both',
+        searchOnAdd: true,
+      },
+    ]);
+    const savedMedia = await getRepository(Media).findOneByOrFail({
+      id: media.id,
+    });
+    assert.equal(savedMedia.serviceId, 22);
+    assert.equal(savedMedia.externalServiceId, 42);
+    assert.equal(savedMedia.audiobookServiceId, 22);
+    assert.equal(savedMedia.audiobookExternalServiceId, 42);
+    const operations = await getRepository(BookRequestSearch).findBy({
+      requestId: request.id,
+    });
+    assert.deepEqual(
+      operations
+        .map(({ format, serviceId, state }) => ({
+          format,
+          serviceId,
+          state,
+        }))
+        .sort((left, right) => left.format.localeCompare(right.format)),
+      [
+        { format: 'audiobook', serviceId: 22, state: 'monitoring' },
+        { format: 'ebook', serviceId: 22, state: 'monitoring' },
+      ]
+    );
+    const savedRequest = await getRepository(MediaRequest).findOneByOrFail({
+      id: request.id,
+    });
+    assert.equal(savedRequest.status, MediaRequestStatus.COMPLETED);
+    assert.deepEqual(
+      savedRequest.serviceTargets
+        ?.map(({ format, serverId }) => ({
+          format,
+          serverId,
+        }))
+        .sort((left, right) => left.format.localeCompare(right.format)),
+      [
+        { format: 'audiobook', serverId: 22 },
+        { format: 'ebook', serverId: 22 },
+      ]
+    );
+  });
+
+  it('uses Bindery requester ownership only when status advertises the feature', async () => {
+    getSettings().readarr = [
+      {
+        id: 23,
+        name: 'Bindery',
+        hostname: 'bindery.local',
+        port: 8787,
+        apiKey: 'bindery-key',
+        useSsl: false,
+        baseUrl: '',
+        externalUrl: '',
+        activeProfileId: 0,
+        activeProfileName: 'Bindery managed',
+        activeMetadataProfileId: 0,
+        activeMetadataProfileName: 'Bindery managed',
+        activeDirectory: '/',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: true,
+        tagRequests: false,
+        overrideRule: [],
+        backend: 'bindery',
+        serviceType: 'ebook',
+      },
+    ];
+    const requestedBy = await getRequester();
+    requestedBy.username = 'reader-one';
+    const media = await getRepository(Media).save(
+      new Media({
+        mediaType: MediaType.BOOK,
+        tmdbId: 0,
+        status: MediaStatus.PENDING,
+        status4k: MediaStatus.UNKNOWN,
+        identifiers: [
+          new MediaIdentifier({
+            provider: MediaIdentifierProvider.OPENLIBRARY,
+            value: 'OL45804W',
+            canonical: true,
+          }),
+        ],
+      })
+    );
+    const request = await createApprovedRequest(media, requestedBy);
+    mock.method(OpenLibraryAPI.prototype, 'getWork', async () => ({
+      key: '/works/OL45804W',
+      title: 'The Left Hand of Darkness',
+    }));
+    mock.method(BinderyAPI.prototype, 'getSystemStatus', async () => ({
+      features: { requestsForUser: true },
+    }));
+    mock.method(
+      BinderyAPI.prototype,
+      'getPrimaryMetadataProvider',
+      async () => 'openlibrary'
+    );
+    mock.method(BinderyAPI.prototype, 'getUsers', async () => [
+      { id: 7, username: 'reader-one' },
+    ]);
+    let requestPayload:
+      { options: BinderyAddBookOptions; forUser: number } | undefined;
+    mock.method(
+      BinderyAPI.prototype,
+      'createUserRequest',
+      async (options: BinderyAddBookOptions, forUser: number) => {
+        requestPayload = { options, forUser };
+        return {
+          id: 91,
+          kind: 'book',
+          foreignId: options.foreignBookId,
+          mediaType: options.mediaType,
+          status: 'pending',
+        };
+      }
+    );
+    mock.method(BinderyAPI.prototype, 'addBook', async () => {
+      throw new Error('the direct owner fallback must not be used');
+    });
+
+    await new MediaRequestSubscriber().sendToReadarr(request);
+
+    assert.deepEqual(requestPayload, {
+      options: {
+        foreignBookId: 'OL45804W',
+        mediaType: 'ebook',
+        searchOnAdd: true,
+      },
+      forUser: 7,
+    });
+    const operation = await getRepository(BookRequestSearch).findOneByOrFail({
+      requestId: request.id,
+      format: 'ebook',
+    });
+    assert.equal(operation.state, 'pending');
+    assert.equal(operation.pendingId, null);
+    assert.equal(operation.providerBookId, 'OL45804W');
+  });
+
+  it('does not create an admin-owned Bindery item when advertised user mapping fails', async () => {
+    getSettings().readarr = [
+      {
+        id: 24,
+        name: 'Bindery',
+        hostname: 'bindery.local',
+        port: 8787,
+        apiKey: 'bindery-key',
+        useSsl: false,
+        activeProfileId: 0,
+        activeProfileName: 'Bindery managed',
+        activeMetadataProfileId: 0,
+        activeMetadataProfileName: 'Bindery managed',
+        activeDirectory: '/',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: true,
+        tagRequests: false,
+        overrideRule: [],
+        backend: 'bindery',
+        serviceType: 'ebook',
+      },
+    ];
+    const requestedBy = await getRequester();
+    const media = await getRepository(Media).save(
+      new Media({
+        mediaType: MediaType.BOOK,
+        tmdbId: 0,
+        status: MediaStatus.PENDING,
+        status4k: MediaStatus.UNKNOWN,
+        identifiers: [
+          new MediaIdentifier({
+            provider: MediaIdentifierProvider.OPENLIBRARY,
+            value: 'OL45804W',
+            canonical: true,
+          }),
+        ],
+      })
+    );
+    const request = await createApprovedRequest(media, requestedBy);
+    mock.method(OpenLibraryAPI.prototype, 'getWork', async () => ({
+      key: '/works/OL45804W',
+      title: 'The Left Hand of Darkness',
+    }));
+    mock.method(BinderyAPI.prototype, 'getSystemStatus', async () => ({
+      features: { requestsForUser: true },
+    }));
+    mock.method(
+      BinderyAPI.prototype,
+      'getPrimaryMetadataProvider',
+      async () => 'openlibrary'
+    );
+    mock.method(BinderyAPI.prototype, 'getUsers', async () => []);
+    mock.method(BinderyAPI.prototype, 'addBook', async () => {
+      throw new Error('must not fall back to an admin-owned item');
+    });
+
+    const retryDelay = await new MediaRequestSubscriber().sendToReadarr(
+      request
+    );
+
+    assert.equal(retryDelay, READARR_FAILED_RETRY_DELAY_MS);
+    assert.equal(await getRepository(BookRequestSearch).count(), 0);
+    const savedRequest = await getRepository(MediaRequest).findOneByOrFail({
+      id: request.id,
+    });
+    assert.equal(savedRequest.status, MediaRequestStatus.FAILED);
   });
 
   it('expands Bookshelf lookup to OpenLibrary edition ISBNs when canonical lookup misses', async () => {

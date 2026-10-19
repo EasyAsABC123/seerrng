@@ -218,14 +218,19 @@ const BookshelfPathMigration = () => {
   const { data: services, error: servicesError } = useSWR<ReadarrSettings[]>(
     '/api/v1/settings/readarr'
   );
+  const compatibleServices = useMemo(
+    () => services?.filter((service) => service.backend !== 'bindery') ?? [],
+    [services]
+  );
   useEffect(() => {
-    if (serviceId || !services?.length) return;
+    if (serviceId || !compatibleServices.length) return;
     const preferred =
-      services.find((service) => service.serviceType === 'audiobook') ??
-      services[0];
+      compatibleServices.find(
+        (service) => service.serviceType === 'audiobook'
+      ) ?? compatibleServices[0];
     setServiceId(String(preferred.id));
-    setFormat(preferred.serviceType ?? 'ebook');
-  }, [serviceId, services]);
+    setFormat(preferred.serviceType === 'audiobook' ? 'audiobook' : 'ebook');
+  }, [serviceId, compatibleServices]);
 
   const configurationUrl = serviceId
     ? `/api/v1/settings/readarr/${serviceId}/media-move/configuration?format=${format}`
@@ -404,10 +409,10 @@ const BookshelfPathMigration = () => {
       {!services && !servicesError && (
         <p role="status">{intl.formatMessage(messages.settingsLoading)}</p>
       )}
-      {services && services.length === 0 && (
+      {services && compatibleServices.length === 0 && (
         <p>{intl.formatMessage(messages.noServices)}</p>
       )}
-      {services && services.length > 0 && (
+      {services && compatibleServices.length > 0 && (
         <div className="space-y-4 rounded-lg border border-gray-700 bg-gray-800 p-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="block">
@@ -422,11 +427,14 @@ const BookshelfPathMigration = () => {
                 value={serviceId}
                 disabled={busy || commandRunning}
                 onChange={(event) => {
-                  const next = services.find(
+                  const next = compatibleServices.find(
                     (service) => String(service.id) === event.target.value
                   );
                   setServiceId(event.target.value);
-                  if (next) setFormat(next.serviceType ?? 'ebook');
+                  if (next)
+                    setFormat(
+                      next.serviceType === 'audiobook' ? 'audiobook' : 'ebook'
+                    );
                   setSelectedIds([]);
                   clearPreview();
                 }}
@@ -434,7 +442,7 @@ const BookshelfPathMigration = () => {
                 <option value="">
                   {intl.formatMessage(messages.servicePlaceholder)}
                 </option>
-                {services.map((service) => (
+                {compatibleServices.map((service) => (
                   <option key={service.id} value={service.id}>
                     {service.name} · {service.serviceType ?? 'ebook'}
                   </option>

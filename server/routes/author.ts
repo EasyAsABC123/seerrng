@@ -203,7 +203,9 @@ const findBookshelfAuthorCover = async (
   authorName: string
 ): Promise<{ serviceId: number; authorId: number } | undefined> => {
   const services = getSettings()
-    .readarr.filter((service) => service.isDefault)
+    .readarr.filter(
+      (service) => service.isDefault && service.backend !== 'bindery'
+    )
     .slice(0, 4);
   const normalizedName = normalizeAuthorName(authorName);
 
@@ -211,7 +213,7 @@ const findBookshelfAuthorCover = async (
     const readarr = new ReadarrAPI({
       apiKey: service.apiKey,
       url: ReadarrAPI.buildUrl(service, '/api/v1'),
-      mediaType: service.serviceType ?? 'ebook',
+      mediaType: service.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
     });
     try {
       const matches = await readarr.lookupAuthor(authorName);
@@ -472,7 +474,7 @@ authorRoutes.get<{ id: string }>('/:id/cover', async (req, res) => {
   }
 
   const service = getSettings().readarr.find(
-    (candidate) => candidate.id === serviceId
+    (candidate) => candidate.id === serviceId && candidate.backend !== 'bindery'
   );
   if (!service) {
     return res.status(404).send('Author cover not found');
@@ -482,7 +484,7 @@ authorRoutes.get<{ id: string }>('/:id/cover', async (req, res) => {
     const readarr = new ReadarrAPI({
       apiKey: service.apiKey,
       url: ReadarrAPI.buildUrl(service, '/api/v1'),
-      mediaType: service.serviceType ?? 'ebook',
+      mediaType: service.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
     });
     const cover = await readarr.getAuthorCover(bookshelfAuthorId);
     res.setHeader('Cache-Control', 'private, max-age=3600');

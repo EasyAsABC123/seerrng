@@ -1,3 +1,4 @@
+import BinderyAPI from '@server/api/bindery';
 import type {
   ReadarrBookLookupResult,
   ReadarrMediaMoveAuthor,
@@ -29,6 +30,7 @@ import {
   getBookshelfProviderNotice,
 } from '@server/utils/bookshelfProvider';
 import { mapWithConcurrency } from '@server/utils/concurrency';
+import { getReadarrServiceFormats } from '@server/utils/readarrService';
 import { parseNonNegativeRouteId } from '@server/utils/routeId';
 import { REDACTED_SECRET, redactSecrets } from '@server/utils/security';
 import {
@@ -135,12 +137,16 @@ const parseBookshelfMediaMoveRequest = (
   };
 };
 
-const createReadarrApi = (settings: ReadarrSettings): ReadarrAPI =>
-  new ReadarrAPI({
+const createReadarrApi = (settings: ReadarrSettings): ReadarrAPI => {
+  if (settings.backend === 'bindery') {
+    throw new Error('Bookshelf media tools are not available for Bindery.');
+  }
+  return new ReadarrAPI({
     apiKey: settings.apiKey,
     url: ReadarrAPI.buildUrl(settings, '/api/v1'),
-    mediaType: settings.serviceType ?? 'ebook',
+    mediaType: settings.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
   });
+};
 
 const selectMoveAuthors = (
   authors: ReadarrMediaMoveAuthor[],
@@ -490,14 +496,15 @@ readarrRoutes.post(
               historicalServiceIdMaximum
             ),
           };
-          const serviceType = newReadarr.serviceType ?? 'ebook';
+          const newFormats = getReadarrServiceFormats(newReadarr);
           const existing = newReadarr.isDefault
             ? current.map((instance) => ({
                 ...instance,
-                isDefault:
-                  (instance.serviceType ?? 'ebook') === serviceType
-                    ? false
-                    : instance.isDefault,
+                isDefault: getReadarrServiceFormats(instance).some((format) =>
+                  newFormats.includes(format)
+                )
+                  ? false
+                  : instance.isDefault,
               }))
             : current;
           return [...existing, newReadarr];
@@ -533,10 +540,43 @@ readarrRoutes.post<
         return res.status(400).json({ message: parsedReadarr.error });
       }
 
+      if (parsedReadarr.value.backend === 'bindery') {
+        const bindery = new BinderyAPI({
+          ...parsedReadarr.value,
+          id: 0,
+          name: 'Bindery',
+          activeProfileId: 0,
+          activeProfileName: 'Bindery managed',
+          activeDirectory: '/',
+          tags: [],
+          is4k: false,
+          isDefault: false,
+          syncEnabled: false,
+          preventSearch: true,
+          tagRequests: false,
+          overrideRule: [],
+        } as ReadarrSettings);
+        const status = await bindery.getSystemStatus();
+        return res.status(200).json({
+          backend: 'bindery',
+          system: {
+            version: status.version,
+            commit: status.commit,
+            buildDate: status.buildDate,
+          },
+          features: {
+            requestsForUser: bindery.supportsForUserRequests(status),
+          },
+        });
+      }
+
       const readarr = new ReadarrAPI({
         apiKey: parsedReadarr.value.apiKey,
         url: ReadarrAPI.buildUrl(parsedReadarr.value, '/api/v1'),
-        mediaType: parsedReadarr.value.serviceType ?? 'ebook',
+        mediaType:
+          parsedReadarr.value.serviceType === 'audiobook'
+            ? 'audiobook'
+            : 'ebook',
       });
 
       const [urlBase, development] = await Promise.all([
@@ -604,6 +644,14 @@ readarrRoutes.post<
       });
     }
 
+    if (parsedReadarr.value.backend === 'bindery') {
+      return res.status(400).json({
+        ok: false,
+        category: 'unsupported_operation',
+        message: 'Readarr diagnostics are not available for Bindery.',
+      });
+    }
+
     const term = parseOptionalBoundedString(req.body.term, {
       fieldName: 'term',
       maxLength: MAX_DIAGNOSTIC_TERM_LENGTH,
@@ -649,7 +697,8 @@ readarrRoutes.post<
     const readarr = new ReadarrAPI({
       apiKey: parsedReadarr.value.apiKey,
       url: ReadarrAPI.buildUrl(parsedReadarr.value, '/api/v1'),
-      mediaType: parsedReadarr.value.serviceType ?? 'ebook',
+      mediaType:
+        parsedReadarr.value.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
     });
 
     try {
@@ -980,16 +1029,18 @@ readarrRoutes.put<{ id: string }, ReadarrSettings, ReadarrSettings>(
             return next({ status: 400, message: admittedReadarr.error });
           }
           if (
-            (currentReadarr.serviceType ?? 'ebook') !==
-            (admittedReadarr.value.serviceType ?? 'ebook')
+            currentReadarr.serviceType !== admittedReadarr.value.serviceType ||
+            currentReadarr.backend !== admittedReadarr.value.backend
           ) {
             await assertServarrServiceCanChangeKind('readarr', readarrId);
           }
           const readarr = await settings.persistSection(
             'readarr',
             (current) => {
-              const serviceType = admittedReadarr.value.serviceType ?? 'ebook';
-              const oldServiceType = currentReadarr.serviceType ?? 'ebook';
+              const newFormats = getReadarrServiceFormats(
+                admittedReadarr.value
+              );
+              const oldFormats = getReadarrServiceFormats(currentReadarr);
               const updated = current.map((instance) => {
                 if (instance.id === readarrId) {
                   return {
@@ -1003,35 +1054,35 @@ readarrRoutes.put<{ id: string }, ReadarrSettings, ReadarrSettings>(
                   } as ReadarrSettings;
                 }
                 return admittedReadarr.value.isDefault &&
-                  (instance.serviceType ?? 'ebook') === serviceType
+                  getReadarrServiceFormats(instance).some((format) =>
+                    newFormats.includes(format)
+                  )
                   ? { ...instance, isDefault: false }
                   : instance;
               });
 
-              // Changing an instance's book format away from the type it
-              // was the default for must not leave that type without one,
-              // matching the auto-promotion the DELETE route already does.
-              if (oldServiceType !== serviceType && currentReadarr.isDefault) {
-                const hasDefaultForOldType = updated.some(
+              // Preserve coverage when a default stops handling one of its
+              // formats, including when a shared Bindery connection changes.
+              const formatsToPromote = currentReadarr.isDefault
+                ? oldFormats.filter((format) => !newFormats.includes(format))
+                : [];
+              for (const format of formatsToPromote) {
+                if (
+                  updated.some(
+                    (instance) =>
+                      instance.id !== readarrId &&
+                      instance.isDefault &&
+                      getReadarrServiceFormats(instance).includes(format)
+                  )
+                ) {
+                  continue;
+                }
+                const promote = updated.find(
                   (instance) =>
                     instance.id !== readarrId &&
-                    (instance.serviceType ?? 'ebook') === oldServiceType &&
-                    instance.isDefault
+                    getReadarrServiceFormats(instance).includes(format)
                 );
-                if (!hasDefaultForOldType) {
-                  let promoted = false;
-                  return updated.map((instance) => {
-                    if (
-                      !promoted &&
-                      instance.id !== readarrId &&
-                      (instance.serviceType ?? 'ebook') === oldServiceType
-                    ) {
-                      promoted = true;
-                      return { ...instance, isDefault: true };
-                    }
-                    return instance;
-                  });
-                }
+                if (promote) promote.isDefault = true;
               }
 
               return updated;
@@ -1084,19 +1135,23 @@ readarrRoutes.delete<{ id: string }>(
             if (!removed.isDefault) {
               return remaining;
             }
-
-            const removedServiceType = removed.serviceType ?? 'ebook';
-            let promoted = false;
-            return remaining.map((instance) => {
+            const updated = [...remaining];
+            for (const format of getReadarrServiceFormats(removed)) {
               if (
-                !promoted &&
-                (instance.serviceType ?? 'ebook') === removedServiceType
+                updated.some(
+                  (instance) =>
+                    instance.isDefault &&
+                    getReadarrServiceFormats(instance).includes(format)
+                )
               ) {
-                promoted = true;
-                return { ...instance, isDefault: true };
+                continue;
               }
-              return instance;
-            });
+              const promote = updated.find((instance) =>
+                getReadarrServiceFormats(instance).includes(format)
+              );
+              if (promote) promote.isDefault = true;
+            }
+            return updated;
           });
 
           return res.status(200).json(redactSecrets(removed));

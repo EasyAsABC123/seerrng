@@ -998,6 +998,36 @@ mediaRoutes.delete(
                 ? [{ serviceType, serviceId: selectedServiceId }]
                 : [];
 
+            if (isBook) {
+              const linkedServiceIds = [
+                ...(bookFormat !== 'audiobook' &&
+                media.serviceId !== null &&
+                media.serviceId !== undefined
+                  ? [media.serviceId]
+                  : []),
+                ...(bookFormat !== 'ebook' &&
+                media.audiobookServiceId !== null &&
+                media.audiobookServiceId !== undefined
+                  ? [media.audiobookServiceId]
+                  : []),
+              ];
+              if (
+                linkedServiceIds.some((linkedServiceId) =>
+                  selectionSettings.readarr.some(
+                    (server) =>
+                      server.id === linkedServiceId &&
+                      server.backend === 'bindery'
+                  )
+                )
+              ) {
+                return next({
+                  status: 409,
+                  message:
+                    'Removing a Bindery book through this action is not supported.',
+                });
+              }
+            }
+
             return runWithServarrServiceAdmission(
               serviceAdmissions,
               async () => {

@@ -38,6 +38,7 @@ import {
 } from '@server/lib/userSecurityMutation';
 import logger from '@server/logger';
 import { DbAwareColumn, resolveDbType } from '@server/utils/DbColumnHelper';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import {
   Column,
   Entity,
@@ -694,10 +695,11 @@ export class Watchlist {
     const readarrSettings = getExternalRuntimeConfig().readarr;
     const hasDefaultEbook = readarrSettings.some(
       (readarr) =>
-        readarr.isDefault && (readarr.serviceType ?? 'ebook') === 'ebook'
+        readarr.isDefault && readarrServiceSupportsFormat(readarr, 'ebook')
     );
     const hasDefaultAudiobook = readarrSettings.some(
-      (readarr) => readarr.isDefault && readarr.serviceType === 'audiobook'
+      (readarr) =>
+        readarr.isDefault && readarrServiceSupportsFormat(readarr, 'audiobook')
     );
     const format = hasDefaultEbook
       ? 'ebook'

@@ -63,6 +63,7 @@ import type {
   BookResult,
   BookSeriesDetails,
 } from '@server/models/Book';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import axios from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
@@ -470,11 +471,11 @@ const BulkRequestModal = ({
   );
 
   const formatAvailable = useMemo(() => {
-    const hasEbookServer = (bookServices ?? []).some(
-      (service) => (service.serviceType ?? 'ebook') === 'ebook'
+    const hasEbookServer = (bookServices ?? []).some((service) =>
+      readarrServiceSupportsFormat(service, 'ebook')
     );
-    const hasAudiobookServer = (bookServices ?? []).some(
-      (service) => service.serviceType === 'audiobook'
+    const hasAudiobookServer = (bookServices ?? []).some((service) =>
+      readarrServiceSupportsFormat(service, 'audiobook')
     );
 
     return {

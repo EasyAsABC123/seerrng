@@ -76,16 +76,19 @@ export async function getReleaseCalendar(
       bookFormat: undefined,
       server,
     })),
-    ...settings.readarr.map((server) => {
-      const bookFormat = server.serviceType ?? 'ebook';
-      return {
-        source: 'readarr' as const,
-        mediaType: 'book' as const,
-        category: bookFormat,
-        bookFormat,
-        server,
-      };
-    }),
+    ...settings.readarr
+      .filter((server) => server.backend !== 'bindery')
+      .map((server) => {
+        const bookFormat: ReleaseCalendarBookFormat =
+          server.serviceType === 'audiobook' ? 'audiobook' : 'ebook';
+        return {
+          source: 'readarr' as const,
+          mediaType: 'book' as const,
+          category: bookFormat,
+          bookFormat,
+          server,
+        };
+      }),
   ].filter(
     (item) =>
       isMediaCategoryEnabled(item.category) &&

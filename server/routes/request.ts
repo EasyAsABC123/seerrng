@@ -2171,7 +2171,9 @@ requestRoutes.get<
     const sonarrSettings = canHydrateServiceProfiles ? settings.sonarr : [];
     const radarrSettings = canHydrateServiceProfiles ? settings.radarr : [];
     const lidarrSettings = canHydrateServiceProfiles ? settings.lidarr : [];
-    const readarrSettings = canHydrateServiceProfiles ? settings.readarr : [];
+    const readarrSettings = canHydrateServiceProfiles
+      ? settings.readarr.filter((service) => service.backend !== 'bindery')
+      : [];
     const sportarrSettings = canHydrateServiceProfiles ? settings.sportarr : [];
     const referencedProfileServiceIds = new Map<MediaType, Set<number>>();
     for (const item of requests) {
@@ -2335,7 +2337,8 @@ requestRoutes.get<
                 new ReadarrAPI({
                   apiKey: current.apiKey,
                   url: ReadarrAPI.buildUrl(current, '/api/v1'),
-                  mediaType: current.serviceType ?? 'ebook',
+                  mediaType:
+                    current.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
                 }).getProfiles()
             ).catch((error) => {
               logRequestServiceProfileFailure(

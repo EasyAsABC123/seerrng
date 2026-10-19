@@ -56,7 +56,7 @@ export type ServarrServiceAuthority = Pick<
   'id' | 'hostname' | 'port' | 'useSsl' | 'baseUrl' | 'apiKey'
 > &
   Partial<Pick<DVRSettings, 'syncEnabled' | 'is4k'>> &
-  Partial<Pick<ReadarrSettings, 'serviceType'>>;
+  Partial<Pick<ReadarrSettings, 'backend' | 'serviceType'>>;
 
 export const hasSameServarrServiceAuthority = (
   current: ServarrServiceAuthority,
@@ -70,6 +70,7 @@ export const hasSameServarrServiceAuthority = (
   current.apiKey === snapshot.apiKey &&
   current.syncEnabled === snapshot.syncEnabled &&
   Boolean(current.is4k) === Boolean(snapshot.is4k) &&
+  (current.backend ?? 'readarr') === (snapshot.backend ?? 'readarr') &&
   (current.serviceType ?? 'ebook') === (snapshot.serviceType ?? 'ebook');
 
 export class ServarrServiceAuthorityChangedError extends Error {}

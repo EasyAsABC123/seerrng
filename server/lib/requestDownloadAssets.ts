@@ -405,7 +405,7 @@ const getReadarrAssets = async (
     const server = getExternalRuntimeConfig().readarr.find(
       (instance) => instance.id === target.serviceId
     );
-    if (!server) continue;
+    if (!server || server.backend === 'bindery') continue;
     try {
       const api = new ReadarrAPI({
         url: ReadarrAPI.buildUrl(server, '/api/v1'),

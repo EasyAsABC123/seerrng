@@ -67,6 +67,7 @@ import {
   parseMusicSearchFilters,
 } from '@server/utils/musicSearchFilters';
 import { parsePositiveInt } from '@server/utils/pagination';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import {
   matchesAllSearchTerms,
   toFieldedBooleanAndQuery,
@@ -438,11 +439,11 @@ searchRoutes.get('/', async (req, res, next) => {
     });
   }
   const settings = getExternalRuntimeConfig();
-  const ebookServiceEnabled = settings.readarr.some(
-    (server) => (server.serviceType ?? 'ebook') === 'ebook'
+  const ebookServiceEnabled = settings.readarr.some((server) =>
+    readarrServiceSupportsFormat(server, 'ebook')
   );
-  const audiobookServiceEnabled = settings.readarr.some(
-    (server) => server.serviceType === 'audiobook'
+  const audiobookServiceEnabled = settings.readarr.some((server) =>
+    readarrServiceSupportsFormat(server, 'audiobook')
   );
   const ebookEnabled = isMediaCategoryEnabled('ebook') && ebookServiceEnabled;
   const audiobookEnabled =

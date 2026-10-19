@@ -576,6 +576,7 @@ serviceRoutes.get('/readarr', async (req, res, next) => {
               activeProfileId: readarr.activeProfileId,
               activeMetadataProfileId: readarr.activeMetadataProfileId,
               activeTags: readarr.tags ?? [],
+              backend: readarr.backend ?? 'readarr',
               serviceType: readarr.serviceType ?? 'ebook',
             },
             includeOperationalDetails
@@ -638,10 +639,33 @@ serviceRoutes.get<{ readarrId: string }>(
           'readarr',
           readarrId,
           async (readarrSettings) => {
+            if (readarrSettings.backend === 'bindery') {
+              return {
+                server: {
+                  id: readarrSettings.id,
+                  name: readarrSettings.name,
+                  is4k: false,
+                  isDefault: readarrSettings.isDefault,
+                  activeDirectory: '/',
+                  activeProfileId: 0,
+                  activeMetadataProfileId: 0,
+                  activeTags: [],
+                  backend: 'bindery',
+                  serviceType: readarrSettings.serviceType ?? 'both',
+                },
+                profiles: [],
+                metadataProfiles: [],
+                rootFolders: [],
+                tags: [],
+              } as ServiceCommonServerWithDetails;
+            }
             const readarr = new ReadarrAPI({
               apiKey: readarrSettings.apiKey,
               url: ReadarrAPI.buildUrl(readarrSettings, '/api/v1'),
-              mediaType: readarrSettings.serviceType ?? 'ebook',
+              mediaType:
+                readarrSettings.serviceType === 'audiobook'
+                  ? 'audiobook'
+                  : 'ebook',
             });
             const [profiles, metadataProfiles, rootFolders, tags, development] =
               await Promise.all([
@@ -665,6 +689,7 @@ serviceRoutes.get<{ readarrId: string }>(
                 activeMetadataProfileId:
                   readarrSettings.activeMetadataProfileId,
                 activeTags: readarrSettings.tags,
+                backend: readarrSettings.backend ?? 'readarr',
                 serviceType: readarrSettings.serviceType ?? 'ebook',
                 provider,
                 providerNotice: getBookshelfProviderNotice(provider),

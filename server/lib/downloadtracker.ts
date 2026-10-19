@@ -33,13 +33,13 @@ export const isMatchingReadarrDownloadServer = (
     hostname: string;
     port: number;
     baseUrl?: string;
-    serviceType?: 'ebook' | 'audiobook';
+    serviceType?: 'ebook' | 'audiobook' | 'both';
   },
   serverB: {
     hostname: string;
     port: number;
     baseUrl?: string;
-    serviceType?: 'ebook' | 'audiobook';
+    serviceType?: 'ebook' | 'audiobook' | 'both';
   }
 ): boolean =>
   serverA.hostname === serverB.hostname &&
@@ -999,7 +999,9 @@ export class DownloadTracker {
     const settings = getExternalRuntimeConfig();
 
     const filteredServers = uniqWith(
-      settings.readarr.slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
+      settings.readarr
+        .filter((server) => server.backend !== 'bindery')
+        .slice(0, MAX_SERVARR_INSTANCES_PER_TYPE),
       (readarrA, readarrB) =>
         isMatchingReadarrDownloadServer(readarrA, readarrB)
     );
@@ -1012,7 +1014,8 @@ export class DownloadTracker {
           const readarr = new ReadarrAPI({
             apiKey: server.apiKey,
             url: ReadarrAPI.buildUrl(server, '/api/v1'),
-            mediaType: server.serviceType ?? 'ebook',
+            mediaType:
+              server.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
           });
 
           try {
@@ -1075,7 +1078,9 @@ export class DownloadTracker {
 
           const matchingServers = settings.readarr.filter(
             (rs) =>
-              isMatchingReadarrDownloadServer(rs, server) && rs.id !== server.id
+              rs.backend !== 'bindery' &&
+              isMatchingReadarrDownloadServer(rs, server) &&
+              rs.id !== server.id
           );
 
           if (matchingServers.length > 0) {

@@ -23,7 +23,7 @@ guide](./dependency-forks.md).
 | TV | [Sonarr](https://github.com/Sonarr/Sonarr) | Searches, imports, and tracks series and episode requests. |
 | Sports leagues | [Sportarr](https://github.com/Sportarr/Sportarr) | Searches sports leagues and requests them using the configured quality profile and library defaults. |
 | Music | [Lidarr](https://github.com/Lidarr/Lidarr) | Searches, imports, and tracks artist and album requests. |
-| Books and audiobooks | [BookshelfNG](https://github.com/snapetech-org/bookshelfng) or [ChaptarrNG](https://github.com/snapetech-org/chaptarrng) | Recommended SeerrNG-compatible book managers. Either can serve both formats from one instance; add one SeerrNG service entry for each format. Other Readarr-compatible services may work, but do not provide the NG-specific behavior listed below. |
+| Books and audiobooks | [ChaptarrNG](https://github.com/snapetech-org/chaptarrng), [Bindery](https://github.com/vavallee/bindery), or [BookshelfNG](https://github.com/snapetech-org/bookshelfng) | ChaptarrNG and BookshelfNG use the Readarr-compatible service form; Bindery has a native service form and API. Each can manage ebooks and audiobooks from one instance. Other Readarr-compatible services may work, but do not provide the NG-specific behavior listed below. |
 | Comics | [Issuarr](https://github.com/issuarr/issuarr) (recommended for new setups), [Mylar3](https://github.com/MylarComics/mylar3) (existing connections remain supported), [Kapowarr](https://github.com/Casvt/Kapowarr), or [BackIssue](https://backissue.app/) | Connect one or more supported comic services, then choose a default destination for requests. Add Issuarr or Mylar3 through the existing **Mylar3** service type; Kapowarr and BackIssue use their own search sources and download flows. |
 | Magazines | [LazyLibrarian](https://github.com/llninja/LazyLibrarian) | Searches and tracks magazine requests. |
 | PC games | [QuestarrNG](https://github.com/snapetech-org/QuestarrNG) | Provides the IGDB catalog and acquires PC game requests. |
@@ -31,7 +31,9 @@ guide](./dependency-forks.md).
 
 In **Settings > Services > Audiobooks & Books**, ChaptarrNG is configured from
 the **ChaptarrNG / Bookshelf Settings** section. It uses the same book-service
-form as BookshelfNG and other Readarr-compatible backends.
+form as BookshelfNG and other Readarr-compatible backends. Add Bindery from
+**Add Bindery Server**; see the [Bindery Backend guide](./bindery-backend.md)
+for setup and its supported SeerrNG features.
 
 Prowlarr is an optional indexer manager. It can provide configured indexers to
 compatible acquisition apps and power SeerrNG's manual indexer search. A

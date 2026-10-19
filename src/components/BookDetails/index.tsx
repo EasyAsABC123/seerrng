@@ -58,6 +58,7 @@ import type {
   BookDetails as BookDetailsType,
   BookRatingResponse,
 } from '@server/models/Book';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
@@ -296,23 +297,29 @@ const BookDetails = () => {
   const defaultEbookService =
     bookServices?.find(
       (service) =>
-        service.isDefault && (service.serviceType ?? 'ebook') === 'ebook'
+        service.isDefault && readarrServiceSupportsFormat(service, 'ebook')
     ) ??
-    bookServices?.find(
-      (service) => (service.serviceType ?? 'ebook') === 'ebook'
+    bookServices?.find((service) =>
+      readarrServiceSupportsFormat(service, 'ebook')
     );
   const defaultAudiobookService =
     bookServices?.find(
-      (service) => service.isDefault && service.serviceType === 'audiobook'
-    ) ?? bookServices?.find((service) => service.serviceType === 'audiobook');
+      (service) =>
+        service.isDefault && readarrServiceSupportsFormat(service, 'audiobook')
+    ) ??
+    bookServices?.find((service) =>
+      readarrServiceSupportsFormat(service, 'audiobook')
+    );
   const hasEbookService =
     bookServices === undefined ||
-    bookServices.some(
-      (service) => (service.serviceType ?? 'ebook') === 'ebook'
+    bookServices.some((service) =>
+      readarrServiceSupportsFormat(service, 'ebook')
     );
   const hasAudiobookService =
     bookServices === undefined ||
-    bookServices.some((service) => service.serviceType === 'audiobook');
+    bookServices.some((service) =>
+      readarrServiceSupportsFormat(service, 'audiobook')
+    );
   const ebookDestination = createRequestDestination(
     'readarr',
     'ebook',

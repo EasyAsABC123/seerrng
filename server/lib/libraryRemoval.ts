@@ -182,9 +182,16 @@ export const resolveLibraryRemoval = async (
           }
         }
       } else if (type === 'readarr') {
+        const service = getExternalRuntimeConfig().readarr.find(
+          (candidate) => candidate.id === server.id
+        );
+        if (service?.backend === 'bindery') {
+          throw new Error(
+            'Bindery does not support removal through the Readarr library tools.'
+          );
+        }
         const format =
-          getExternalRuntimeConfig().readarr.find((s) => s.id === server.id)
-            ?.serviceType ?? 'ebook';
+          service?.serviceType === 'audiobook' ? 'audiobook' : 'ebook';
         const api = new ReadarrAPI({
           apiKey: server.apiKey,
           url: ReadarrAPI.buildUrl(server, '/api/v1'),

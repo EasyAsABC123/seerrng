@@ -77,6 +77,7 @@ connects to.
 - [Set up image recognition for Share to Request](/using-seerr/share-to-request/#administrators)
 - [Companion service integrations](/using-seerr/dependency-forks/)
 - [Configure ChaptarrNG and its SeerrNG service key](/using-seerr/bookshelf-backend/#chaptarrng)
+- [Connect Bindery for ebook and audiobook requests](/using-seerr/bindery-backend)
 - [Preview a BookshelfNG-to-ChaptarrNG migration](/using-seerr/bookshelf-backend/#installer-script)
 - [Connect read-only Audiobookshelf availability](/using-seerr/bookshelf-backend/#audiobookshelf-availability)
 - [Enable built-in HTTPS](/using-seerr/advanced/built-in-tls)

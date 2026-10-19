@@ -32,6 +32,7 @@ import {
   authorizedRouteAccess,
 } from '@server/middleware/authorizedMutation';
 import { parseBookshelfBookId } from '@server/utils/bookshelfCatalog';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import { parsePositiveRouteId } from '@server/utils/routeId';
 import {
   parseBoundedString,
@@ -672,8 +673,10 @@ overrideRuleRoutes.post<
               (service) =>
                 service.isDefault &&
                 (mediaType !== MediaType.BOOK ||
-                  ((service as ReadarrSettings).serviceType ?? 'ebook') ===
-                    req.body.bookFormat)
+                  readarrServiceSupportsFormat(
+                    service as ReadarrSettings,
+                    req.body.bookFormat === 'audiobook' ? 'audiobook' : 'ebook'
+                  ))
             );
         if (!selectedService) {
           return res.status(400).json({
@@ -683,8 +686,10 @@ overrideRuleRoutes.post<
         }
         if (
           mediaType === MediaType.BOOK &&
-          ((selectedService as ReadarrSettings).serviceType ?? 'ebook') !==
-            req.body.bookFormat
+          !readarrServiceSupportsFormat(
+            selectedService as ReadarrSettings,
+            req.body.bookFormat === 'audiobook' ? 'audiobook' : 'ebook'
+          )
         ) {
           return res.status(400).json({
             status: 400,

@@ -23,7 +23,8 @@ export interface ServiceCommonServer {
   activeAnimeTags?: number[];
   requestButtonLabel?: string;
   requestButtonAnimeOnly?: boolean;
-  serviceType?: 'ebook' | 'audiobook';
+  backend?: 'readarr' | 'bindery';
+  serviceType?: 'ebook' | 'audiobook' | 'both';
   provider?: BookshelfProvider;
   providerNotice?: string;
   legacyWarning?: string;

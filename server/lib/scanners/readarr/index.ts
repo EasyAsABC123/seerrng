@@ -1,3 +1,4 @@
+import BinderyAPI, { type BinderyBook } from '@server/api/bindery';
 import type { ReadarrBook } from '@server/api/servarr/readarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
 import { MediaStatus, MediaType } from '@server/constants/media';
@@ -23,12 +24,18 @@ import {
 } from '@server/lib/serviceAdmission';
 import type { ReadarrSettings } from '@server/lib/settings';
 import { getHttpErrorDetails } from '@server/utils/httpError';
+import {
+  getReadarrServiceFormats,
+  type BookServiceFormat,
+} from '@server/utils/readarrService';
 import { uniqWith } from 'lodash';
 
 type SyncStatus = StatusBase & {
   currentServer: ReadarrSettings;
   servers: ReadarrSettings[];
 };
+
+type BinderyScanBook = BinderyBook & { binderyFormat: BookServiceFormat };
 
 const normalizeReadarrIsbn = (isbn?: string): string | undefined =>
   normalizeValidIsbn(isbn) ?? normalizeIsbn(isbn);
@@ -50,12 +57,13 @@ const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 class ReadarrScanner
-  extends BaseScanner<ReadarrBook>
+  extends BaseScanner<ReadarrBook | BinderyScanBook>
   implements RunnableScanner<SyncStatus>
 {
   private servers: ReadarrSettings[];
   private currentServer: ReadarrSettings;
   private readarrApi: ReadarrAPI;
+  private binderyPrimaryProvider?: string;
   private scannedIdentifierKeys: Set<string> = new Set();
   private didScan = false;
 
@@ -105,16 +113,39 @@ class ReadarrScanner
             'readarr',
             server,
             async (current) => {
+              if (current.backend === 'bindery') {
+                const bindery = new BinderyAPI(current);
+                this.binderyPrimaryProvider =
+                  await bindery.getPrimaryMetadataProvider();
+                const formats = getReadarrServiceFormats(current);
+                const books = await Promise.all(
+                  formats.map(async (format) =>
+                    (await bindery.getImportedBooks(format)).map((book) => ({
+                      ...book,
+                      binderyFormat: format,
+                    }))
+                  )
+                );
+                return books.flat();
+              }
+
               this.readarrApi = new ReadarrAPI({
                 apiKey: current.apiKey,
                 url: ReadarrAPI.buildUrl(current, '/api/v1'),
-                mediaType: current.serviceType ?? 'ebook',
+                mediaType:
+                  current.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
               });
               return this.readarrApi.getBooks();
             }
           );
           this.didScan = true;
-          await this.loop(this.processReadarrBook.bind(this), { sessionId });
+          await this.loop(
+            async (book) =>
+              this.currentServer.backend === 'bindery'
+                ? this.processBinderyBook(book as BinderyScanBook)
+                : this.processReadarrBook(book as ReadarrBook),
+            { sessionId }
+          );
         } else {
           this.log(
             `Sync not enabled. Skipping Bookshelf server: ${server.name}`
@@ -212,7 +243,8 @@ class ReadarrScanner
           )
       );
 
-      const serviceType = this.currentServer.serviceType ?? 'ebook';
+      const serviceType =
+        this.currentServer.serviceType === 'audiobook' ? 'audiobook' : 'ebook';
       const bookFileCount =
         (serviceType === 'audiobook'
           ? readarrBook.statistics?.audiobookFileCount
@@ -272,6 +304,94 @@ class ReadarrScanner
       this.log('Failed to process Bookshelf media', 'error', {
         errorMessage: e.message,
         title: readarrBook.title,
+      });
+    }
+  }
+
+  private async processBinderyBook(book: BinderyScanBook): Promise<void> {
+    try {
+      const mappedProvider =
+        this.binderyPrimaryProvider === 'openlibrary'
+          ? MediaIdentifierProvider.OPENLIBRARY
+          : this.binderyPrimaryProvider === 'hardcover'
+            ? MediaIdentifierProvider.HARDCOVER
+            : undefined;
+      const primaryIsbn =
+        this.binderyPrimaryProvider === 'isbn'
+          ? normalizeReadarrIsbn(book.foreignBookId)
+          : undefined;
+      const foreignBookId = mappedProvider
+        ? normalizeExternalBookId(book.foreignBookId, mappedProvider)
+        : undefined;
+      const isbns = [book.isbn, ...(book.isbns ?? [])]
+        .map((isbn) => normalizeReadarrIsbn(isbn))
+        .filter(
+          (isbn, index, values): isbn is string =>
+            Boolean(isbn) && values.indexOf(isbn) === index
+        );
+      const provider = foreignBookId
+        ? mappedProvider!
+        : MediaIdentifierProvider.ISBN;
+      const identifier = foreignBookId ?? primaryIsbn ?? isbns[0];
+
+      if (!identifier) {
+        this.log(
+          'No supported Bindery book identifier found. Skipping item.',
+          'debug',
+          { title: book.title, foreignBookId: book.foreignBookId }
+        );
+        return;
+      }
+
+      const secondaryIdentifiers = [
+        ...(foreignBookId
+          ? isbns.map((isbn) => ({
+              provider: MediaIdentifierProvider.ISBN,
+              value: isbn,
+            }))
+          : []),
+        ...(foreignBookId
+          ? []
+          : mappedProvider
+            ? [
+                {
+                  provider: mappedProvider,
+                  value: normalizeExternalBookId(
+                    book.foreignBookId,
+                    mappedProvider
+                  ),
+                },
+              ]
+            : []),
+      ];
+      [{ provider, value: identifier }, ...secondaryIdentifiers].forEach(
+        (item) =>
+          this.scannedIdentifierKeys.add(
+            getBookIdentifierKey(item.provider, item.value)
+          )
+      );
+
+      await this.processBookWithRetry(provider, identifier, {
+        serviceId: this.currentServer.id,
+        externalServiceId: book.id,
+        externalServiceSlug: book.titleSlug ?? book.foreignBookId,
+        title: book.title,
+        hasFile: true,
+        processing: false,
+        secondaryIdentifiers,
+        bookServiceType: book.binderyFormat,
+        mutationGuard: (callback) =>
+          runWithServarrServiceSnapshot(
+            'readarr',
+            this.currentServer,
+            callback
+          ),
+      });
+    } catch (error) {
+      if (error instanceof ServarrServiceAuthorityChangedError) throw error;
+      this.log('Failed to process Bindery media', 'error', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        title: book.title,
       });
     }
   }

@@ -10,6 +10,7 @@ import Media from '@server/entity/Media';
 import { titleSimilarity } from '@server/lib/resolve/match';
 import type { ReadarrSettings } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 
 export type BookFormat = 'ebook' | 'audiobook';
 
@@ -185,7 +186,9 @@ export const getLibraryBookService = async (
   ) {
     return undefined;
   }
-  const server = getSettings().readarr.find((entry) => entry.id === serviceId);
+  const server = getSettings().readarr.find(
+    (entry) => entry.id === serviceId && entry.backend !== 'bindery'
+  );
   if (!server) return undefined;
   return {
     server,
@@ -229,7 +232,9 @@ export const compareBookEditions = async (options: {
   }
 
   const server = getSettings().readarr.find(
-    (entry) => (entry.serviceType ?? 'ebook') === options.format
+    (entry) =>
+      entry.backend !== 'bindery' &&
+      readarrServiceSupportsFormat(entry, options.format)
   );
   if (server && options.term) {
     const api = new ReadarrAPI({

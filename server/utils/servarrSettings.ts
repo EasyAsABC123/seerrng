@@ -46,7 +46,11 @@ export const assertServarrInstanceCapacity = (
 export type ServarrConnectionSettings = Pick<
   DVRSettings,
   'hostname' | 'port' | 'apiKey' | 'useSsl' | 'baseUrl'
-> & { id?: number; serviceType?: ReadarrSettings['serviceType'] };
+> & {
+  id?: number;
+  backend?: ReadarrSettings['backend'];
+  serviceType?: ReadarrSettings['serviceType'];
+};
 
 export const preserveServarrApiKey = <T extends { apiKey: string }>(
   body: unknown,
@@ -194,6 +198,7 @@ export const parseServarrConnectionSettings = (
   }
 
   const settings = body as Partial<DVRSettings> & {
+    backend?: ReadarrSettings['backend'];
     serviceType?: ReadarrSettings['serviceType'];
   };
   const hostname = parseRequiredServiceString(settings.hostname, 'hostname');
@@ -216,14 +221,28 @@ export const parseServarrConnectionSettings = (
   const useSsl = parseServiceBoolean(settings.useSsl, 'useSsl');
   if ('error' in useSsl) return useSsl;
 
+  const backend =
+    settings.backend === undefined || settings.backend === 'readarr'
+      ? 'readarr'
+      : settings.backend === 'bindery'
+        ? 'bindery'
+        : undefined;
+  if (!backend) return { error: 'backend is invalid.' };
+
   const serviceType =
     settings.serviceType === undefined ||
     settings.serviceType === 'ebook' ||
-    settings.serviceType === 'audiobook'
+    settings.serviceType === 'audiobook' ||
+    (backend === 'bindery' && settings.serviceType === 'both')
       ? settings.serviceType
       : undefined;
   if (settings.serviceType !== undefined && serviceType === undefined) {
-    return { error: 'serviceType must be ebook or audiobook.' };
+    return {
+      error:
+        backend === 'bindery'
+          ? 'serviceType must be ebook, audiobook, or both.'
+          : 'serviceType must be ebook or audiobook.',
+    };
   }
 
   return {
@@ -233,6 +252,7 @@ export const parseServarrConnectionSettings = (
       apiKey: apiKey.value,
       useSsl: useSsl.value,
       baseUrl: baseUrl.value,
+      backend,
       serviceType,
     },
   };
@@ -614,8 +634,20 @@ export const parseReadarrSettings = (
   if ('error' in parsed) return parsed;
   const settings = body as Partial<ReadarrSettings>;
 
+  const backend =
+    settings.backend === undefined || settings.backend === 'readarr'
+      ? 'readarr'
+      : settings.backend === 'bindery'
+        ? 'bindery'
+        : undefined;
+  if (!backend) {
+    return { error: 'backend is invalid.' };
+  }
+
   const serviceType =
-    settings.serviceType === 'ebook' || settings.serviceType === 'audiobook'
+    settings.serviceType === 'ebook' ||
+    settings.serviceType === 'audiobook' ||
+    (backend === 'bindery' && settings.serviceType === 'both')
       ? settings.serviceType
       : undefined;
 
@@ -626,6 +658,7 @@ export const parseReadarrSettings = (
   return {
     value: {
       ...parsed.value,
+      backend,
       serviceType,
     },
   };

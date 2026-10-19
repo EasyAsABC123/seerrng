@@ -15,6 +15,7 @@ import { Permission } from '@server/lib/permissions';
 import { runMigrations } from '@server/lib/settings/migrator';
 import type { AvailableLocale } from '@server/types/languages';
 import AsyncLock from '@server/utils/asyncLock';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import type { TlsSettings } from '@server/utils/tls';
 import { randomBytes, randomUUID } from 'crypto';
 import { mergeWith } from 'lodash';
@@ -415,7 +416,9 @@ export interface LidarrSettings extends DVRSettings {
 export interface ReadarrSettings extends DVRSettings {
   activeMetadataProfileId?: number;
   activeMetadataProfileName?: string;
-  serviceType?: 'ebook' | 'audiobook';
+  /** Missing backend is the existing Readarr-compatible API. */
+  backend?: 'readarr' | 'bindery';
+  serviceType?: 'ebook' | 'audiobook' | 'both';
 }
 
 /** A Jellystat statistics server used to show Jellyfin play counts. Read-only. */
@@ -1753,11 +1756,11 @@ class Settings {
       ),
       musicEnabled: this.data.lidarr.length > 0,
       booksEnabled: this.data.readarr.length > 0,
-      ebookServiceEnabled: this.data.readarr.some(
-        (service) => (service.serviceType ?? 'ebook') === 'ebook'
+      ebookServiceEnabled: this.data.readarr.some((service) =>
+        readarrServiceSupportsFormat(service, 'ebook')
       ),
-      audiobookServiceEnabled: this.data.readarr.some(
-        (service) => service.serviceType === 'audiobook'
+      audiobookServiceEnabled: this.data.readarr.some((service) =>
+        readarrServiceSupportsFormat(service, 'audiobook')
       ),
       readmeabookEnabled: this.data.readmeabook.enabled,
       comicsEnabled:

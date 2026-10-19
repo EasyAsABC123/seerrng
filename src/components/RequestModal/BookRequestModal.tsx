@@ -48,6 +48,7 @@ import {
   getPreferredLanguage,
   languageCodesMatch,
 } from '@server/utils/preferredLanguage';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
@@ -227,10 +228,12 @@ const BookRequestModal = ({
     (server) => server.id === requestOverrides?.server
   );
   const defaultEbookService = bookServices?.find(
-    (server) => server.isDefault && (server.serviceType ?? 'ebook') === 'ebook'
+    (server) =>
+      server.isDefault && readarrServiceSupportsFormat(server, 'ebook')
   );
   const defaultAudiobookService = bookServices?.find(
-    (server) => server.isDefault && server.serviceType === 'audiobook'
+    (server) =>
+      server.isDefault && readarrServiceSupportsFormat(server, 'audiobook')
   );
   const ebookDestination = createRequestDestination(
     'readarr',
@@ -378,11 +381,11 @@ const BookRequestModal = ({
     visibleEditionCandidates,
   ]);
 
-  const hasEbookServer = (bookServices ?? []).some(
-    (service) => (service.serviceType ?? 'ebook') === 'ebook'
+  const hasEbookServer = (bookServices ?? []).some((service) =>
+    readarrServiceSupportsFormat(service, 'ebook')
   );
-  const hasAudiobookServer = (bookServices ?? []).some(
-    (service) => service.serviceType === 'audiobook'
+  const hasAudiobookServer = (bookServices ?? []).some((service) =>
+    readarrServiceSupportsFormat(service, 'audiobook')
   );
   const hasEnabledEbookCategory =
     currentSettings.enabledMediaCategories?.ebook !== false ||

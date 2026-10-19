@@ -237,8 +237,9 @@ class DownloadRecovery {
       });
     }
 
-    const readarrServers = uniqWith(settings.readarr, (a, b) =>
-      isMatchingReadarrDownloadServer(a, b)
+    const readarrServers = uniqWith(
+      settings.readarr.filter((server) => server.backend !== 'bindery'),
+      (a, b) => isMatchingReadarrDownloadServer(a, b)
     );
     for (const server of readarrServers) {
       if (!server.syncEnabled) {
@@ -247,7 +248,7 @@ class DownloadRecovery {
       const readarr = new ReadarrAPI({
         apiKey: server.apiKey,
         url: ReadarrAPI.buildUrl(server, '/api/v1'),
-        mediaType: server.serviceType ?? 'ebook',
+        mediaType: server.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
       });
       services.push({
         serviceType: 'readarr',

@@ -13,6 +13,7 @@ import type {
   BookSeriesDetails,
   BookSeriesReference,
 } from '@server/models/Book';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import { matchesAllSearchTerms } from '@server/utils/searchTerms';
 
 export const BOOKSHELF_BOOK_ID_PREFIX = 'bookshelf:';
@@ -280,7 +281,10 @@ export const getBookshelfLibraryBookSeries = async (
 
   const results = await Promise.all(
     candidates.map(async ({ serviceId, bookId }) => {
-      const server = servers.find((candidate) => candidate.id === serviceId);
+      const server = servers.find(
+        (candidate) =>
+          candidate.id === serviceId && candidate.backend !== 'bindery'
+      );
       if (!server) return [];
 
       try {
@@ -345,7 +349,7 @@ export const mapBookshelfBook = (
       expiresAt: Date.now() + BOOK_LOOKUP_CACHE_TTL_MS,
       serviceUrl: ReadarrAPI.buildUrl(server, '/api/v1'),
       apiKey: server.apiKey,
-      serviceType: server.serviceType ?? 'ebook',
+      serviceType: server.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
     });
     if (bookLookupCache.size > BOOK_LOOKUP_CACHE_LIMIT) {
       bookLookupCache.delete(bookLookupCache.keys().next().value!);
@@ -397,7 +401,7 @@ export const mapBookshelfBook = (
     provider: 'bookshelf',
     metadataSource: getBookshelfMetadataSource(result.foreignBookId),
     mediaType: 'book',
-    bookFormat: server?.serviceType ?? 'ebook',
+    bookFormat: server?.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
     title: result.title,
     author: result.author?.authorName,
     authorId: result.author?.foreignAuthorId
@@ -431,27 +435,29 @@ export const searchBookshelfAuthors = async (
   term: string
 ): Promise<AuthorResult[]> => {
   const results = await Promise.all(
-    servers.map(async (server) => {
-      try {
-        const authors = await getApi(server).lookupAuthor(term);
-        return authors.map((author) => ({
-          id: makeBookshelfAuthorId(
-            server.id,
-            author.foreignAuthorId,
-            author.authorName
-          ),
-          provider: 'bookshelf' as const,
-          mediaType: 'author' as const,
-          name: author.authorName,
-          posterPath:
-            author.images?.find(
-              (image) => image.coverType?.toLowerCase() === 'poster'
-            )?.remoteUrl ?? author.remotePoster,
-        }));
-      } catch {
-        return [];
-      }
-    })
+    servers
+      .filter((server) => server.backend !== 'bindery')
+      .map(async (server) => {
+        try {
+          const authors = await getApi(server).lookupAuthor(term);
+          return authors.map((author) => ({
+            id: makeBookshelfAuthorId(
+              server.id,
+              author.foreignAuthorId,
+              author.authorName
+            ),
+            provider: 'bookshelf' as const,
+            mediaType: 'author' as const,
+            name: author.authorName,
+            posterPath:
+              author.images?.find(
+                (image) => image.coverType?.toLowerCase() === 'poster'
+              )?.remoteUrl ?? author.remotePoster,
+          }));
+        } catch {
+          return [];
+        }
+      })
   );
 
   return results.flat();
@@ -463,7 +469,11 @@ export const getBookshelfSeriesDetails = async (
 ): Promise<BookSeriesDetails | undefined> => {
   const parsed = parseBookshelfSeriesId(id);
   const server =
-    parsed && servers.find((candidate) => candidate.id === parsed.serviceId);
+    parsed &&
+    servers.find(
+      (candidate) =>
+        candidate.id === parsed.serviceId && candidate.backend !== 'bindery'
+    );
   if (!parsed || !server) return undefined;
 
   try {
@@ -550,7 +560,11 @@ export const getBookshelfAuthorDetails = async (
 ): Promise<AuthorDetails | undefined> => {
   const parsed = parseBookshelfAuthorId(id);
   const server =
-    parsed && servers.find((candidate) => candidate.id === parsed.serviceId);
+    parsed &&
+    servers.find(
+      (candidate) =>
+        candidate.id === parsed.serviceId && candidate.backend !== 'bindery'
+    );
   if (!parsed || !server) return undefined;
   try {
     const api = getApi(server);
@@ -589,7 +603,7 @@ const getApi = (server: ReadarrSettings) =>
   new ReadarrAPI({
     apiKey: server.apiKey,
     url: ReadarrAPI.buildUrl(server, '/api/v1'),
-    mediaType: server.serviceType ?? 'ebook',
+    mediaType: server.serviceType === 'audiobook' ? 'audiobook' : 'ebook',
   });
 
 export const searchBookshelfCatalogs = async (
@@ -599,7 +613,9 @@ export const searchBookshelfCatalogs = async (
   options: { failOnAllUnavailable?: boolean } = {}
 ): Promise<BookResult[]> => {
   const matches = servers.filter(
-    (server) => !serviceType || (server.serviceType ?? 'ebook') === serviceType
+    (server) =>
+      server.backend !== 'bindery' &&
+      (!serviceType || readarrServiceSupportsFormat(server, serviceType))
   );
   const responses = await Promise.allSettled(
     matches.map(async (server) => {
@@ -643,7 +659,9 @@ export const getBookshelfAudiobookLibrary = async (
   servers: ReadarrSettings[]
 ): Promise<BookResult[]> => {
   const audiobookServers = servers.filter(
-    (server) => server.serviceType === 'audiobook'
+    (server) =>
+      server.backend !== 'bindery' &&
+      readarrServiceSupportsFormat(server, 'audiobook')
   );
   if (!audiobookServers.length) return [];
 
@@ -673,7 +691,9 @@ export const getBookshelfAudiobookLibraryPage = async (
   pageSize: number
 ): Promise<{ books: BookResult[]; totalCount: number }> => {
   const audiobookServers = servers.filter(
-    (server) => server.serviceType === 'audiobook'
+    (server) =>
+      server.backend !== 'bindery' &&
+      readarrServiceSupportsFormat(server, 'audiobook')
   );
   if (!audiobookServers.length) return { books: [], totalCount: 0 };
 
@@ -714,7 +734,9 @@ export const searchBookshelfNarrators = async (
   narrator: string
 ): Promise<BookResult[]> => {
   const audiobookServers = servers.filter(
-    (server) => server.serviceType === 'audiobook'
+    (server) =>
+      server.backend !== 'bindery' &&
+      readarrServiceSupportsFormat(server, 'audiobook')
   );
   if (!audiobookServers.length) return [];
 
@@ -751,7 +773,10 @@ export const getBookshelfBookDetails = async (
 ): Promise<BookDetails | undefined> => {
   const parsed = parseBookshelfBookId(id);
   if (!parsed) return undefined;
-  const server = servers.find((candidate) => candidate.id === parsed.serviceId);
+  const server = servers.find(
+    (candidate) =>
+      candidate.id === parsed.serviceId && candidate.backend !== 'bindery'
+  );
   if (!server) return undefined;
   try {
     const api = getApi(server);

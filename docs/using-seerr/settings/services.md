@@ -175,6 +175,15 @@ runbook. Provider IDs are not portable; the runbook rebuilds records and can
 preserve strict matches, recover metadata, and create local records for books
 the target provider cannot import.
 
+### Bindery
+
+Bindery uses its own API, so add it through **Add Bindery Server** instead of
+the Readarr-compatible connection form. SeerrNG can send approved ebook and
+audiobook requests, optionally use one Bindery service for both formats, and
+scan Bindery's imported library for availability. Configure search and library
+defaults in Bindery. See the [Bindery Backend guide](/using-seerr/bindery-backend)
+for metadata matching, request ownership, and current integration limits.
+
 ### Audiobookshelf availability
 
 Under **Settings → Services → Audiobookshelf Availability**, you can connect

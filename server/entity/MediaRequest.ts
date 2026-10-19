@@ -99,6 +99,7 @@ import {
   getPreferredLanguage,
   languageNameMatchesCode,
 } from '@server/utils/preferredLanguage';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import {
   AfterLoad,
   Column,
@@ -722,8 +723,10 @@ export class MediaRequest {
       }
       if (
         requestBody.mediaType === MediaType.BOOK &&
-        ((selectedService as ReadarrSettings).serviceType ?? 'ebook') !==
-          (requestBody.format === 'audiobook' ? 'audiobook' : 'ebook')
+        !readarrServiceSupportsFormat(
+          selectedService as ReadarrSettings,
+          requestBody.format === 'audiobook' ? 'audiobook' : 'ebook'
+        )
       ) {
         throw new ServiceConfigurationError(
           `Selected Bookshelf server is not configured for ${
@@ -979,16 +982,22 @@ export class MediaRequest {
       const bookshelfCatalogServiceId = parseBookshelfBookId(
         requestBody.mediaId?.toString() ?? ''
       )?.serviceId;
+      const selectedBookshelf =
+        useAdvancedOptions && requestBody.serverId != null
+          ? settings.readarr.find(
+              (service) => service.id === requestBody.serverId
+            )
+          : undefined;
       const defaultBookshelfFor = (serviceType: 'ebook' | 'audiobook') =>
         settings.readarr.find(
           (service) =>
             service.id === bookshelfCatalogServiceId &&
-            (service.serviceType ?? 'ebook') === serviceType
+            readarrServiceSupportsFormat(service, serviceType)
         ) ??
         settings.readarr.find(
           (service) =>
             service.isDefault &&
-            (service.serviceType ?? 'ebook') === serviceType
+            readarrServiceSupportsFormat(service, serviceType)
         );
       const services: {
         serviceType: ServarrServiceType;
@@ -998,7 +1007,16 @@ export class MediaRequest {
         serviceType: ServarrServiceType,
         serviceId: number | null | undefined
       ) => {
-        if (serviceId != null) services.push({ serviceType, serviceId });
+        if (
+          serviceId != null &&
+          !services.some(
+            (service) =>
+              service.serviceType === serviceType &&
+              service.serviceId === serviceId
+          )
+        ) {
+          services.push({ serviceType, serviceId });
+        }
       };
 
       if (requestBody.mediaType === MediaType.MOVIE) {
@@ -1085,19 +1103,33 @@ export class MediaRequest {
         if (format === 'both') {
           addService(
             'readarr',
-            useAdvancedOptions && requestBody.serverId != null
-              ? requestBody.serverId
-              : defaultBookshelfFor('ebook')?.id
+            (selectedBookshelf &&
+            readarrServiceSupportsFormat(selectedBookshelf, 'ebook')
+              ? selectedBookshelf
+              : defaultBookshelfFor('ebook')
+            )?.id
           );
-          addService('readarr', defaultBookshelfFor('audiobook')?.id);
+          addService(
+            'readarr',
+            (selectedBookshelf &&
+            readarrServiceSupportsFormat(selectedBookshelf, 'audiobook')
+              ? selectedBookshelf
+              : defaultBookshelfFor('audiobook')
+            )?.id
+          );
         } else {
           addService(
             'readarr',
-            useAdvancedOptions && requestBody.serverId != null
-              ? requestBody.serverId
+            (selectedBookshelf &&
+            readarrServiceSupportsFormat(
+              selectedBookshelf,
+              format === 'audiobook' ? 'audiobook' : 'ebook'
+            )
+              ? selectedBookshelf
               : defaultBookshelfFor(
                   format === 'audiobook' ? 'audiobook' : 'ebook'
-                )?.id
+                )
+            )?.id
           );
         }
       }
@@ -1434,7 +1466,7 @@ export class MediaRequest {
         requestedServerId !== undefined &&
         requestedServerId !== null &&
         requestedServer &&
-        (requestedServer.serviceType ?? 'ebook') !== requestedServiceType
+        !readarrServiceSupportsFormat(requestedServer, requestedServiceType)
       ) {
         throw new ServiceConfigurationError(
           `Selected Bookshelf server is not configured for ${requestedServiceType}.`
@@ -1448,12 +1480,12 @@ export class MediaRequest {
         settings.readarr.find(
           (readarr) =>
             readarr.id === bookshelfCatalogServiceId &&
-            (readarr.serviceType ?? 'ebook') === serviceType
+            readarrServiceSupportsFormat(readarr, serviceType)
         ) ??
         settings.readarr.find(
           (readarr) =>
             readarr.isDefault &&
-            (readarr.serviceType ?? 'ebook') === serviceType
+            readarrServiceSupportsFormat(readarr, serviceType)
         );
       const defaultReadarr = findBookshelfService(requestedServiceType);
       const defaultEbookReadarr = findBookshelfService('ebook');
@@ -1474,7 +1506,11 @@ export class MediaRequest {
         );
       }
 
-      const selectedReadarr = requestedServer ?? defaultReadarr;
+      const selectedReadarr =
+        requestedServer &&
+        readarrServiceSupportsFormat(requestedServer, requestedServiceType)
+          ? requestedServer
+          : defaultReadarr;
 
       const createBookTarget = (
         service: ReadarrSettings,
@@ -1506,13 +1542,26 @@ export class MediaRequest {
       });
       const bookTargets: MediaRequestServiceTarget[] = [];
       if (requestedBookFormat === 'both') {
-        const ebookService = requestedServer ?? defaultEbookReadarr;
+        const ebookService =
+          (requestedServer &&
+          readarrServiceSupportsFormat(requestedServer, 'ebook')
+            ? requestedServer
+            : undefined) ?? defaultEbookReadarr;
         if (ebookService) {
           bookTargets.push(createBookTarget(ebookService, 'ebook', true));
         }
-        if (defaultAudiobookReadarr) {
+        const audiobookService =
+          (requestedServer &&
+          readarrServiceSupportsFormat(requestedServer, 'audiobook')
+            ? requestedServer
+            : undefined) ?? defaultAudiobookReadarr;
+        if (audiobookService) {
           bookTargets.push(
-            createBookTarget(defaultAudiobookReadarr, 'audiobook', false)
+            createBookTarget(
+              audiobookService,
+              'audiobook',
+              audiobookService.id === requestedServer?.id
+            )
           );
         }
       } else if (selectedReadarr) {

@@ -1,3 +1,4 @@
+import BinderyAPI from '@server/api/bindery';
 import ReadarrAPI, {
   matchesReadarrBookProviderIdentity,
   type ReadarrBook,
@@ -96,21 +97,32 @@ class BookRequestSearchManager {
       take: 500,
     });
 
+    const binderyLibraries = new Map<
+      string,
+      Promise<Awaited<ReturnType<BinderyAPI['getImportedBooks']>>>
+    >();
     for (const operation of operations) {
-      await this.reconcileOperation(operation).catch((error) => {
-        logger.warn('Unable to reconcile Bookshelf book search.', {
-          label: 'Book Request Search',
-          requestId: operation.requestId,
-          serviceId: operation.serviceId,
-          commandId: operation.commandId,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
-      });
+      await this.reconcileOperation(operation, binderyLibraries).catch(
+        (error) => {
+          logger.warn('Unable to reconcile Bookshelf book search.', {
+            label: 'Book Request Search',
+            requestId: operation.requestId,
+            serviceId: operation.serviceId,
+            commandId: operation.commandId,
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
+          });
+        }
+      );
     }
   }
 
   private async reconcileOperation(
-    operation: BookRequestSearch
+    operation: BookRequestSearch,
+    binderyLibraries: Map<
+      string,
+      Promise<Awaited<ReturnType<BinderyAPI['getImportedBooks']>>>
+    >
   ): Promise<void> {
     if (terminalOperationStates.has(operation.state)) {
       await this.finalizeRequest(operation.requestId);
@@ -121,6 +133,32 @@ class BookRequestSearchManager {
       (candidate) => candidate.id === operation.serviceId
     );
     if (!server?.syncEnabled) return;
+
+    if (server.backend === 'bindery') {
+      const key = `${server.id}:${operation.format}`;
+      let library = binderyLibraries.get(key);
+      if (!library) {
+        library = new BinderyAPI(server).getImportedBooks(operation.format);
+        binderyLibraries.set(key, library);
+      }
+      const importedBooks = await library;
+      const imported = importedBooks.find(
+        (book) =>
+          book.foreignBookId === operation.providerBookId ||
+          (operation.bookId != null && book.id === operation.bookId)
+      );
+      if (imported) {
+        await getRepository(BookRequestSearch).update(operation.id, {
+          bookId: imported.id,
+          state: 'available',
+          updatedAt: new Date(),
+        });
+        operation.bookId = imported.id;
+        operation.state = 'available';
+        await this.finalizeRequest(operation.requestId);
+      }
+      return;
+    }
 
     const readarr = new ReadarrAPI({
       apiKey: server.apiKey,

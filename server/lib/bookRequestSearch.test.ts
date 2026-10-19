@@ -1,3 +1,4 @@
+import BinderyAPI from '@server/api/bindery';
 import ReadarrAPI from '@server/api/servarr/readarr';
 import {
   MediaRequestStatus,
@@ -143,6 +144,57 @@ describe('BookRequestSearchManager', () => {
       requestId: request.id,
     });
     assert.equal(operation.state, 'searching');
+  });
+
+  it('settles Bindery request tracking only after the format appears in its imported library', async () => {
+    getSettings().readarr = [
+      {
+        id: 20,
+        name: 'Bindery',
+        hostname: 'bindery.local',
+        port: 8787,
+        apiKey: 'test-key',
+        useSsl: false,
+        activeProfileId: 0,
+        activeProfileName: 'Bindery managed',
+        activeMetadataProfileId: 0,
+        activeMetadataProfileName: 'Bindery managed',
+        activeDirectory: '/',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: true,
+        tagRequests: false,
+        overrideRule: [],
+        backend: 'bindery',
+        serviceType: 'ebook',
+      },
+    ];
+    const { media, request } = await createTrackedRequest({
+      createdBook: true,
+      createdAuthor: false,
+      monitoring: true,
+      providerBookId: 'hc:book-55',
+    });
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => [
+      {
+        id: 55,
+        foreignBookId: 'hc:book-55',
+        title: 'Tracked Book',
+      },
+    ]);
+
+    await bookRequestSearchManager.run();
+
+    assert.equal(
+      await getRepository(BookRequestSearch).countBy({ requestId: request.id }),
+      0
+    );
+    const updatedMedia = await getRepository(Media).findOneByOrFail({
+      id: media.id,
+    });
+    assert.equal(updatedMedia.status, MediaStatus.AVAILABLE);
   });
 
   it('keeps a queued Chaptarr author import pending while its format retries', async () => {

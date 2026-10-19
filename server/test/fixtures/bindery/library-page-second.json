@@ -1,0 +1,15 @@
+{
+  "items": [
+    {
+      "id": 43,
+      "foreignBookId": "OL12345W",
+      "title": "A Second Book",
+      "mediaType": "audiobook",
+      "formats": ["audiobook"],
+      "statistics": { "ebookFileCount": 0, "audiobookFileCount": 1 }
+    }
+  ],
+  "total": 2,
+  "limit": 100,
+  "offset": 100
+}

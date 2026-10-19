@@ -575,12 +575,16 @@ class Media {
 
         if (server) {
           const mediaType = server.serviceType ?? 'ebook';
-          this.serviceUrl = server.externalUrl
-            ? `${server.externalUrl}/book/${this.externalServiceSlug}?mediaType=${mediaType}`
-            : ReadarrAPI.buildUrl(
-                server,
-                `/book/${this.externalServiceSlug}?mediaType=${mediaType}`
-              );
+          this.serviceUrl =
+            server.backend === 'bindery'
+              ? (server.externalUrl ??
+                `${server.useSsl ? 'https' : 'http'}://${server.hostname}:${server.port}${server.baseUrl ?? ''}`)
+              : server.externalUrl
+                ? `${server.externalUrl}/book/${this.externalServiceSlug}?mediaType=${mediaType}`
+                : ReadarrAPI.buildUrl(
+                    server,
+                    `/book/${this.externalServiceSlug}?mediaType=${mediaType}`
+                  );
         }
       }
 
@@ -608,12 +612,16 @@ class Media {
 
         if (server) {
           const mediaType = server.serviceType ?? 'audiobook';
-          this.audiobookServiceUrl = server.externalUrl
-            ? `${server.externalUrl}/book/${this.audiobookExternalServiceSlug}?mediaType=${mediaType}`
-            : ReadarrAPI.buildUrl(
-                server,
-                `/book/${this.audiobookExternalServiceSlug}?mediaType=${mediaType}`
-              );
+          this.audiobookServiceUrl =
+            server.backend === 'bindery'
+              ? (server.externalUrl ??
+                `${server.useSsl ? 'https' : 'http'}://${server.hostname}:${server.port}${server.baseUrl ?? ''}`)
+              : server.externalUrl
+                ? `${server.externalUrl}/book/${this.audiobookExternalServiceSlug}?mediaType=${mediaType}`
+                : ReadarrAPI.buildUrl(
+                    server,
+                    `/book/${this.audiobookExternalServiceSlug}?mediaType=${mediaType}`
+                  );
         }
       }
     }

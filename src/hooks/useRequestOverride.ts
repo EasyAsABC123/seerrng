@@ -4,6 +4,7 @@ import type {
   ServiceCommonServer,
   ServiceCommonServerWithDetails,
 } from '@server/interfaces/api/serviceInterfaces';
+import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import useSWR from 'swr';
 
 interface OverrideStatus {
@@ -76,7 +77,7 @@ const useRequestOverride = (request: MediaRequest): OverrideStatus => {
       server.is4k === request.is4k &&
       server.isDefault &&
       (request.type !== 'book' ||
-        (server.serviceType ?? 'ebook') === bookServiceType)
+        readarrServiceSupportsFormat(server, bookServiceType))
   );
 
   const activeServer = allServers.find(
