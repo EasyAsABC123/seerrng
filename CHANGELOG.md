@@ -10,6 +10,35 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.70.1](https://github.com/snapetech-org/seerrng/compare/v3.70.0..v3.70.1) - 2026-10-19
+
+### User-facing changes
+
+#### Added
+
+- **Tv Requests:** Users can request approval to enable the previous-season watch requirement for their own account, then turn it on or off from their profile. User managers can approve or decline pending requests from the Users page. The global administrator setting still applies the rule to everyone.
+
+#### Changed
+
+- **Books:** SeerrNG now follows Bindery approval and download progress, explains pending review and service failures in request history, and withdraws requests that are still pending when canceled. Approved acquisitions continue in Bindery.
+- **Bookshelf:** Reader Apps settings now distinguish browsing imported files from book acquisition. SeerrNG sends approved requests to the configured book service; BookOrbit's separate request queue is not part of this connection.
+- **Media Details:** Movie and series pages keep the familiar summary and overview up front, place request and playback controls in a clear side panel on wide screens, and stack those controls above expandable details on phones.
+
+#### Fixed
+
+- **Settings:** The Sportarr connection dialog now uses the same theme-aware form controls as the rest of the settings interface, keeping fields readable while configuring a server.
+- **Media Details:** Movie and series detail pages now load their responsive layout styles in production, so request and playback controls stay in the side panel on wide screens and above the details on phones.
+- **Settings:** Settings forms now use consistent, readable text sizing, and provider test actions remain clear of their selectors.
+
+#### Security
+
+- **Shared Links:** Shared-link matching now checks provider hostnames precisely and decodes HTML entities once, so lookalike domains and double-encoded links are not treated as trusted media providers.
+
+### 🐛 Bug Fixes
+- *(ui)* Refine settings controls layout - ([1a44c1f](https://github.com/snapetech-org/seerrng/commit/1a44c1fbc592c558cdbbb9add9c43131033fbe04))
+- *(ui)* Note responsive details production styles - ([5dd4572](https://github.com/snapetech-org/seerrng/commit/5dd4572e95dad4205aa8dcd6f43f65bace3bdbaa))
+- *(ui)* Ship responsive media details layout - ([69d3e2c](https://github.com/snapetech-org/seerrng/commit/69d3e2c2e2a5fd2bd06c798dbcc8c039c0bcd97f))
+
 ## [3.70.0](https://github.com/snapetech-org/seerrng/compare/v3.69.0..v3.70.0) - 2026-10-19
 
 ### User-facing changes
