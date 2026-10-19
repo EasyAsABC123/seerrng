@@ -75,6 +75,17 @@ describe('TVDB Integration', () => {
         tests: { tmdb: 'not tested', tvdb: 'ok' },
       },
     }).as('testConnection');
+    cy.get('.react-select__input-container')
+      .last()
+      .then(($input) => {
+        const inputBottom = $input[0].getBoundingClientRect().bottom;
+
+        cy.get(SELECTORS.metadataTestButton).then(($button) => {
+          expect(inputBottom).to.be.at.most(
+            $button[0].getBoundingClientRect().top
+          );
+        });
+      });
     cy.get(SELECTORS.metadataTestButton)
       .scrollIntoView()
       .should('be.visible')

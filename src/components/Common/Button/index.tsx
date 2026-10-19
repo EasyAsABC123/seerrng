@@ -7,6 +7,7 @@ import {
 import type { ForwardedRef, JSX } from 'react';
 import React from 'react';
 import { twMerge } from 'tailwind-merge';
+import buttonStyles from './Button.module.css';
 
 export type ButtonType =
   | 'default'
@@ -105,7 +106,8 @@ function Button<P extends ElementTypes = 'button'>(
     buttonTypeStyles[buttonType],
     buttonSizeStyles[buttonSize],
     iconOnly && 'app-button-icon-only',
-    className
+    className,
+    buttonStyles.button
   );
 
   if (as === 'a') {

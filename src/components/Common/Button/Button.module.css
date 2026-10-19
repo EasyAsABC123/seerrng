@@ -1,0 +1,9 @@
+.button:global(.button-standard),
+.button:global(.button-md),
+.button:global(.button-sm) {
+  font-size: var(--text-xs);
+}
+
+.button:global(.button-lg) {
+  font-size: var(--text-base);
+}

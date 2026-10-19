@@ -23,6 +23,7 @@ import {
   useState,
 } from 'react';
 import { useIntl } from 'react-intl';
+import settingsLayoutStyles from './SettingsLayout.module.css';
 
 const messages = defineMessages('components.Settings', {
   menuGeneralSettings: 'General',
@@ -531,7 +532,7 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
       <article className="app-card-main settings-main-card max-w-full min-w-0">
         <div
           ref={contentRef}
-          className={`settings-page-content ${
+          className={`settings-page-content ${settingsLayoutStyles.settingsContent} ${
             hasSaveActions ? 'settings-page-has-actions' : ''
           }`}
           onChangeCapture={(event) => {

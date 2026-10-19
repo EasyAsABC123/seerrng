@@ -556,7 +556,7 @@ const SettingsMetadata = () => {
                       </div>
                     </div>
 
-                    <div className="actions">
+                    <div className="actions settings-metadata-actions">
                       <div className="flex justify-end">
                         <span className="ml-3 inline-flex rounded-md shadow-sm">
                           <Button
@@ -834,7 +834,7 @@ const SettingsMetadata = () => {
                       </div>
                     </div>
 
-                    <div className="actions">
+                    <div className="actions settings-metadata-actions">
                       <div className="settings-actions">
                         <Button
                           data-testid="music-metadata-test-button"

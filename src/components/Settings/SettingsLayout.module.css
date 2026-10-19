@@ -1,0 +1,36 @@
+.settingsContent :global(.heading),
+.settingsContent :global(.settings-group-heading) {
+  font-size: var(--text-sm);
+}
+
+.settingsContent :global(.description),
+.settingsContent :global(.settings-group-description),
+.settingsContent :global(.label-tip),
+.settingsContent :global(.settings-form-row-description) {
+  font-size: var(--text-sm);
+}
+
+.settingsContent
+  :global(
+    .settings-form-row-compact-description .settings-form-row-description
+  ) {
+  font-size: var(--text-xs);
+}
+
+.settingsContent :global(.react-select__input-container) {
+  margin: 0;
+  padding-block: 0;
+  font-size: var(--text-xs);
+  line-height: 1rem;
+}
+
+.settingsContent :global(.react-select__input) {
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-xs);
+  line-height: 1rem;
+}
+
+.settingsContent :global(.settings-metadata-actions) {
+  margin-top: calc(var(--card-spacing) + 0.625rem);
+}
