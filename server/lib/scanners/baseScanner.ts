@@ -497,6 +497,7 @@ class BaseScanner<T> {
       outerMutationGuard,
     }: ProcessOptions = {}
   ): Promise<void> {
+    is4k = is4k && this.enable4kMovie;
     const mediaRepository = getRepository(Media);
 
     await this.runProcessMutation(outerMutationGuard, () =>
@@ -2447,7 +2448,9 @@ class BaseScanner<T> {
 
     this.log('Scan starting', 'info', { sessionId });
 
-    this.enable4kMovie = settings.radarr.some((radarr) => radarr.is4k);
+    this.enable4kMovie =
+      settings.main.enable4k !== false &&
+      settings.radarr.some((radarr) => radarr.is4k);
     if (this.enable4kMovie) {
       this.log(
         'At least one 4K Radarr server was detected. 4K movie detection is now enabled',
@@ -2455,7 +2458,9 @@ class BaseScanner<T> {
       );
     }
 
-    this.enable4kShow = settings.sonarr.some((sonarr) => sonarr.is4k);
+    this.enable4kShow =
+      settings.main.enable4k !== false &&
+      settings.sonarr.some((sonarr) => sonarr.is4k);
     if (this.enable4kShow) {
       this.log(
         'At least one 4K Sonarr server was detected. 4K series detection is now enabled',

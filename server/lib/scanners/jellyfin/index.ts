@@ -77,7 +77,7 @@ export class JellyfinScanner
     if (!/^[a-zA-Z0-9-]{1,128}$/.test(id))
       throw new Error('Invalid collection member');
     const settings = getSettings();
-    this.enable4kShow = true;
+    this.enable4kShow = settings.main.enable4k !== false;
     this.configurationSnapshot = captureConfigurationAuthority(
       'jellyfin',
       settings

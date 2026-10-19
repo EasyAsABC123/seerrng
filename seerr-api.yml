@@ -2585,6 +2585,11 @@ components:
         partialRequestsEnabled:
           type: boolean
           example: false
+        enable4k:
+          type: boolean
+          default: true
+          description: Enables 4K movie and TV request options and separate availability tracking. Defaults to true for compatibility with existing settings.
+          example: true
         localLogin:
           type: boolean
           example: true
@@ -4075,6 +4080,10 @@ components:
           default: show
           description: Controls how availability tied to another user's approved or completed movie or TV request is presented to the current viewer.
           example: show
+        enable4k:
+          type: boolean
+          description: Whether movie and TV 4K request, issue-reporting, and separate availability features are enabled.
+          example: true
     MovieResult:
       type: object
       required:
@@ -23116,7 +23125,7 @@ paths:
     post:
       summary: Create new issue
       description: |
-        Creates a new issue
+        Creates a new issue. Movie and TV 4K issue reports require the global 4K setting to be enabled.
       tags:
         - issue
       requestBody:
@@ -23172,6 +23181,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Issue'
+        '403':
+          description: 4K issue reporting is disabled by the administrator
 
   /issue/count:
     get:

@@ -15,6 +15,7 @@ import {
   getIssueSubtypeOptionsForMediaType,
 } from '@app/components/IssueModal/constants';
 import MediaQualitySelect from '@app/components/MediaDetails/MediaQualitySelect';
+import useSettings from '@app/hooks/useSettings';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
 import { encodeApiPathSegment } from '@app/utils/apiPath';
@@ -111,6 +112,7 @@ const CreateIssueModal = ({
 }: CreateIssueModalProps) => {
   const intl = useIntl();
   const { addToast } = useToasts();
+  const { currentSettings } = useSettings();
   const detailUrl =
     mediaType === 'movie' || mediaType === 'tv'
       ? tmdbId
@@ -172,7 +174,9 @@ const CreateIssueModal = ({
       value: option.value,
       label: intl.formatMessage(option.name),
     }));
-  const reportableQualities = getReportableIssueQualities(data?.mediaInfo);
+  const reportableQualities = getReportableIssueQualities(
+    data?.mediaInfo
+  ).filter((quality) => currentSettings.enable4k || quality !== '4k');
   const hasReportableVideoQuality = reportableQualities.length > 0;
   const initialIs4k = reportableQualities[0] === '4k';
   const qualityOptions = (['hd', '4k'] as const).map((quality) => ({
@@ -354,22 +358,26 @@ const CreateIssueModal = ({
                 ]}
                 footer={
                   <>
-                    {(mediaType === 'movie' || mediaType === 'tv') && (
-                      <MediaQualitySelect
-                        purpose="issue"
-                        label={intl.formatMessage(messages.quality)}
-                        value={values.is4k ? '4k' : 'hd'}
-                        options={qualityOptions}
-                        onChange={(quality) => {
-                          const nextIs4k = quality === '4k';
-                          if (nextIs4k === values.is4k) return;
-                          const seasons = getReportableSeasons(nextIs4k);
-                          void setFieldValue('is4k', nextIs4k);
-                          void setFieldValue('activeSeason', seasons[0] ?? -1);
-                          void setFieldValue('problemEpisodeSelections', []);
-                        }}
-                      />
-                    )}
+                    {(mediaType === 'movie' || mediaType === 'tv') &&
+                      currentSettings.enable4k && (
+                        <MediaQualitySelect
+                          purpose="issue"
+                          label={intl.formatMessage(messages.quality)}
+                          value={values.is4k ? '4k' : 'hd'}
+                          options={qualityOptions}
+                          onChange={(quality) => {
+                            const nextIs4k = quality === '4k';
+                            if (nextIs4k === values.is4k) return;
+                            const seasons = getReportableSeasons(nextIs4k);
+                            void setFieldValue('is4k', nextIs4k);
+                            void setFieldValue(
+                              'activeSeason',
+                              seasons[0] ?? -1
+                            );
+                            void setFieldValue('problemEpisodeSelections', []);
+                          }}
+                        />
+                      )}
                     {issueTypeSelect}
                     {issueSubtypeSelect}
                   </>

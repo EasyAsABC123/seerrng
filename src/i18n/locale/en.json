@@ -4311,6 +4311,8 @@
   "components.Settings.SettingsMain.downloadPathMappingsJsonError": "Enter a JSON array with at most 100 path mappings.",
   "components.Settings.SettingsMain.downloadPathMappingsTip": "Enter a JSON array. Each mapping has serviceType, optional serviceId, remoteRoot, and localRoot. Use narrow library roots; SeerrNG only offers files that resolve inside a mapped root.",
   "components.Settings.SettingsMain.enableSpecialEpisodes": "Allow Special Episodes Requests",
+  "components.Settings.SettingsMain.enable4k": "Enable 4K",
+  "components.Settings.SettingsMain.enable4kTip": "Allow 4K movie and TV requests, issue reports, and separate availability tracking. Turning this off hides those options and stops future scans from recording 4K separately; existing request and issue records are retained.",
   "components.Settings.SettingsMain.general": "General",
   "components.Settings.SettingsMain.generalsettings": "General Settings",
   "components.Settings.SettingsMain.generalsettingsDescription": "Configure global and default settings for Seerr.",

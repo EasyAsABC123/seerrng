@@ -87,6 +87,9 @@ const messages = defineMessages('components.Settings.SettingsMain', {
   hideRequested: 'Hide Requested Media',
   hideRequestedTip:
     'Hide media that has been requested from the discover pages but not search results',
+  enable4k: 'Enable 4K',
+  enable4kTip:
+    'Allow 4K movie and TV requests, issue reports, and separate availability tracking. Turning this off hides those options and stops future scans from recording 4K separately; existing request and issue records are retained.',
   cacheImages: 'Enable Image Caching',
   cacheImagesTip:
     'Cache externally sourced images (requires a significant amount of disk space)',
@@ -255,6 +258,7 @@ const SettingsMain = () => {
           blocklistedTags: data?.blocklistedTags,
           blocklistedTagsLimit: data?.blocklistedTagsLimit || 50,
           partialRequestsEnabled: data?.partialRequestsEnabled,
+          enable4k: data?.enable4k ?? true,
           tvSeasonWatchGateEnabled: data?.tvSeasonWatchGateEnabled ?? false,
           personMovieBulkRequestsEnabled:
             data?.personMovieBulkRequestsEnabled ?? false,
@@ -294,6 +298,7 @@ const SettingsMain = () => {
               blocklistedTags: values.blocklistedTags,
               blocklistedTagsLimit: values.blocklistedTagsLimit,
               partialRequestsEnabled: values.partialRequestsEnabled,
+              enable4k: values.enable4k,
               tvSeasonWatchGateEnabled: values.tvSeasonWatchGateEnabled,
               personMovieBulkRequestsEnabled:
                 values.personMovieBulkRequestsEnabled,
@@ -669,6 +674,21 @@ const SettingsMain = () => {
                           'hideBlocklisted',
                           !values.hideBlocklisted
                         );
+                      }}
+                    />
+                  </SettingsFormRow>
+                  <SettingsFormRow
+                    htmlFor="enable4k"
+                    label={intl.formatMessage(messages.enable4k)}
+                    description={intl.formatMessage(messages.enable4kTip)}
+                    labelClassName="checkbox-label"
+                  >
+                    <SettingsField
+                      type="checkbox"
+                      id="enable4k"
+                      name="enable4k"
+                      onChange={() => {
+                        setFieldValue('enable4k', !values.enable4k);
                       }}
                     />
                   </SettingsFormRow>

@@ -68,6 +68,7 @@ import {
   type ServarrServiceType,
 } from '@server/lib/serviceAdmission';
 import {
+  getSettings,
   type BackIssueSettings,
   type KapowarrSettings,
   type MylarSettings,
@@ -424,6 +425,18 @@ export class MediaRequest {
     options: InternalMediaRequestOptions = {}
   ): Promise<MediaRequest> {
     requestBody = { ...requestBody, is4k: requestBody.is4k ?? false };
+    if (
+      requestBody.is4k &&
+      (requestBody.mediaType === MediaType.MOVIE ||
+        requestBody.mediaType === MediaType.TV) &&
+      getSettings().main.enable4k === false
+    ) {
+      return Promise.reject(
+        new RequestPermissionError(
+          '4K movie and TV requests are disabled by the administrator.'
+        )
+      );
+    }
     if (requestBody.mediaType === MediaType.ADULT) {
       const stashDbId = normalizeStashDbId(String(requestBody.mediaId ?? ''));
       if (!stashDbId) {

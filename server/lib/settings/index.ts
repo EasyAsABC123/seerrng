@@ -557,6 +557,7 @@ export interface MainSettings {
   hideBlocklisted: boolean;
   hideRequested: boolean;
   otherUsersAvailability: OtherUserAvailabilityMode;
+  enable4k: boolean;
   localLogin: boolean;
   mediaServerLogin: boolean;
   oidcLogin: boolean;
@@ -628,6 +629,7 @@ interface FullPublicSettings extends PublicSettings {
   hideBlocklisted: boolean;
   hideRequested: boolean;
   otherUsersAvailability: OtherUserAvailabilityMode;
+  enable4k: boolean;
   localLogin: boolean;
   mediaServerLogin: boolean;
   movie4kEnabled: boolean;
@@ -970,6 +972,7 @@ class Settings {
         hideBlocklisted: false,
         hideRequested: false,
         otherUsersAvailability: OtherUserAvailabilityMode.SHOW,
+        enable4k: true,
         localLogin: true,
         mediaServerLogin: true,
         oidcLogin: false,
@@ -1744,15 +1747,18 @@ class Settings {
       hideBlocklisted: this.data.main.hideBlocklisted,
       hideRequested: this.data.main.hideRequested,
       otherUsersAvailability: this.data.main.otherUsersAvailability,
+      enable4k: this.data.main.enable4k !== false,
       localLogin: this.data.main.localLogin,
       mediaServerLogin: this.data.main.mediaServerLogin,
       jellyfinExternalHost: this.data.jellyfin.externalHostname,
       jellyfinForgotPasswordUrl: this.data.jellyfin.jellyfinForgotPasswordUrl,
       movie4kEnabled: this.data.radarr.some(
-        (radarr) => radarr.is4k && radarr.isDefault
+        (radarr) =>
+          this.data.main.enable4k !== false && radarr.is4k && radarr.isDefault
       ),
       series4kEnabled: this.data.sonarr.some(
-        (sonarr) => sonarr.is4k && sonarr.isDefault
+        (sonarr) =>
+          this.data.main.enable4k !== false && sonarr.is4k && sonarr.isDefault
       ),
       musicEnabled: this.data.lidarr.length > 0,
       booksEnabled: this.data.readarr.length > 0,
@@ -2025,6 +2031,7 @@ class Settings {
         hideBlocklisted: false,
         hideRequested: false,
         otherUsersAvailability: OtherUserAvailabilityMode.SHOW,
+        enable4k: true,
         localLogin: true,
         mediaServerLogin: true,
         oidcLogin: false,

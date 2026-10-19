@@ -19,6 +19,7 @@ import type { SeasonEpisodeSelection } from '@server/interfaces/api/seasonInterf
 import { hydrateIssueRelations } from '@server/lib/issueHydration';
 import issueMutationCoordinator from '@server/lib/issueMutation';
 import { Permission } from '@server/lib/permissions';
+import { getSettings } from '@server/lib/settings';
 import {
   UserMutationActorUnauthorizedError,
   runAuthorizedUserSecurityMutation,
@@ -631,6 +632,18 @@ issueRoutes.post<Record<string, string>, Issue, IssueRequestBody>(
 
     if (!media) {
       return next({ status: 404, message: 'Media does not exist.' });
+    }
+
+    if (
+      is4k.value &&
+      (media.mediaType === MediaType.MOVIE ||
+        media.mediaType === MediaType.TV) &&
+      getSettings().main.enable4k === false
+    ) {
+      return next({
+        status: 403,
+        message: '4K issue reporting is disabled by the administrator.',
+      });
     }
 
     const issueSubtype = body.issueSubtype;

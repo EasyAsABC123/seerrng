@@ -17,7 +17,7 @@ import {
   runWithServarrServiceSnapshot,
   runWithServarrServiceSnapshots,
 } from '@server/lib/serviceAdmission';
-import type { RadarrSettings } from '@server/lib/settings';
+import { getSettings, type RadarrSettings } from '@server/lib/settings';
 import { is4kResolution } from '@server/lib/videoResolution';
 import { getHttpErrorDetails } from '@server/utils/httpError';
 import { uniqWith } from 'lodash';
@@ -70,8 +70,11 @@ class RadarrScanner
     this.server4kReturnedEmpty = false;
 
     try {
+      const fourKEnabled = getSettings().main.enable4k !== false;
       this.servers = uniqWith(
-        structuredClone(settings.radarr),
+        structuredClone(
+          settings.radarr.filter((server) => fourKEnabled || !server.is4k)
+        ),
         (radarrA, radarrB) => {
           return (
             radarrA.hostname === radarrB.hostname &&
@@ -81,6 +84,7 @@ class RadarrScanner
         }
       );
       this.resolutionAwareSingleServer =
+        fourKEnabled &&
         this.servers.filter((server) => server.syncEnabled).length === 1 &&
         settings.radarr.some(
           (server) =>
@@ -112,6 +116,7 @@ class RadarrScanner
           );
 
           if (
+            fourKEnabled &&
             this.resolutionAwareSingleServer &&
             this.items.some(
               (movie) =>

@@ -53,10 +53,12 @@ export interface CollectionRemoval {
 class CollectionAvailabilityScanner extends BaseScanner<CollectionMovie> {
   constructor() {
     super('Collection Availability');
-    this.enable4kMovie = true;
+    this.enable4kMovie = getSettings().main.enable4k !== false;
   }
   public async accept(tmdbId: number, item: CollectionMovie): Promise<void> {
-    for (const is4k of item.qualities) {
+    const qualities =
+      getSettings().main.enable4k === false ? [false] : item.qualities;
+    for (const is4k of qualities) {
       await this.processMovie(tmdbId, {
         is4k,
         title: item.title,
@@ -205,6 +207,7 @@ export const checkCollection = async (
                     ? items.length > 0
                     : qualities.has(false) &&
                       (qualities.has(true) ||
+                        settings.main.enable4k === false ||
                         !settings.radarr.some((service) => service.is4k));
                 if (lookups.size >= 10000)
                   lookups.delete(lookups.keys().next().value!);

@@ -1167,6 +1167,7 @@ const parseMainSettingsBody = (
     ['oidcLogin', 'oidcLogin'],
     ['newPlexLogin', 'newPlexLogin'],
     ['partialRequestsEnabled', 'partialRequestsEnabled'],
+    ['enable4k', 'enable4k'],
     ['tvSeasonWatchGateEnabled', 'tvSeasonWatchGateEnabled'],
     ['personMovieBulkRequestsEnabled', 'personMovieBulkRequestsEnabled'],
     ['enableSpecialEpisodes', 'enableSpecialEpisodes'],

@@ -1242,6 +1242,7 @@ const SettingsServices = ({
                     })}
                   />
                 ) : (
+                  currentSettings.enable4k &&
                   radarrData.some((radarr) => radarr.is4k) &&
                   !radarrData.some(
                     (radarr) => radarr.isDefault && radarr.is4k
@@ -1401,6 +1402,7 @@ const SettingsServices = ({
                     })}
                   />
                 ) : (
+                  currentSettings.enable4k &&
                   sonarrData.some((sonarr) => sonarr.is4k) &&
                   !sonarrData.some(
                     (sonarr) => sonarr.isDefault && sonarr.is4k

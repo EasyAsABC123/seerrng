@@ -171,7 +171,7 @@ export class PlexScanner
   ): Promise<void> {
     if (!/^\d+$/.test(id)) throw new Error('Invalid collection member');
     const settings = getSettings();
-    this.enable4kShow = true;
+    this.enable4kShow = settings.main.enable4k !== false;
     this.configurationSnapshot = captureConfigurationAuthority(
       'plex',
       settings

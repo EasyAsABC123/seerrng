@@ -44,6 +44,7 @@ import type {
   RadarrSettings,
   SonarrSettings,
 } from '@server/lib/settings';
+import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { getHostname } from '@server/utils/getHostname';
 import { getHttpErrorDetails, hasHttpStatus } from '@server/utils/httpError';
@@ -99,8 +100,11 @@ class AvailabilitySync {
         this.jellyfinSettingsSnapshot = structuredClone(settings.jellyfin);
         this.radarrServers = structuredClone(settings.radarr);
         this.sonarrServers = structuredClone(settings.sonarr);
-        this.enable4kMovie = this.radarrServers.some((server) => server.is4k);
-        this.enable4kShow = this.sonarrServers.some((server) => server.is4k);
+        const fourKEnabled = getSettings().main.enable4k !== false;
+        this.enable4kMovie =
+          fourKEnabled && this.radarrServers.some((server) => server.is4k);
+        this.enable4kShow =
+          fourKEnabled && this.sonarrServers.some((server) => server.is4k);
       });
       this.running = true;
       this.plexSeasonsCache = {};

@@ -44,7 +44,7 @@ import {
   runWithServarrServiceSnapshot,
   runWithServarrServiceSnapshots,
 } from '@server/lib/serviceAdmission';
-import type { SonarrSettings } from '@server/lib/settings';
+import { getSettings, type SonarrSettings } from '@server/lib/settings';
 import { is4kResolution } from '@server/lib/videoResolution';
 import { getHttpErrorDetails } from '@server/utils/httpError';
 import { uniqWith } from 'lodash';
@@ -106,14 +106,18 @@ class SonarrScanner
     this.server4kReturnedEmpty = false;
 
     try {
+      const fourKEnabled = getSettings().main.enable4k !== false;
       this.servers = uniqWith(
-        structuredClone(settings.sonarr),
+        structuredClone(
+          settings.sonarr.filter((server) => fourKEnabled || !server.is4k)
+        ),
         (sonarrA, sonarrB) =>
           sonarrA.hostname === sonarrB.hostname &&
           sonarrA.port === sonarrB.port &&
           sonarrA.baseUrl === sonarrB.baseUrl
       );
       this.resolutionAwareSingleServer =
+        fourKEnabled &&
         this.servers.filter((server) => server.syncEnabled).length === 1 &&
         settings.sonarr.some(
           (server) =>
@@ -123,7 +127,7 @@ class SonarrScanner
             server.port === this.servers[0].port &&
             server.baseUrl === this.servers[0].baseUrl
         );
-      if (this.resolutionAwareSingleServer) {
+      if (fourKEnabled && this.resolutionAwareSingleServer) {
         this.enable4kShow = true;
         this.log(
           'Single Sonarr server detected. Episode file resolution will separate HD and 4K availability.',
