@@ -10,6 +10,7 @@ import { SetupConnectionsProvider } from '@app/context/SetupConnectionsContext';
 import { ThemeProvider } from '@app/context/ThemeContext';
 import { UserContext } from '@app/context/UserContext';
 import useSettings from '@app/hooks/useSettings';
+import '@app/styles/crossMedia.css';
 import '@app/styles/globals.css';
 import { getLocaleDirection } from '@app/utils/localeDirection';
 import { polyfillIntl } from '@app/utils/polyfillIntl';

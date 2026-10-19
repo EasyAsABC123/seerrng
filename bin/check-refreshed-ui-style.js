@@ -21,20 +21,16 @@ const componentFiles = Object.fromEntries(
     fs.readFileSync(fullPath, 'utf8'),
   ])
 );
-// globals.css pulls split-out role families in with relative @import rules
-// (for example crossMedia.css); their definitions count as global CSS.
+// crossMedia.css holds the cross-media role families. _app.tsx loads it right
+// after globals.css (an @import inside globals.css was dropped from the
+// production stylesheet), so its definitions count as global CSS.
 const stylesDirectory = path.join(root, 'src', 'styles');
-const globalCss = fs.readFileSync(
-  path.join(stylesDirectory, 'globals.css'),
-  'utf8'
-);
-const importedCss = Array.from(
-  globalCss.matchAll(/^@import\s+['"](\.\/[^'"]+\.css)['"];/gm),
-  (match) => fs.readFileSync(path.join(stylesDirectory, match[1]), 'utf8')
-);
 const files = {
   ...componentFiles,
-  'src/styles/globals.css': [globalCss, ...importedCss].join('\n'),
+  'src/styles/globals.css': [
+    fs.readFileSync(path.join(stylesDirectory, 'globals.css'), 'utf8'),
+    fs.readFileSync(path.join(stylesDirectory, 'crossMedia.css'), 'utf8'),
+  ].join('\n'),
 };
 const { errors, scopedFileCount } = validateRefreshedUiStyleBoundaries(files);
 
