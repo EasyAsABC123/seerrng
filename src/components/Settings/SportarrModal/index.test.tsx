@@ -32,11 +32,13 @@ vi.mock('@app/components/Common/Modal', async () => {
   return {
     default: ({
       children,
+      onOk,
       onSecondary,
       secondaryDisabled,
       secondaryText,
     }: {
       children: React.ReactNode;
+      onOk: () => void;
       onSecondary: () => void;
       secondaryDisabled: boolean;
       secondaryText: string;
@@ -60,6 +62,9 @@ vi.mock('@app/components/Common/Modal', async () => {
             }
           >
             Fill connection details
+          </button>
+          <button type="button" data-testid="submit-connection" onClick={onOk}>
+            Save connection
           </button>
           <button
             type="button"
@@ -156,4 +161,56 @@ it('lets an administrator test Sportarr before choosing the profile that test lo
   expect(
     container.querySelector<HTMLSelectElement>('#activeProfileId')?.textContent
   ).toContain('HD');
+});
+
+it('selects and saves the quality profile returned by the connection test', async () => {
+  await render();
+
+  await act(async () => {
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="fill-connection-details"]'
+      )
+      ?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  await act(async () => {
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="test-connection"]')
+      ?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  await act(async () => {
+    const profileSelect =
+      container.querySelector<HTMLSelectElement>('#activeProfileId');
+    if (!profileSelect) {
+      throw new Error('Sportarr quality profile selector was not rendered.');
+    }
+    profileSelect.value = '12';
+    profileSelect.dispatchEvent(
+      new dom.window.Event('change', { bubbles: true })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  const formState = JSON.parse(
+    container.querySelector('[data-testid="formik-debug"]')?.textContent ?? '{}'
+  );
+  expect(formState.values.activeProfileId).toBe('12');
+  expect(formState.isValid).toBe(true);
+
+  state.post.mockClear();
+  await act(async () => {
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="submit-connection"]')
+      ?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  expect(state.post).toHaveBeenCalledWith(
+    '/api/v1/settings/sportarr',
+    expect.objectContaining({ activeProfileId: 12, activeProfileName: 'HD' })
+  );
 });
