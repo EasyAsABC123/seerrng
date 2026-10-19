@@ -493,6 +493,38 @@ describe('Issue route validation', () => {
     assert.strictEqual(issue.media.status4k, MediaStatus.PROCESSING);
   });
 
+  it('rejects 4K issue reports when globally disabled', async () => {
+    const settings = getSettings();
+    const previousEnable4k = settings.main.enable4k;
+    settings.main.enable4k = false;
+
+    try {
+      const issueRepository = getRepository(Issue);
+      const existingIssueCount = await issueRepository.count();
+      const media = await getRepository(Media).save(
+        new Media({
+          tmdbId: 20003,
+          mediaType: MediaType.MOVIE,
+          status: MediaStatus.AVAILABLE,
+          status4k: MediaStatus.AVAILABLE,
+        })
+      );
+      const agent = await login();
+      const res = await agent.post('/issue').send({
+        issueType: IssueType.VIDEO,
+        mediaId: media.id,
+        message: 'The 4K copy has playback issues.',
+        is4k: true,
+      });
+
+      assert.strictEqual(res.status, 403);
+      assert.match(res.body.message, /4K issue reporting is disabled/);
+      assert.strictEqual(await issueRepository.count(), existingIssueCount);
+    } finally {
+      settings.main.enable4k = previousEnable4k;
+    }
+  });
+
   it('rejects invalid issue types before persistence', async () => {
     const agent = await login();
     const res = await agent.post('/issue').send({

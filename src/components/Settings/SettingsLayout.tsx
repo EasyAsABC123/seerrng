@@ -70,7 +70,7 @@ const settingsSearchTargets = [
     route: '/settings/main',
     targetId: 'enable4k',
     terms: ['4k', '4k requests', '4k settings', 'uhd'],
-    adminOnly: false,
+    adminOnly: true,
   },
   {
     route: '/settings/prowlarr',

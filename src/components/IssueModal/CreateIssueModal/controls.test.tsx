@@ -9,6 +9,7 @@ import CreateIssueModal from './index';
 const state = vi.hoisted(() => ({
   status: 5,
   status4k: 1,
+  enable4k: true,
   post: vi.fn(),
 }));
 vi.mock('axios', () => ({ default: { post: state.post } }));
@@ -24,6 +25,9 @@ vi.mock('swr', () => ({
 }));
 vi.mock('@app/hooks/useToasts', () => ({
   default: () => ({ addToast: vi.fn() }),
+}));
+vi.mock('@app/hooks/useSettings', () => ({
+  default: () => ({ currentSettings: { enable4k: state.enable4k } }),
 }));
 vi.mock('@app/components/Common/Tooltip', () => ({
   default: ({ children }: { children: React.ReactNode }) => children,
@@ -52,6 +56,7 @@ let root: Root;
 beforeEach(() => {
   state.status = MediaStatus.AVAILABLE;
   state.status4k = MediaStatus.UNKNOWN;
+  state.enable4k = true;
   state.post.mockReset();
   dom = new JSDOM('<!doctype html><html><body></body></html>');
   for (const key of [
@@ -153,5 +158,34 @@ it('keeps reporting disabled when neither quality is available', async () => {
     host.querySelector<HTMLButtonElement>('[data-testid="modal-ok-button"]')
       ?.disabled
   ).toBe(true);
+  expect(state.post).not.toHaveBeenCalled();
+});
+
+it('hides 4K issue reporting when globally disabled and no HD copy exists', async () => {
+  state.enable4k = false;
+  state.status = MediaStatus.UNKNOWN;
+  state.status4k = MediaStatus.AVAILABLE;
+  await render();
+
+  expect(host.querySelector('[role="group"]')).toBeNull();
+  expect(
+    host.querySelector<HTMLButtonElement>('[data-testid="modal-ok-button"]')
+      ?.disabled
+  ).toBe(true);
+  expect(state.post).not.toHaveBeenCalled();
+});
+
+it('keeps HD issue reporting available when globally disabled', async () => {
+  state.enable4k = false;
+  state.status = MediaStatus.AVAILABLE;
+  state.status4k = MediaStatus.AVAILABLE;
+  await render();
+
+  expect(host.querySelector('[role="group"]')).toBeNull();
+  expect(
+    host.querySelector<HTMLButtonElement>('[data-testid="modal-ok-button"]')
+      ?.disabled
+  ).toBe(false);
+  expect(host.querySelector('output')?.textContent).toBe('hd');
   expect(state.post).not.toHaveBeenCalled();
 });

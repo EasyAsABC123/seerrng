@@ -106,6 +106,29 @@ function rejections(results: PromiseSettledResult<MediaRequest>[]) {
 }
 
 describe('MediaRequest.request', () => {
+  it('rejects 4K movie and TV requests when globally disabled', async () => {
+    const settings = getSettings();
+    const previousEnable4k = settings.main.enable4k;
+    settings.main.enable4k = false;
+
+    try {
+      const requester = await createRequester('4k-disabled@seerr.dev');
+      for (const mediaType of [MediaType.MOVIE, MediaType.TV]) {
+        await assert.rejects(
+          MediaRequest.request(
+            { mediaId: 88001, mediaType, is4k: true },
+            requester
+          ),
+          (error: unknown) =>
+            error instanceof RequestPermissionError &&
+            /4K movie and TV requests are disabled/.test(error.message)
+        );
+      }
+    } finally {
+      settings.main.enable4k = previousEnable4k;
+    }
+  });
+
   it('creates canonical sports requests for a user with sports permission', async () => {
     const settings = getSettings();
     settings.sportarr = [
