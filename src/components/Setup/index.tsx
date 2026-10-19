@@ -15,6 +15,11 @@ import useToasts from '@app/hooks/useToasts';
 import { useUser } from '@app/hooks/useUser';
 import defineMessages from '@app/utils/defineMessages';
 import versionedAsset from '@app/utils/versionedAsset';
+import {
+  DEFAULT_ENABLED_MEDIA_CATEGORIES,
+  MEDIA_CATEGORY_KEYS,
+  type MediaCategoryKey,
+} from '@server/constants/mediaCategories';
 import { MediaServerType } from '@server/constants/server';
 import type { Library } from '@server/lib/settings';
 import axios from 'axios';
@@ -62,6 +67,29 @@ const messages = defineMessages('components.Setup', {
   openLogin: 'Open sign-in',
   transportRequired:
     'Choose an active HTTPS transport or explicitly enable authenticated HTTP sessions before signing in.',
+  setupReview: 'Review SeerrNG setup',
+  enabledRequestTypes: 'Enabled request types',
+  noneEnabled: 'None enabled',
+  enabledMediaLibraries: 'Enabled media libraries',
+  libraryCount: '{count, plural, one {# library} other {# libraries}}',
+  requiredSetupComplete:
+    'Required setup is complete. Service connections are optional and can be tested in their forms below.',
+  categoryMovie: 'Movies',
+  categoryTv: 'TV',
+  categoryMusic: 'Music',
+  categoryEbook: 'Ebooks',
+  categoryAudiobook: 'Audiobooks',
+  categoryComic: 'Comics',
+  categoryMagazine: 'Magazines',
+  categoryAdult: 'Adult',
+  categorySports: 'Sports',
+  categoryRetro: 'Retro games',
+  categoryModern: 'Modern games',
+  categoryGame: 'PC games',
+  optionalServices:
+    'Service connections are optional. Add only the providers you want SeerrNG to use. Prowlarr is optional manual search support; you can finish setup without an indexer or downloader.',
+  serviceTestNote:
+    'Connection test results are shown in each service form and are not saved as a setup status.',
 });
 
 const Setup = () => {
@@ -70,12 +98,36 @@ const Setup = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [mediaServerSettingsComplete, setMediaServerSettingsComplete] =
     useState(false);
+  const [enabledLibraryCount, setEnabledLibraryCount] = useState(0);
+  const [enabledLibraryNames, setEnabledLibraryNames] = useState<string[]>([]);
   const [mediaServerType, setMediaServerType] = useState(
     MediaServerType.NOT_CONFIGURED
   );
   const router = useRouter();
   const { locale } = useLocale();
   const settings = useSettings();
+  const enabledMediaCategories =
+    settings.currentSettings.enabledMediaCategories ??
+    DEFAULT_ENABLED_MEDIA_CATEGORIES;
+  const categoryMessageKeys: Record<MediaCategoryKey, keyof typeof messages> = {
+    movie: 'categoryMovie',
+    tv: 'categoryTv',
+    music: 'categoryMusic',
+    ebook: 'categoryEbook',
+    audiobook: 'categoryAudiobook',
+    comic: 'categoryComic',
+    magazine: 'categoryMagazine',
+    adult: 'categoryAdult',
+    sports: 'categorySports',
+    retro: 'categoryRetro',
+    modern: 'categoryModern',
+    game: 'categoryGame',
+  };
+  const enabledCategoryLabels = MEDIA_CATEGORY_KEYS.filter(
+    (category) => enabledMediaCategories[category]
+  ).map((category) =>
+    intl.formatMessage(messages[categoryMessageKeys[category]])
+  );
   const toasts = useToasts();
   const { user, revalidate: revalidateUser } = useUser();
   const [transportReady, setTransportReady] = useState(false);
@@ -168,12 +220,18 @@ const Setup = () => {
 
       const response = await axios.get(endpoint, { signal: controller.signal });
 
-      const hasEnabledLibraries = response.data?.libraries?.some(
-        (library: Library) => library.enabled
-      );
+      const libraryCount =
+        response.data?.libraries?.filter((library: Library) => library.enabled)
+          .length ?? 0;
+      const libraryNames =
+        response.data?.libraries
+          ?.filter((library: Library) => library.enabled)
+          .map((library: Library) => library.name) ?? [];
 
       if (!controller.signal.aborted) {
-        setMediaServerSettingsComplete(hasEnabledLibraries);
+        setEnabledLibraryCount(libraryCount);
+        setEnabledLibraryNames(libraryNames);
+        setMediaServerSettingsComplete(libraryCount > 0);
       }
     } catch (error) {
       if (axios.isCancel(error)) {
@@ -185,6 +243,8 @@ const Setup = () => {
       });
 
       setMediaServerSettingsComplete(false);
+      setEnabledLibraryCount(0);
+      setEnabledLibraryNames([]);
     } finally {
       if (libraryValidationController.current === controller) {
         libraryValidationController.current = undefined;
@@ -455,7 +515,51 @@ const Setup = () => {
               </div>
             ) : (
               <div>
-                <SettingsServices showProwlarr />
+                <section className="app-card-sub mb-6 rounded-md border border-gray-600 p-4">
+                  <h2 className="mb-3 text-lg font-semibold">
+                    {intl.formatMessage(messages.setupReview)}
+                  </h2>
+                  <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <dt className="text-gray-300">
+                        {intl.formatMessage(messages.enabledRequestTypes)}
+                      </dt>
+                      <dd className="mt-1 font-medium">
+                        {enabledCategoryLabels.join(', ') ||
+                          intl.formatMessage(messages.noneEnabled)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-300">
+                        {intl.formatMessage(messages.enabledMediaLibraries)}
+                      </dt>
+                      <dd className="mt-1 font-medium">
+                        {enabledLibraryNames.join(', ') ||
+                          intl.formatMessage(messages.noneEnabled)}{' '}
+                        <span className="font-normal text-gray-300">
+                          (
+                          {intl.formatMessage(messages.libraryCount, {
+                            count: enabledLibraryCount,
+                          })}
+                          )
+                        </span>
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-3 text-sm text-gray-300">
+                    {intl.formatMessage(messages.optionalServices)}
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-white">
+                    {intl.formatMessage(messages.requiredSetupComplete)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {intl.formatMessage(messages.serviceTestNote)}
+                  </p>
+                </section>
+                <SettingsServices
+                  showProwlarr
+                  setupEnabledMediaCategories={enabledMediaCategories}
+                />
                 <div className="actions">
                   <div className="flex justify-end">
                     <span className="ms-3 inline-flex rounded-md shadow-sm">

@@ -19,6 +19,11 @@ import SettingsSoftwareAcquisition from '@app/components/Settings/SettingsSoftwa
 import SettingsSwipe from '@app/components/Settings/SettingsSwipe';
 import SettingsTunerr from '@app/components/Settings/SettingsTunerr';
 import SetupConnectionsImport from '@app/components/Settings/SetupConnectionsImport';
+import {
+  getSetupServiceCategories,
+  type SetupServiceCategory,
+} from '@app/components/Setup/setupServiceCategories';
+import useSettings from '@app/hooks/useSettings';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
 import { getSafeHref } from '@app/utils/safeUrl';
@@ -34,6 +39,7 @@ import {
   TrashIcon,
   TrophyIcon,
 } from '@heroicons/react/24/solid';
+import type { EnabledMediaCategories } from '@server/constants/mediaCategories';
 import type OverrideRule from '@server/entity/OverrideRule';
 import type { OverrideRuleResultsResponse } from '@server/interfaces/api/overrideRuleInterfaces';
 import type {
@@ -47,6 +53,7 @@ import type {
   NavidromeSettings,
   RadarrSettings,
   ReadarrSettings,
+  SlskdnSettings,
   SonarrSettings,
   SportarrSettings,
   WhisparrSettings,
@@ -104,9 +111,12 @@ const messages = defineMessages('components.Settings', {
   chooseServiceCategory: 'Choose what you want to set up',
   serviceCategoryTvMovies: 'TV & Movies',
   serviceCategoryBooks: 'Audiobooks & Books',
+  setupServiceCategoryBooks: 'Books, Comics & Magazines',
   serviceCategoryMusic: 'Music',
   serviceCategoryTools: 'System',
   serviceCategories: 'Service categories',
+  noSetupCategories:
+    'No request categories are enabled. You can finish setup now and add service connections after enabling a category in Settings.',
   spotifyPlaylistSettings:
     'Configure Spotify playlist access in General settings',
   setupAssistantTitle: 'Connect your apps',
@@ -437,11 +447,14 @@ const ServerInstance = ({
 
 const SettingsServices = ({
   showProwlarr = false,
+  setupEnabledMediaCategories,
 }: {
   showProwlarr?: boolean;
+  setupEnabledMediaCategories?: EnabledMediaCategories;
 }) => {
   const intl = useIntl();
   const router = useRouter();
+  const { currentSettings } = useSettings();
 
   useEffect(() => {
     if (!router.isReady || router.pathname !== '/settings/services') return;
@@ -470,11 +483,22 @@ const SettingsServices = ({
       ? router.query.settingsSearchTarget
       : undefined
   );
-  const activeServiceCategory =
+  const setupServiceCategories = setupEnabledMediaCategories
+    ? getSetupServiceCategories(setupEnabledMediaCategories)
+    : undefined;
+  const defaultServiceCategory = setupServiceCategories?.[0] ?? 'tv-movies';
+  const requestedServiceCategory =
     searchTargetCategory ??
     (isServiceCategory(router.query.serviceCategory)
       ? router.query.serviceCategory
-      : 'tv-movies');
+      : undefined);
+  const showSoftwareAcquisition =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.retro ||
+    setupEnabledMediaCategories.modern ||
+    setupEnabledMediaCategories.game ||
+    currentSettings.softwareEnabled ||
+    currentSettings.romarrEnabled;
 
   const selectServiceCategory = (category: ServiceCategory) => {
     const query = { ...router.query };
@@ -526,6 +550,16 @@ const SettingsServices = ({
     useSWR<NavidromeSettings | null>('/api/v1/settings/navidrome');
   const { data: jellystatData, mutate: revalidateJellystat } =
     useSWR<JellystatSettings | null>('/api/v1/settings/jellystat');
+  const { data: slskdnData } = useSWR<SlskdnSettings>(
+    '/api/v1/settings/slskdn'
+  );
+  const { data: savedProwlarr } = useSWR<{
+    apiKeyConfigured?: boolean;
+    hostname?: string;
+  }>('/api/v1/settings/prowlarr');
+  const { data: savedDownloadClients } = useSWR<{ clients?: unknown[] }>(
+    '/api/v1/settings/download-clients'
+  );
   const {
     data: mylarData,
     error: mylarError,
@@ -695,6 +729,115 @@ const SettingsServices = ({
         (ebook.baseUrl ?? '') === (audiobook.baseUrl ?? '')
     )
   );
+  const configuredServiceCategories = new Set<SetupServiceCategory>();
+  if (
+    radarrData?.length ||
+    sonarrData?.length ||
+    whisparrData?.length ||
+    sportarrData?.length ||
+    jellystatData ||
+    currentSettings.adultEnabled ||
+    currentSettings.sportsEnabled
+  ) {
+    configuredServiceCategories.add('tv-movies');
+  }
+  if (
+    readarrData?.length ||
+    audiobookshelfData ||
+    mylarData?.length ||
+    kapowarrData?.length ||
+    backissueData?.length ||
+    lazyLibrarianData?.length ||
+    currentSettings.booksEnabled ||
+    currentSettings.ebookServiceEnabled ||
+    currentSettings.audiobookServiceEnabled ||
+    currentSettings.comicsEnabled ||
+    currentSettings.magazinesEnabled
+  ) {
+    configuredServiceCategories.add('audiobooks-books');
+  }
+  if (
+    lidarrData?.length ||
+    navidromeData ||
+    slskdnData?.enabled ||
+    currentSettings.musicEnabled
+  ) {
+    configuredServiceCategories.add('music');
+  }
+  if (
+    currentSettings.softwareEnabled ||
+    currentSettings.romarrEnabled ||
+    currentSettings.swipeEnabled ||
+    savedProwlarr?.apiKeyConfigured ||
+    Boolean(savedDownloadClients?.clients?.length)
+  ) {
+    configuredServiceCategories.add('tools-other');
+  }
+  const showMovieServices =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.movie ||
+    Boolean(radarrData?.length);
+  const showTvServices =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.tv ||
+    Boolean(sonarrData?.length);
+  const showAdultServices =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.adult ||
+    Boolean(whisparrData?.length);
+  const showSportsServices =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.sports ||
+    Boolean(sportarrData?.length);
+  const showMusicServices =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.music ||
+    Boolean(lidarrData?.length || navidromeData || slskdnData?.enabled) ||
+    currentSettings.musicEnabled;
+  const showMediaStats =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.movie ||
+    setupEnabledMediaCategories.tv ||
+    Boolean(jellystatData);
+  const showBookServices =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.ebook ||
+    setupEnabledMediaCategories.audiobook ||
+    Boolean(readarrData?.length) ||
+    Boolean(audiobookshelfData) ||
+    currentSettings.booksEnabled ||
+    currentSettings.ebookServiceEnabled ||
+    currentSettings.audiobookServiceEnabled;
+  const showComicServices =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.comic ||
+    Boolean(
+      mylarData?.length || kapowarrData?.length || backissueData?.length
+    ) ||
+    currentSettings.comicsEnabled;
+  const showMagazineServices =
+    !setupEnabledMediaCategories ||
+    setupEnabledMediaCategories.magazine ||
+    Boolean(lazyLibrarianData?.length) ||
+    currentSettings.magazinesEnabled;
+  const visibleServiceCategories = (
+    [
+      'tv-movies',
+      'audiobooks-books',
+      'music',
+      'tools-other',
+    ] as SetupServiceCategory[]
+  ).filter(
+    (category) =>
+      !setupServiceCategories ||
+      setupServiceCategories.includes(category) ||
+      configuredServiceCategories.has(category)
+  );
+  const activeServiceCategory = visibleServiceCategories.includes(
+    requestedServiceCategory ?? defaultServiceCategory
+  )
+    ? (requestedServiceCategory ?? defaultServiceCategory)
+    : (visibleServiceCategories[0] ?? 'tv-movies');
 
   const deleteServer = async () => {
     if (deleteServerModal.type === 'audiobookshelf') {
@@ -734,9 +877,15 @@ const SettingsServices = ({
         ]}
       />
       <div className="mb-6">
-        <p className="description mb-3">
-          {intl.formatMessage(messages.chooseServiceCategory)}
-        </p>
+        {visibleServiceCategories.length > 0 ? (
+          <p className="description mb-3">
+            {intl.formatMessage(messages.chooseServiceCategory)}
+          </p>
+        ) : (
+          <p className="description mb-3">
+            {intl.formatMessage(messages.noSetupCategories)}
+          </p>
+        )}
         <nav
           aria-label={intl.formatMessage(messages.serviceCategories)}
           className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap"
@@ -750,7 +899,9 @@ const SettingsServices = ({
               },
               {
                 id: 'audiobooks-books',
-                label: messages.serviceCategoryBooks,
+                label: setupEnabledMediaCategories
+                  ? messages.setupServiceCategoryBooks
+                  : messages.serviceCategoryBooks,
                 Icon: BookOpenIcon,
               },
               {
@@ -764,22 +915,24 @@ const SettingsServices = ({
                 Icon: Square3Stack3DIcon,
               },
             ] as const
-          ).map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              className={`app-filter-button w-full sm:w-auto ${
-                activeServiceCategory === id
-                  ? 'app-filter-button-active'
-                  : 'app-filter-button-idle'
-              }`}
-              aria-pressed={activeServiceCategory === id}
-              onClick={() => selectServiceCategory(id)}
-            >
-              <Icon aria-hidden="true" />
-              {intl.formatMessage(label)}
-            </button>
-          ))}
+          )
+            .filter(({ id }) => visibleServiceCategories.includes(id))
+            .map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                className={`app-filter-button w-full sm:w-auto ${
+                  activeServiceCategory === id
+                    ? 'app-filter-button-active'
+                    : 'app-filter-button-idle'
+                }`}
+                aria-pressed={activeServiceCategory === id}
+                onClick={() => selectServiceCategory(id)}
+              >
+                <Icon aria-hidden="true" />
+                {intl.formatMessage(label)}
+              </button>
+            ))}
         </nav>
       </div>
       <div
@@ -813,7 +966,7 @@ const SettingsServices = ({
         hidden={activeServiceCategory !== 'tv-movies'}
         className={activeServiceCategory === 'tv-movies' ? '' : 'hidden'}
       >
-        <div className="mb-6">
+        <div className="mb-6" hidden={!showMovieServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.radarrsettings)}
           </h3>
@@ -1027,7 +1180,10 @@ const SettingsServices = ({
             {intl.formatMessage(messages.deleteserverconfirm)}
           </Modal>
         </Transition>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showMovieServices}
+        >
           {!radarrData && !radarrError && <LoadingSpinner />}
           {radarrData && !radarrError && (
             <>
@@ -1106,7 +1262,7 @@ const SettingsServices = ({
             </>
           )}
         </div>
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showAdultServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.whisparrsettings)}
           </h3>
@@ -1114,7 +1270,10 @@ const SettingsServices = ({
             {intl.formatMessage(messages.adultServiceSettingsDescription)}
           </p>
         </div>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showAdultServices}
+        >
           {!whisparrData && !whisparrError && <LoadingSpinner />}
           {whisparrData && !whisparrError && (
             <>
@@ -1170,7 +1329,7 @@ const SettingsServices = ({
             </>
           )}
         </div>
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showTvServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.sonarrsettings)}
           </h3>
@@ -1180,7 +1339,10 @@ const SettingsServices = ({
             })}
           </p>
         </div>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showTvServices}
+        >
           {!sonarrData && !sonarrError && <LoadingSpinner />}
           {sonarrData && !sonarrError && (
             <>
@@ -1260,7 +1422,7 @@ const SettingsServices = ({
             </>
           )}
         </div>
-        <div className="settings-service-heading">
+        <div className="settings-service-heading" hidden={!showSportsServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.sportarrsettings)}
           </h3>
@@ -1268,7 +1430,10 @@ const SettingsServices = ({
             {intl.formatMessage(messages.sportarrDescription)}
           </p>
         </div>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showSportsServices}
+        >
           {!sportarrData && !sportarrError && <LoadingSpinner />}
           {sportarrData && !sportarrError && (
             <>
@@ -1329,7 +1494,7 @@ const SettingsServices = ({
         hidden={activeServiceCategory !== 'music'}
         className={activeServiceCategory === 'music' ? '' : 'hidden'}
       >
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showMusicServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.lidarrsettings)}
           </h3>
@@ -1339,7 +1504,10 @@ const SettingsServices = ({
             })}
           </p>
         </div>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showMusicServices}
+        >
           {!lidarrData && !lidarrError && <LoadingSpinner />}
           {lidarrData && !lidarrError && (
             <>
@@ -1395,10 +1563,16 @@ const SettingsServices = ({
       </div>
       <div
         data-settings-category="audiobooks-books"
-        hidden={activeServiceCategory !== 'audiobooks-books'}
-        className={activeServiceCategory === 'audiobooks-books' ? '' : 'hidden'}
+        hidden={
+          activeServiceCategory !== 'audiobooks-books' || !showBookServices
+        }
+        className={
+          activeServiceCategory === 'audiobooks-books' && showBookServices
+            ? ''
+            : 'hidden'
+        }
       >
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showBookServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.readarrsettings)}
           </h3>
@@ -1409,7 +1583,10 @@ const SettingsServices = ({
             {intl.formatMessage(messages.bookServiceApiKeyDescription)}
           </p>
         </div>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showBookServices}
+        >
           {!readarrData && !readarrError && <LoadingSpinner />}
           {readarrData && !readarrError && (
             <>
@@ -1655,7 +1832,7 @@ const SettingsServices = ({
         hidden={activeServiceCategory !== 'tv-movies'}
         className={activeServiceCategory === 'tv-movies' ? '' : 'hidden'}
       >
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showMediaStats}>
           <h3 className="heading">
             {intl.formatMessage(messages.jellystatsettings)}
           </h3>
@@ -1708,10 +1885,18 @@ const SettingsServices = ({
       </div>
       <div
         data-settings-category="audiobooks-books"
-        hidden={activeServiceCategory !== 'audiobooks-books'}
-        className={activeServiceCategory === 'audiobooks-books' ? '' : 'hidden'}
+        hidden={
+          activeServiceCategory !== 'audiobooks-books' ||
+          (!showComicServices && !showMagazineServices)
+        }
+        className={
+          activeServiceCategory === 'audiobooks-books' &&
+          (showComicServices || showMagazineServices)
+            ? ''
+            : 'hidden'
+        }
       >
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showComicServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.mylarsettings)}
           </h3>
@@ -1721,7 +1906,8 @@ const SettingsServices = ({
             })}
           </p>
         </div>
-        {mylarData &&
+        {showComicServices &&
+          mylarData &&
           kapowarrData &&
           backissueData &&
           mylarData.length + kapowarrData.length + backissueData.length > 0 &&
@@ -1735,7 +1921,10 @@ const SettingsServices = ({
               })}
             />
           )}
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showComicServices}
+        >
           {!mylarData && !mylarError && <LoadingSpinner />}
           {mylarData && !mylarError && (
             <>
@@ -1779,7 +1968,7 @@ const SettingsServices = ({
             </>
           )}
         </div>
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showComicServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.kapowarrsettings)}
           </h3>
@@ -1789,7 +1978,10 @@ const SettingsServices = ({
             })}
           </p>
         </div>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showComicServices}
+        >
           {!kapowarrData && !kapowarrError && <LoadingSpinner />}
           {kapowarrData && !kapowarrError && (
             <>
@@ -1835,7 +2027,7 @@ const SettingsServices = ({
             </>
           )}
         </div>
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showComicServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.backissuesettings)}
           </h3>
@@ -1845,7 +2037,10 @@ const SettingsServices = ({
             })}
           </p>
         </div>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showComicServices}
+        >
           {!backissueData && !backissueError && <LoadingSpinner />}
           {backissueData && !backissueError && (
             <ul className="settings-service-grid">
@@ -1888,7 +2083,7 @@ const SettingsServices = ({
             </ul>
           )}
         </div>
-        <div className="mt-10 mb-6">
+        <div className="mt-10 mb-6" hidden={!showMagazineServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.lazylibrariansettings)}
           </h3>
@@ -1896,7 +2091,10 @@ const SettingsServices = ({
             {intl.formatMessage(messages.magazineServiceSettingsDescription)}
           </p>
         </div>
-        <div className="app-card-sub section settings-service-section">
+        <div
+          className="app-card-sub section settings-service-section"
+          hidden={!showMagazineServices}
+        >
           {!lazyLibrarianData && !lazyLibrarianError && <LoadingSpinner />}
           {lazyLibrarianData && !lazyLibrarianError && (
             <>
@@ -1995,22 +2193,34 @@ const SettingsServices = ({
       </div>
       <div
         data-settings-category="tv-movies"
-        hidden={activeServiceCategory !== 'tv-movies'}
-        className={activeServiceCategory === 'tv-movies' ? '' : 'hidden'}
+        hidden={activeServiceCategory !== 'tv-movies' || !showTvServices}
+        className={
+          activeServiceCategory === 'tv-movies' && showTvServices
+            ? ''
+            : 'hidden'
+        }
       >
         <SettingsTunerr />
       </div>
       <div
         data-settings-category="music"
-        hidden={activeServiceCategory !== 'music'}
-        className={activeServiceCategory === 'music' ? '' : 'hidden'}
+        hidden={activeServiceCategory !== 'music' || !showMusicServices}
+        className={
+          activeServiceCategory === 'music' && showMusicServices ? '' : 'hidden'
+        }
       >
         <SettingsSlskdn />
       </div>
       <div
         data-settings-category="audiobooks-books"
-        hidden={activeServiceCategory !== 'audiobooks-books'}
-        className={activeServiceCategory === 'audiobooks-books' ? '' : 'hidden'}
+        hidden={
+          activeServiceCategory !== 'audiobooks-books' || !showBookServices
+        }
+        className={
+          activeServiceCategory === 'audiobooks-books' && showBookServices
+            ? ''
+            : 'hidden'
+        }
       >
         <SettingsReadMeABook />
       </div>
@@ -2019,8 +2229,8 @@ const SettingsServices = ({
         hidden={activeServiceCategory !== 'tools-other'}
         className={activeServiceCategory === 'tools-other' ? '' : 'hidden'}
       >
-        <SettingsSwipe />
-        <SettingsSoftwareAcquisition />
+        {!setupEnabledMediaCategories && <SettingsSwipe />}
+        {showSoftwareAcquisition && <SettingsSoftwareAcquisition />}
       </div>
       {overrideRuleModal.open &&
         radarrData &&
