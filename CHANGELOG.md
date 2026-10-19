@@ -10,6 +10,17 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.69.0](https://github.com/snapetech-org/seerrng/compare/v3.68.0..v3.69.0) - 2026-10-19
+
+### User-facing changes
+
+#### Changed
+
+- **Books:** SeerrNG now follows Bindery approval and download progress, explains pending review and service failures in request history, and withdraws requests that are still pending when canceled. Approved acquisitions continue in Bindery.
+
+### 🚀 Features
+- *(books)* Sync Bindery request lifecycle - ([2ef0014](https://github.com/snapetech-org/seerrng/commit/2ef001433ba2a4596ee11476422a4e555a4be6de))
+
 ## [3.68.0](https://github.com/snapetech-org/seerrng/compare/v3.67.0..v3.68.0) - 2026-10-19
 
 ### User-facing changes
