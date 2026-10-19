@@ -825,8 +825,7 @@ const TvRequestModal = ({
       !data ||
       watchAheadEpisodeCount ===
         (watchAheadAppliesToRequest ? defaultWatchAheadEpisodeCount : 0) ||
-      (!editRequest &&
-        settings.currentSettings.partialRequestsEnabled &&
+      (settings.currentSettings.partialRequestsEnabled &&
         initializedSelectionKey !== requestSelectionKey)
     ) {
       return;
@@ -1158,7 +1157,8 @@ const TvRequestModal = ({
           !requestTreeReady) || Boolean(gateBlocksSubmission)
     : (usesEpisodeSelection && !requestTreeReady) ||
       requestDestinationSettingsLoading ||
-      (!editRequest && (!episodeQueueAccess || episodeQueueAccessError)) ||
+      !episodeQueueAccess ||
+      Boolean(episodeQueueAccessError) ||
       selectedDestinationCovered ||
       submissionSelectionCount === 0 ||
       (!requestQuotaApproval &&
