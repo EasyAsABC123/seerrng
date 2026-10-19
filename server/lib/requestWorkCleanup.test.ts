@@ -1,3 +1,4 @@
+import BinderyAPI from '@server/api/bindery';
 import KapowarrAPI from '@server/api/comics/kapowarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
 import {
@@ -43,6 +44,15 @@ const configureBookshelf = () => {
       serviceType: 'ebook',
     },
   ];
+};
+
+const configureBindery = () => {
+  configureBookshelf();
+  getSettings().readarr[0] = {
+    ...getSettings().readarr[0],
+    backend: 'bindery',
+    serviceType: 'both',
+  };
 };
 
 const createActiveBookRequest = async () => {
@@ -280,6 +290,202 @@ describe('RequestWorkCleanupManager', () => {
       }),
       1
     );
+  });
+
+  it('withdraws a still-pending Bindery request and clears its local service link', async () => {
+    const request = await createActiveBookRequest();
+    configureBindery();
+    const operation = await getRepository(BookRequestSearch).findOneByOrFail({
+      requestId: request.id,
+    });
+    await getRepository(BookRequestSearch).update(operation.id, {
+      bookId: null,
+      binderyRequestId: 91,
+      pendingId: null,
+      commandId: null,
+      state: 'pending',
+    });
+    await getRepository(Media).update(request.media.id, {
+      externalServiceId: null,
+      externalServiceSlug: 'OL27448W',
+    });
+    request.serviceTargets = [
+      {
+        serviceType: 'readarr',
+        format: 'ebook',
+        serverId: 20,
+        externalServiceSlug: 'OL27448W',
+      },
+    ];
+    await getRepository(MediaRequest).update(request.id, {
+      serviceTargets: request.serviceTargets,
+    });
+    mock.method(
+      BinderyAPI.prototype,
+      'getRequestsById',
+      async (ids: ReadonlySet<number>) => {
+        assert.deepEqual([...ids], [91]);
+        return {
+          requests: new Map([
+            [
+              91,
+              {
+                id: 91,
+                kind: 'book' as const,
+                foreignId: 'OL27448W',
+                mediaType: 'ebook' as const,
+                status: 'pending' as const,
+              },
+            ],
+          ]),
+          complete: true,
+        };
+      }
+    );
+    const declined: { id: number; reason: string }[] = [];
+    mock.method(
+      BinderyAPI.prototype,
+      'declineRequest',
+      async (id: number, reason: string) => {
+        declined.push({ id, reason });
+      }
+    );
+
+    await requestWorkCleanupManager.cleanup(request, true);
+
+    assert.deepEqual(declined, [{ id: 91, reason: 'Withdrawn in SeerrNG.' }]);
+    assert.equal(
+      await getRepository(BookRequestSearch).countBy({ requestId: request.id }),
+      0
+    );
+    const media = await getRepository(Media).findOneByOrFail({
+      id: request.media.id,
+    });
+    assert.equal(media.serviceId, null);
+    assert.equal(media.externalServiceId, null);
+    assert.equal(media.externalServiceSlug, null);
+    const updatedRequest = await getRepository(MediaRequest).findOneByOrFail({
+      id: request.id,
+    });
+    assert.equal(updatedRequest.serviceTargets?.[0].externalServiceSlug, null);
+  });
+
+  it('clears a stale Bindery link when a complete scan confirms the request is gone', async () => {
+    const request = await createActiveBookRequest();
+    configureBindery();
+    await getRepository(BookRequestSearch).update(
+      { requestId: request.id },
+      { binderyRequestId: 94, state: 'pending' }
+    );
+    mock.method(BinderyAPI.prototype, 'getRequestsById', async () => ({
+      requests: new Map(),
+      complete: true,
+    }));
+    const decline = mock.method(
+      BinderyAPI.prototype,
+      'declineRequest',
+      async () => undefined
+    );
+
+    await requestWorkCleanupManager.cleanup(request, true);
+
+    assert.equal(decline.mock.callCount(), 0);
+    const media = await getRepository(Media).findOneByOrFail({
+      id: request.media.id,
+    });
+    assert.equal(media.serviceId, null);
+    assert.equal(media.externalServiceId, null);
+    assert.equal(media.externalServiceSlug, null);
+    assert.equal(
+      await getRepository(BookRequestSearch).countBy({ requestId: request.id }),
+      0
+    );
+  });
+
+  it('leaves a Bindery acquisition alone after approval and preserves its service link', async () => {
+    const request = await createActiveBookRequest();
+    configureBindery();
+    await getRepository(BookRequestSearch).update(
+      { requestId: request.id },
+      { binderyRequestId: 92, state: 'monitoring' }
+    );
+    const requestScan = mock.method(
+      BinderyAPI.prototype,
+      'getRequestsById',
+      async () => ({
+        requests: new Map([
+          [
+            92,
+            {
+              id: 92,
+              kind: 'book' as const,
+              foreignId: 'OL27449W',
+              mediaType: 'ebook' as const,
+              status: 'approved' as const,
+              resultBookId: 55,
+            },
+          ],
+        ]),
+        complete: true,
+      })
+    );
+    const decline = mock.method(
+      BinderyAPI.prototype,
+      'declineRequest',
+      async () => undefined
+    );
+
+    await requestWorkCleanupManager.cleanup(request, true);
+
+    assert.equal(requestScan.mock.callCount(), 1);
+    assert.equal(decline.mock.callCount(), 0);
+    const media = await getRepository(Media).findOneByOrFail({
+      id: request.media.id,
+    });
+    assert.equal(media.serviceId, 20);
+    assert.equal(media.externalServiceId, 55);
+  });
+
+  it('preserves a Bindery acquisition when approval races with cancellation', async () => {
+    const request = await createActiveBookRequest();
+    configureBindery();
+    await getRepository(BookRequestSearch).update(
+      { requestId: request.id },
+      { binderyRequestId: 93, state: 'pending' }
+    );
+    const pending = {
+      id: 93,
+      kind: 'book' as const,
+      foreignId: 'OL27450W',
+      mediaType: 'ebook' as const,
+      status: 'pending' as const,
+    };
+    const approved = {
+      ...pending,
+      status: 'approved' as const,
+      resultBookId: 55,
+    };
+    let queueReads = 0;
+    mock.method(BinderyAPI.prototype, 'getRequestsById', async () => ({
+      requests: new Map([[93, queueReads++ === 0 ? pending : approved]]),
+      complete: true,
+    }));
+    mock.method(BinderyAPI.prototype, 'declineRequest', async () => {
+      throw Object.assign(new Error('request was approved'), {
+        isAxiosError: true,
+        response: { status: 409 },
+      });
+    });
+
+    await requestWorkCleanupManager.cleanup(request, true);
+
+    assert.equal(queueReads, 2);
+    const media = await getRepository(Media).findOneByOrFail({
+      id: request.media.id,
+    });
+    assert.equal(media.serviceId, 20);
+    assert.equal(media.externalServiceId, 55);
+    assert.equal(media.externalServiceSlug, 'cleanup-book');
   });
 
   it('cancels a book download and removes request-created empty records', async () => {

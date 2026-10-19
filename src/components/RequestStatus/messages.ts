@@ -8,9 +8,13 @@ export const requestStatusMessages = defineMessages(
     bookUnavailable:
       'No usable edition is available from the connected book service. Check the requested edition and the service catalog or acquisition sources, then retry when they are ready.',
     bookQueueFailed:
-      'The connected book service reported a download or import failure. Check its queue or logs for the cause, fix it there, then retry here.',
+      'The connected book service reported a download or import problem. Ask an administrator to check its queue or logs, fix the issue there, then retry the request.',
     bookCouldNotAccept:
       'The connected book service could not accept this request. Check its connection and metadata provider settings, then retry.',
+    binderyDeclined:
+      'Bindery declined this request. Ask an administrator to review it in Bindery, then retry here if the book is still wanted.',
+    binderyRequestMissing:
+      'Bindery no longer has the linked request. Ask an administrator to check Bindery, then retry here if the book is still wanted.',
     comicUnavailable:
       'No usable release is available from the connected comics service. Check the requested comic and the service catalog or acquisition sources, then retry when they are ready.',
     comicQueueFailed:
@@ -44,8 +48,12 @@ export const requestStatusMessages = defineMessages(
     preparingAudiobook:
       'ChaptarrNG is preparing the requested audiobook while it imports the author.',
     waitingForBookshelf: 'Waiting for Bookshelf to prepare the requested book.',
+    waitingForBinderyApproval:
+      'Waiting for Bindery to approve this request. Enable Auto-approve requests for this account in Bindery if acquisition should start immediately.',
     preparingBookshelfSearch:
       'SeerrNG is preparing a Bookshelf search for this title. Availability will update after a library scan finds the book.',
+    preparingBookServiceAcquisition:
+      'The connected book service is handling acquisition for this title. SeerrNG will update availability when the book appears in its library.',
     requestRetried: 'The request was retried and is waiting to be dispatched.',
     approvedForProcessing: 'Approved for processing.',
   }
@@ -55,6 +63,8 @@ const messagesByKey: Record<RequestStatusMessageKey, MessageDescriptor> = {
   bookUnavailable: requestStatusMessages.bookUnavailable,
   bookQueueFailed: requestStatusMessages.bookQueueFailed,
   bookCouldNotAccept: requestStatusMessages.bookCouldNotAccept,
+  binderyDeclined: requestStatusMessages.binderyDeclined,
+  binderyRequestMissing: requestStatusMessages.binderyRequestMissing,
   comicUnavailable: requestStatusMessages.comicUnavailable,
   comicQueueFailed: requestStatusMessages.comicQueueFailed,
   comicCouldNotAccept: requestStatusMessages.comicCouldNotAccept,
@@ -78,7 +88,10 @@ const messagesByKey: Record<RequestStatusMessageKey, MessageDescriptor> = {
   preparingEbook: requestStatusMessages.preparingEbook,
   preparingAudiobook: requestStatusMessages.preparingAudiobook,
   waitingForBookshelf: requestStatusMessages.waitingForBookshelf,
+  waitingForBinderyApproval: requestStatusMessages.waitingForBinderyApproval,
   preparingBookshelfSearch: requestStatusMessages.preparingBookshelfSearch,
+  preparingBookServiceAcquisition:
+    requestStatusMessages.preparingBookServiceAcquisition,
   requestRetried: requestStatusMessages.requestRetried,
   approvedForProcessing: requestStatusMessages.approvedForProcessing,
 };

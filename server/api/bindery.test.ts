@@ -30,6 +30,34 @@ const readBody = async (request: IncomingMessage): Promise<unknown> => {
     : undefined;
 };
 
+const withBinderyServer = async <T>(
+  handler: (
+    request: IncomingMessage,
+    response: ServerResponse
+  ) => void | Promise<void>,
+  callback: (port: number) => Promise<T>
+): Promise<T> => {
+  const server = createServer((request, response) => {
+    void Promise.resolve(handler(request, response)).catch((error) => {
+      response.destroy(
+        error instanceof Error ? error : new Error(String(error))
+      );
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+
+  try {
+    return await callback(address.port);
+  } finally {
+    server.closeAllConnections();
+    server.close();
+    await once(server, 'close');
+  }
+};
+
 const makeSettings = (
   port: number,
   overrides: Partial<ReadarrSettings> = {}
@@ -274,5 +302,209 @@ describe('BinderyAPI', () => {
       server.close();
       await once(server, 'close');
     }
+  });
+
+  it('maps Bindery users and reads request and acquisition queue projections', async () => {
+    const usersFixture = await fixture('users.json');
+    const requestsFixture = await fixture('request-queue.json');
+    const queueFixture = await fixture('download-queue.json');
+    const received: { method: string; path: string; apiKey?: string }[] = [];
+    await withBinderyServer(
+      async (request, response) => {
+        const url = new URL(request.url ?? '/', 'http://localhost');
+        received.push({
+          method: request.method ?? 'GET',
+          path: `${url.pathname}${url.search}`,
+          apiKey: String(request.headers['x-api-key'] ?? ''),
+        });
+        if (url.pathname.endsWith('/auth/users')) {
+          writeJson(response, 200, usersFixture);
+        } else if (url.pathname.endsWith('/requests/queue')) {
+          writeJson(response, 200, requestsFixture);
+        } else if (url.pathname.endsWith('/queue')) {
+          writeJson(response, 200, queueFixture);
+        } else {
+          writeJson(response, 404, { error: 'not found' });
+        }
+      },
+      async (port) => {
+        const api = new BinderyAPI(makeSettings(port));
+        assert.deepEqual(await api.getUsers(), [
+          { id: 7, username: 'reader-one' },
+          { id: 8, username: 'reader-two', email: 'reader@example.test' },
+        ]);
+
+        const requestQueue = await api.getRequestsById(new Set([91]));
+        assert.equal(requestQueue.complete, true);
+        assert.equal(requestQueue.requests.get(91)?.status, 'approved');
+        assert.equal(requestQueue.requests.get(91)?.resultBookId, 55);
+
+        assert.deepEqual(await api.getQueue(), [
+          {
+            id: 601,
+            bookId: 55,
+            status: 'downloading',
+            trackedDownloadStatus: 'ok',
+          },
+          { id: 602, bookId: 56, status: 'importing' },
+        ]);
+      }
+    );
+
+    assert.deepEqual(
+      received.map(({ path }) => path),
+      [
+        '/bindery/api/v1/auth/users',
+        '/bindery/api/v1/requests/queue?status=all&limit=200&offset=0',
+        '/bindery/api/v1/queue',
+      ]
+    );
+    assert.ok(
+      received.every(({ apiKey }) => apiKey === 'recorded-bindery-key')
+    );
+  });
+
+  it('paginates Bindery requests and reports incomplete target rows safely', async () => {
+    const offsets: string[] = [];
+    await withBinderyServer(
+      (request, response) => {
+        const url = new URL(request.url ?? '/', 'http://localhost');
+        const offset = Number(url.searchParams.get('offset'));
+        offsets.push(String(offset));
+        if (offset === 0) {
+          writeJson(response, 200, {
+            items: Array.from({ length: 200 }, (_, index) => ({
+              id: 300 + index,
+              kind: 'author',
+              foreignId: `author-${index}`,
+              mediaType: '',
+              status: 'pending',
+            })),
+            total: 201,
+            limit: 200,
+            offset,
+          });
+        } else {
+          writeJson(response, 200, {
+            items: [
+              {
+                id: 91,
+                kind: 'book',
+                foreignId: 'OL27448W',
+                mediaType: 'ebook',
+                status: 'pending',
+              },
+            ],
+            total: 201,
+            limit: 200,
+            offset,
+          });
+        }
+      },
+      async (port) => {
+        const snapshot = await new BinderyAPI(
+          makeSettings(port)
+        ).getRequestsById(new Set([91]));
+        assert.equal(snapshot.complete, true);
+        assert.equal(snapshot.requests.get(91)?.status, 'pending');
+      }
+    );
+    assert.deepEqual(offsets, ['0', '200']);
+
+    await withBinderyServer(
+      (_request, response) => {
+        writeJson(response, 200, {
+          items: [
+            {
+              id: 91,
+              kind: 'book',
+              foreignId: 'OL27448W',
+              mediaType: 'unknown',
+              status: 'pending',
+            },
+          ],
+          total: 1,
+          limit: 200,
+          offset: 0,
+        });
+      },
+      async (port) => {
+        const snapshot = await new BinderyAPI(
+          makeSettings(port)
+        ).getRequestsById(new Set([91]));
+        assert.equal(snapshot.complete, false);
+        assert.equal(snapshot.requests.size, 0);
+      }
+    );
+  });
+
+  it('declines only a validated Bindery request with the requested reason', async () => {
+    const received: { path: string; body?: unknown }[] = [];
+    await withBinderyServer(
+      async (request, response) => {
+        const url = new URL(request.url ?? '/', 'http://localhost');
+        const body = await readBody(request);
+        received.push({
+          path: `${url.pathname}${url.search}`,
+          ...(body === undefined ? {} : { body }),
+        });
+        writeJson(response, 200, {
+          id: 91,
+          kind: 'book',
+          foreignId: 'OL27448W',
+          mediaType: 'ebook',
+          status: 'declined',
+        });
+      },
+      async (port) => {
+        await new BinderyAPI(makeSettings(port)).declineRequest(
+          91,
+          'Withdrawn in SeerrNG.'
+        );
+      }
+    );
+    assert.deepEqual(received, [
+      {
+        path: '/bindery/api/v1/requests/91/decline',
+        body: { reason: 'Withdrawn in SeerrNG.' },
+      },
+    ]);
+  });
+
+  it('rejects incomplete user lists and invalid user or withdrawal inputs', async () => {
+    const received: string[] = [];
+    await withBinderyServer(
+      (request, response) => {
+        const url = new URL(request.url ?? '/', 'http://localhost');
+        received.push(url.pathname);
+        writeJson(response, 200, {
+          users: [{ id: 'invalid', username: 'reader-one' }],
+        });
+      },
+      async (port) => {
+        const api = new BinderyAPI(makeSettings(port));
+        await assert.rejects(
+          api.createUserRequest(
+            {
+              foreignBookId: 'OL27448W',
+              mediaType: 'ebook',
+              searchOnAdd: true,
+            },
+            0
+          ),
+          /user ID is invalid/
+        );
+        await assert.rejects(
+          api.declineRequest(91, ' '.repeat(1)),
+          /withdrawal reason is invalid/
+        );
+        await assert.rejects(
+          api.declineRequest(91, 'x'.repeat(513)),
+          /withdrawal reason is invalid/
+        );
+        await assert.rejects(api.getUsers(), /invalid user account/);
+      }
+    );
+    assert.deepEqual(received, ['/bindery/api/v1/auth/users']);
   });
 });

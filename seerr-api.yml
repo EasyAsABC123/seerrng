@@ -3002,6 +3002,12 @@ components:
           example: false
         baseUrl:
           type: string
+        backend:
+          type: string
+          enum: [readarr, bindery]
+        serviceType:
+          type: string
+          enum: [ebook, audiobook, both]
       required:
         - hostname
         - port
@@ -6071,6 +6077,31 @@ components:
           type: string
         metadataSource:
           type: string
+    BinderyServiceTestResult:
+      type: object
+      required: [backend, system, features]
+      properties:
+        backend:
+          type: string
+          enum: [bindery]
+        system:
+          type: object
+          properties:
+            version:
+              type: string
+            commit:
+              type: string
+            buildDate:
+              type: string
+        features:
+          type: object
+          required: [requestsForUser]
+          properties:
+            requestsForUser:
+              type: boolean
+        requesterAccounts:
+          type: integer
+          minimum: 0
     PageInfo:
       type: object
       properties:
@@ -10869,7 +10900,16 @@ paths:
                 kind:
                   type: string
                   enum:
-                    [narrator, author, series-language, edition, expansion, artist-release-type, patch-project, franchise]
+                    [
+                      narrator,
+                      author,
+                      series-language,
+                      edition,
+                      expansion,
+                      artist-release-type,
+                      patch-project,
+                      franchise,
+                    ]
                 subjectKey:
                   type: string
                 subjectLabel:
@@ -11084,7 +11124,16 @@ paths:
                   type: string
                 relation:
                   type: string
-                  enum: [source-material, adaptation, sequel, prequel, side-story, soundtrack, same-franchise]
+                  enum:
+                    [
+                      source-material,
+                      adaptation,
+                      sequel,
+                      prequel,
+                      side-story,
+                      soundtrack,
+                      same-franchise,
+                    ]
                 title:
                   type: string
                 href:
@@ -17802,11 +17851,13 @@ paths:
               $ref: '#/components/schemas/ServarrConnectionSettings'
       responses:
         '200':
-          description: Bookshelf connection details returned
+          description: Bookshelf or Bindery connection details returned
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ServarrServiceDetails'
+                anyOf:
+                  - $ref: '#/components/schemas/ServarrServiceDetails'
+                  - $ref: '#/components/schemas/BinderyServiceTestResult'
   /settings/readarr/diagnose:
     post:
       summary: Diagnose Bookshelf lookup and add readiness

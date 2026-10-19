@@ -2223,7 +2223,8 @@ describe('MediaRequestSubscriber service dispatch', () => {
       },
     ];
     const requestedBy = await getRequester();
-    requestedBy.username = 'reader-one';
+    requestedBy.username = 'seerr-reader';
+    requestedBy.plexUsername = 'Reader-One';
     const media = await getRepository(Media).save(
       new Media({
         mediaType: MediaType.BOOK,
@@ -2292,6 +2293,7 @@ describe('MediaRequestSubscriber service dispatch', () => {
     assert.equal(operation.state, 'pending');
     assert.equal(operation.pendingId, null);
     assert.equal(operation.providerBookId, 'OL45804W');
+    assert.equal(operation.binderyRequestId, 91);
   });
 
   it('does not create an admin-owned Bindery item when advertised user mapping fails', async () => {

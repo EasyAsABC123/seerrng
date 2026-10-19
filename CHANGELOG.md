@@ -10,6 +10,66 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.68.0](https://github.com/snapetech-org/seerrng/compare/v3.67.0..v3.68.0) - 2026-10-19
+
+### User-facing changes
+
+#### Added
+
+- **Anime:** Anime pages can now point you to the manga or light novel that continues the story, show where your finished season ends when the catalog documents it, and offer the volume to request.
+- **Books:** Book requests now compare editions and narrations side by side, with the option to keep a second performance alongside the one you have. Series pages show which narrators cover which volumes.
+- **Following:** A new Following page and Follow buttons keep track of narrators, series translations, game expansions, artists, and patch projects, and explain why each new item appeared.
+- **Franchise:** Anime pages link to a franchise view that groups original works, adaptations, sequels, and side stories, marks how well each link is documented, and lets administrators confirm or hide links.
+- **Games:** PC game requests can now compare editions and expansions, show which are story content, and request only the content you select. Games whose edition contents are not listed are shown as unknown.
+- **Music:** Album pages now compare standard, deluxe, and remaster releases using their real track lists, and say so when a detail is not documented.
+- **Settings:** Settings now include Share and Image Recognition. Links and lists work without setup; image reading uses local text recognition or an opt-in vision provider you control, including local Ollama-style servers.
+  - **Action required:** Optional: install Tesseract for local image reading, or enable a vision provider under Settings, Services, after confirming images may be sent to it.
+- **Software:** Browse fan translations, ROM hacks, and improvement patches, see their completeness and versions, request the exact version you want, and keep the original alongside it. Needs a ROMarrNG with the patch catalog.
+- **Share:** Share a link, ISBN, list of titles, or a photo of a cover or recommendations to SeerrNG, check the matches, and request the ones you want. The Android app appears in the system Share menu.
+- **Discovery:** New Game Finder saved searches, Hardcover Book Vibes you can steer, and Collector Picks from slskdN show why each result appeared and let you request it directly.
+- **Bookshelf:** SeerrNG now has a native Bindery service for ebook, audiobook, or mixed-format requests. Bindery handles acquisition while SeerrNG tracks request status and scans imported books for availability. Requester ownership is used when the Bindery instance advertises support; otherwise the configured API key account owns the added book.
+  - **Action required:** Add Bindery from Settings > Services to send book requests and scan its imported library.
+- **Reader Apps:** Administrators can enable Kobo delivery for a BookOrbit live shelf. SeerrNG keeps the SmartScope for browsing and maintains a matching native BookOrbit Collection for Kobo, refreshing its membership every 15 minutes by default. The sync schedule can be adjusted under Settings > Jobs. BookOrbit still needs a Kobo account paired, and the managed Collection is reserved for SeerrNG.
+
+#### Changed
+
+- **Setup:** SeerrNG setup now focuses service options on enabled request categories and lets the setup assistant recommend companion apps for one or more selected categories.
+- **Accessibility:** Share, Following, and the new discovery tools now work fully by keyboard and screen reader, announce results and unread counts, label repeated buttons with the item they act on, and are linked from Discover, Books, Music, and Software pages.
+- **Reader Delivery:** Clarified that BookOrbit SmartScopes remain dynamic and Kobo sync uses BookOrbit Collections.
+
+#### Fixed
+
+- **Unraid:** The Unraid Community Apps template and Compose stack now follow the latest stable release tag. Existing installs using the retired image path or `:main` must update Repository once to receive current stable releases.
+  - **Action required:** Update existing installs from the retired image path or `:main` to `ghcr.io/snapetech-org/seerrng:latest`.
+- **Containers:** Validated stable releases now publish matching `:main` and `:latest` aliases to GHCR and Docker Hub. Main-branch CI publishes commit-specific images without moving either stable alias, and the Unraid Compose stack follows the stable `:latest` tags for companion apps.
+
+### 🚀 Features
+- *(books)* Add native Bindery backend - ([41b6db2](https://github.com/snapetech-org/seerrng/commit/41b6db2467d09a06876e37c594887227b25b3853))
+- *(discovery)* Cross-media discovery, editions, share-to-request, and following - ([7e8a59c](https://github.com/snapetech-org/seerrng/commit/7e8a59cb7257f360a00b21d87873047c3b2e8d77))
+- *(reader-delivery)* Sync BookOrbit shelves to Kobo - ([0b267d5](https://github.com/snapetech-org/seerrng/commit/0b267d5261524a2b0c233f59da8327180045c39e))
+- *(setup)* Make service setup category aware (#350) - ([e62d90a](https://github.com/snapetech-org/seerrng/commit/e62d90a496e27d6e61aeee28a64b2e993cd46f4a))
+- *(ux)* Surface cross-media tools, accessibility, and documentation - ([10f06ea](https://github.com/snapetech-org/seerrng/commit/10f06eab9a8c1852ea74d6dcf091d30fa061258a))
+
+### 🐛 Bug Fixes
+- *(build)* Pass the Book-terminology and shared-style gates that blocked pnpm build - ([705518f](https://github.com/snapetech-org/seerrng/commit/705518f66011ecf27062bc09001c7569fd015aef))
+- *(ci)* Align stable container image aliases - ([f3f4f22](https://github.com/snapetech-org/seerrng/commit/f3f4f2230172f59a7680082426e2d10464849191))
+- *(share)* Move focus to results after the response renders; add flow tests - ([0e8aa31](https://github.com/snapetech-org/seerrng/commit/0e8aa3172e64a329391cff04919947b1ceac501e))
+- *(ui)* Ship the cross-media stylesheet; add a Playwright screen audit - ([555fc28](https://github.com/snapetech-org/seerrng/commit/555fc283a43506a999b2831bdf68ab75d7cde044))
+- *(unraid)* Follow the latest stable image tag - ([76237c6](https://github.com/snapetech-org/seerrng/commit/76237c68d174181aa80b7213b4e1a036fabe0e03))
+- Keep stable SeerrNG image aliases in sync - ([b810153](https://github.com/snapetech-org/seerrng/commit/b810153c7d180a1d50388c9db6ae72195d1ab56e))
+
+### 📖 Documentation
+- *(books)* Clarify migration readiness evidence - ([902ef57](https://github.com/snapetech-org/seerrng/commit/902ef575b55ecd33585c99d14fadcd8cda1f77c7))
+- *(books)* Keep BookshelfNG cutover frozen - ([86361e3](https://github.com/snapetech-org/seerrng/commit/86361e3b0f6dadb3e334c0cb98effdbd781e57b2))
+- *(maintainers)* Plan cross-media discovery and edition features - ([e881537](https://github.com/snapetech-org/seerrng/commit/e8815370125a1a60469383d7f9fe56ebeec338f8))
+- *(maintainers)* Plan cross-media discovery and edition features - ([f08dd99](https://github.com/snapetech-org/seerrng/commit/f08dd99cee26049487333f6d069c68468d1fe8aa))
+
+### 🧪 Testing
+- *(integration)* Verify migrated ChaptarrNG records - ([fdc439a](https://github.com/snapetech-org/seerrng/commit/fdc439aa9b37d3dfad7487ba8b772c02e136c467))
+
+### ⚙️ Miscellaneous Tasks
+- Target restricted JIT runner group - ([a75eb3b](https://github.com/snapetech-org/seerrng/commit/a75eb3b9a781a5b6b43f12303b7ab1835f064de4))
+
 ## [3.67.0](https://github.com/snapetech-org/seerrng/compare/v3.66.0..v3.67.0) - 2026-10-18
 
 ### User-facing changes

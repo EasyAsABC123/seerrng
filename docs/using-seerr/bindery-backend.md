@@ -38,12 +38,18 @@ exact title match with a matching author when available. If it cannot identify
 the same book safely, the request fails with a diagnostic error instead of
 adding a different title.
 
-SeerrNG does not send Readarr or Bookshelf profiles, root folders, tags,
-edition choices, or manual queue operations to Bindery. Configure acquisition
-defaults inside Bindery. An edition selected in SeerrNG helps identify the
-requested book, but Bindery's add endpoint accepts the provider book identity
-and requested media format rather than a specific edition. SeerrNG does not
-show Bindery's queue or manage Bindery files.
+SeerrNG does not send Readarr or Bookshelf profiles, root folders, tags, or
+edition choices to Bindery. Configure acquisition defaults inside Bindery. An
+edition selected in SeerrNG helps identify the requested book, but Bindery's
+request API accepts the provider book identity and requested media format
+rather than a specific edition.
+
+For a release-search or download problem, use SeerrNG's request status first,
+then have an administrator check Bindery's request, queue, and logs. SeerrNG
+does not relay raw backend error text because it can include private filesystem
+paths or service details. If you place files in the library yourself, use
+Bindery's import tools; SeerrNG will recognize the book on its next library
+availability scan.
 
 ## Request ownership
 
@@ -53,23 +59,50 @@ key, so Bindery records the service account as the owner. The connection test
 shows which behavior the connected version supports.
 
 If Bindery advertises the `requestsForUser` capability in `/system/status`,
-SeerrNG creates a Bindery request for the matching user. The username or email
-must match exactly and identify one Bindery account; an absent or ambiguous
-match stops dispatch rather than silently assigning the book to another user.
-Enable Bindery's per-user auto-approval if those SeerrNG-approved requests
-should start acquisition immediately. See Bindery's [multi-user guide](https://github.com/vavallee/bindery/blob/main/docs/multi-user.md).
+SeerrNG creates a Bindery request for the matching user. During setup, **Test
+connection** reports whether that capability is available and how many user
+accounts Bindery returned. SeerrNG matches the requester's local username,
+Plex or Jellyfin username, or email to a Bindery username or email. Matching
+ignores letter case; a missing or ambiguous match stops dispatch rather than
+assigning the request to the wrong person.
+
+Enable Bindery's **Auto-approve requests** option for each account whose
+SeerrNG-approved requests should start acquisition immediately. Without it,
+the requester sees that their book is waiting for Bindery approval, and
+SeerrNG will begin tracking acquisition after Bindery approves it. See
+Bindery's [multi-user guide](https://github.com/vavallee/bindery/blob/main/docs/multi-user.md).
+
+Bindery request ownership is separate from library privacy. Bindery scopes
+accounts to their own books and downloads only when
+`BINDERY_ENFORCE_TENANCY=true` is set in Bindery's environment; without it,
+accounts can see shared instance data. SeerrNG does not change this Bindery
+setting.
 
 ## Availability and request lifecycle
 
-SeerrNG scans imported records separately for ebooks and audiobooks, then
-matches provider IDs and ISBNs to SeerrNG's book records. Scanning is
-read-only: it does not ask Bindery to search or download anything. Bindery
-remains responsible for acquisition and delivery; SeerrNG remains responsible
-for its request approval and user-facing availability status. Cancelling a
-SeerrNG request does not remove or cancel a book that Bindery is already
-acquiring.
+SeerrNG syncs the linked Bindery request's pending, approved, and declined
+state. After approval, it reads Bindery's acquisition queue to show when the
+book is downloading or importing. It also scans imported records separately
+for ebooks and audiobooks, then matches provider IDs and ISBNs to SeerrNG's
+book records. Library and queue reads are read-only: SeerrNG does not start,
+pause, or remove Bindery downloads.
 
-Bindery's API also exposes administration, queue, file, OPDS, backup, and
-metadata-management features. SeerrNG only uses the operations needed to test
-the connection, resolve and add approved books, map requester accounts when
-the server advertises that capability, and scan library availability.
+If a requester cancels while their Bindery request is still pending, SeerrNG
+withdraws it in Bindery and clears the local service link. If Bindery has
+already approved it, SeerrNG leaves the acquisition running. Bindery offers
+admin queue-removal tools, but SeerrNG does not turn request deletion into a
+service-wide queue deletion that could interrupt work Bindery or another
+request still needs. The full Bindery queue is not exposed as a separate
+SeerrNG management screen; SeerrNG shows progress for requests created through
+SeerrNG. An administrator can still manage a download directly in Bindery.
+
+When using an older Bindery version without per-user requests, SeerrNG adds the
+approved book directly and Bindery does not create a request record to
+withdraw. That acquisition can continue after the SeerrNG request is canceled.
+
+Bindery's API also exposes administration, file, OPDS, backup, and
+metadata-management features. SeerrNG uses the operations needed to test the
+connection, resolve and submit approved books, map requester accounts when
+the server advertises that capability, reconcile linked request states, read
+download progress, and scan library availability. It does not manage Bindery
+users, files, configuration, or downloads.

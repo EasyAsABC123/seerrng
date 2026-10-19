@@ -141,6 +141,17 @@ logs a warning.
 
 ### ChaptarrNG / Bookshelf Settings
 
+Use SeerrNG as the request portal for your household. People request books in
+SeerrNG; the connected book service handles acquisition, downloads, imports,
+and its own metadata and search settings. Household users do not need accounts
+in ChaptarrNG or Bindery.
+
+| Backend | Best fit |
+| --- | --- |
+| ChaptarrNG or another Readarr-compatible service | You already use its library and profile controls. Configure indexers, download clients, profiles, and search behavior in that service; SeerrNG sends the selected book and format. |
+| Bindery | You want SeerrNG to submit book requests to Bindery’s request queue and follow approval, download, import, and availability. Configure acquisition defaults in Bindery. |
+| BookOrbit | SeerrNG connects it as a reader app for existing library files, shelves, OPDS, and Kobo sync. BookOrbit’s separate Requests feature is not connected to SeerrNG. |
+
 SeerrNG connects to ChaptarrNG, BookshelfNG, and other Readarr-compatible book
 backends through this shared settings section. No environment variable is
 needed on the SeerrNG container. For ChaptarrNG 0.9.941+, set
@@ -181,8 +192,14 @@ Bindery uses its own API, so add it through **Add Bindery Server** instead of
 the Readarr-compatible connection form. SeerrNG can send approved ebook and
 audiobook requests, optionally use one Bindery service for both formats, and
 scan Bindery's imported library for availability. Configure search and library
-defaults in Bindery. See the [Bindery Backend guide](/using-seerr/bindery-backend)
-for metadata matching, request ownership, and current integration limits.
+defaults in Bindery. **Test connection** reports whether Bindery supports
+per-user requests and how many Bindery accounts are available for matching.
+Enable Bindery's **Auto-approve requests** option for each requester who
+should not need a second approval after a SeerrNG request is approved. SeerrNG
+shows approval and download progress for its own Bindery requests, and it
+withdraws a request on cancellation only while that Bindery request is still
+pending. See the [Bindery Backend guide](/using-seerr/bindery-backend) for
+identity matching and lifecycle details.
 
 ### Audiobookshelf availability
 

@@ -65,6 +65,28 @@ export interface BinderyCreatedRequest {
   resultBookId?: number;
 }
 
+export interface BinderyRequest extends BinderyCreatedRequest {
+  title?: string;
+  authorName?: string;
+  declineReason?: string;
+  decidedAt?: string;
+  username?: string;
+}
+
+export interface BinderyRequestQueueSnapshot {
+  requests: Map<number, BinderyRequest>;
+  /** False means the safety bound stopped the scan before absence was proven. */
+  complete: boolean;
+}
+
+export interface BinderyQueueItem {
+  id: number;
+  bookId?: number;
+  status?: string;
+  trackedDownloadStatus?: string;
+  trackedDownloadState?: string;
+}
+
 export interface BinderyAddBookOptions {
   foreignBookId: string;
   foreignAuthorId?: string;
@@ -76,6 +98,9 @@ export interface BinderyAddBookOptions {
 const MAX_BINDERY_RESPONSE_BYTES = 16 * 1024 * 1024;
 export const MAX_BINDERY_LIBRARY_RESULTS = 5_000;
 export const BINDERY_LIBRARY_PAGE_SIZE = 100;
+export const BINDERY_REQUEST_PAGE_SIZE = 200;
+export const MAX_BINDERY_REQUEST_SCAN = 5_000;
+export const MAX_BINDERY_QUEUE_ITEMS = 5_000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -173,6 +198,82 @@ const parseBook = (
   };
 };
 
+const parseBinderyRequest = (value: unknown): BinderyRequest | undefined => {
+  if (!isRecord(value)) return undefined;
+  if (
+    !Number.isSafeInteger(value.id) ||
+    Number(value.id) < 1 ||
+    value.kind !== 'book' ||
+    typeof value.foreignId !== 'string' ||
+    !value.foreignId.trim() ||
+    (value.status !== 'pending' &&
+      value.status !== 'approved' &&
+      value.status !== 'declined') ||
+    (value.mediaType !== 'ebook' &&
+      value.mediaType !== 'audiobook' &&
+      value.mediaType !== 'both')
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: Number(value.id),
+    kind: 'book',
+    foreignId: value.foreignId,
+    mediaType: value.mediaType,
+    status: value.status,
+    ...(typeof value.fulfilled === 'boolean'
+      ? { fulfilled: value.fulfilled }
+      : {}),
+    ...(Number.isSafeInteger(value.resultBookId) &&
+    Number(value.resultBookId) > 0
+      ? { resultBookId: Number(value.resultBookId) }
+      : {}),
+    ...(typeof value.title === 'string' ? { title: value.title } : {}),
+    ...(typeof value.authorName === 'string'
+      ? { authorName: value.authorName }
+      : {}),
+    ...(typeof value.declineReason === 'string'
+      ? { declineReason: value.declineReason }
+      : {}),
+    ...(typeof value.decidedAt === 'string'
+      ? { decidedAt: value.decidedAt }
+      : {}),
+    ...(typeof value.username === 'string' ? { username: value.username } : {}),
+  };
+};
+
+const parseBinderyQueueItem = (
+  value: unknown
+): BinderyQueueItem | undefined => {
+  if (
+    !isRecord(value) ||
+    !Number.isSafeInteger(value.id) ||
+    Number(value.id) < 1
+  ) {
+    return undefined;
+  }
+
+  const book = isRecord(value.book) ? value.book : undefined;
+  const bookId = Number.isSafeInteger(value.bookId)
+    ? Number(value.bookId)
+    : book && Number.isSafeInteger(book.id)
+      ? Number(book.id)
+      : undefined;
+
+  return {
+    id: Number(value.id),
+    ...(bookId && bookId > 0 ? { bookId } : {}),
+    ...(typeof value.status === 'string' ? { status: value.status } : {}),
+    ...(typeof value.trackedDownloadStatus === 'string'
+      ? { trackedDownloadStatus: value.trackedDownloadStatus }
+      : {}),
+    ...(typeof value.trackedDownloadState === 'string'
+      ? { trackedDownloadState: value.trackedDownloadState }
+      : {}),
+  };
+};
+
 const statusSupportsForUserRequests = (
   status: BinderySystemStatus
 ): boolean => {
@@ -226,6 +327,9 @@ export default class BinderyAPI {
       throw new Error('Bindery service URL is invalid.');
     }
 
+    // The endpoint and API key come from the administrator's saved Bindery
+    // connection. Revalidate the configured URL and disable redirects so its
+    // key is only sent to that intended service.
     const config: AxiosRequestConfig = {
       method,
       url: stringifySafeHttpUrl(safeUrl),
@@ -311,8 +415,11 @@ export default class BinderyAPI {
         ? result.users
         : undefined;
     if (!rows) throw new Error('Bindery returned an invalid users response.');
+    if (rows.length > 1_000) {
+      throw new Error('Bindery returned too many user accounts to map safely.');
+    }
 
-    return rows.slice(0, 1_000).flatMap((row) => {
+    return rows.map((row) => {
       if (
         !isRecord(row) ||
         !Number.isSafeInteger(row.id) ||
@@ -320,15 +427,13 @@ export default class BinderyAPI {
         typeof row.username !== 'string' ||
         !row.username.trim()
       ) {
-        return [];
+        throw new Error('Bindery returned an invalid user account.');
       }
-      return [
-        {
-          id: Number(row.id),
-          username: row.username,
-          ...(typeof row.email === 'string' ? { email: row.email } : {}),
-        },
-      ];
+      return {
+        id: Number(row.id),
+        username: row.username,
+        ...(typeof row.email === 'string' ? { email: row.email } : {}),
+      };
     });
   }
 
@@ -352,39 +457,151 @@ export default class BinderyAPI {
     options: BinderyAddBookOptions,
     forUser: number
   ): Promise<BinderyCreatedRequest> {
+    if (
+      !Number.isSafeInteger(forUser) ||
+      forUser < 1 ||
+      forUser > 2_147_483_647
+    ) {
+      throw new Error('Bindery user ID is invalid.');
+    }
     const result = await this.request<unknown>('POST', '/requests', {
       kind: 'book',
       foreignId: options.foreignBookId,
       mediaType: options.mediaType,
       forUser,
     });
+    const request = parseBinderyRequest(result);
     if (
-      !isRecord(result) ||
-      !Number.isSafeInteger(result.id) ||
-      Number(result.id) < 1 ||
-      result.kind !== 'book' ||
-      typeof result.foreignId !== 'string' ||
-      result.foreignId !== options.foreignBookId ||
-      result.mediaType !== options.mediaType ||
-      (result.status !== 'pending' &&
-        result.status !== 'approved' &&
-        result.status !== 'declined')
+      !request ||
+      request.foreignId !== options.foreignBookId ||
+      request.mediaType !== options.mediaType
     ) {
       throw new Error('Bindery returned an invalid request response.');
     }
-    return {
-      id: Number(result.id),
-      kind: 'book',
-      foreignId: result.foreignId,
-      mediaType: options.mediaType,
-      status: result.status,
-      ...(typeof result.fulfilled === 'boolean'
-        ? { fulfilled: result.fulfilled }
-        : {}),
-      ...(Number.isSafeInteger(result.resultBookId)
-        ? { resultBookId: Number(result.resultBookId) }
-        : {}),
-    };
+    return request;
+  }
+
+  public async getRequestsById(
+    requestIds: ReadonlySet<number>
+  ): Promise<BinderyRequestQueueSnapshot> {
+    const requests = new Map<number, BinderyRequest>();
+    if (requestIds.size === 0) return { requests, complete: true };
+    if (
+      [...requestIds].some(
+        (id) => !Number.isSafeInteger(id) || id < 1 || id > 2_147_483_647
+      )
+    ) {
+      throw new Error('Bindery request IDs are invalid.');
+    }
+
+    let total: number | undefined;
+    let allRowsValid = true;
+    let scanned = 0;
+    const seenRequestIds = new Set<number>();
+    for (
+      let offset = 0;
+      offset < MAX_BINDERY_REQUEST_SCAN;
+      offset += BINDERY_REQUEST_PAGE_SIZE
+    ) {
+      const result = await this.request<unknown>(
+        'GET',
+        '/requests/queue',
+        undefined,
+        { status: 'all', limit: BINDERY_REQUEST_PAGE_SIZE, offset }
+      );
+      if (!isRecord(result) || !Array.isArray(result.items)) {
+        throw new Error('Bindery returned an invalid request queue page.');
+      }
+
+      if (
+        !Number.isSafeInteger(result.total) ||
+        Number(result.total) < 0 ||
+        result.limit !== BINDERY_REQUEST_PAGE_SIZE ||
+        result.offset !== offset ||
+        result.items.length > BINDERY_REQUEST_PAGE_SIZE
+      ) {
+        throw new Error('Bindery returned inconsistent request pagination.');
+      }
+      total ??= Number(result.total);
+      if (total !== Number(result.total)) {
+        throw new Error('Bindery returned inconsistent request totals.');
+      }
+
+      for (const row of result.items) {
+        if (
+          !isRecord(row) ||
+          !Number.isSafeInteger(row.id) ||
+          Number(row.id) < 1
+        ) {
+          allRowsValid = false;
+          continue;
+        }
+        const requestId = Number(row.id);
+        if (seenRequestIds.has(requestId)) {
+          throw new Error('Bindery repeated a request in its queue.');
+        }
+        seenRequestIds.add(requestId);
+        if (!requestIds.has(requestId)) continue;
+        const request = parseBinderyRequest(row);
+        if (!request) {
+          allRowsValid = false;
+          continue;
+        }
+        requests.set(request.id, request);
+      }
+
+      scanned += result.items.length;
+      if (requests.size === requestIds.size) {
+        return { requests, complete: true };
+      }
+      if (scanned >= total) {
+        return { requests, complete: allRowsValid };
+      }
+      if (result.items.length === 0) {
+        throw new Error('Bindery returned an incomplete request queue.');
+      }
+    }
+
+    return { requests, complete: false };
+  }
+
+  public async declineRequest(
+    requestId: number,
+    reason: string
+  ): Promise<void> {
+    if (
+      !Number.isSafeInteger(requestId) ||
+      requestId < 1 ||
+      requestId > 2_147_483_647
+    ) {
+      throw new Error('Bindery request ID is invalid.');
+    }
+    if (!reason.trim() || reason.length > 512) {
+      throw new Error('Bindery request withdrawal reason is invalid.');
+    }
+    const result = await this.request<unknown>(
+      'POST',
+      `/requests/${requestId}/decline`,
+      { reason }
+    );
+    const request = parseBinderyRequest(result);
+    if (!request || request.id !== requestId || request.status !== 'declined') {
+      throw new Error('Bindery did not confirm the request withdrawal.');
+    }
+  }
+
+  public async getQueue(): Promise<BinderyQueueItem[]> {
+    const result = await this.request<unknown>('GET', '/queue');
+    if (!isRecord(result) || !Array.isArray(result.items)) {
+      throw new Error('Bindery returned an invalid download queue.');
+    }
+    if (result.items.length > MAX_BINDERY_QUEUE_ITEMS) {
+      throw new Error('Bindery download queue exceeded the safe scan limit.');
+    }
+    return result.items.flatMap((item) => {
+      const parsed = parseBinderyQueueItem(item);
+      return parsed ? [parsed] : [];
+    });
   }
 
   public async getImportedBooks(

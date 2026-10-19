@@ -1,3 +1,4 @@
+import BinderyAPI from '@server/api/bindery';
 import BackIssueAPI from '@server/api/comics/backissue';
 import KapowarrAPI from '@server/api/comics/kapowarr';
 import LidarrAPI from '@server/api/servarr/lidarr';
@@ -8,10 +9,11 @@ import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import { BookRequestSearch } from '@server/entity/BookRequestSearch';
 import Media from '@server/entity/Media';
-import type { MediaRequest } from '@server/entity/MediaRequest';
+import { MediaRequest } from '@server/entity/MediaRequest';
 import { getExternalRuntimeConfig } from '@server/lib/externalRuntimeConfig';
 import requestDispatchManager from '@server/lib/requestDispatch';
 import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
+import axios from 'axios';
 
 type CleanupQueueItem = {
   id: number;
@@ -59,7 +61,8 @@ const removeMatchingQueueItems = async (
 class RequestWorkCleanupManager {
   private async cleanupBookOperation(
     operation: BookRequestSearch,
-    mediaId: number
+    mediaId: number,
+    request: MediaRequest
   ): Promise<void> {
     const runtimeConfig = getExternalRuntimeConfig();
     const readarrServices = runtimeConfig.readarr;
@@ -72,9 +75,101 @@ class RequestWorkCleanupManager {
       );
     }
     if (server.backend === 'bindery') {
-      // Bindery owns acquisition once a request is accepted. Its request API
-      // does not expose cancellation, so leave that work and service link in
-      // place instead of sending Readarr cancellation or deletion calls.
+      if (operation.binderyRequestId == null) return;
+
+      const bindery = new BinderyAPI(server);
+      const binderyRequestId = operation.binderyRequestId;
+      const withdrawalReason = 'Withdrawn in SeerrNG.';
+      const getRequest = async () => {
+        const snapshot = await bindery.getRequestsById(
+          new Set([binderyRequestId])
+        );
+        if (!snapshot.complete) {
+          throw new RequestWorkCleanupError(
+            'Bindery could not confirm the request status. Refresh and try again.'
+          );
+        }
+        return snapshot.requests.get(binderyRequestId);
+      };
+      let clearBinderyLink = false;
+
+      try {
+        const binderyRequest = await getRequest();
+        if (binderyRequest?.status === 'declined') {
+          clearBinderyLink = true;
+        } else if (!binderyRequest) {
+          // The complete admin queue scan confirmed that Bindery no longer
+          // has this request, so there is no pending work to withdraw.
+          clearBinderyLink = true;
+        } else if (binderyRequest?.status !== 'pending') {
+          return;
+        }
+        if (!clearBinderyLink) {
+          await bindery.declineRequest(binderyRequestId, withdrawalReason);
+          clearBinderyLink = true;
+        }
+      } catch (error) {
+        const status = axios.isAxiosError(error)
+          ? error.response?.status
+          : undefined;
+        if (status === 404 || status === 409) {
+          try {
+            const currentRequest = await getRequest();
+            if (currentRequest?.status === 'pending') {
+              throw new RequestWorkCleanupError(
+                'Bindery did not confirm the request withdrawal. The request may still be pending there.'
+              );
+            }
+            clearBinderyLink = currentRequest?.status === 'declined';
+          } catch (refreshError) {
+            if (refreshError instanceof RequestWorkCleanupError) {
+              throw refreshError;
+            }
+            throw new RequestWorkCleanupError(
+              'SeerrNG could not confirm cancellation in Bindery. Check Bindery before retrying.'
+            );
+          }
+        } else if (error instanceof RequestWorkCleanupError) {
+          throw error;
+        } else {
+          throw new RequestWorkCleanupError(
+            'SeerrNG could not confirm cancellation in Bindery. Check Bindery before retrying.'
+          );
+        }
+      }
+
+      // Declining only withdraws a Bindery request that is still pending. If
+      // it was already approved, Bindery owns the active acquisition and it
+      // continues after the SeerrNG request is cancelled. We deliberately do
+      // not delete an admin-visible Bindery queue row here: that service-wide
+      // action can interrupt work Bindery or another request still needs.
+      if (clearBinderyLink) {
+        await getRepository(Media).update(
+          mediaId,
+          operation.format === 'audiobook'
+            ? {
+                audiobookServiceId: null,
+                audiobookExternalServiceId: null,
+                audiobookExternalServiceSlug: null,
+              }
+            : {
+                serviceId: null,
+                externalServiceId: null,
+                externalServiceSlug: null,
+              }
+        );
+        const nextTargets = (request.serviceTargets ?? []).map((target) =>
+          target.serviceType === 'readarr' &&
+          target.serverId === operation.serviceId &&
+          target.format === operation.format
+            ? { ...target, externalServiceId: null, externalServiceSlug: null }
+            : target
+        );
+        await getRepository(MediaRequest).update(request.id, {
+          serviceTargets: nextTargets,
+        });
+        request.serviceTargets = nextTargets;
+      }
       return;
     }
     const api = new ReadarrAPI({
@@ -295,7 +390,7 @@ class RequestWorkCleanupManager {
         order: { id: 'ASC' },
       });
       for (const operation of operations) {
-        await this.cleanupBookOperation(operation, request.media.id);
+        await this.cleanupBookOperation(operation, request.media.id, request);
       }
       if (operations.length === 0) {
         await this.cleanupUntrackedBookLinks(request);

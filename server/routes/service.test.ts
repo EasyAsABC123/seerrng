@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
+import BinderyAPI from '@server/api/bindery';
 import LidarrAPI from '@server/api/servarr/lidarr';
 import RadarrAPI from '@server/api/servarr/radarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
@@ -1634,6 +1635,65 @@ describe('GET /service/reader-delivery', () => {
 });
 
 describe('Bookshelf settings routes', () => {
+  it('reports Bindery requester support and the available account count', async () => {
+    mock.method(BinderyAPI.prototype, 'getSystemStatus', async () => ({
+      version: '1.37.0',
+      features: { requestsForUser: true },
+    }));
+    mock.method(BinderyAPI.prototype, 'getUsers', async () => [
+      { id: 7, username: 'reader-one' },
+      { id: 8, username: 'reader-two', email: 'reader@example.test' },
+    ]);
+
+    const response = await request(createOpenApiApp())
+      .post('/api/v1/settings/readarr/test')
+      .send({
+        backend: 'bindery',
+        hostname: 'bindery.local',
+        port: 8787,
+        apiKey: 'test-key',
+        useSsl: false,
+        serviceType: 'both',
+      });
+
+    assert.strictEqual(response.status, 200);
+    assert.deepStrictEqual(response.body, {
+      backend: 'bindery',
+      system: { version: '1.37.0' },
+      features: { requestsForUser: true },
+      requesterAccounts: 2,
+    });
+  });
+
+  it('does not fetch Bindery users when requester-owned requests are unsupported', async () => {
+    mock.method(BinderyAPI.prototype, 'getSystemStatus', async () => ({
+      version: '1.36.0',
+      features: {},
+    }));
+    const getUsers = mock.method(BinderyAPI.prototype, 'getUsers', async () => {
+      throw new Error('The legacy service has no user endpoint.');
+    });
+
+    const response = await request(createOpenApiApp())
+      .post('/api/v1/settings/readarr/test')
+      .send({
+        backend: 'bindery',
+        hostname: 'bindery.local',
+        port: 8787,
+        apiKey: 'test-key',
+        useSsl: false,
+        serviceType: 'both',
+      });
+
+    assert.strictEqual(response.status, 200);
+    assert.deepStrictEqual(response.body, {
+      backend: 'bindery',
+      system: { version: '1.36.0' },
+      features: { requestsForUser: false },
+    });
+    assert.strictEqual(getUsers.mock.callCount(), 0);
+  });
+
   it('rejects malformed Bookshelf settings bodies', async () => {
     const res = await request(app).post('/settings/readarr').send([]);
 

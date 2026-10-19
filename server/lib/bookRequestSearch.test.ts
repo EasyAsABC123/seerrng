@@ -44,15 +44,44 @@ const configureBookshelf = () => {
   ];
 };
 
+const configureBindery = () => {
+  getSettings().readarr = [
+    {
+      id: 20,
+      name: 'Bindery',
+      hostname: 'bindery.local',
+      port: 8787,
+      apiKey: 'test-key',
+      useSsl: false,
+      activeProfileId: 0,
+      activeProfileName: 'Bindery managed',
+      activeMetadataProfileId: 0,
+      activeMetadataProfileName: 'Bindery managed',
+      activeDirectory: '/',
+      tags: [],
+      is4k: false,
+      isDefault: true,
+      syncEnabled: true,
+      preventSearch: true,
+      tagRequests: false,
+      overrideRule: [],
+      backend: 'bindery',
+      serviceType: 'both',
+    },
+  ];
+};
+
 const createTrackedRequest = async (options: {
   createdBook: boolean;
   createdAuthor: boolean;
   pendingId?: number;
+  binderyRequestId?: number;
   providerBookId?: string;
   monitoring?: boolean;
   providerManagedSearch?: boolean;
 }) => {
-  const pending = options.pendingId !== undefined;
+  const pending =
+    options.pendingId !== undefined || options.binderyRequestId !== undefined;
   const requestedBy = await getRepository(User).findOneByOrFail({
     email: 'friend@seerr.dev',
   });
@@ -85,6 +114,7 @@ const createTrackedRequest = async (options: {
       bookId: pending ? null : 55,
       providerBookId: options.providerBookId ?? 'hc:book-55',
       pendingId: options.pendingId ?? null,
+      binderyRequestId: options.binderyRequestId ?? null,
       authorId: 77,
       commandId: pending || options.monitoring ? null : 901,
       createdBook: options.createdBook,
@@ -147,30 +177,8 @@ describe('BookRequestSearchManager', () => {
   });
 
   it('settles Bindery request tracking only after the format appears in its imported library', async () => {
-    getSettings().readarr = [
-      {
-        id: 20,
-        name: 'Bindery',
-        hostname: 'bindery.local',
-        port: 8787,
-        apiKey: 'test-key',
-        useSsl: false,
-        activeProfileId: 0,
-        activeProfileName: 'Bindery managed',
-        activeMetadataProfileId: 0,
-        activeMetadataProfileName: 'Bindery managed',
-        activeDirectory: '/',
-        tags: [],
-        is4k: false,
-        isDefault: true,
-        syncEnabled: true,
-        preventSearch: true,
-        tagRequests: false,
-        overrideRule: [],
-        backend: 'bindery',
-        serviceType: 'ebook',
-      },
-    ];
+    configureBindery();
+    getSettings().readarr[0].serviceType = 'ebook';
     const { media, request } = await createTrackedRequest({
       createdBook: true,
       createdAuthor: false,
@@ -195,6 +203,281 @@ describe('BookRequestSearchManager', () => {
       id: media.id,
     });
     assert.equal(updatedMedia.status, MediaStatus.AVAILABLE);
+  });
+
+  it('waits for Bindery approval without losing the linked request ID', async () => {
+    configureBindery();
+    const { request } = await createTrackedRequest({
+      createdBook: false,
+      createdAuthor: false,
+      binderyRequestId: 91,
+      providerBookId: 'OL27448W',
+    });
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => []);
+    const requestScan = mock.method(
+      BinderyAPI.prototype,
+      'getRequestsById',
+      async (ids: ReadonlySet<number>) => {
+        assert.deepEqual([...ids], [91]);
+        return {
+          requests: new Map([
+            [
+              91,
+              {
+                id: 91,
+                kind: 'book' as const,
+                foreignId: 'OL27448W',
+                mediaType: 'ebook' as const,
+                status: 'pending' as const,
+              },
+            ],
+          ]),
+          complete: true,
+        };
+      }
+    );
+    const downloadScan = mock.method(
+      BinderyAPI.prototype,
+      'getQueue',
+      async () => {
+        throw new Error('An unapproved request has no acquisition queue.');
+      }
+    );
+
+    await bookRequestSearchManager.run();
+
+    const operation = await getRepository(BookRequestSearch).findOneByOrFail({
+      requestId: request.id,
+    });
+    assert.equal(operation.state, 'pending');
+    assert.equal(operation.binderyRequestId, 91);
+    assert.equal(requestScan.mock.callCount(), 1);
+    assert.equal(downloadScan.mock.callCount(), 0);
+  });
+
+  it('tracks Bindery approval, download progress, and the new library link', async () => {
+    configureBindery();
+    const { media, request } = await createTrackedRequest({
+      createdBook: false,
+      createdAuthor: false,
+      binderyRequestId: 91,
+      providerBookId: 'OL27448W',
+    });
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => []);
+    mock.method(BinderyAPI.prototype, 'getRequestsById', async () => ({
+      requests: new Map([
+        [
+          91,
+          {
+            id: 91,
+            kind: 'book' as const,
+            foreignId: 'OL27448W',
+            mediaType: 'ebook' as const,
+            status: 'approved' as const,
+            resultBookId: 55,
+          },
+        ],
+      ]),
+      complete: true,
+    }));
+    mock.method(BinderyAPI.prototype, 'getQueue', async () => [
+      { id: 601, bookId: 55, status: 'downloading' },
+    ]);
+
+    await bookRequestSearchManager.run();
+
+    const operation = await getRepository(BookRequestSearch).findOneByOrFail({
+      requestId: request.id,
+    });
+    assert.equal(operation.state, 'grabbed');
+    assert.equal(operation.binderyRequestId, null);
+    assert.equal(operation.bookId, 55);
+    const updatedMedia = await getRepository(Media).findOneByOrFail({
+      id: media.id,
+    });
+    assert.equal(updatedMedia.serviceId, 20);
+    assert.equal(updatedMedia.externalServiceId, 55);
+    assert.equal(updatedMedia.externalServiceSlug, 'OL27448W');
+  });
+
+  it('reports Bindery import progress and a bounded failure message', async () => {
+    configureBindery();
+    const { request } = await createTrackedRequest({
+      createdBook: false,
+      createdAuthor: false,
+      binderyRequestId: 91,
+      providerBookId: 'OL27448W',
+    });
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => []);
+    mock.method(BinderyAPI.prototype, 'getRequestsById', async () => ({
+      requests: new Map([
+        [
+          91,
+          {
+            id: 91,
+            kind: 'book' as const,
+            foreignId: 'OL27448W',
+            mediaType: 'ebook' as const,
+            status: 'approved' as const,
+            resultBookId: 55,
+          },
+        ],
+      ]),
+      complete: true,
+    }));
+    mock.method(BinderyAPI.prototype, 'getQueue', async () => [
+      { id: 601, bookId: 55, trackedDownloadState: 'importing' },
+    ]);
+
+    await bookRequestSearchManager.run();
+
+    const operation = await getRepository(BookRequestSearch).findOneByOrFail({
+      requestId: request.id,
+    });
+    assert.equal(operation.state, 'importing');
+
+    await resetTestDb();
+    configureBindery();
+    const failed = await createTrackedRequest({
+      createdBook: false,
+      createdAuthor: false,
+      binderyRequestId: 92,
+      providerBookId: 'OL27449W',
+    });
+    mock.restoreAll();
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => []);
+    mock.method(BinderyAPI.prototype, 'getRequestsById', async () => ({
+      requests: new Map([
+        [
+          92,
+          {
+            id: 92,
+            kind: 'book' as const,
+            foreignId: 'OL27449W',
+            mediaType: 'ebook' as const,
+            status: 'approved' as const,
+            resultBookId: 56,
+          },
+        ],
+      ]),
+      complete: true,
+    }));
+    mock.method(BinderyAPI.prototype, 'getQueue', async () => [
+      { id: 602, bookId: 56, status: 'failed' },
+    ]);
+
+    await bookRequestSearchManager.run();
+
+    assert.equal(
+      await getRepository(MediaRequest)
+        .findOneByOrFail({ id: failed.request.id })
+        .then((value) => value.status),
+      MediaRequestStatus.FAILED
+    );
+    const statusEvent = await getRepository(
+      MediaRequestStatusEvent
+    ).findOneOrFail({
+      where: { requestId: failed.request.id },
+      order: { id: 'DESC' },
+    });
+    assert.equal(statusEvent.stage, RequestStatusStage.FAILED);
+    assert.match(statusEvent.message ?? '', /connected book service/);
+    assert.doesNotMatch(statusEvent.message ?? '', /Bindery internal reason/);
+    assert.equal(
+      await getRepository(BookRequestSearch).countBy({
+        requestId: failed.request.id,
+      }),
+      0
+    );
+  });
+
+  it('syncs Bindery declines and only fails missing requests after a complete queue scan', async () => {
+    configureBindery();
+    const declined = await createTrackedRequest({
+      createdBook: false,
+      createdAuthor: false,
+      binderyRequestId: 91,
+      providerBookId: 'OL27448W',
+    });
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => []);
+    mock.method(BinderyAPI.prototype, 'getRequestsById', async () => ({
+      requests: new Map([
+        [
+          91,
+          {
+            id: 91,
+            kind: 'book' as const,
+            foreignId: 'OL27448W',
+            mediaType: 'ebook' as const,
+            status: 'declined' as const,
+            declineReason: 'private service-side reason',
+          },
+        ],
+      ]),
+      complete: true,
+    }));
+
+    await bookRequestSearchManager.run();
+
+    const statusEvent = await getRepository(
+      MediaRequestStatusEvent
+    ).findOneOrFail({
+      where: { requestId: declined.request.id },
+      order: { id: 'DESC' },
+    });
+    assert.equal(statusEvent.stage, RequestStatusStage.FAILED);
+    assert.match(statusEvent.message ?? '', /Bindery declined this request/);
+    assert.doesNotMatch(
+      statusEvent.message ?? '',
+      /private service-side reason/
+    );
+
+    await resetTestDb();
+    configureBindery();
+    const missing = await createTrackedRequest({
+      createdBook: false,
+      createdAuthor: false,
+      binderyRequestId: 92,
+      providerBookId: 'OL27449W',
+    });
+    mock.restoreAll();
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => []);
+    mock.method(BinderyAPI.prototype, 'getRequestsById', async () => ({
+      requests: new Map(),
+      complete: true,
+    }));
+
+    await bookRequestSearchManager.run();
+
+    assert.equal(
+      await getRepository(MediaRequest)
+        .findOneByOrFail({ id: missing.request.id })
+        .then((value) => value.status),
+      MediaRequestStatus.FAILED
+    );
+
+    await resetTestDb();
+    configureBindery();
+    const notProvenMissing = await createTrackedRequest({
+      createdBook: false,
+      createdAuthor: false,
+      binderyRequestId: 93,
+      providerBookId: 'OL27450W',
+    });
+    mock.restoreAll();
+    mock.method(BinderyAPI.prototype, 'getImportedBooks', async () => []);
+    mock.method(BinderyAPI.prototype, 'getRequestsById', async () => ({
+      requests: new Map(),
+      complete: false,
+    }));
+
+    await bookRequestSearchManager.run();
+
+    const retained = await getRepository(BookRequestSearch).findOneByOrFail({
+      requestId: notProvenMissing.request.id,
+    });
+    assert.equal(retained.state, 'pending');
+    assert.equal(retained.binderyRequestId, 93);
   });
 
   it('keeps a queued Chaptarr author import pending while its format retries', async () => {

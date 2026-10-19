@@ -2408,6 +2408,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         const resolved = await resolveBinderyBook(bindery);
         const binderyMediaType = formats.length === 2 ? 'both' : formats[0];
         let localBookId: number | null;
+        let binderyRequestId: number | null = null;
         let state: BookRequestSearch['state'] = 'monitoring';
         let createdBook = false;
         let createdAuthor = false;
@@ -2450,6 +2451,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           }
           localBookId = result.resultBookId ?? null;
           state = result.status === 'pending' ? 'pending' : 'monitoring';
+          binderyRequestId = result.id;
         } else {
           const provider = await bindery.getPrimaryMetadataProvider();
           const foreignAuthorId =
@@ -2489,6 +2491,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
               format,
               bookId: localBookId,
               providerBookId: resolved.foreignBookId,
+              binderyRequestId,
               providerEditionId: preferredEditionId ?? null,
               pendingId: null,
               authorId: null,

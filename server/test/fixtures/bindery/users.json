@@ -1,4 +1,11 @@
-[
-  { "id": 8, "username": "alice", "email": "alice@example.test" },
-  { "id": 9, "username": "bob", "email": "bob@example.test" }
-]
+{
+  "users": [
+    { "id": 7, "username": "reader-one", "role": "requester" },
+    {
+      "id": 8,
+      "username": "reader-two",
+      "email": "reader@example.test",
+      "role": "user"
+    }
+  ]
+}

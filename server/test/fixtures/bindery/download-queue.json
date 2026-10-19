@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "id": 601,
+      "bookId": 55,
+      "status": "downloading",
+      "trackedDownloadStatus": "ok"
+    },
+    {
+      "id": 602,
+      "status": "importing",
+      "book": { "id": 56, "title": "Another Book" }
+    },
+    { "id": "invalid", "bookId": 57, "status": "downloading" }
+  ],
+  "partial": false
+}

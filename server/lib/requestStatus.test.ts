@@ -72,6 +72,32 @@ test('built-in request status explanations expose locale keys and preserve dynam
     getRequestStatusMessageKey('The media is being added to your library.'),
     'addingToLibrary'
   );
+  assert.equal(
+    getRequestStatusMessageKey(
+      'Bindery declined this request. Ask an administrator to review it in Bindery, then retry here if the book is still wanted.'
+    ),
+    'binderyDeclined'
+  );
+  assert.equal(
+    getRequestStatusMessageKey(
+      'Bindery no longer has the linked request. Ask an administrator to check Bindery, then retry here if the book is still wanted.'
+    ),
+    'binderyRequestMissing'
+  );
+});
+
+test('pending Bindery approval has a localized, actionable request status', () => {
+  const status = getRequestStatus(request({ type: MediaType.BOOK }), {
+    bookSearchState: 'pending',
+    binderyRequestPending: true,
+  });
+
+  assert.equal(status.stage, RequestStatusStage.SEARCHING);
+  assert.equal(status.messageKey, 'waitingForBinderyApproval');
+  assert.match(
+    status.message,
+    /Auto-approve requests for this account in Bindery/
+  );
 });
 
 test('request lifecycle uses authoritative queue progress and never invents a percentage', () => {
@@ -396,7 +422,10 @@ test('tracked Bookshelf operations report observed lifecycle stages', () => {
     bookSearchState: 'monitoring',
   });
   assert.equal(monitoring.stage, RequestStatusStage.SEARCHING);
-  assert.match(monitoring.message ?? '', /preparing a Bookshelf search/);
+  assert.match(
+    monitoring.message ?? '',
+    /connected book service is handling acquisition/
+  );
   const pending = getRequestStatus(bookRequest, {
     bookSearchState: 'pending',
     bookImportProgresses: [

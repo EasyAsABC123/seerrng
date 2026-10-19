@@ -46,6 +46,9 @@ export class BookRequestSearch {
   public pendingId?: number | null;
 
   @Column({ type: 'integer', nullable: true })
+  public binderyRequestId?: number | null;
+
+  @Column({ type: 'integer', nullable: true })
   public pendingAttemptCount?: number | null;
 
   @Column({ type: 'integer', nullable: true })

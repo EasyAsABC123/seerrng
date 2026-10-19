@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "id": 91,
+      "kind": "book",
+      "foreignId": "OL27448W",
+      "title": "The Hobbit",
+      "authorName": "J. R. R. Tolkien",
+      "mediaType": "audiobook",
+      "status": "approved",
+      "fulfilled": false,
+      "resultBookId": 55,
+      "username": "reader-one"
+    },
+    {
+      "id": 90,
+      "kind": "author",
+      "foreignId": "OL23919A",
+      "title": "J. R. R. Tolkien",
+      "mediaType": "",
+      "status": "pending",
+      "username": "reader-two"
+    }
+  ],
+  "total": 2,
+  "limit": 200,
+  "offset": 0
+}

@@ -1,4 +1,7 @@
-import BinderyAPI from '@server/api/bindery';
+import BinderyAPI, {
+  type BinderyQueueItem,
+  type BinderyRequestQueueSnapshot,
+} from '@server/api/bindery';
 import ReadarrAPI, {
   matchesReadarrBookProviderIdentity,
   type ReadarrBook,
@@ -101,19 +104,38 @@ class BookRequestSearchManager {
       string,
       Promise<Awaited<ReturnType<BinderyAPI['getImportedBooks']>>>
     >();
+    const binderyRequestIds = new Map<number, Set<number>>();
     for (const operation of operations) {
-      await this.reconcileOperation(operation, binderyLibraries).catch(
-        (error) => {
-          logger.warn('Unable to reconcile Bookshelf book search.', {
-            label: 'Book Request Search',
-            requestId: operation.requestId,
-            serviceId: operation.serviceId,
-            commandId: operation.commandId,
-            errorMessage:
-              error instanceof Error ? error.message : String(error),
-          });
-        }
-      );
+      if (operation.binderyRequestId == null) continue;
+      const ids =
+        binderyRequestIds.get(operation.serviceId) ?? new Set<number>();
+      ids.add(operation.binderyRequestId);
+      binderyRequestIds.set(operation.serviceId, ids);
+    }
+    const binderyRequestQueues = new Map<
+      number,
+      Promise<BinderyRequestQueueSnapshot>
+    >();
+    const binderyDownloadQueues = new Map<
+      number,
+      Promise<BinderyQueueItem[]>
+    >();
+    for (const operation of operations) {
+      await this.reconcileOperation(
+        operation,
+        binderyLibraries,
+        binderyRequestIds,
+        binderyRequestQueues,
+        binderyDownloadQueues
+      ).catch((error) => {
+        logger.warn('Unable to reconcile book service request.', {
+          label: 'Book Request Search',
+          requestId: operation.requestId,
+          serviceId: operation.serviceId,
+          commandId: operation.commandId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+      });
     }
   }
 
@@ -122,7 +144,10 @@ class BookRequestSearchManager {
     binderyLibraries: Map<
       string,
       Promise<Awaited<ReturnType<BinderyAPI['getImportedBooks']>>>
-    >
+    >,
+    binderyRequestIds: Map<number, Set<number>>,
+    binderyRequestQueues: Map<number, Promise<BinderyRequestQueueSnapshot>>,
+    binderyDownloadQueues: Map<number, Promise<BinderyQueueItem[]>>
   ): Promise<void> {
     if (terminalOperationStates.has(operation.state)) {
       await this.finalizeRequest(operation.requestId);
@@ -137,8 +162,9 @@ class BookRequestSearchManager {
     if (server.backend === 'bindery') {
       const key = `${server.id}:${operation.format}`;
       let library = binderyLibraries.get(key);
+      const bindery = new BinderyAPI(server);
       if (!library) {
-        library = new BinderyAPI(server).getImportedBooks(operation.format);
+        library = bindery.getImportedBooks(operation.format);
         binderyLibraries.set(key, library);
       }
       const importedBooks = await library;
@@ -150,12 +176,103 @@ class BookRequestSearchManager {
       if (imported) {
         await getRepository(BookRequestSearch).update(operation.id, {
           bookId: imported.id,
+          binderyRequestId: null,
           state: 'available',
           updatedAt: new Date(),
         });
         operation.bookId = imported.id;
+        operation.binderyRequestId = null;
         operation.state = 'available';
+        await this.storeBinderyBookServiceLink(operation, imported.id);
         await this.finalizeRequest(operation.requestId);
+        return;
+      }
+
+      if (operation.binderyRequestId != null) {
+        let requestQueue = binderyRequestQueues.get(server.id);
+        if (!requestQueue) {
+          requestQueue = bindery.getRequestsById(
+            binderyRequestIds.get(server.id) ??
+              new Set([operation.binderyRequestId])
+          );
+          binderyRequestQueues.set(server.id, requestQueue);
+        }
+        const snapshot = await requestQueue;
+        const binderyRequest = snapshot.requests.get(
+          operation.binderyRequestId
+        );
+        if (binderyRequest?.status === 'declined') {
+          await this.failBinderyRequest(
+            operation,
+            'Bindery declined this request. Ask an administrator to review it in Bindery, then retry here if the book is still wanted.'
+          );
+          return;
+        }
+        if (binderyRequest?.status === 'pending') {
+          await this.setState(operation, 'pending');
+          return;
+        }
+        if (!binderyRequest && snapshot.complete) {
+          await this.failBinderyRequest(
+            operation,
+            'Bindery no longer has the linked request. Ask an administrator to check Bindery, then retry here if the book is still wanted.'
+          );
+          return;
+        }
+        if (!binderyRequest) return;
+
+        const bookId = binderyRequest.resultBookId ?? operation.bookId ?? null;
+        const nextBinderyRequestId =
+          bookId == null ? operation.binderyRequestId : null;
+        await getRepository(BookRequestSearch).update(operation.id, {
+          binderyRequestId: nextBinderyRequestId,
+          bookId,
+          state: 'monitoring',
+          updatedAt: new Date(),
+        });
+        operation.binderyRequestId = nextBinderyRequestId;
+        operation.bookId = bookId;
+        operation.state = 'monitoring';
+        if (bookId != null) {
+          await this.storeBinderyBookServiceLink(operation, bookId);
+        }
+      }
+
+      if (operation.bookId == null) return;
+
+      let downloadQueue = binderyDownloadQueues.get(server.id);
+      if (!downloadQueue) {
+        downloadQueue = bindery.getQueue();
+        binderyDownloadQueues.set(server.id, downloadQueue);
+      }
+      let queueItems: BinderyQueueItem[];
+      try {
+        queueItems = await downloadQueue;
+      } catch (error) {
+        logger.warn('Unable to read Bindery download progress.', {
+          label: 'Book Request Search',
+          requestId: operation.requestId,
+          serviceId: operation.serviceId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+      const activeItems = queueItems.filter(
+        (item) => item.bookId === operation.bookId
+      );
+      if (activeItems.some((item) => isFailedQueueItem(item))) {
+        await this.failBinderyRequest(
+          operation,
+          'The connected book service reported a download or import problem. Ask an administrator to check its queue or logs, fix the issue there, then retry the request.'
+        );
+        return;
+      }
+      if (activeItems.some((item) => isImportingQueueItem(item))) {
+        await this.setState(operation, 'importing');
+      } else if (activeItems.length > 0) {
+        await this.setState(operation, 'grabbed');
+      } else if (operation.state !== 'monitoring') {
+        await this.setState(operation, 'monitoring');
       }
       return;
     }
@@ -742,6 +859,114 @@ class BookRequestSearchManager {
       serviceTargets: nextTargets,
     });
     operation.request.serviceTargets = nextTargets;
+  }
+
+  private async storeBinderyBookServiceLink(
+    operation: BookRequestSearch,
+    bookId: number
+  ): Promise<void> {
+    const externalServiceSlug = operation.providerBookId ?? String(bookId);
+    const media = operation.request.media;
+    const mediaPatch: Partial<Media> =
+      operation.format === 'audiobook'
+        ? {
+            audiobookServiceId: operation.serviceId,
+            audiobookExternalServiceId: bookId,
+            audiobookExternalServiceSlug: externalServiceSlug,
+          }
+        : {
+            serviceId: operation.serviceId,
+            externalServiceId: bookId,
+            externalServiceSlug,
+          };
+    await getRepository(Media).update(media.id, mediaPatch);
+    Object.assign(media, mediaPatch);
+
+    const targets = operation.request.serviceTargets ?? [];
+    const target: MediaRequestServiceTarget = {
+      serviceType: 'readarr',
+      format: operation.format,
+      serverId: operation.serviceId,
+      externalServiceId: bookId,
+      externalServiceSlug,
+    };
+    const targetIndex = targets.findIndex(
+      (candidate) =>
+        candidate.serviceType === target.serviceType &&
+        candidate.format === target.format &&
+        candidate.serverId === target.serverId
+    );
+    const nextTargets =
+      targetIndex === -1
+        ? [...targets, target]
+        : targets.map((candidate, index) =>
+            index === targetIndex ? { ...candidate, ...target } : candidate
+          );
+    await getRepository(MediaRequest).update(operation.requestId, {
+      serviceTargets: nextTargets,
+    });
+    operation.request.serviceTargets = nextTargets;
+  }
+
+  private async failBinderyRequest(
+    operation: BookRequestSearch,
+    message: string
+  ): Promise<void> {
+    const repository = getRepository(BookRequestSearch);
+    const relatedOperations =
+      operation.binderyRequestId == null
+        ? [operation]
+        : await repository.find({
+            where: {
+              requestId: operation.requestId,
+              serviceId: operation.serviceId,
+              binderyRequestId: operation.binderyRequestId,
+            },
+          });
+    const targets = operation.request.serviceTargets ?? [];
+    const failedFormats = new Set(
+      relatedOperations.map((related) => related.format)
+    );
+    const mediaPatch: Partial<Media> = {};
+    if (failedFormats.has('ebook')) {
+      mediaPatch.serviceId = null;
+      mediaPatch.externalServiceId = null;
+      mediaPatch.externalServiceSlug = null;
+    }
+    if (failedFormats.has('audiobook')) {
+      mediaPatch.audiobookServiceId = null;
+      mediaPatch.audiobookExternalServiceId = null;
+      mediaPatch.audiobookExternalServiceSlug = null;
+    }
+    if (Object.keys(mediaPatch).length > 0) {
+      await getRepository(Media).update(operation.request.media.id, mediaPatch);
+      Object.assign(operation.request.media, mediaPatch);
+    }
+    const nextTargets = targets.map((target) =>
+      target.serviceType === 'readarr' &&
+      target.serverId === operation.serviceId &&
+      failedFormats.has(target.format as 'ebook' | 'audiobook')
+        ? { ...target, externalServiceId: null, externalServiceSlug: null }
+        : target
+    );
+    await getRepository(MediaRequest).update(operation.requestId, {
+      serviceTargets: nextTargets,
+    });
+    operation.request.serviceTargets = nextTargets;
+
+    for (const related of relatedOperations) {
+      await repository.update(related.id, {
+        binderyRequestId: null,
+        state: 'failed',
+        updatedAt: new Date(),
+      });
+      related.binderyRequestId = null;
+      related.state = 'failed';
+    }
+    await this.finalizeRequest(operation.requestId, {
+      stage: RequestStatusStage.FAILED,
+      message,
+    });
   }
 
   private async setState(

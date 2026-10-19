@@ -25,9 +25,9 @@ const messages = defineMessages('components.Settings.BinderyModal', {
   intro:
     'Bindery manages book acquisition and downloads. SeerrNG sends approved requests and tracks format availability in its library.',
   ownerNote:
-    'This Bindery version does not advertise requester-owned requests. SeerrNG will add approved books through the service API key, so Bindery records the service account as owner.',
+    'This Bindery version does not advertise per-user requests. SeerrNG will add approved books through the API key, so Bindery records the service account as owner.',
   ownerFeature:
-    'This Bindery version advertises requester-owned requests. Matching SeerrNG and Bindery usernames will be used. Enable Bindery auto-approval for immediate acquisition.',
+    'Per-user requests are supported. SeerrNG found {accountCount} Bindery accounts. It matches usernames, Plex or Jellyfin usernames, and email addresses without regard to case. Enable Auto-approve requests for each account in Bindery if acquisition should start without a second approval. For private user libraries, also enable BINDERY_ENFORCE_TENANCY in Bindery.',
   testSuccess: 'Bindery connection established.',
   testFailure: 'Could not connect to Bindery. Check the address and API key.',
   saveFailure: 'Could not save the Bindery connection.',
@@ -60,6 +60,7 @@ interface BinderyTestResponse {
   backend: 'bindery';
   system: { version?: string; commit?: string; buildDate?: string };
   features: { requestsForUser: boolean };
+  requesterAccounts?: number;
 }
 
 interface BinderyModalProps {
@@ -282,7 +283,8 @@ const BinderyModal = ({ settings, onClose, onSave }: BinderyModalProps) => {
                     {intl.formatMessage(
                       testResult.features.requestsForUser
                         ? messages.ownerFeature
-                        : messages.ownerNote
+                        : messages.ownerNote,
+                      { accountCount: testResult.requesterAccounts ?? 0 }
                     )}
                   </p>
                 </div>

@@ -557,6 +557,10 @@ readarrRoutes.post<
           overrideRule: [],
         } as ReadarrSettings);
         const status = await bindery.getSystemStatus();
+        const requestsForUser = bindery.supportsForUserRequests(status);
+        const requesterAccounts = requestsForUser
+          ? (await bindery.getUsers()).length
+          : undefined;
         return res.status(200).json({
           backend: 'bindery',
           system: {
@@ -565,8 +569,9 @@ readarrRoutes.post<
             buildDate: status.buildDate,
           },
           features: {
-            requestsForUser: bindery.supportsForUserRequests(status),
+            requestsForUser,
           },
+          ...(requesterAccounts === undefined ? {} : { requesterAccounts }),
         });
       }
 
