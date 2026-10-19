@@ -5,17 +5,20 @@ description: Opt in to a small buffer of upcoming TV episodes requested in Sonar
 
 # TV Episode Queue
 
-The Episode Queue lets a TV request owner ask SeerrNG to keep up to five
-upcoming episodes requested in Sonarr as they watch the series in Plex,
-Jellyfin, or Emby. It is optional and **Off by default for every request**.
-Choosing a buffer applies only to that request.
+The Episode Queue lets an approved TV request owner ask SeerrNG to keep up to
+five upcoming episodes requested in Sonarr as they watch the series in Plex,
+Jellyfin, or Emby. Access is **Off until a user manager approves it**. After
+approval, set one default buffer in **Profile → Settings → Episode Queue** to
+apply it to all existing and future TV requests. A per-show choice can override
+that default.
 
-When you enable Episode Queue on a **new** TV request, the episode list changes
-to a single starting episode. SeerrNG requests that episode first, then asks
+When Episode Queue is on for a **new** TV request, the episode list changes to
+a single starting episode. SeerrNG requests that episode first, then asks
 Sonarr to keep the selected number of upcoming episodes requested as playback
 progresses. Only one starting episode is selected, so this avoids requesting a
-whole season in advance. Choose **Off** to return to the normal season or
-episode selection and restore the selection you had before enabling the queue.
+whole season in advance. Choose **Off for this show** to return to the normal
+season or episode selection and restore the selection you had before enabling
+the queue.
 The queue does not guarantee a download will finish before you reach the next
 episode; Sonarr controls searching and download timing.
 
@@ -37,15 +40,24 @@ episode in Sonarr.
 
 ## Turn it on or off
 
-When creating or editing your own TV request, choose a buffer under **Episode
-Queue**. The initial setting is **Off**. You can change it later from that
-request's card in **Requests** or **Request Status**. Only the request owner can
-change the setting; administrators cannot enable it for someone else.
+Ask a user manager to approve Episode Queue from your profile’s **Episode
+Queue** settings. After approval, choose a default from **Off** to five
+episodes. The default is used for existing root TV requests and every new TV
+request. Existing requests with an explicit show-specific choice keep it.
 
-Choose **Off** to stop future watch-ahead requests. Episodes already created
-remain in Sonarr and in SeerrNG's request history. While the queue remains on,
-SeerrNG may add a missing episode again if it is needed to maintain the selected
-buffer. Episode Queue never deletes downloaded episodes or files.
+When creating a request, leave **Episode Queue** on **Use my default** or pick
+**Off for this show** or a different buffer to override the account default.
+You can change the choice later from the request card in **Requests** or
+**Request Status**. User managers can also manage the default and approval from
+that user's profile settings.
+
+Choose **Off for this show** to stop future watch-ahead requests. Episodes
+already created remain in Sonarr and in SeerrNG's request history. While the
+queue remains on, SeerrNG may add a missing episode again if it is needed to
+maintain the selected buffer. Episode Queue never deletes downloaded episodes
+or files. A user manager can revoke access from the user's profile; this clears
+their active queue settings and stops future additions. Episodes already
+requested remain in Sonarr and in SeerrNG's request history.
 
 ## What SeerrNG does
 
@@ -78,6 +90,8 @@ The request owner can update a request through
 { "episodeCount": 3 }
 ```
 
-Use `episodeCount: 0` to disable future additions. Values from 0 through 5 are
-accepted. Enabling the queue requires a linked account for the configured
-Plex, Jellyfin, or Emby server and a matching Sonarr destination.
+Use `episodeCount: 0` and `useUserDefault: false` to turn the queue off for this
+show. Use `useUserDefault: true` to follow the profile default. Values from 0
+through 5 are accepted. Enabling the queue requires manager approval, a linked
+account for the configured Plex, Jellyfin, or Emby server, and a matching
+Sonarr destination.

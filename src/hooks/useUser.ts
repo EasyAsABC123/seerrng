@@ -57,6 +57,7 @@ export interface UserSettings {
   watchlistSyncBooks?: boolean;
   watchlistSyncComics?: boolean;
   watchlistSyncMagazines?: boolean;
+  episodeQueueDefaultEpisodeCount?: number;
   cardTextVisibilityMovie?: CardTextVisibility;
   cardTextVisibilityTv?: CardTextVisibility;
   cardTextVisibilityAlbum?: CardTextVisibility;

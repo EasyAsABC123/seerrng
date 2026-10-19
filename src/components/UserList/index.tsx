@@ -14,6 +14,7 @@ import {
   type CompactSelectOption,
 } from '@app/components/Discover/FilterPanel/CompactFilterSelect';
 import BulkEditModal from '@app/components/UserList/BulkEditModal';
+import EpisodeQueueApprovalQueue from '@app/components/UserList/EpisodeQueueApprovalQueue';
 import PlexImportModal from '@app/components/UserList/PlexImportModal';
 import TvSeasonWatchGateApprovalQueue from '@app/components/UserList/TvSeasonWatchGateApprovalQueue';
 import useDebouncedState from '@app/hooks/useDebouncedState';
@@ -621,7 +622,10 @@ const UserList = () => {
 
       <Header>{intl.formatMessage(messages.userlist)}</Header>
       {currentHasPermission(Permission.MANAGE_USERS) && (
-        <TvSeasonWatchGateApprovalQueue />
+        <>
+          <EpisodeQueueApprovalQueue />
+          <TvSeasonWatchGateApprovalQueue />
+        </>
       )}
       <article className="app-card-main refreshed-card-surface mt-5 rounded-xl border border-gray-700 p-3 shadow-lg shadow-gray-950/20">
         <div className="text-sm text-gray-300">

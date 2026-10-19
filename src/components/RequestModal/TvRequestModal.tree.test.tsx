@@ -21,6 +21,11 @@ const fixtureState = vi.hoisted(() => ({
   requestServices: [] as string[],
   requestRootFolders: {} as Record<string, string>,
   linkedPlexAccount: false,
+  episodeQueueAccess: {
+    status: 'approved',
+    requestedAt: null,
+    defaultEpisodeCount: 0,
+  },
   sonarrServers: [] as unknown[],
   ready: true,
   mutate: vi.fn(),
@@ -44,13 +49,15 @@ vi.mock('swr', () => ({
     return {
       data: url?.startsWith('/api/v1/tv/')
         ? fixtureState.data
-        : url?.endsWith('/settings/request-root-folders')
-          ? fixtureState.requestRootFolders
-          : url?.endsWith('/quota')
-            ? fixtureState.quota
-            : url === '/api/v1/service/sonarr'
-              ? fixtureState.sonarrServers
-              : undefined,
+        : url?.endsWith('/settings/episode-queue')
+          ? fixtureState.episodeQueueAccess
+          : url?.endsWith('/settings/request-root-folders')
+            ? fixtureState.requestRootFolders
+            : url?.endsWith('/quota')
+              ? fixtureState.quota
+              : url === '/api/v1/service/sonarr'
+                ? fixtureState.sonarrServers
+                : undefined,
     };
   },
   mutate: fixtureState.mutate,
@@ -356,6 +363,11 @@ async function fixture(
   fixtureState.requestServices = [];
   fixtureState.requestRootFolders = {};
   fixtureState.linkedPlexAccount = false;
+  fixtureState.episodeQueueAccess = {
+    status: 'approved',
+    requestedAt: null,
+    defaultEpisodeCount: 0,
+  };
   fixtureState.sonarrServers = [];
   fixtureState.ready = true;
   options.configure?.();
@@ -903,6 +915,46 @@ it('starts a new Episode Queue request with one episode and submits the chosen b
       configure: () => {
         fixtureState.requestPermission = true;
         fixtureState.linkedPlexAccount = true;
+        fixtureState.sonarrServers = [
+          { id: 1, name: 'Sonarr', is4k: false, isDefault: true },
+        ];
+      },
+    }
+  );
+});
+
+it('applies the account Episode Queue default to a new show automatically', async () => {
+  await fixture(
+    async (doc) => {
+      expect(
+        doc.querySelector<HTMLSelectElement>(
+          '[data-testid="tv-watch-ahead-count"]'
+        )?.value
+      ).toBe('-1');
+      expect(
+        doc
+          .querySelector('[data-testid="tree"]')
+          ?.getAttribute('data-selection-mode')
+      ).toBe('single-episode');
+      expect(selections(doc)).toEqual([
+        { seasonNumber: 1, episodeNumbers: [1] },
+      ]);
+      await click(doc, 'modal-ok-button');
+      expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+        '/api/v1/request',
+        expect.objectContaining({
+          seasons: [1],
+          seasonRequests: [{ seasonNumber: 1, episodeNumbers: [1] }],
+          watchAheadEpisodeCount: 3,
+          watchAheadUsesUserDefault: true,
+        })
+      );
+    },
+    {
+      configure: () => {
+        fixtureState.requestPermission = true;
+        fixtureState.linkedPlexAccount = true;
+        fixtureState.episodeQueueAccess.defaultEpisodeCount = 3;
         fixtureState.sonarrServers = [
           { id: 1, name: 'Sonarr', is4k: false, isDefault: true },
         ];

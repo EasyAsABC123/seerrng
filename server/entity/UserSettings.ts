@@ -202,6 +202,9 @@ export class UserSettings {
   @Column({ nullable: true })
   public watchlistSyncMagazines?: boolean;
 
+  @Column({ type: 'integer', default: 0 })
+  public episodeQueueDefaultEpisodeCount = 0;
+
   @Column({ type: 'varchar', nullable: true })
   public cardTextVisibilityMovie?: CardTextVisibility;
 

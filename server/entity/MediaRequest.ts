@@ -9,6 +9,7 @@ import WhisparrAPI from '@server/api/servarr/whisparr';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import type { TmdbKeyword } from '@server/api/themoviedb/interfaces';
+import { EPISODE_QUEUE_ACCESS_STATUS } from '@server/constants/episodeQueueAccess';
 import type { MediaRequestFailureReason } from '@server/constants/media';
 import {
   MediaRequestStatus,
@@ -568,10 +569,13 @@ export class MediaRequest {
       // linked account fields needed for the server-side watch check.
       const requestUserWithPlaybackCredentials = await userRepository
         .createQueryBuilder('user')
+        .leftJoin('user.settings', 'userSettings')
         .addSelect([
           'user.plexToken',
           'user.jellyfinAuthToken',
           'user.jellyfinDeviceId',
+          'userSettings.id',
+          'userSettings.episodeQueueDefaultEpisodeCount',
         ])
         .where('user.id = :requestUserId', { requestUserId: requestUser.id })
         .getOne();
@@ -582,7 +586,13 @@ export class MediaRequest {
       requestUser = requestUserWithPlaybackCredentials;
     }
 
-    const watchAheadEpisodeCount = requestBody.watchAheadEpisodeCount ?? 0;
+    const watchAheadUsesUserDefault =
+      requestBody.watchAheadUsesUserDefault ??
+      (requestBody.watchAheadEpisodeCount === undefined &&
+        requestUser.id === user.id);
+    let watchAheadEpisodeCount = watchAheadUsesUserDefault
+      ? (requestUser.settings?.episodeQueueDefaultEpisodeCount ?? 0)
+      : (requestBody.watchAheadEpisodeCount ?? 0);
     if (
       !Number.isSafeInteger(watchAheadEpisodeCount) ||
       watchAheadEpisodeCount < 0 ||
@@ -593,16 +603,36 @@ export class MediaRequest {
       );
     }
     if (watchAheadEpisodeCount > 0) {
-      if (
+      const eligibilityError =
         requestBody.mediaType !== MediaType.TV ||
-        requestUser.id !== user.id ||
+        requestUser.episodeQueueAccessStatus !==
+          EPISODE_QUEUE_ACCESS_STATUS.APPROVED ||
+        !hasMediaRequestPermission(
+          requestUser,
+          MediaType.TV,
+          Boolean(requestBody.is4k)
+        ) ||
         !hasWatchAheadMediaServerLink(
           requestUser,
           settings.main.mediaServerType
-        )
+        );
+      if (watchAheadUsesUserDefault && eligibilityError) {
+        watchAheadEpisodeCount = 0;
+      } else if (
+        requestBody.mediaType !== MediaType.TV ||
+        (!watchAheadUsesUserDefault && requestUser.id !== user.id) ||
+        eligibilityError
       ) {
         throw new RequestPermissionError(
           'The requested episode queue can only be enabled by the linked owner of a TV request.'
+        );
+      }
+      if (
+        requestBody.seasonRequests?.length !== 1 ||
+        requestBody.seasonRequests[0].episodeNumbers?.length !== 1
+      ) {
+        throw new RequestPermissionError(
+          'Episode Queue requests must specify exactly one starting episode.'
         );
       }
     }
@@ -2664,13 +2694,17 @@ export class MediaRequest {
 
     const resolvedTvdbId = media.tvdbId ?? tvdbId;
     if (
-      (requestBody.watchAheadEpisodeCount ?? 0) > 0 &&
+      watchAheadEpisodeCount > 0 &&
       (!Number.isSafeInteger(Number(resolvedTvdbId)) ||
         Number(resolvedTvdbId) <= 0)
     ) {
-      throw new ServiceConfigurationError(
-        'The requested episode queue requires a valid TVDB identity for this series.'
-      );
+      if (watchAheadUsesUserDefault) {
+        watchAheadEpisodeCount = 0;
+      } else {
+        throw new ServiceConfigurationError(
+          'The requested episode queue requires a valid TVDB identity for this series.'
+        );
+      }
     }
 
     const useAdvancedOptions = canUseAdvancedRequestOptions(user);
@@ -3307,6 +3341,7 @@ export class MediaRequest {
           modifiedBy: autoApproved ? user : undefined,
           is4k: requestBody.is4k,
           watchAheadEpisodeCount,
+          watchAheadUsesUserDefault,
           serverId,
           profileId: profileId,
           rootFolder: rootFolder,
@@ -3470,6 +3505,10 @@ export class MediaRequest {
   /** Number of upcoming unwatched episodes to keep requested automatically. */
   @Column({ type: 'integer', default: 0 })
   public watchAheadEpisodeCount = 0;
+
+  /** Whether the episode count follows the request owner's saved preference. */
+  @Column({ type: 'boolean', default: true })
+  public watchAheadUsesUserDefault = true;
 
   /** Highest episode whose watched state has been handled by watch-ahead. */
   @Column({ type: 'integer', nullable: true })

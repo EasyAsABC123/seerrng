@@ -13,6 +13,7 @@ import type {
   TmdbTvDetails,
 } from '@server/api/themoviedb/interfaces';
 import Tvdb from '@server/api/tvdb';
+import { EPISODE_QUEUE_ACCESS_STATUS } from '@server/constants/episodeQueueAccess';
 import {
   MediaRequestFailureReason,
   MediaRequestStatus,
@@ -496,6 +497,8 @@ describe('PUT /request/:requestId/watch-ahead', () => {
         requestedBy.jellyfinUsername = 'friend';
         requestedBy.plexId = 12345;
         requestedBy.plexUsername = 'friend';
+        requestedBy.episodeQueueAccessStatus =
+          EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
         await userRepository.save(requestedBy);
 
         const media = await getRepository(Media).save(
@@ -564,6 +567,8 @@ describe('PUT /request/:requestId/watch-ahead', () => {
       });
       requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
       requestedBy.jellyfinUsername = 'friend';
+      requestedBy.episodeQueueAccessStatus =
+        EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
       await userRepository.save(requestedBy);
 
       const media = await getRepository(Media).save(
@@ -626,6 +631,8 @@ describe('PUT /request/:requestId/watch-ahead', () => {
       requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
       requestedBy.jellyfinUsername = 'friend';
       requestedBy.permissions = Permission.NONE;
+      requestedBy.episodeQueueAccessStatus =
+        EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
       await userRepository.save(requestedBy);
 
       const media = await getRepository(Media).save(
@@ -681,6 +688,8 @@ describe('PUT /request/:requestId/watch-ahead', () => {
       });
       requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
       requestedBy.jellyfinUsername = 'friend';
+      requestedBy.episodeQueueAccessStatus =
+        EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
       await userRepository.save(requestedBy);
 
       const media = await getRepository(Media).save(
@@ -759,6 +768,8 @@ describe('POST /request with Episode Queue', () => {
       });
       requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
       requestedBy.jellyfinUsername = 'friend';
+      requestedBy.episodeQueueAccessStatus =
+        EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
       await userRepository.save(requestedBy);
 
       const owner = await loginAs('friend@seerr.dev', 'test1234');

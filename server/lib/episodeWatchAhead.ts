@@ -7,6 +7,7 @@ import PlexAPI, {
   type PlexPlaybackSession,
 } from '@server/api/plexapi';
 import SonarrAPI from '@server/api/servarr/sonarr';
+import { EPISODE_QUEUE_ACCESS_STATUS } from '@server/constants/episodeQueueAccess';
 import {
   MediaRequestStatus,
   MediaStatus,
@@ -355,6 +356,7 @@ class EpisodeWatchAhead {
           'media.id',
           'media.tvdbId',
           'requestedBy.id',
+          'requestedBy.episodeQueueAccessStatus',
           'requestedBy.plexId',
           'requestedBy.plexUsername',
           'requestedBy.plexToken',
@@ -362,6 +364,9 @@ class EpisodeWatchAhead {
         ])
         .where('request.type = :type', { type: MediaType.TV })
         .andWhere('request.watchAheadEpisodeCount > 0')
+        .andWhere('requestedBy.episodeQueueAccessStatus = :accessStatus', {
+          accessStatus: EPISODE_QUEUE_ACCESS_STATUS.APPROVED,
+        })
         .andWhere('request.status IN (:...statuses)', {
           statuses: enrollmentStatuses,
         })
@@ -552,6 +557,8 @@ class EpisodeWatchAhead {
             !snapshot ||
             snapshot.type !== MediaType.TV ||
             snapshot.watchAheadEpisodeCount <= 0 ||
+            snapshot.requestedBy.episodeQueueAccessStatus !==
+              EPISODE_QUEUE_ACCESS_STATUS.APPROVED ||
             !enrollmentStatuses.includes(snapshot.status) ||
             !hasMediaRequestPermission(
               snapshot.requestedBy,
@@ -688,6 +695,8 @@ class EpisodeWatchAhead {
         !current ||
         current.type !== MediaType.TV ||
         current.watchAheadEpisodeCount <= 0 ||
+        current.requestedBy.episodeQueueAccessStatus !==
+          EPISODE_QUEUE_ACCESS_STATUS.APPROVED ||
         (current.status !== MediaRequestStatus.APPROVED &&
           current.status !== MediaRequestStatus.COMPLETED) ||
         !hasMediaRequestPermission(
@@ -825,10 +834,13 @@ class EpisodeWatchAhead {
     const requestRepository = getRepository(MediaRequest);
     const current = await requestRepository.findOne({
       where: { id: requestId },
+      relations: { requestedBy: true },
     });
     if (
       !current ||
       current.watchAheadEpisodeCount <= 0 ||
+      current.requestedBy?.episodeQueueAccessStatus !==
+        EPISODE_QUEUE_ACCESS_STATUS.APPROVED ||
       (current.status !== MediaRequestStatus.APPROVED &&
         current.status !== MediaRequestStatus.COMPLETED)
     ) {

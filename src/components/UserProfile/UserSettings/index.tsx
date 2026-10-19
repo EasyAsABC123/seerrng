@@ -24,6 +24,7 @@ const messages = defineMessages('components.UserProfile.UserSettings', {
   menuPermissions: 'Permissions',
   menuMaturityControls: 'Maturity Controls',
   menuTvRequestAccess: 'TV Season Rule',
+  menuEpisodeQueue: 'Episode Queue',
   menuAdvancedTheme: 'Advanced Theme',
   unauthorizedDescription:
     "You do not have permission to modify this user's settings.",
@@ -102,6 +103,11 @@ const UserSettings = ({ children }: UserSettingsProps) => {
       text: intl.formatMessage(messages.menuTvRequestAccess),
       route: '/settings/tv-request-access',
       regex: /\/settings\/tv-request-access/,
+    },
+    {
+      text: intl.formatMessage(messages.menuEpisodeQueue),
+      route: '/settings/episode-queue',
+      regex: /\/settings\/episode-queue/,
     },
     {
       text: intl.formatMessage(messages.menuAdvancedTheme),

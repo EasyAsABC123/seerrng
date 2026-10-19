@@ -42,6 +42,7 @@ import {
   MediaStatus,
   MediaType,
 } from '@server/constants/media';
+import type { EpisodeQueueAccessResponse } from '@server/interfaces/api/userSettingsInterfaces';
 import type { TvDetails as TvDetailsType } from '@server/models/Tv';
 import axios, { type AxiosError } from 'axios';
 import dynamic from 'next/dynamic';
@@ -86,6 +87,11 @@ const messages = defineMessages('components.TvDetails', {
   addtowatchlist: 'Add To Watchlist',
   franchise: 'Franchise',
   selectToPlay: 'No playable episodes are currently available.',
+  episodeQueueSetup: 'Set Episode Queue default',
+  episodeQueuePending: 'Episode Queue · waiting for approval',
+  episodeQueueOff: 'Episode Queue · off',
+  episodeQueueDefault: 'Episode Queue · {count} episode by default',
+  episodeQueueDefaultPlural: 'Episode Queue · {count} episodes by default',
 });
 
 interface TvDetailsProps {
@@ -149,6 +155,9 @@ const TvDetails = ({
   });
   const { data: ratingData, isValidating: ratingsLoading } =
     useSWR<RatingResponse>(tvId ? `/api/v1/tv/${tvId}/ratingscombined` : null);
+  const { data: episodeQueueAccess } = useSWR<EpisodeQueueAccessResponse>(
+    user?.id ? `/api/v1/user/${user.id}/settings/episode-queue` : null
+  );
   const sortedCrew = useMemo(
     () => sortCrewPriority(data?.credits.crew ?? []),
     [data]
@@ -556,6 +565,29 @@ const TvDetails = ({
 
   const secondaryActions = (
     <>
+      {user && (
+        <Button
+          as="a"
+          href="/profile/settings/episode-queue"
+          buttonType="ghost"
+          buttonSize="sm"
+          title={intl.formatMessage(messages.episodeQueueSetup)}
+        >
+          {episodeQueueAccess?.status === 'pending'
+            ? intl.formatMessage(messages.episodeQueuePending)
+            : episodeQueueAccess?.status === 'approved' &&
+                episodeQueueAccess.defaultEpisodeCount > 0
+              ? intl.formatMessage(
+                  episodeQueueAccess.defaultEpisodeCount === 1
+                    ? messages.episodeQueueDefault
+                    : messages.episodeQueueDefaultPlural,
+                  { count: episodeQueueAccess.defaultEpisodeCount }
+                )
+              : episodeQueueAccess?.status === 'approved'
+                ? intl.formatMessage(messages.episodeQueueOff)
+                : intl.formatMessage(messages.episodeQueueSetup)}
+        </Button>
+      )}
       {isAnime && !embedded && (
         <>
           <ContinuationButton

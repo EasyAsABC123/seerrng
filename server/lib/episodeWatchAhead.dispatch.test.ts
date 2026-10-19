@@ -1,5 +1,6 @@
 import JellyfinAPI, { type JellyfinSession } from '@server/api/jellyfin';
 import SonarrAPI from '@server/api/servarr/sonarr';
+import { EPISODE_QUEUE_ACCESS_STATUS } from '@server/constants/episodeQueueAccess';
 import {
   MediaRequestStatus,
   MediaStatus,
@@ -76,6 +77,7 @@ describe('Episode Queue playback reconciliation', () => {
     });
     requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
     requestedBy.jellyfinUsername = 'friend';
+    requestedBy.episodeQueueAccessStatus = EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
     await getRepository(User).save(requestedBy);
 
     const media = await getRepository(Media).save(

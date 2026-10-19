@@ -1,3 +1,4 @@
+import type { EpisodeQueueAccessStatus } from '@server/constants/episodeQueueAccess';
 import { MediaRequestStatus, MediaType } from '@server/constants/media';
 import type { TvSeasonWatchGateStatus } from '@server/constants/tvSeasonWatchGate';
 import { UserType } from '@server/constants/user';
@@ -91,6 +92,8 @@ export class User {
     'linkedAccounts',
     'tvSeasonWatchGateStatus',
     'tvSeasonWatchGateRequestedAt',
+    'episodeQueueAccessStatus',
+    'episodeQueueAccessRequestedAt',
   ];
 
   static readonly credentialFields: (keyof User)[] = [
@@ -276,6 +279,12 @@ export class User {
 
   @DbAwareColumn({ type: 'datetime', nullable: true })
   public tvSeasonWatchGateRequestedAt?: Date | null;
+
+  @Column({ type: 'varchar', length: 16, default: 'off' })
+  public episodeQueueAccessStatus: EpisodeQueueAccessStatus = 'off';
+
+  @DbAwareColumn({ type: 'datetime', nullable: true })
+  public episodeQueueAccessRequestedAt?: Date | null;
 
   @Column({ nullable: true })
   public adultQuotaLimit?: number;
