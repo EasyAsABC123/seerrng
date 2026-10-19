@@ -2302,34 +2302,16 @@ components:
           nullable: true
     EpisodeQueueAccess:
       type: object
-      required: [status, requestedAt, defaultEpisodeCount]
+      required: [status, defaultEpisodeCount]
       properties:
         status:
           type: string
-          enum: [off, pending, approved, denied]
-        requestedAt:
-          type: string
-          format: date-time
-          nullable: true
+          enum: [off, approved]
         defaultEpisodeCount:
           type: integer
           minimum: 0
           maximum: 5
-          description: Account-wide default queue length. Updates existing TV requests that have not been overridden per show.
-    EpisodeQueueApprovalRequest:
-      type: object
-      required: [id, displayName, avatar, requestedAt]
-      properties:
-        id:
-          type: integer
-        displayName:
-          type: string
-        avatar:
-          type: string
-        requestedAt:
-          type: string
-          format: date-time
-          nullable: true
+          description: Administrator-controlled default queue length for all of this user's current and future TV requests.
     UserSettings:
       type: object
       properties:
@@ -14555,8 +14537,8 @@ paths:
           description: User not found
   /user/{userId}/settings/episode-queue:
     get:
-      summary: Get Episode Queue access and account default
-      description: Returns the signed-in user's access and default, or another user's state for callers with `MANAGE_USERS` permission.
+      summary: Get a user's Episode Queue default
+      description: Returns the signed-in user's administrator-controlled default, or another user's default for callers with `MANAGE_USERS` or `MANAGE_REQUESTS` permission.
       tags: [users]
       parameters:
         - in: path
@@ -14567,18 +14549,18 @@ paths:
             minimum: 1
       responses:
         '200':
-          description: Access status and account-wide queue default
+          description: Administrator-controlled Episode Queue default
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/EpisodeQueueAccess'
         '403':
-          description: Caller may not view this user's access state
+          description: Caller may not view this user's Episode Queue default
         '404':
           description: User not found
     post:
-      summary: Request or update Episode Queue preferences
-      description: Users can request or cancel approval. After approval, users can set a default queue length for all existing and future shows; a user manager can also set that user's default from their profile.
+      summary: Set a user's Episode Queue default
+      description: Requires `MANAGE_USERS`. Applies the selected default to all of the user's current and future TV requests. End users cannot request access or override the default per show.
       tags: [users]
       parameters:
         - in: path
@@ -14594,18 +14576,15 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [action]
+              required: [defaultEpisodeCount]
               properties:
-                action:
-                  type: string
-                  enum: [request, cancel, set-default]
                 defaultEpisodeCount:
                   type: integer
                   minimum: 0
                   maximum: 5
       responses:
         '200':
-          description: Updated Episode Queue access and preference
+          description: Updated Episode Queue default
           content:
             application/json:
               schema:
@@ -14613,64 +14592,9 @@ paths:
         '400':
           description: Invalid action or default queue length
         '403':
-          description: Caller may not update this user's Episode Queue settings
-        '404':
-          description: User not found
-        '409':
-          description: Approval or request state does not allow this action
-  /user/{userId}/settings/episode-queue/review:
-    post:
-      summary: Approve, decline, or revoke Episode Queue access
-      description: Requires `MANAGE_USERS`. Managers cannot review their own request. Revoking access stops future queue additions and clears the saved default.
-      tags: [users]
-      parameters:
-        - in: path
-          name: userId
-          required: true
-          schema:
-            type: integer
-            minimum: 1
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [decision]
-              properties:
-                decision:
-                  type: string
-                  enum: [approve, deny, revoke]
-      responses:
-        '200':
-          description: Reviewed Episode Queue access
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EpisodeQueueAccess'
-        '403':
-          description: Caller lacks permission or is reviewing their own request
-        '404':
-          description: User not found
-        '409':
-          description: The access request is not in a reviewable state
-  /user/episode-queue-requests:
-    get:
-      summary: List pending Episode Queue access requests
-      description: Requires `MANAGE_USERS`. Returns all pending requests, oldest first.
-      tags: [users]
-      responses:
-        '200':
-          description: Pending Episode Queue access requests
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EpisodeQueueApprovalRequest'
-        '403':
           description: Caller lacks user management permission
+        '404':
+          description: User not found
   /user/{userId}/settings/tv-season-watch-gate:
     get:
       summary: Get TV season watch requirement access
@@ -19278,6 +19202,8 @@ paths:
         If the user has an applicable auto-approval permission, their request will normally be approved automatically. A request that exceeds their movie or TV quota and sets `requestQuotaApproval` remains pending for administrator review instead.
 
         The requester may set `requestQuotaApproval: true` for their own movie or TV request when it exceeds their quota. Only one quota exception per media type can await review for a user. Pending exceptions count against quota until an administrator approves them; approved exceptions are excluded from future quota usage. Bulk, automated, and on-behalf requests cannot use this path.
+
+        TV Episode Queue is applied from the request owner's administrator-managed profile default. Per-request Episode Queue values are not accepted.
       tags:
         - request
       requestBody:
@@ -19286,6 +19212,10 @@ paths:
           application/json:
             schema:
               type: object
+              not:
+                anyOf:
+                  - required: [watchAheadEpisodeCount]
+                  - required: [watchAheadUsesUserDefault]
               properties:
                 mediaType:
                   type: string
@@ -19313,14 +19243,6 @@ paths:
                   description: Exact season and episode selections. Omit episodeNumbers to request an entire season.
                   items:
                     $ref: '#/components/schemas/SeasonEpisodeSelection'
-                watchAheadEpisodeCount:
-                  type: integer
-                  minimum: 0
-                  maximum: 5
-                  description: Optional Episode Queue buffer for the requesting user's Plex, Jellyfin, or Emby playback. On create, seasonRequests must specify exactly one starting episode; edits preserve existing selections.
-                watchAheadUsesUserDefault:
-                  type: boolean
-                  description: When true, use the request owner's saved Episode Queue default. When false, watchAheadEpisodeCount is a show-specific override.
                 is4k:
                   type: boolean
                   example: false
@@ -19391,7 +19313,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MediaRequest'
         '403':
-          description: Request permission denied or quota exceeded without an approval request
+          description: Request permission denied, quota exceeded without approval, or a per-request Episode Queue value was supplied
         '409':
           description: Another quota exception for this media type is already awaiting review
   /request/bulk:
@@ -20919,7 +20841,7 @@ paths:
                 $ref: '#/components/schemas/MediaRequest'
     put:
       summary: Update MediaRequest
-      description: Updates a specific media request and returns the request in a JSON object. Requires the `MANAGE_REQUESTS` permission.
+      description: Updates a specific media request and returns the request in a JSON object. Requires the `MANAGE_REQUESTS` permission. Episode Queue settings remain controlled by the request owner's profile default.
       tags:
         - request
       parameters:
@@ -20936,6 +20858,10 @@ paths:
           application/json:
             schema:
               type: object
+              not:
+                anyOf:
+                  - required: [watchAheadEpisodeCount]
+                  - required: [watchAheadUsesUserDefault]
               properties:
                 mediaType:
                   type: string
@@ -20945,14 +20871,6 @@ paths:
                   items:
                     type: number
                     minimum: 0
-                watchAheadEpisodeCount:
-                  type: integer
-                  minimum: 0
-                  maximum: 5
-                  description: Episode Queue buffer for the request owner's Plex, Jellyfin, or Emby playback.
-                watchAheadUsesUserDefault:
-                  type: boolean
-                  description: When true, use the request owner's saved Episode Queue default. When false, watchAheadEpisodeCount is a show-specific override.
                 is4k:
                   type: boolean
                   example: false
@@ -21015,49 +20933,6 @@ paths:
       responses:
         '204':
           description: Succesfully removed request
-  /request/{requestId}/watch-ahead:
-    put:
-      summary: Update the TV Episode Queue
-      description: |
-        Sets the number of upcoming episodes to keep requested for a TV request as the owner watches in Plex, Jellyfin, or Emby. Only the request owner can enable or change the buffer; setting episodeCount to 0 disables future Episode Queue additions.
-      tags:
-        - request
-      parameters:
-        - in: path
-          name: requestId
-          description: TV request ID
-          required: true
-          schema:
-            type: string
-            example: '1'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [episodeCount]
-              properties:
-                episodeCount:
-                  type: integer
-                  minimum: 0
-                  maximum: 5
-      responses:
-        '200':
-          description: Updated TV request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MediaRequest'
-        '400':
-          description: The request is not eligible for watch-ahead
-        '403':
-          description: Only the request owner can enable watch-ahead
-        '404':
-          description: Request not found
-        '409':
-          description: Jellyfin or Sonarr is not configured, the series has no TVDB identity, or the request cannot be enrolled
   /request/{requestId}/fail-download:
     post:
       summary: Fail an active request download and search again

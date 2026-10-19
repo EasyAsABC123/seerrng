@@ -23,6 +23,7 @@ import { MediaSearchMetadata } from '@server/entity/MediaSearchMetadata';
 import Season from '@server/entity/Season';
 import SeasonRequest from '@server/entity/SeasonRequest';
 import { User } from '@server/entity/User';
+import { UserSettings } from '@server/entity/UserSettings';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import { TvSeasonWatchGateError } from '@server/lib/tvSeasonWatchGate';
@@ -574,6 +575,78 @@ describe('MediaRequest.request', () => {
       watchStatus.mock.restore();
       settings.main.tvSeasonWatchGateEnabled = previousGateSetting;
       settings.main.mediaServerType = previousMediaServerType;
+    }
+  });
+
+  it('keeps the user default on interactive requests while the media account is unlinked and excludes auto-requests', async () => {
+    const settings = getSettings();
+    const previousSonarr = settings.sonarr;
+    settings.sonarr = [
+      {
+        id: 32,
+        name: 'Episode Queue Sonarr',
+        hostname: 'sonarr.local',
+        port: 8989,
+        apiKey: 'test-key',
+        useSsl: false,
+        activeProfileId: 6,
+        activeProfileName: 'HD',
+        activeLanguageProfileId: 1,
+        activeDirectory: '/tv',
+        tags: [],
+        is4k: false,
+        isDefault: true,
+        syncEnabled: true,
+        preventSearch: false,
+        tagRequests: false,
+        seriesType: 'standard',
+        animeSeriesType: 'anime',
+        enableSeasonFolders: true,
+        monitorNewItems: 'all',
+        overrideRule: [],
+      },
+    ];
+
+    try {
+      const requester = await createRequester(
+        'episode-queue-default@seerr.dev',
+        Permission.REQUEST | Permission.REQUEST_TV
+      );
+      requester.settings = new UserSettings({ user: requester });
+      requester.settings.episodeQueueDefaultEpisodeCount = 3;
+      requester.episodeQueueAccessStatus = 'approved';
+      await getRepository(User).save(requester);
+
+      const interactiveRequest = await MediaRequest.request(
+        {
+          mediaId: 77801,
+          tvdbId: 177801,
+          mediaType: MediaType.TV,
+          is4k: false,
+          seasons: [1],
+          seasonRequests: [{ seasonNumber: 1, episodeNumbers: [1] }],
+        },
+        requester
+      );
+      assert.equal(interactiveRequest.watchAheadEpisodeCount, 3);
+      assert.equal(interactiveRequest.watchAheadUsesUserDefault, true);
+
+      const automaticRequest = await MediaRequest.request(
+        {
+          mediaId: 77802,
+          tvdbId: 177802,
+          mediaType: MediaType.TV,
+          is4k: false,
+          seasons: 'all',
+        },
+        requester,
+        { isAutoRequest: true }
+      );
+      assert.equal(automaticRequest.isAutoRequest, true);
+      assert.equal(automaticRequest.watchAheadEpisodeCount, 0);
+      assert.equal(automaticRequest.watchAheadUsesUserDefault, true);
+    } finally {
+      settings.sonarr = previousSonarr;
     }
   });
 

@@ -21,8 +21,9 @@ describe('request status routes behind the OpenAPI validator', () => {
     app.delete('/api/v1/request/:requestId/status', (_req, res) =>
       res.status(204).send()
     );
-    app.put('/api/v1/request/:requestId/watch-ahead', (_req, res) =>
-      res.status(200).json({})
+    app.post('/api/v1/request', (req, res) => res.status(201).json(req.body));
+    app.put('/api/v1/request/:requestId', (req, res) =>
+      res.status(200).json(req.body)
     );
     app.post('/api/v1/request/:requestId/retry', (_req, res) =>
       res.status(200).json({})
@@ -75,20 +76,36 @@ describe('request status routes behind the OpenAPI validator', () => {
     assert.strictEqual(response.status, 204);
   });
 
-  it('allows an integer watch-ahead buffer through the request contract', async () => {
+  it('rejects per-request Episode Queue settings on creation', async () => {
+    const response = await request(createValidatedApp())
+      .post('/api/v1/request')
+      .send({
+        mediaType: 'tv',
+        mediaId: 31,
+        seasons: [1],
+        watchAheadEpisodeCount: 3,
+      });
+
+    assert.strictEqual(response.status, 400);
+  });
+
+  it('rejects per-request Episode Queue settings on updates', async () => {
+    const response = await request(createValidatedApp())
+      .put('/api/v1/request/31')
+      .send({
+        mediaType: 'tv',
+        watchAheadUsesUserDefault: false,
+      });
+
+    assert.strictEqual(response.status, 400);
+  });
+
+  it('removes the per-request Episode Queue endpoint', async () => {
     const response = await request(createValidatedApp())
       .put('/api/v1/request/31/watch-ahead')
       .send({ episodeCount: 3 });
 
-    assert.strictEqual(response.status, 200, JSON.stringify(response.body));
-  });
-
-  it('rejects a watch-ahead buffer above the supported limit', async () => {
-    const response = await request(createValidatedApp())
-      .put('/api/v1/request/31/watch-ahead')
-      .send({ episodeCount: 6 });
-
-    assert.strictEqual(response.status, 400);
+    assert.ok([404, 405].includes(response.status));
   });
 
   it('allows the explicit season-zero TVDB mapping retry body', async () => {

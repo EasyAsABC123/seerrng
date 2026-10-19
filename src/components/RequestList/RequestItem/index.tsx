@@ -14,7 +14,6 @@ import { canRetryRequest } from '@app/components/RequestCard/retryPermissions';
 import RequestFailureDetails from '@app/components/RequestFailureDetails';
 import StatusBadge from '@app/components/StatusBadge';
 import useDeepLinks from '@app/hooks/useDeepLinks';
-import useSettings from '@app/hooks/useSettings';
 import useToasts from '@app/hooks/useToasts';
 import { Permission, useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
@@ -32,7 +31,6 @@ import {
   getRequestFailureInfo,
 } from '@app/utils/requestFailure';
 import { isActiveSeasonRequest } from '@app/utils/tvRequestSelection';
-import { hasLinkedWatchAheadAccount } from '@app/utils/watchAhead';
 import {
   ArrowPathIcon,
   CheckIcon,
@@ -48,8 +46,6 @@ import {
 import type { MediaRequest } from '@server/entity/MediaRequest';
 import type { NonFunctionProperties } from '@server/interfaces/api/common';
 import type { RequestResultsResponse } from '@server/interfaces/api/requestInterfaces';
-import type { ServiceCommonServer } from '@server/interfaces/api/serviceInterfaces';
-import type { EpisodeQueueAccessResponse } from '@server/interfaces/api/userSettingsInterfaces';
 import type { BookDetails } from '@server/models/Book';
 import type { ComicDetails } from '@server/models/Comic';
 import type { MagazineDetails } from '@server/models/Magazine';
@@ -60,7 +56,7 @@ import type { TvDetails } from '@server/models/Tv';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { FormattedRelativeTime, useIntl } from 'react-intl';
 import useSWR, { mutate } from 'swr';
@@ -100,19 +96,8 @@ const messages = defineMessages('components.RequestList.RequestItem', {
   both: 'Both',
   partialBookService: 'Partial Bookshelf link',
   overQuota: 'Over quota',
-  watchAheadTitle: 'Episode Queue',
-  watchAheadDescription:
-    'SeerrNG follows your linked Plex, Jellyfin, or Emby playback and keeps up to {count} upcoming episodes requested in Sonarr after approval. Your account default applies across shows; choose a show-specific value to override it. Episodes use the parent approval and do not count against your request quota. Turning it off stops future additions but does not cancel episodes already requested.',
-  watchAheadOff: 'Off',
-  watchAheadOffForShow: 'Off for this show',
-  watchAheadDefault: 'Use my default ({count})',
-  watchAheadSetup: 'Set up Episode Queue',
-  watchAheadEpisodes: '{count, plural, one {# episode} other {# episodes}}',
-  saveWatchAhead: 'Save',
-  stopWatchAhead: 'Stop',
-  watchAheadSaved: 'Requested episode queue updated.',
-  watchAheadSaveError:
-    'Could not update the requested episode queue. Check that your media server and Sonarr are connected.',
+  watchAheadAssigned:
+    'Episode Queue · {count, plural, one {# episode} other {# episodes}} by administrator',
   watchAheadEpisodeBadge: 'Auto-Queued',
   watchAheadEpisodeBadgeTooltip:
     'Automatically requested by the Episode Queue as playback progressed.',
@@ -605,16 +590,8 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
   const { addToast } = useToasts();
   const intl = useIntl();
   const { user, hasPermission } = useUser();
-  const { currentSettings } = useSettings();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSeasonMappingModal, setShowSeasonMappingModal] = useState(false);
-  const [watchAheadEpisodeCount, setWatchAheadEpisodeCount] = useState(
-    request.watchAheadEpisodeCount ?? 0
-  );
-  const [watchAheadUsesUserDefault, setWatchAheadUsesUserDefault] = useState(
-    request.watchAheadUsesUserDefault ?? true
-  );
-  const [savingWatchAhead, setSavingWatchAhead] = useState(false);
   const bookId =
     request.type === 'book' ? getNormalizedBookId(request) : undefined;
   const musicId =
@@ -641,12 +618,6 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
                   ? `/api/v1/sportarr/${encodeApiPathSegment(sportarrId)}`
                   : null;
   const { data: title, error } = useSWR<RequestItemTitle>(inView ? url : null);
-  const { data: sonarrServers } = useSWR<ServiceCommonServer[]>(
-    '/api/v1/service/sonarr'
-  );
-  const { data: episodeQueueAccess } = useSWR<EpisodeQueueAccessResponse>(
-    user?.id ? `/api/v1/user/${user.id}/settings/episode-queue` : null
-  );
   const { data: requestData, mutate: revalidate } = useSWR<
     NonFunctionProperties<MediaRequest>
   >(`/api/v1/request/${request.id}`, {
@@ -698,28 +669,6 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
     })
   );
 
-  const defaultWatchAheadEpisodeCount =
-    episodeQueueAccess?.defaultEpisodeCount ?? 0;
-  const savedWatchAheadUsesUserDefault =
-    requestData?.watchAheadUsesUserDefault ?? true;
-  const savedWatchAheadEpisodeCount = savedWatchAheadUsesUserDefault
-    ? defaultWatchAheadEpisodeCount
-    : (requestData?.watchAheadEpisodeCount ?? 0);
-
-  useEffect(() => {
-    const usesUserDefault = requestData?.watchAheadUsesUserDefault ?? true;
-    setWatchAheadUsesUserDefault(usesUserDefault);
-    setWatchAheadEpisodeCount(
-      usesUserDefault
-        ? defaultWatchAheadEpisodeCount
-        : (requestData?.watchAheadEpisodeCount ?? 0)
-    );
-  }, [
-    defaultWatchAheadEpisodeCount,
-    requestData?.watchAheadEpisodeCount,
-    requestData?.watchAheadUsesUserDefault,
-  ]);
-
   const [isRetrying, setRetrying] = useState(false);
   const [updatingType, setUpdatingType] = useState<
     'approve' | 'decline' | null
@@ -729,28 +678,6 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
       ? hasBookFormat(requestData, 'ebook') !==
         hasBookFormat(requestData, 'audiobook')
       : false;
-  const matchingSonarr =
-    requestData?.serverId != null
-      ? sonarrServers?.find(
-          (server) =>
-            server.id === requestData.serverId &&
-            server.is4k === requestData.is4k
-        )
-      : sonarrServers?.find(
-          (server) => server.isDefault && server.is4k === requestData?.is4k
-        );
-  const canEnableWatchAhead =
-    episodeQueueAccess?.status === 'approved' &&
-    hasLinkedWatchAheadAccount(user, currentSettings.mediaServerType) &&
-    Number.isSafeInteger(Number(requestData?.media.tvdbId)) &&
-    Number(requestData?.media.tvdbId) > 0 &&
-    Boolean(matchingSonarr) &&
-    hasPermission(
-      requestData?.is4k
-        ? [Permission.REQUEST_4K, Permission.REQUEST_4K_TV]
-        : [Permission.REQUEST, Permission.REQUEST_TV],
-      { type: 'or' }
-    );
   const removableBookFormat =
     requestData?.type === 'book' && requestData.bookFormat === 'both'
       ? hasPartialBookService
@@ -831,31 +758,6 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
       });
     } finally {
       setRetrying(false);
-    }
-  };
-
-  const saveWatchAhead = async () => {
-    setSavingWatchAhead(true);
-    try {
-      await axios.put(`/api/v1/request/${request.id}/watch-ahead`, {
-        episodeCount: watchAheadUsesUserDefault
-          ? defaultWatchAheadEpisodeCount
-          : watchAheadEpisodeCount,
-        useUserDefault: watchAheadUsesUserDefault,
-      });
-      revalidate();
-      revalidateList();
-      addToast(intl.formatMessage(messages.watchAheadSaved), {
-        autoDismiss: true,
-        appearance: 'success',
-      });
-    } catch {
-      addToast(intl.formatMessage(messages.watchAheadSaveError), {
-        autoDismiss: true,
-        appearance: 'error',
-      });
-    } finally {
-      setSavingWatchAhead(false);
     }
   };
 
@@ -1367,105 +1269,13 @@ const RequestItem = ({ request, revalidateList }: RequestItemProps) => {
           {requestData.type === 'tv' &&
             !requestData.watchAheadParentRequestId &&
             requestData.requestedBy.id === user?.id &&
-            episodeQueueAccess?.status !== 'approved' && (
-              <Button
-                as="a"
-                href="/profile/settings/episode-queue"
-                buttonType="ghost"
-                buttonSize="sm"
-                className="w-full"
-              >
-                {intl.formatMessage(messages.watchAheadSetup)}
-              </Button>
-            )}
-          {requestData.type === 'tv' &&
-            !requestData.watchAheadParentRequestId &&
-            requestData.requestedBy.id === user?.id &&
-            ((requestData.status !== MediaRequestStatus.DECLINED &&
-              requestData.status !== MediaRequestStatus.FAILED) ||
-              savedWatchAheadEpisodeCount > 0) &&
-            (canEnableWatchAhead || savedWatchAheadEpisodeCount > 0) && (
-              <div className="w-full rounded-md border border-indigo-500/40 bg-indigo-950/30 p-2 text-left">
-                <label
-                  htmlFor={`request-watch-ahead-${requestData.id}`}
-                  className="block text-xs font-semibold text-gray-100"
-                >
-                  {intl.formatMessage(messages.watchAheadTitle)}
-                </label>
-                <select
-                  id={`request-watch-ahead-${requestData.id}`}
-                  className="request-form-control mt-1 w-full rounded-md border px-2 py-1 text-xs"
-                  value={
-                    watchAheadUsesUserDefault ? -1 : watchAheadEpisodeCount
-                  }
-                  onChange={(event) => {
-                    const selection = Number(event.target.value);
-                    const usesUserDefault = selection === -1;
-                    setWatchAheadUsesUserDefault(usesUserDefault);
-                    setWatchAheadEpisodeCount(
-                      usesUserDefault
-                        ? defaultWatchAheadEpisodeCount
-                        : selection
-                    );
-                  }}
-                  disabled={savingWatchAhead}
-                >
-                  <option value={-1}>
-                    {intl.formatMessage(messages.watchAheadDefault, {
-                      count:
-                        defaultWatchAheadEpisodeCount === 0
-                          ? intl.formatMessage(messages.watchAheadOff)
-                          : intl.formatMessage(messages.watchAheadEpisodes, {
-                              count: defaultWatchAheadEpisodeCount,
-                            }),
-                    })}
-                  </option>
-                  <option value={0}>
-                    {intl.formatMessage(messages.watchAheadOffForShow)}
-                  </option>
-                  {!canEnableWatchAhead && savedWatchAheadEpisodeCount > 0 && (
-                    <option value={savedWatchAheadEpisodeCount} disabled>
-                      {intl.formatMessage(messages.watchAheadEpisodes, {
-                        count: savedWatchAheadEpisodeCount,
-                      })}
-                    </option>
-                  )}
-                  {canEnableWatchAhead &&
-                    [1, 2, 3, 4, 5].map((count) => (
-                      <option key={count} value={count}>
-                        {intl.formatMessage(messages.watchAheadEpisodes, {
-                          count,
-                        })}
-                      </option>
-                    ))}
-                </select>
-                <p className="mt-1 text-[11px] leading-snug text-gray-300">
-                  {intl.formatMessage(messages.watchAheadDescription, {
-                    count: watchAheadEpisodeCount,
+            (requestData.watchAheadEpisodeCount ?? 0) > 0 && (
+              <div className="w-full text-left">
+                <Badge badgeType="success">
+                  {intl.formatMessage(messages.watchAheadAssigned, {
+                    count: requestData.watchAheadEpisodeCount,
                   })}
-                </p>
-                <Button
-                  className="mt-2 w-full"
-                  buttonSize="sm"
-                  buttonType={
-                    watchAheadEpisodeCount === 0 ? 'danger' : 'primary'
-                  }
-                  disabled={
-                    savingWatchAhead ||
-                    (watchAheadEpisodeCount === savedWatchAheadEpisodeCount &&
-                      watchAheadUsesUserDefault ===
-                        savedWatchAheadUsesUserDefault)
-                  }
-                  onClick={saveWatchAhead}
-                >
-                  {savingWatchAhead
-                    ? intl.formatMessage(globalMessages.saving)
-                    : intl.formatMessage(
-                        watchAheadEpisodeCount === 0
-                          ? messages.stopWatchAhead
-                          : messages.saveWatchAhead
-                      )}
-                </Button>
+                </Badge>
               </div>
             )}
           {requestData.status === MediaRequestStatus.FAILED && canRetry && (

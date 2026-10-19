@@ -14,7 +14,6 @@ import {
   type CompactSelectOption,
 } from '@app/components/Discover/FilterPanel/CompactFilterSelect';
 import BulkEditModal from '@app/components/UserList/BulkEditModal';
-import EpisodeQueueApprovalQueue from '@app/components/UserList/EpisodeQueueApprovalQueue';
 import PlexImportModal from '@app/components/UserList/PlexImportModal';
 import TvSeasonWatchGateApprovalQueue from '@app/components/UserList/TvSeasonWatchGateApprovalQueue';
 import useDebouncedState from '@app/hooks/useDebouncedState';
@@ -113,6 +112,8 @@ const messages = defineMessages('components.UserList', {
   descending: 'descending',
   localLoginDisabled:
     'The <strong>Enable Local Sign-In</strong> setting is currently disabled.',
+  episodeQueueAdminHint:
+    'Only user managers can set Episode Queue. Open a user profile, choose Episode Queue, and set the default for all of that user’s interactive TV requests.',
 });
 
 type Sort = 'created' | 'requests' | 'displayname' | 'usertype' | 'role';
@@ -623,7 +624,12 @@ const UserList = () => {
       <Header>{intl.formatMessage(messages.userlist)}</Header>
       {currentHasPermission(Permission.MANAGE_USERS) && (
         <>
-          <EpisodeQueueApprovalQueue />
+          <div className="mt-5">
+            <Alert
+              type="info"
+              title={intl.formatMessage(messages.episodeQueueAdminHint)}
+            />
+          </div>
           <TvSeasonWatchGateApprovalQueue />
         </>
       )}

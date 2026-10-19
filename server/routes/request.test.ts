@@ -13,7 +13,6 @@ import type {
   TmdbTvDetails,
 } from '@server/api/themoviedb/interfaces';
 import Tvdb from '@server/api/tvdb';
-import { EPISODE_QUEUE_ACCESS_STATUS } from '@server/constants/episodeQueueAccess';
 import {
   MediaRequestFailureReason,
   MediaRequestStatus,
@@ -476,329 +475,43 @@ function replacePrototypeMethod(
   });
 }
 
-describe('PUT /request/:requestId/watch-ahead', () => {
-  for (const [serverName, mediaServerType] of [
-    ['Plex', MediaServerType.PLEX],
-    ['Jellyfin', MediaServerType.JELLYFIN],
-    ['Emby', MediaServerType.EMBY],
-  ] as const) {
-    it(`allows the linked request owner to enable and disable their TV buffer with ${serverName}`, async () => {
-      const settings = getSettings();
-      const previousMediaServerType = settings.main.mediaServerType;
-      settings.main.mediaServerType = mediaServerType;
-      configureSonarr([{}]);
-
-      try {
-        const userRepository = getRepository(User);
-        const requestedBy = await userRepository.findOneOrFail({
-          where: { email: 'friend@seerr.dev' },
-        });
-        requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
-        requestedBy.jellyfinUsername = 'friend';
-        requestedBy.plexId = 12345;
-        requestedBy.plexUsername = 'friend';
-        requestedBy.episodeQueueAccessStatus =
-          EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
-        await userRepository.save(requestedBy);
-
-        const media = await getRepository(Media).save(
-          new Media({
-            mediaType: MediaType.TV,
-            tmdbId: 765432,
-            tvdbId: 123456,
-            status: MediaStatus.UNKNOWN,
-            status4k: MediaStatus.UNKNOWN,
-          })
-        );
-        const tvRequest = await getRepository(MediaRequest).save(
-          new MediaRequest({
-            type: MediaType.TV,
-            status: MediaRequestStatus.APPROVED,
-            media,
-            requestedBy,
-            is4k: false,
-            serverId: 0,
-            seasons: [],
-          })
-        );
-
-        const owner = await loginAs('friend@seerr.dev', 'test1234');
-        const enabled = await owner
-          .put(`/request/${tvRequest.id}/watch-ahead`)
-          .send({ episodeCount: 3 });
-        assert.strictEqual(enabled.status, 200);
-        assert.strictEqual(enabled.body.watchAheadEpisodeCount, 3);
-
-        const disabled = await owner
-          .put(`/request/${tvRequest.id}/watch-ahead`)
-          .send({ episodeCount: 0 });
-        assert.strictEqual(disabled.status, 200);
-        assert.strictEqual(disabled.body.watchAheadEpisodeCount, 0);
-
-        const queueHistory = (
-          await getRepository(MediaRequestStatusEvent).find({
-            where: { requestId: tvRequest.id },
-            order: { id: 'ASC' },
-          })
-        ).filter((event) => event.message?.startsWith('Episode queue changed'));
-        assert.deepEqual(
-          queueHistory.map((event) => event.message),
-          [
-            'Episode queue changed from Off to 3 episodes.',
-            'Episode queue changed from 3 episodes to Off.',
-          ]
-        );
-      } finally {
-        settings.main.mediaServerType = previousMediaServerType;
-      }
-    });
-  }
-
-  it('does not let an administrator opt in for another user', async () => {
-    const settings = getSettings();
-    const previousMediaServerType = settings.main.mediaServerType;
-    settings.main.mediaServerType = MediaServerType.JELLYFIN;
-    configureSonarr([{}]);
-
-    try {
-      const userRepository = getRepository(User);
-      const requestedBy = await userRepository.findOneOrFail({
-        where: { email: 'friend@seerr.dev' },
-      });
-      requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
-      requestedBy.jellyfinUsername = 'friend';
-      requestedBy.episodeQueueAccessStatus =
-        EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
-      await userRepository.save(requestedBy);
-
-      const media = await getRepository(Media).save(
-        new Media({
-          mediaType: MediaType.TV,
-          tmdbId: 765433,
-          tvdbId: 123457,
-          status: MediaStatus.UNKNOWN,
-          status4k: MediaStatus.UNKNOWN,
-        })
-      );
-      const tvRequest = await getRepository(MediaRequest).save(
-        new MediaRequest({
-          type: MediaType.TV,
-          status: MediaRequestStatus.APPROVED,
-          media,
-          requestedBy,
-          is4k: false,
-          serverId: 0,
-          seasons: [],
-        })
-      );
-
-      const admin = await loginAs('admin@seerr.dev', 'test1234');
-      const response = await admin
-        .put(`/request/${tvRequest.id}/watch-ahead`)
-        .send({ episodeCount: 2 });
-      assert.strictEqual(response.status, 403);
-
-      tvRequest.watchAheadEpisodeCount = 2;
-      await getRepository(MediaRequest).save(tvRequest);
-      const disableResponse = await admin
-        .put(`/request/${tvRequest.id}/watch-ahead`)
-        .send({ episodeCount: 0 });
-      assert.strictEqual(disableResponse.status, 403);
-      assert.strictEqual(
-        (
-          await getRepository(MediaRequest).findOneByOrFail({
-            id: tvRequest.id,
-          })
-        ).watchAheadEpisodeCount,
-        2
-      );
-    } finally {
-      settings.main.mediaServerType = previousMediaServerType;
-    }
-  });
-
-  it('rejects enabling watch-ahead for an owner without TV request permission', async () => {
-    const settings = getSettings();
-    const previousMediaServerType = settings.main.mediaServerType;
-    settings.main.mediaServerType = MediaServerType.JELLYFIN;
-    configureSonarr([{}]);
-
-    try {
-      const userRepository = getRepository(User);
-      const requestedBy = await userRepository.findOneOrFail({
-        where: { email: 'friend@seerr.dev' },
-      });
-      requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
-      requestedBy.jellyfinUsername = 'friend';
-      requestedBy.permissions = Permission.NONE;
-      requestedBy.episodeQueueAccessStatus =
-        EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
-      await userRepository.save(requestedBy);
-
-      const media = await getRepository(Media).save(
-        new Media({
-          mediaType: MediaType.TV,
-          tmdbId: 765434,
-          tvdbId: 123458,
-          status: MediaStatus.UNKNOWN,
-          status4k: MediaStatus.UNKNOWN,
-        })
-      );
-      const tvRequest = await getRepository(MediaRequest).save(
-        new MediaRequest({
-          type: MediaType.TV,
-          status: MediaRequestStatus.APPROVED,
-          media,
-          requestedBy,
-          is4k: false,
-          serverId: 0,
-          seasons: [],
-        })
-      );
-
-      const owner = await loginAs('friend@seerr.dev', 'test1234');
-      const response = await owner
-        .put(`/request/${tvRequest.id}/watch-ahead`)
-        .send({ episodeCount: 2 });
-      assert.strictEqual(response.status, 409);
-      assert.match(response.body.message, /permission to request TV/i);
-      assert.equal(
-        (
-          await getRepository(MediaRequest).findOneByOrFail({
-            id: tvRequest.id,
-          })
-        ).watchAheadEpisodeCount,
-        0
-      );
-    } finally {
-      settings.main.mediaServerType = previousMediaServerType;
-    }
-  });
-
-  it('rejects enrollment when the saved series has no TVDB identity', async () => {
-    const settings = getSettings();
-    const previousMediaServerType = settings.main.mediaServerType;
-    settings.main.mediaServerType = MediaServerType.JELLYFIN;
-    configureSonarr([{}]);
-
-    try {
-      const userRepository = getRepository(User);
-      const requestedBy = await userRepository.findOneOrFail({
-        where: { email: 'friend@seerr.dev' },
-      });
-      requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
-      requestedBy.jellyfinUsername = 'friend';
-      requestedBy.episodeQueueAccessStatus =
-        EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
-      await userRepository.save(requestedBy);
-
-      const media = await getRepository(Media).save(
-        new Media({
-          mediaType: MediaType.TV,
-          tmdbId: 765436,
-          status: MediaStatus.UNKNOWN,
-          status4k: MediaStatus.UNKNOWN,
-        })
-      );
-      const tvRequest = await getRepository(MediaRequest).save(
-        new MediaRequest({
-          type: MediaType.TV,
-          status: MediaRequestStatus.APPROVED,
-          media,
-          requestedBy,
-          is4k: false,
-          serverId: 0,
-          seasons: [],
-        })
-      );
-
-      const owner = await loginAs('friend@seerr.dev', 'test1234');
-      const response = await owner
-        .put(`/request/${tvRequest.id}/watch-ahead`)
-        .send({ episodeCount: 2 });
-      assert.strictEqual(response.status, 409);
-      assert.match(response.body.message, /TVDB identity/);
-    } finally {
-      settings.main.mediaServerType = previousMediaServerType;
-    }
-  });
-
-  it('rejects watch-ahead buffers above five episodes', async () => {
-    const media = await getRepository(Media).save(
-      new Media({
-        mediaType: MediaType.TV,
-        tmdbId: 765435,
-        tvdbId: 123459,
-        status: MediaStatus.UNKNOWN,
-        status4k: MediaStatus.UNKNOWN,
-      })
-    );
-    const tvRequest = await getRepository(MediaRequest).save(
-      new MediaRequest({
-        type: MediaType.TV,
-        status: MediaRequestStatus.APPROVED,
-        media,
-        requestedBy: await getRepository(User).findOneOrFail({
-          where: { email: 'friend@seerr.dev' },
-        }),
-        is4k: false,
-        seasons: [],
-      })
-    );
+describe('per-request Episode Queue API', () => {
+  it('does not expose a per-request buffer endpoint', async () => {
     const owner = await loginAs('friend@seerr.dev', 'test1234');
     const response = await owner
-      .put(`/request/${tvRequest.id}/watch-ahead`)
-      .send({ episodeCount: 6 });
+      .put('/request/1/watch-ahead')
+      .send({ episodeCount: 3 });
 
-    assert.strictEqual(response.status, 400);
+    assert.strictEqual(response.status, 404);
   });
 });
 
 describe('POST /request with Episode Queue', () => {
-  it('rejects opt-in when TMDB has no TVDB identity for the series', async () => {
-    const settings = getSettings();
-    const previousMediaServerType = settings.main.mediaServerType;
-    settings.main.mediaServerType = MediaServerType.JELLYFIN;
-    configureSonarr([{}]);
+  it('rejects client-supplied per-request queue values', async () => {
+    const owner = await loginAs('friend@seerr.dev', 'test1234');
+    const response = await owner.post('/request').send({
+      mediaType: 'tv',
+      mediaId: 765437,
+      seasons: [1],
+      watchAheadEpisodeCount: 2,
+    });
 
-    try {
-      const userRepository = getRepository(User);
-      const requestedBy = await userRepository.findOneOrFail({
-        where: { email: 'friend@seerr.dev' },
-      });
-      requestedBy.jellyfinUserId = '01234567-89ab-cdef-0123-456789abcdef';
-      requestedBy.jellyfinUsername = 'friend';
-      requestedBy.episodeQueueAccessStatus =
-        EPISODE_QUEUE_ACCESS_STATUS.APPROVED;
-      await userRepository.save(requestedBy);
-
-      const owner = await loginAs('friend@seerr.dev', 'test1234');
-      const wholeSeason = await owner.post('/request').send({
-        mediaType: 'tv',
-        mediaId: 765437,
-        seasons: [1],
-        watchAheadEpisodeCount: 2,
-      });
-      assert.strictEqual(wholeSeason.status, 400);
-      assert.match(wholeSeason.body.message, /exactly one starting episode/);
-
-      const response = await owner.post('/request').send({
-        mediaType: 'tv',
-        mediaId: 765437,
-        seasonRequests: [{ seasonNumber: 1, episodeNumbers: [1] }],
-        watchAheadEpisodeCount: 2,
-      });
-      assert.strictEqual(response.status, 400);
-      assert.match(response.body.message, /TVDB identity/);
-      assert.strictEqual(
-        await getRepository(MediaRequest).count({
-          where: { requestedBy: { id: requestedBy.id } },
-        }),
-        0
-      );
-    } finally {
-      settings.main.mediaServerType = previousMediaServerType;
-    }
+    assert.strictEqual(response.status, 403);
+    assert.match(response.body.message, /managed by an administrator/i);
+    assert.strictEqual(
+      await getRepository(MediaRequest).count({
+        where: {
+          requestedBy: {
+            id: (
+              await getRepository(User).findOneByOrFail({
+                email: 'friend@seerr.dev',
+              })
+            ).id,
+          },
+        },
+      }),
+      0
+    );
   });
 });
 

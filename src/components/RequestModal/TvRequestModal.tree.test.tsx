@@ -1,5 +1,6 @@
 import { MediaStatus } from '@server/constants/media';
 import type { SeasonEpisodeSelection } from '@server/interfaces/api/seasonInterfaces';
+import { Permission } from '@server/lib/permissions';
 import axios from 'axios';
 import { JSDOM } from 'jsdom';
 import React, { act, useEffect } from 'react';
@@ -18,6 +19,7 @@ const fixtureState = vi.hoisted(() => ({
   watchStatusLoading: false,
   watchStatusError: undefined as unknown,
   requestPermission: false,
+  requestPermissions: 524320,
   requestServices: [] as string[],
   requestRootFolders: {} as Record<string, string>,
   linkedPlexAccount: false,
@@ -76,7 +78,7 @@ vi.mock('@app/hooks/useUser', () => ({
   useUser: () => ({
     user: {
       id: 7,
-      permissions: 0,
+      permissions: fixtureState.requestPermissions,
       requestServices: fixtureState.requestServices,
       ...(fixtureState.linkedPlexAccount ? { plexId: 101 } : {}),
     },
@@ -104,9 +106,17 @@ vi.mock('react-intl', async (importOriginal) => ({
       { defaultMessage }: { defaultMessage: string },
       values?: Record<string, unknown>
     ) =>
-      defaultMessage.replace(/\{([^}]+)\}/g, (placeholder, key) =>
-        values?.[key] === undefined ? placeholder : String(values[key])
-      ),
+      defaultMessage
+        .replace(
+          /\{(\w+), plural, one \{([^{}]*)\} other \{([^{}]*)\}\}/g,
+          (_match, key, one, other) =>
+            String(values?.[key]) === '1'
+              ? one.replace('#', String(values?.[key]))
+              : other.replace('#', String(values?.[key]))
+        )
+        .replace(/\{([^}]+)\}/g, (placeholder, key) =>
+          values?.[key] === undefined ? placeholder : String(values[key])
+        ),
     formatDate: () => 'Fixture Date',
     formatNumber: String,
   }),
@@ -360,6 +370,7 @@ async function fixture(
   fixtureState.watchStatusLoading = false;
   fixtureState.watchStatusError = undefined;
   fixtureState.requestPermission = false;
+  fixtureState.requestPermissions = 524320;
   fixtureState.requestServices = [];
   fixtureState.requestRootFolders = {};
   fixtureState.linkedPlexAccount = false;
@@ -436,7 +447,6 @@ it('default whole-season selection reaches the actual Request handler and comple
         is4k: false,
         seasons: [1, 2],
         seasonRequests: [{ seasonNumber: 1 }, { seasonNumber: 2 }],
-        watchAheadEpisodeCount: 0,
       })
     );
     expect(complete).toHaveBeenCalledExactlyOnceWith(
@@ -868,27 +878,54 @@ it('does not approve or report an edited request when the server returns 202', a
   );
 });
 
-it('surfaces Episode Queue requirements when the requester has not linked Plex', async () => {
-  await fixture(async (doc) => {
-    const control = doc.querySelector<HTMLSelectElement>(
-      '[data-testid="tv-watch-ahead-count"]'
-    );
-    expect(control).not.toBeNull();
-    expect(control?.disabled).toBe(true);
-    expect(doc.body.textContent).toContain('Link your Plex account to SeerrNG');
-    expect(
-      doc.querySelector('a[href="/profile/settings/linked-accounts"]')
-    ).not.toBeNull();
-    expect(
-      doc.querySelector('a[href*="docs/using-seerr/jellyfin-watch-ahead.md"]')
-    ).not.toBeNull();
-  });
-});
-
-it('starts a new Episode Queue request with one episode and submits the chosen buffer', async () => {
+it('shows the administrator-assigned Episode Queue state and playback requirement without user controls', async () => {
   await fixture(
     async (doc) => {
-      await selectValue(doc, 'tv-watch-ahead-count', '3');
+      expect(
+        doc.querySelector('[data-testid="tv-watch-ahead-count"]')
+      ).toBeNull();
+      expect(doc.body.textContent).toContain(
+        'Episode Queue is enabled by your administrator for your TV requests, with 3 episodes queued ahead.'
+      );
+      expect(
+        doc
+          .querySelector('[data-testid="tree"]')
+          ?.getAttribute('data-selection-mode')
+      ).toBe('single-episode');
+      expect(doc.body.textContent).toContain('Set by your administrator');
+      expect(doc.body.textContent).toContain(
+        'Link your Plex account to SeerrNG'
+      );
+      expect(
+        doc.querySelector('a[href="/profile/settings/linked-accounts"]')
+      ).not.toBeNull();
+      expect(
+        doc.querySelector('a[href="/profile/settings/episode-queue"]')
+      ).toBeNull();
+      expect(
+        doc.querySelector('a[href*="docs/using-seerr/jellyfin-watch-ahead.md"]')
+      ).not.toBeNull();
+    },
+    {
+      configure: () => {
+        fixtureState.requestPermission = true;
+        fixtureState.requestPermissions =
+          Permission.REQUEST | Permission.REQUEST_TV;
+        fixtureState.episodeQueueAccess.defaultEpisodeCount = 3;
+        fixtureState.sonarrServers = [
+          { id: 1, name: 'Sonarr', is4k: false, isDefault: true },
+        ];
+      },
+    }
+  );
+});
+
+it('applies the administrator default across shows and submits no per-request setting', async () => {
+  await fixture(
+    async (doc) => {
+      expect(
+        doc.querySelector('[data-testid="tv-watch-ahead-count"]')
+      ).toBeNull();
       expect(
         doc
           .querySelector('[data-testid="tree"]')
@@ -907,14 +944,22 @@ it('starts a new Episode Queue request with one episode and submits the chosen b
         expect.objectContaining({
           seasons: [2],
           seasonRequests: [{ seasonNumber: 2, episodeNumbers: [2] }],
-          watchAheadEpisodeCount: 3,
         })
       );
+      const submittedBody = vi.mocked(axios.post).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(submittedBody).not.toHaveProperty('watchAheadEpisodeCount');
+      expect(submittedBody).not.toHaveProperty('watchAheadUsesUserDefault');
     },
     {
       configure: () => {
         fixtureState.requestPermission = true;
         fixtureState.linkedPlexAccount = true;
+        fixtureState.requestPermissions =
+          Permission.REQUEST | Permission.REQUEST_TV;
+        fixtureState.episodeQueueAccess.defaultEpisodeCount = 3;
         fixtureState.sonarrServers = [
           { id: 1, name: 'Sonarr', is4k: false, isDefault: true },
         ];
@@ -923,14 +968,41 @@ it('starts a new Episode Queue request with one episode and submits the chosen b
   );
 });
 
-it('applies the account Episode Queue default to a new show automatically', async () => {
+it('keeps normal season selection when the administrator has turned Episode Queue off', async () => {
   await fixture(
     async (doc) => {
       expect(
-        doc.querySelector<HTMLSelectElement>(
-          '[data-testid="tv-watch-ahead-count"]'
-        )?.value
-      ).toBe('-1');
+        doc.querySelector('[data-testid="tv-watch-ahead-count"]')
+      ).toBeNull();
+      expect(doc.body.textContent).toContain(
+        'Episode Queue is off for your TV requests. A user manager controls this setting.'
+      );
+      expect(selections(doc)).toEqual([
+        { seasonNumber: 1 },
+        { seasonNumber: 2 },
+      ]);
+      await click(doc, 'modal-ok-button');
+      expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+        '/api/v1/request',
+        expect.objectContaining({ seasons: [1, 2] })
+      );
+      const submittedBody = vi.mocked(axios.post).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(submittedBody).not.toHaveProperty('watchAheadEpisodeCount');
+    },
+    {
+      configure: () => {
+        fixtureState.requestPermission = true;
+      },
+    }
+  );
+});
+
+it('uses one starting episode when the administrator default is enabled and partial requests are otherwise disabled', async () => {
+  await fixture(
+    async (doc) => {
       expect(
         doc
           .querySelector('[data-testid="tree"]')
@@ -945,86 +1017,6 @@ it('applies the account Episode Queue default to a new show automatically', asyn
         expect.objectContaining({
           seasons: [1],
           seasonRequests: [{ seasonNumber: 1, episodeNumbers: [1] }],
-          watchAheadEpisodeCount: 3,
-          watchAheadUsesUserDefault: true,
-        })
-      );
-    },
-    {
-      configure: () => {
-        fixtureState.requestPermission = true;
-        fixtureState.linkedPlexAccount = true;
-        fixtureState.episodeQueueAccess.defaultEpisodeCount = 3;
-        fixtureState.sonarrServers = [
-          { id: 1, name: 'Sonarr', is4k: false, isDefault: true },
-        ];
-      },
-    }
-  );
-});
-
-it('restores the normal season selection when Episode Queue is turned off', async () => {
-  await fixture(
-    async (doc) => {
-      await selectValue(doc, 'tv-watch-ahead-count', '2');
-      expect(selections(doc)).toEqual([
-        { seasonNumber: 1, episodeNumbers: [1] },
-      ]);
-      await click(doc, 'tree-start-episode-2');
-      await selectValue(doc, 'tv-watch-ahead-count', '0');
-      expect(
-        doc
-          .querySelector('[data-testid="tree"]')
-          ?.getAttribute('data-selection-mode')
-      ).toBe('multiple');
-      expect(selections(doc)).toEqual([
-        { seasonNumber: 1 },
-        { seasonNumber: 2 },
-      ]);
-      await click(doc, 'modal-ok-button');
-      expect(axios.post).toHaveBeenCalledExactlyOnceWith(
-        '/api/v1/request',
-        expect.objectContaining({
-          seasons: [1, 2],
-          seasonRequests: [{ seasonNumber: 1 }, { seasonNumber: 2 }],
-          watchAheadEpisodeCount: 0,
-        })
-      );
-    },
-    {
-      configure: () => {
-        fixtureState.requestPermission = true;
-        fixtureState.linkedPlexAccount = true;
-        fixtureState.sonarrServers = [
-          { id: 1, name: 'Sonarr', is4k: false, isDefault: true },
-        ];
-      },
-    }
-  );
-});
-
-it('restores full-season requests when Episode Queue is off and partial selection is disabled', async () => {
-  await fixture(
-    async (doc) => {
-      expect(doc.querySelector('[data-testid="tree"]')).toBeNull();
-      await selectValue(doc, 'tv-watch-ahead-count', '1');
-      expect(
-        doc
-          .querySelector('[data-testid="tree"]')
-          ?.getAttribute('data-selection-mode')
-      ).toBe('single-episode');
-      expect(selections(doc)).toEqual([
-        { seasonNumber: 1, episodeNumbers: [1] },
-      ]);
-      await selectValue(doc, 'tv-watch-ahead-count', '0');
-      expect(doc.querySelector('[data-testid="tree"]')).toBeNull();
-      await click(doc, 'modal-ok-button');
-      expect(axios.post).toHaveBeenCalledExactlyOnceWith(
-        '/api/v1/request',
-        expect.objectContaining({
-          seasons: [1, 2],
-          seasonRequests: undefined,
-          watchAheadEpisodeCount: 0,
         })
       );
     },
@@ -1033,6 +1025,9 @@ it('restores full-season requests when Episode Queue is off and partial selectio
         fixtureState.partialRequestsEnabled = false;
         fixtureState.requestPermission = true;
         fixtureState.linkedPlexAccount = true;
+        fixtureState.requestPermissions =
+          Permission.REQUEST | Permission.REQUEST_TV;
+        fixtureState.episodeQueueAccess.defaultEpisodeCount = 2;
         fixtureState.sonarrServers = [
           { id: 1, name: 'Sonarr', is4k: false, isDefault: true },
         ];
@@ -1041,19 +1036,12 @@ it('restores full-season requests when Episode Queue is off and partial selectio
   );
 });
 
-it('keeps an existing request selection when its owner enables Episode Queue', async () => {
+it('does not expose a per-request Episode Queue control while editing a show', async () => {
   await fixture(
     async (doc) => {
-      expect(selections(doc)).toEqual([
-        { seasonNumber: 1 },
-        { seasonNumber: 2 },
-      ]);
-      await selectValue(doc, 'tv-watch-ahead-count', '2');
       expect(
-        doc
-          .querySelector('[data-testid="tree"]')
-          ?.getAttribute('data-selection-mode')
-      ).toBe('multiple');
+        doc.querySelector('[data-testid="tv-watch-ahead-count"]')
+      ).toBeNull();
       expect(selections(doc)).toEqual([
         { seasonNumber: 1 },
         { seasonNumber: 2 },
@@ -1064,9 +1052,14 @@ it('keeps an existing request selection when its owner enables Episode Queue', a
         expect.objectContaining({
           seasons: [1, 2],
           seasonRequests: [{ seasonNumber: 1 }, { seasonNumber: 2 }],
-          watchAheadEpisodeCount: 2,
         })
       );
+      const submittedBody = vi.mocked(axios.put).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(submittedBody).not.toHaveProperty('watchAheadEpisodeCount');
+      expect(submittedBody).not.toHaveProperty('watchAheadUsesUserDefault');
       expect(axios.delete).not.toHaveBeenCalled();
     },
     {
@@ -1076,12 +1069,14 @@ it('keeps an existing request selection when its owner enables Episode Queue', a
           requestedBy: { id: 7, displayName: 'Fixture User' },
           seasons: [{ seasonNumber: 1 }, { seasonNumber: 2 }],
           media: { tvdbId: 456 },
-          watchAheadEpisodeCount: 0,
+          watchAheadEpisodeCount: 3,
+          watchAheadUsesUserDefault: true,
         } as ModalProps['editRequest'],
       },
       configure: () => {
         fixtureState.requestPermission = true;
         fixtureState.linkedPlexAccount = true;
+        fixtureState.episodeQueueAccess.defaultEpisodeCount = 3;
         fixtureState.sonarrServers = [
           { id: 1, name: 'Sonarr', is4k: false, isDefault: true },
         ];

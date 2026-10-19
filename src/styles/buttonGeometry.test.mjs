@@ -1494,28 +1494,20 @@ test('primary Request Status actions keep status first and History immediately a
   const history = actionRow.indexOf('messages.history');
   const requestActions = actionRow.indexOf('{actionControls}');
   const download = actionRow.indexOf('<RequestDownloadAction');
-  const episodeQueue = actionRow.indexOf('{episodeQueueControl}');
 
   assert.ok(status >= 0, 'the status control must be present');
   assert.ok(history > status, 'History must follow the status control');
   assert.ok(
-    requestActions > history && download > history && episodeQueue > history,
+    requestActions > history && download > history,
     'History must appear before the remaining request actions'
   );
 });
 
-test('Episode Queue uses the shared green palette throughout its action-row control', () => {
-  for (const selector of [
-    '.request-status-action-row .request-listbox-control',
-    '.request-status-action-row .request-listbox-control:hover',
-    '.request-status-action-row .request-listbox-label',
-    '.request-status-action-row .request-listbox-label-active',
-  ]) {
-    const declaration = rules(selector);
-    assert.ok(declaration, `${selector} must be defined globally`);
-    assert.match(declaration, /var\(--palette-green(?:-dark|-light)?\)/);
-    assert.doesNotMatch(declaration, /var\(--palette-lime(?:-dark|-light)?\)/);
-  }
+test('Episode Queue assigned status uses the shared green palette', () => {
+  const declaration = rules('.request-status-control-success');
+  assert.ok(declaration);
+  assert.match(declaration, /var\(--palette-green(?:-dark|-light)?\)/);
+  assert.doesNotMatch(declaration, /var\(--palette-lime(?:-dark|-light)?\)/);
 });
 
 test('card tables retain their explicit shared header and value typography', () => {
@@ -1701,7 +1693,7 @@ test('Request Status buttons do not override shared padding or icon spacing', ()
   }
 });
 
-test('Episode Queue keeps its dropdown label and compact generated-request badge', () => {
+test('Episode Queue uses read-only assigned status and compact generated-request badge', () => {
   for (const path of [
     'Requests/index.tsx',
     'RequestList/RequestItem/index.tsx',
@@ -1712,9 +1704,9 @@ test('Episode Queue keeps its dropdown label and compact generated-request badge
   }
   assert.match(
     component('Requests/index.tsx'),
-    /watchAheadLabel: 'Episode Queue'/
+    /watchAheadAssigned:[\s\S]*?by administrator/
   );
-  assert.match(component('Requests/index.tsx'), /RequestListboxControl/);
+  assert.doesNotMatch(component('Requests/index.tsx'), /RequestListboxControl/);
   for (const path of [
     'Requests/index.tsx',
     'RequestList/RequestItem/index.tsx',

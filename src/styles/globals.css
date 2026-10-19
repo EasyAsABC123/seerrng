@@ -3860,51 +3860,6 @@
     gap: var(--button-content-gap);
   }
 
-  .request-status-action-row .request-listbox-control {
-    box-sizing: border-box;
-    height: var(--action-control-height);
-    min-height: var(--action-control-height);
-    max-height: var(--action-control-height);
-    border-radius: var(--control-corner-radius);
-    border-color: color-mix(in srgb, var(--palette-green) 90%, transparent);
-    background-color: color-mix(
-      in srgb,
-      var(--palette-green-dark) 48%,
-      transparent
-    );
-    color: var(--palette-green-light);
-    --request-listbox-focus-color: var(--palette-green);
-  }
-
-  .request-status-action-row .request-listbox-control:hover {
-    border-color: color-mix(in srgb, var(--palette-green) 70%, white);
-    background-color: color-mix(
-      in srgb,
-      var(--palette-green-dark) 64%,
-      transparent
-    );
-    color: #fff;
-  }
-
-  .request-status-action-row .request-listbox-label {
-    border-right-color: color-mix(
-      in srgb,
-      var(--palette-green) 70%,
-      transparent
-    );
-    color: inherit;
-  }
-
-  .request-status-action-row .request-listbox-label-active {
-    background-color: color-mix(in srgb, var(--palette-green) 30%, transparent);
-    color: #fff;
-  }
-
-  .request-status-action-row .request-listbox-button,
-  .request-status-action-row .request-listbox-chevron {
-    color: inherit;
-  }
-
   .app-control-standard-radius {
     border-radius: var(--control-corner-radius);
   }

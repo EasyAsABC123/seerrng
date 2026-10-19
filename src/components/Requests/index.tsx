@@ -20,7 +20,6 @@ import {
 } from '@app/components/Discover/FilterPanel/CompactFilterSelect';
 import MediaFilterOption from '@app/components/Discover/MediaFilterOption';
 import { PinnedFilterSectionGroup } from '@app/components/Discover/PinnedFilterSection';
-import { RequestListboxControl } from '@app/components/RequestModal/AdvancedRequester';
 import SoftwareRequests from '@app/components/RequestStatus/SoftwareRequests';
 import {
   formatRequestStatusMessage,
@@ -30,7 +29,6 @@ import useDebouncedState from '@app/hooks/useDebouncedState';
 import useMediaFilterPin from '@app/hooks/useMediaFilterPin';
 import useRequestStatusScrollRestoration from '@app/hooks/useRequestStatusScrollRestoration';
 import { useSearchActivityReporter } from '@app/hooks/useSearchActivity';
-import useSettings from '@app/hooks/useSettings';
 import useToasts from '@app/hooks/useToasts';
 import { Permission, useUser } from '@app/hooks/useUser';
 import {
@@ -41,7 +39,6 @@ import {
 import { sortCrewPriority } from '@app/utils/creditHelpers';
 import defineMessages from '@app/utils/defineMessages';
 import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
-import { hasLinkedWatchAheadAccount } from '@app/utils/watchAhead';
 import { Transition } from '@headlessui/react';
 import {
   ArrowDownTrayIcon,
@@ -55,7 +52,6 @@ import {
   InformationCircleIcon,
   MagnifyingGlassIcon,
   PencilIcon,
-  QueueListIcon,
   ServerIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
@@ -66,8 +62,6 @@ import type {
   RequestStatusResultsResponse,
   RequestStatusUsersResponse,
 } from '@server/interfaces/api/requestInterfaces';
-import type { ServiceCommonServer } from '@server/interfaces/api/serviceInterfaces';
-import type { EpisodeQueueAccessResponse } from '@server/interfaces/api/userSettingsInterfaces';
 import type { RequestStatusSortField } from '@server/lib/requestStatusSort';
 import type { AdultDetails } from '@server/models/Adult';
 import type { BookDetails } from '@server/models/Book';
@@ -245,17 +239,8 @@ const messages = defineMessages('components.Requests', {
   changeServerTooltip:
     'Choose another server and resubmit this failed request.',
   modifyFailed: 'Unable to update this request.',
-  watchAheadLabel: 'Episode Queue',
-  watchAheadDescription:
-    'SeerrNG follows your linked Plex, Jellyfin, or Emby playback and keeps upcoming episodes requested in Sonarr after approval. Use your account default across shows or choose a show-specific value. Episodes use the parent approval and do not count against your request quota. Turning this show off stops future additions but does not cancel episodes already requested.',
-  watchAheadOff: 'Off',
-  watchAheadOffForShow: 'Off for this show',
-  watchAheadDefault: 'Use my default ({count})',
-  watchAheadOption: '{count, plural, one {# episode} other {# episodes}}',
-  watchAheadSetup: 'Set up Episode Queue',
-  watchAheadPending: 'Episode Queue · waiting for approval',
-  watchAheadUpdated: 'Requested episode queue updated.',
-  watchAheadFailed: 'Unable to update the requested episode queue.',
+  watchAheadAssigned:
+    'Episode Queue · {count, plural, one {# episode} other {# episodes}} by administrator',
   watchAheadEpisodeBadge: 'Auto-Queued',
   watchAheadEpisodeBadgeTooltip:
     'Automatically requested by the Episode Queue as playback progressed.',
@@ -1342,21 +1327,7 @@ const RequestStatusCard = ({
   const intl = useIntl();
   const { addToast } = useToasts();
   const { hasPermission, user } = useUser();
-  const { currentSettings } = useSettings();
-  const { data: sonarrServers } = useSWR<ServiceCommonServer[]>(
-    '/api/v1/service/sonarr'
-  );
-  const { data: episodeQueueAccess } = useSWR<EpisodeQueueAccessResponse>(
-    user?.id ? `/api/v1/user/${user.id}/settings/episode-queue` : null
-  );
   const { mutate: mutateCache } = useSWRConfig();
-  const [watchAheadEpisodeCount, setWatchAheadEpisodeCount] = useState(
-    item.request.watchAheadEpisodeCount ?? 0
-  );
-  const [watchAheadUsesUserDefault, setWatchAheadUsesUserDefault] = useState(
-    item.request.watchAheadUsesUserDefault ?? true
-  );
-  const [isUpdatingWatchAhead, setIsUpdatingWatchAhead] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [isModifying, setIsModifying] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -1374,38 +1345,6 @@ const RequestStatusCard = ({
       }
     );
   const reportedCurrent = detail?.current ?? item.status;
-  const matchingSonarr =
-    item.request.serverId != null
-      ? sonarrServers?.find(
-          (server) =>
-            server.id === item.request.serverId &&
-            server.is4k === item.request.is4k
-        )
-      : sonarrServers?.find(
-          (server) => server.isDefault && server.is4k === item.request.is4k
-        );
-  const canEnableWatchAhead =
-    episodeQueueAccess?.status === 'approved' &&
-    hasLinkedWatchAheadAccount(user, currentSettings.mediaServerType) &&
-    Number.isSafeInteger(Number(item.request.media.tvdbId)) &&
-    Number(item.request.media.tvdbId) > 0 &&
-    Boolean(matchingSonarr) &&
-    hasPermission(
-      item.request.is4k
-        ? [Permission.REQUEST_4K, Permission.REQUEST_4K_TV]
-        : [Permission.REQUEST, Permission.REQUEST_TV],
-      { type: 'or' }
-    );
-  useEffect(() => {
-    setWatchAheadEpisodeCount(item.request.watchAheadEpisodeCount ?? 0);
-    setWatchAheadUsesUserDefault(
-      item.request.watchAheadUsesUserDefault ?? true
-    );
-  }, [
-    item.request.id,
-    item.request.watchAheadEpisodeCount,
-    item.request.watchAheadUsesUserDefault,
-  ]);
   const observedCurrent =
     item.request.rootFolder === '__preview_downloading__'
       ? {
@@ -1510,12 +1449,6 @@ const RequestStatusCard = ({
     hasPermission(Permission.MANAGE_REQUESTS) &&
     item.request.status === MediaRequestStatus.FAILED &&
     (item.request.type === 'movie' || item.request.type === 'tv');
-  const canManageWatchAhead =
-    item.request.type === 'tv' &&
-    !item.request.watchAheadParentRequestId &&
-    item.request.requestedBy.id === user?.id &&
-    (canEnableWatchAhead || watchAheadEpisodeCount > 0) &&
-    episodeQueueAccess?.status === 'approved';
   const posterBadge = bookFormat ? (
     <BookFormatBadge format={bookFormat} variant="card" />
   ) : (
@@ -1530,32 +1463,6 @@ const RequestStatusCard = ({
       ),
       mutateCache('/api/v1/request/count'),
     ]);
-  };
-  const updateWatchAhead = async (
-    episodeCount: number,
-    usesUserDefault: boolean
-  ) => {
-    setIsUpdatingWatchAhead(true);
-    try {
-      await axios.put(`/api/v1/request/${item.request.id}/watch-ahead`, {
-        episodeCount,
-        useUserDefault: usesUserDefault,
-      });
-      setWatchAheadEpisodeCount(episodeCount);
-      setWatchAheadUsesUserDefault(usesUserDefault);
-      await refreshRequestStatus();
-      addToast(intl.formatMessage(messages.watchAheadUpdated), {
-        appearance: 'success',
-        autoDismiss: true,
-      });
-    } catch {
-      addToast(intl.formatMessage(messages.watchAheadFailed), {
-        appearance: 'error',
-        autoDismiss: true,
-      });
-    } finally {
-      setIsUpdatingWatchAhead(false);
-    }
   };
   const modifyPendingRequest = async (action: 'approve' | 'decline') => {
     setIsModifying(true);
@@ -1602,95 +1509,21 @@ const RequestStatusCard = ({
 
     return () => resizeObserver.disconnect();
   }, []);
-  const defaultWatchAheadCount = episodeQueueAccess?.defaultEpisodeCount ?? 0;
-  const defaultWatchAheadLabel =
-    defaultWatchAheadCount === 0
-      ? intl.formatMessage(messages.watchAheadOff)
-      : intl.formatMessage(messages.watchAheadOption, {
-          count: defaultWatchAheadCount,
-        });
-  const watchAheadOptions = [
-    ...(canEnableWatchAhead ||
-    watchAheadUsesUserDefault ||
-    (episodeQueueAccess?.defaultEpisodeCount ?? 0) === 0
-      ? [
-          {
-            value: -1,
-            label: intl.formatMessage(messages.watchAheadDefault, {
-              count: defaultWatchAheadLabel,
-            }),
-          },
-        ]
-      : []),
-    {
-      value: 0,
-      label: intl.formatMessage(messages.watchAheadOffForShow),
-    },
-    ...(canEnableWatchAhead
-      ? [1, 2, 3, 4, 5].map((count) => ({
-          value: count,
-          label: intl.formatMessage(messages.watchAheadOption, { count }),
-        }))
-      : watchAheadEpisodeCount > 0 && !watchAheadUsesUserDefault
-        ? [
-            {
-              value: watchAheadEpisodeCount,
-              label: intl.formatMessage(messages.watchAheadOption, {
-                count: watchAheadEpisodeCount,
-              }),
-            },
-          ]
-        : []),
-  ];
-  const episodeQueueControl = canManageWatchAhead ? (
-    <Tooltip content={intl.formatMessage(messages.watchAheadDescription)}>
-      <span>
-        <RequestListboxControl
-          id={`watch-ahead-${item.request.id}`}
-          label={
-            <>
-              <QueueListIcon
-                className="request-status-control-icon"
-                aria-hidden="true"
-              />
-              {intl.formatMessage(messages.watchAheadLabel)}
-            </>
-          }
-          value={watchAheadUsesUserDefault ? -1 : watchAheadEpisodeCount}
-          options={watchAheadOptions}
-          disabled={isUpdatingWatchAhead}
-          onChange={(episodeCount) => {
-            const usesUserDefault = episodeCount === -1;
-            void updateWatchAhead(
-              usesUserDefault ? defaultWatchAheadCount : episodeCount,
-              usesUserDefault
-            );
-          }}
-          loadingLabel={intl.formatMessage(messages.watchAheadOff)}
-        />
-      </span>
-    </Tooltip>
-  ) : null;
-  const episodeQueueSetupControl =
-    item.request.type === 'tv' &&
-    !item.request.watchAheadParentRequestId &&
-    item.request.requestedBy.id === user?.id &&
-    episodeQueueAccess?.status !== 'approved' ? (
-      <Button
-        as="a"
-        href="/profile/settings/episode-queue"
-        buttonType="ghost"
-        buttonSize="sm"
-      >
-        {intl.formatMessage(
-          episodeQueueAccess?.status === 'pending'
-            ? messages.watchAheadPending
-            : messages.watchAheadSetup
-        )}
-      </Button>
-    ) : null;
   const actionControls = (
     <>
+      {item.request.type === 'tv' &&
+        !item.request.watchAheadParentRequestId &&
+        item.request.requestedBy.id === user?.id &&
+        (item.request.watchAheadEpisodeCount ?? 0) > 0 && (
+          <span
+            className="request-status-control request-status-control-success"
+            role="status"
+          >
+            {intl.formatMessage(messages.watchAheadAssigned, {
+              count: item.request.watchAheadEpisodeCount,
+            })}
+          </span>
+        )}
       {item.request.watchAheadParentRequestId && (
         <Tooltip
           content={intl.formatMessage(messages.watchAheadEpisodeBadgeTooltip)}
@@ -2253,12 +2086,10 @@ const RequestStatusCard = ({
             />
           </Button>
           {actionControls}
-          {episodeQueueSetupControl}
           <RequestDownloadAction
             requestId={item.request.id}
             enabled={currentStage === 'available'}
           />
-          {episodeQueueControl}
         </div>
 
         {isHistoryOpen && (

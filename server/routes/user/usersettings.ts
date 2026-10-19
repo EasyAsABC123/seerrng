@@ -52,7 +52,6 @@ import { getJellyfinAuthAuthorityKey } from '@server/lib/mediaServerAuthority';
 import {
   MAX_PERMISSION_VALUE,
   Permission,
-  hasPermission,
   isValidPermissionValue,
 } from '@server/lib/permissions';
 import requestAdmissionCoordinator from '@server/lib/requestAdmission';
@@ -121,8 +120,10 @@ const serializeTvSeasonWatchGateAccess = (
 const serializeEpisodeQueueAccess = (
   user: User
 ): EpisodeQueueAccessResponse => ({
-  status: user.episodeQueueAccessStatus ?? EPISODE_QUEUE_ACCESS_STATUS.OFF,
-  requestedAt: user.episodeQueueAccessRequestedAt ?? null,
+  status:
+    (user.settings?.episodeQueueDefaultEpisodeCount ?? 0) > 0
+      ? EPISODE_QUEUE_ACCESS_STATUS.APPROVED
+      : EPISODE_QUEUE_ACCESS_STATUS.OFF,
   defaultEpisodeCount: user.settings?.episodeQueueDefaultEpisodeCount ?? 0,
 });
 
@@ -134,13 +135,21 @@ const saveEpisodeQueueDefault = async (
     const userSettings = user.settings ?? new UserSettings({ user });
     userSettings.episodeQueueDefaultEpisodeCount = episodeCount;
     await manager.getRepository(UserSettings).save(userSettings);
+    await manager.getRepository(User).update(user.id, {
+      episodeQueueAccessStatus:
+        episodeCount > 0
+          ? EPISODE_QUEUE_ACCESS_STATUS.APPROVED
+          : EPISODE_QUEUE_ACCESS_STATUS.OFF,
+      episodeQueueAccessRequestedAt: null,
+    });
 
-    await manager
-      .getRepository(MediaRequest)
+    const requests = manager.getRepository(MediaRequest);
+    await requests
       .createQueryBuilder()
       .update(MediaRequest)
       .set({
         watchAheadEpisodeCount: episodeCount,
+        watchAheadUsesUserDefault: true,
         watchAheadLastSeason: null,
         watchAheadLastEpisode: null,
         watchAheadLastReconciledAt: null,
@@ -148,14 +157,45 @@ const saveEpisodeQueueDefault = async (
       .where('"requestedById" = :userId', { userId: user.id })
       .andWhere('"type" = :type', { type: MediaType.TV })
       .andWhere('"watchAheadParentRequestId" IS NULL')
-      .andWhere('"watchAheadUsesUserDefault" = true')
+      .andWhere('"isAutoRequest" = :isAutoRequest', { isAutoRequest: false })
+      .execute();
+
+    await requests
+      .createQueryBuilder()
+      .update(MediaRequest)
+      .set({
+        watchAheadEpisodeCount: 0,
+        watchAheadUsesUserDefault: true,
+        watchAheadLastSeason: null,
+        watchAheadLastEpisode: null,
+        watchAheadLastReconciledAt: null,
+      })
+      .where('"requestedById" = :userId', { userId: user.id })
+      .andWhere('"type" = :type', { type: MediaType.TV })
+      .andWhere('"watchAheadParentRequestId" IS NULL')
+      .andWhere('"isAutoRequest" = :isAutoRequest', { isAutoRequest: true })
       .execute();
   });
 };
 
 userSettingsRoutes.get<{ id: string }, EpisodeQueueAccessResponse>(
   '/episode-queue',
-  isOwnProfileOrAdmin(),
+  (req, _res, next) => {
+    const targetUserId = parseUserSettingsRouteId(req.params.id);
+    if (!targetUserId) {
+      return next({ status: 404, message: 'User not found.' });
+    }
+    if (
+      req.user?.id !== targetUserId &&
+      !req.user?.hasPermission(
+        [Permission.MANAGE_USERS, Permission.MANAGE_REQUESTS],
+        { type: 'or' }
+      )
+    ) {
+      return next({ status: 403, message: 'Access denied.' });
+    }
+    return next();
+  },
   async (req, res, next) => {
     const userId = parseUserSettingsRouteId(req.params.id);
     if (!userId) return next({ status: 404, message: 'User not found.' });
@@ -163,7 +203,7 @@ userSettingsRoutes.get<{ id: string }, EpisodeQueueAccessResponse>(
       return await runUserSecurityReadWithActor(
         req.user!.id,
         userId,
-        Permission.MANAGE_USERS,
+        [Permission.MANAGE_USERS, Permission.MANAGE_REQUESTS],
         async () => {
           const user = await getRepository(User).findOne({
             where: { id: userId },
@@ -184,203 +224,59 @@ userSettingsRoutes.get<{ id: string }, EpisodeQueueAccessResponse>(
 userSettingsRoutes.post<
   { id: string },
   EpisodeQueueAccessResponse,
-  { action?: unknown; defaultEpisodeCount?: unknown }
->('/episode-queue', isOwnProfileOrAdmin(), async (req, res, next) => {
-  const userId = parseUserSettingsRouteId(req.params.id);
-  if (!userId) return next({ status: 404, message: 'User not found.' });
-  const action = req.body?.action;
-  const allowedKeys =
-    action === 'set-default' ? ['action', 'defaultEpisodeCount'] : ['action'];
-  if (
-    !req.body ||
-    Array.isArray(req.body) ||
-    Object.keys(req.body).length !== allowedKeys.length ||
-    Object.keys(req.body).some((key) => !allowedKeys.includes(key)) ||
-    typeof action !== 'string' ||
-    !['request', 'cancel', 'set-default'].includes(action)
-  ) {
-    return next({ status: 400, message: 'Invalid Episode Queue action.' });
-  }
-
-  const episodeCount =
-    action === 'set-default'
-      ? parseOptionalNonNegativeInteger(req.body.defaultEpisodeCount, 5)
-      : undefined;
-  if (action === 'set-default' && episodeCount === undefined) {
-    return next({
-      status: 400,
-      message: 'defaultEpisodeCount must be an integer from 0 to 5.',
-    });
-  }
-
-  try {
-    return await runUserSecurityMutationWithActor(
-      req.user!.id,
-      userId,
-      Permission.MANAGE_USERS,
-      async (actor) => {
-        const isSelf = actor.id === userId;
-        if (
-          !isSelf &&
-          !hasPermission(Permission.MANAGE_USERS, actor.permissions)
-        ) {
-          return next({ status: 403, message: 'Access denied.' });
-        }
-        const repository = getRepository(User);
-        const user = await repository.findOne({ where: { id: userId } });
-        if (!user) return next({ status: 404, message: 'User not found.' });
-
-        switch (action as 'request' | 'cancel' | 'set-default') {
-          case 'request':
-            if (!isSelf) {
-              return next({ status: 403, message: 'Access denied.' });
-            }
-            if (
-              user.episodeQueueAccessStatus !==
-                EPISODE_QUEUE_ACCESS_STATUS.APPROVED &&
-              user.episodeQueueAccessStatus !==
-                EPISODE_QUEUE_ACCESS_STATUS.PENDING
-            ) {
-              user.episodeQueueAccessStatus =
-                EPISODE_QUEUE_ACCESS_STATUS.PENDING;
-              user.episodeQueueAccessRequestedAt = new Date();
-              await repository.save(user);
-            }
-            break;
-          case 'cancel':
-            if (!isSelf) {
-              return next({ status: 403, message: 'Access denied.' });
-            }
-            if (
-              user.episodeQueueAccessStatus !==
-              EPISODE_QUEUE_ACCESS_STATUS.PENDING
-            ) {
-              return next({
-                status: 409,
-                message: 'No pending Episode Queue access request.',
-              });
-            }
-            user.episodeQueueAccessStatus = EPISODE_QUEUE_ACCESS_STATUS.OFF;
-            user.episodeQueueAccessRequestedAt = null;
-            await repository.save(user);
-            break;
-          case 'set-default':
-            if (
-              episodeCount! > 0 &&
-              user.episodeQueueAccessStatus !==
-                EPISODE_QUEUE_ACCESS_STATUS.APPROVED
-            ) {
-              return next({
-                status: 409,
-                message: 'Episode Queue access must be approved first.',
-              });
-            }
-            await saveEpisodeQueueDefault(user, episodeCount!);
-            user.settings ??= new UserSettings({ user });
-            user.settings.episodeQueueDefaultEpisodeCount = episodeCount!;
-            break;
-        }
-
-        return res.status(200).json(serializeEpisodeQueueAccess(user));
-      }
-    );
-  } catch (error) {
-    return next({
-      status: error instanceof UserMutationActorUnauthorizedError ? 403 : 500,
-      message: 'Could not update Episode Queue access.',
-    });
-  }
-});
-
-userSettingsRoutes.post<
-  { id: string },
-  EpisodeQueueAccessResponse,
-  { decision?: unknown }
+  { defaultEpisodeCount?: unknown }
 >(
-  '/episode-queue/review',
+  '/episode-queue',
   isAuthenticated(Permission.MANAGE_USERS),
   async (req, res, next) => {
     const userId = parseUserSettingsRouteId(req.params.id);
     if (!userId) return next({ status: 404, message: 'User not found.' });
-    const decision = req.body?.decision;
     if (
       !req.body ||
       Array.isArray(req.body) ||
       Object.keys(req.body).length !== 1 ||
-      typeof decision !== 'string' ||
-      !['approve', 'deny', 'revoke'].includes(decision)
+      !Object.hasOwn(req.body, 'defaultEpisodeCount')
     ) {
-      return next({ status: 400, message: 'Invalid Episode Queue decision.' });
+      return next({ status: 400, message: 'Invalid Episode Queue default.' });
     }
+
+    const episodeCount = parseOptionalNonNegativeInteger(
+      req.body.defaultEpisodeCount,
+      5
+    );
+    if (episodeCount === undefined) {
+      return next({
+        status: 400,
+        message: 'defaultEpisodeCount must be an integer from 0 to 5.',
+      });
+    }
+
     try {
       return await runAuthorizedUserSecurityMutation(
         req.user!.id,
         userId,
         Permission.MANAGE_USERS,
-        async (actor) => {
-          if (actor.id === userId) {
-            return next({
-              status: 403,
-              message: 'You cannot review your own request.',
-            });
-          }
+        async () => {
           const repository = getRepository(User);
           const user = await repository.findOne({ where: { id: userId } });
           if (!user) return next({ status: 404, message: 'User not found.' });
-          if (decision === 'revoke') {
-            if (
-              user.episodeQueueAccessStatus !==
-              EPISODE_QUEUE_ACCESS_STATUS.APPROVED
-            ) {
-              return next({
-                status: 409,
-                message: 'Episode Queue access is not approved.',
-              });
-            }
-            await dataSource.transaction(async (manager) => {
-              user.episodeQueueAccessStatus = EPISODE_QUEUE_ACCESS_STATUS.OFF;
-              user.episodeQueueAccessRequestedAt = null;
-              user.settings ??= new UserSettings({ user });
-              user.settings.episodeQueueDefaultEpisodeCount = 0;
-              await manager.getRepository(User).save(user);
-              await manager
-                .getRepository(MediaRequest)
-                .createQueryBuilder()
-                .update(MediaRequest)
-                .set({
-                  watchAheadEpisodeCount: 0,
-                  watchAheadLastSeason: null,
-                  watchAheadLastEpisode: null,
-                  watchAheadLastReconciledAt: null,
-                })
-                .where('"requestedById" = :userId', { userId: user.id })
-                .andWhere('"type" = :type', { type: MediaType.TV })
-                .andWhere('"watchAheadParentRequestId" IS NULL')
-                .execute();
-            });
-          } else {
-            if (
-              user.episodeQueueAccessStatus !==
-              EPISODE_QUEUE_ACCESS_STATUS.PENDING
-            ) {
-              return next({
-                status: 409,
-                message: 'This Episode Queue request is no longer pending.',
-              });
-            }
-            user.episodeQueueAccessStatus =
-              decision === 'approve'
-                ? EPISODE_QUEUE_ACCESS_STATUS.APPROVED
-                : EPISODE_QUEUE_ACCESS_STATUS.DENIED;
-            await repository.save(user);
-          }
+
+          await saveEpisodeQueueDefault(user, episodeCount);
+          user.settings ??= new UserSettings({ user });
+          user.settings.episodeQueueDefaultEpisodeCount = episodeCount;
+          user.episodeQueueAccessStatus =
+            episodeCount > 0
+              ? EPISODE_QUEUE_ACCESS_STATUS.APPROVED
+              : EPISODE_QUEUE_ACCESS_STATUS.OFF;
+          user.episodeQueueAccessRequestedAt = null;
+
           return res.status(200).json(serializeEpisodeQueueAccess(user));
         }
       );
     } catch (error) {
       return next({
         status: error instanceof UserMutationActorUnauthorizedError ? 403 : 500,
-        message: 'Could not review Episode Queue access.',
+        message: 'Could not update Episode Queue access.',
       });
     }
   }

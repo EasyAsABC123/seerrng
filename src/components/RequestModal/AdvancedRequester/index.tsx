@@ -180,7 +180,13 @@ export type RequestOverrides = {
 
 type RequestUser = Pick<
   User,
-  'avatar' | 'displayName' | 'email' | 'id' | 'permissions'
+  | 'avatar'
+  | 'displayName'
+  | 'email'
+  | 'id'
+  | 'jellyfinUsername'
+  | 'permissions'
+  | 'plexId'
 >;
 
 type ClientUserResultsResponse = PaginatedResponse & {

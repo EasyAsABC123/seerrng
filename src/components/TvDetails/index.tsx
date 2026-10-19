@@ -1,6 +1,7 @@
 import Spinner from '@app/assets/spinner.svg';
 import AssociationBadge from '@app/components/Association/AssociationBadge';
 import AvailabilitySubscriptionButton from '@app/components/AvailabilitySubscriptionButton';
+import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
 import IndexerSearchLink from '@app/components/Common/IndexerSearchLink';
 import { PageStatus } from '@app/components/Common/LoadingSpinner';
@@ -87,11 +88,9 @@ const messages = defineMessages('components.TvDetails', {
   addtowatchlist: 'Add To Watchlist',
   franchise: 'Franchise',
   selectToPlay: 'No playable episodes are currently available.',
-  episodeQueueSetup: 'Set Episode Queue default',
-  episodeQueuePending: 'Episode Queue · waiting for approval',
-  episodeQueueOff: 'Episode Queue · off',
-  episodeQueueDefault: 'Episode Queue · {count} episode by default',
-  episodeQueueDefaultPlural: 'Episode Queue · {count} episodes by default',
+  episodeQueueOff: 'Episode Queue · off · managed by admin',
+  episodeQueueDefault: 'Episode Queue · {count} episode set by admin',
+  episodeQueueDefaultPlural: 'Episode Queue · {count} episodes set by admin',
 });
 
 interface TvDetailsProps {
@@ -565,28 +564,21 @@ const TvDetails = ({
 
   const secondaryActions = (
     <>
-      {user && (
-        <Button
-          as="a"
-          href="/profile/settings/episode-queue"
-          buttonType="ghost"
-          buttonSize="sm"
-          title={intl.formatMessage(messages.episodeQueueSetup)}
+      {user && episodeQueueAccess && (
+        <Badge
+          badgeType={
+            episodeQueueAccess.defaultEpisodeCount > 0 ? 'success' : 'default'
+          }
         >
-          {episodeQueueAccess?.status === 'pending'
-            ? intl.formatMessage(messages.episodeQueuePending)
-            : episodeQueueAccess?.status === 'approved' &&
-                episodeQueueAccess.defaultEpisodeCount > 0
-              ? intl.formatMessage(
-                  episodeQueueAccess.defaultEpisodeCount === 1
-                    ? messages.episodeQueueDefault
-                    : messages.episodeQueueDefaultPlural,
-                  { count: episodeQueueAccess.defaultEpisodeCount }
-                )
-              : episodeQueueAccess?.status === 'approved'
-                ? intl.formatMessage(messages.episodeQueueOff)
-                : intl.formatMessage(messages.episodeQueueSetup)}
-        </Button>
+          {episodeQueueAccess.defaultEpisodeCount > 0
+            ? intl.formatMessage(
+                episodeQueueAccess.defaultEpisodeCount === 1
+                  ? messages.episodeQueueDefault
+                  : messages.episodeQueueDefaultPlural,
+                { count: episodeQueueAccess.defaultEpisodeCount }
+              )
+            : intl.formatMessage(messages.episodeQueueOff)}
+        </Badge>
       )}
       {isAnime && !embedded && (
         <>

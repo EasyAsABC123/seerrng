@@ -108,6 +108,7 @@ const UserSettings = ({ children }: UserSettingsProps) => {
       text: intl.formatMessage(messages.menuEpisodeQueue),
       route: '/settings/episode-queue',
       regex: /\/settings\/episode-queue/,
+      requiredPermission: Permission.MANAGE_USERS,
     },
     {
       text: intl.formatMessage(messages.menuAdvancedTheme),

@@ -9,7 +9,6 @@ import WhisparrAPI from '@server/api/servarr/whisparr';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import type { TmdbKeyword } from '@server/api/themoviedb/interfaces';
-import { EPISODE_QUEUE_ACCESS_STATUS } from '@server/constants/episodeQueueAccess';
 import type { MediaRequestFailureReason } from '@server/constants/media';
 import {
   MediaRequestStatus,
@@ -92,7 +91,6 @@ import {
   getUserVideoMaturityPolicy,
   isVideoWithinMaturityLimit,
 } from '@server/lib/videoMaturityPolicy';
-import { hasWatchAheadMediaServerLink } from '@server/lib/watchAheadEligibility';
 import logger from '@server/logger';
 import AsyncLock from '@server/utils/asyncLock';
 import { parseBookshelfBookId } from '@server/utils/bookshelfCatalog';
@@ -586,13 +584,11 @@ export class MediaRequest {
       requestUser = requestUserWithPlaybackCredentials;
     }
 
-    const watchAheadUsesUserDefault =
-      requestBody.watchAheadUsesUserDefault ??
-      (requestBody.watchAheadEpisodeCount === undefined &&
-        requestUser.id === user.id);
-    let watchAheadEpisodeCount = watchAheadUsesUserDefault
-      ? (requestUser.settings?.episodeQueueDefaultEpisodeCount ?? 0)
-      : (requestBody.watchAheadEpisodeCount ?? 0);
+    const watchAheadUsesUserDefault = true;
+    let watchAheadEpisodeCount =
+      requestBody.mediaType === MediaType.TV && !options.isAutoRequest
+        ? (requestUser.settings?.episodeQueueDefaultEpisodeCount ?? 0)
+        : 0;
     if (
       !Number.isSafeInteger(watchAheadEpisodeCount) ||
       watchAheadEpisodeCount < 0 ||
@@ -602,41 +598,6 @@ export class MediaRequest {
         'The requested episode queue must be between 0 and 5 episodes.'
       );
     }
-    if (watchAheadEpisodeCount > 0) {
-      const eligibilityError =
-        requestBody.mediaType !== MediaType.TV ||
-        requestUser.episodeQueueAccessStatus !==
-          EPISODE_QUEUE_ACCESS_STATUS.APPROVED ||
-        !hasMediaRequestPermission(
-          requestUser,
-          MediaType.TV,
-          Boolean(requestBody.is4k)
-        ) ||
-        !hasWatchAheadMediaServerLink(
-          requestUser,
-          settings.main.mediaServerType
-        );
-      if (watchAheadUsesUserDefault && eligibilityError) {
-        watchAheadEpisodeCount = 0;
-      } else if (
-        requestBody.mediaType !== MediaType.TV ||
-        (!watchAheadUsesUserDefault && requestUser.id !== user.id) ||
-        eligibilityError
-      ) {
-        throw new RequestPermissionError(
-          'The requested episode queue can only be enabled by the linked owner of a TV request.'
-        );
-      }
-      if (
-        requestBody.seasonRequests?.length !== 1 ||
-        requestBody.seasonRequests[0].episodeNumbers?.length !== 1
-      ) {
-        throw new RequestPermissionError(
-          'Episode Queue requests must specify exactly one starting episode.'
-        );
-      }
-    }
-
     const isManagedRequestForAnotherUser =
       canSelectRequestUser && requestUser.id !== user.id;
 
@@ -2693,16 +2654,18 @@ export class MediaRequest {
     }
 
     const resolvedTvdbId = media.tvdbId ?? tvdbId;
-    if (
-      watchAheadEpisodeCount > 0 &&
-      (!Number.isSafeInteger(Number(resolvedTvdbId)) ||
-        Number(resolvedTvdbId) <= 0)
-    ) {
-      if (watchAheadUsesUserDefault) {
+    if (watchAheadEpisodeCount > 0) {
+      if (
+        !Number.isSafeInteger(Number(resolvedTvdbId)) ||
+        Number(resolvedTvdbId) <= 0
+      ) {
         watchAheadEpisodeCount = 0;
-      } else {
-        throw new ServiceConfigurationError(
-          'The requested episode queue requires a valid TVDB identity for this series.'
+      } else if (
+        requestBody.seasonRequests?.length !== 1 ||
+        requestBody.seasonRequests[0].episodeNumbers?.length !== 1
+      ) {
+        throw new RequestPermissionError(
+          'Episode Queue requests must specify exactly one starting episode.'
         );
       }
     }

@@ -1,63 +1,59 @@
 ---
 title: TV Episode Queue
-description: Opt in to a small buffer of upcoming TV episodes requested in Sonarr as you watch in Plex, Jellyfin, or Emby.
+description: An administrator can set a per-user buffer of upcoming TV episodes that SeerrNG requests from Sonarr as the user watches.
 ---
 
 # TV Episode Queue
 
-The Episode Queue lets an approved TV request owner ask SeerrNG to keep up to
-five upcoming episodes requested in Sonarr as they watch the series in Plex,
-Jellyfin, or Emby. Access is **Off until a user manager approves it**. After
-approval, set one default buffer in **Profile → Settings → Episode Queue** to
-apply it to all existing and future TV requests. A per-show choice can override
-that default.
+Episode Queue can keep up to five upcoming episodes requested in Sonarr as a
+user watches through Plex, Jellyfin, or Emby. A user manager sets one default
+for each account from **Users → [user] → Profile → Episode Queue**. That default
+applies to all of the user's current and future interactive TV requests. Only users with
+user-management permission can see or change the setting. End users cannot
+request access, change the default, or override it for one show.
 
-When Episode Queue is on for a **new** TV request, the episode list changes to
-a single starting episode. SeerrNG requests that episode first, then asks
-Sonarr to keep the selected number of upcoming episodes requested as playback
-progresses. Only one starting episode is selected, so this avoids requesting a
-whole season in advance. Choose **Off for this show** to return to the normal
-season or episode selection and restore the selection you had before enabling
-the queue.
-The queue does not guarantee a download will finish before you reach the next
-episode; Sonarr controls searching and download timing.
+When the administrator has enabled Episode Queue for an account, a new TV
+request starts with one selected episode. SeerrNG requests that episode first,
+then asks Sonarr to keep the configured number of upcoming episodes requested
+as playback progresses. Sonarr controls searching and download timing, so the
+queue does not guarantee a download will finish before the next episode is
+watched.
 
-Enabling Episode Queue on an **existing** request changes future queueing only.
-It keeps the request's existing season and episode selections, and it does not
-delete episodes already in Sonarr or the media library. To stop future additions
-and remove an episode from Sonarr, turn the queue off first, then manage that
-episode in Sonarr.
+In the user manager's profile editor, the Episode Queue setting shows whether
+the feature is on and the assigned buffer. The TV request dialog explains the
+assigned behavior before submission. If the account is missing a playback
+link, the request dialog explains the requirement and offers a link to account
+settings.
 
 ## Requirements
 
 - SeerrNG is configured to use Plex, Jellyfin, or Emby as its media server.
-- Your SeerrNG account is linked to the matching account or user on that
+- The user's SeerrNG account is linked to the matching account or user on that
   media server.
-- You have permission to request the TV quality selected for the request.
+- The user has permission to request the TV quality selected for the request.
 - The series has a TVDB identity so playback can be matched to the request.
 - A matching Sonarr destination is configured for the request's standard or 4K
   quality.
 
-## Turn it on or off
+## Manage the per-user default
 
-Ask a user manager to approve Episode Queue from your profile’s **Episode
-Queue** settings. After approval, choose a default from **Off** to five
-episodes. The default is used for existing root TV requests and every new TV
-request. Existing requests with an explicit show-specific choice keep it.
+A user manager can set **Off** or a buffer of one to five episodes from the
+user's profile. Saving a new value applies it to that user's existing
+interactive root TV requests and future interactive requests. Automatic
+full-season requests, such as Plex Watchlist sync, keep their normal behavior
+because they do not have a starting-episode selection. The confirmation
+explains that episodes already requested remain in SeerrNG and Sonarr when the
+setting changes.
 
-When creating a request, leave **Episode Queue** on **Use my default** or pick
-**Off for this show** or a different buffer to override the account default.
-You can change the choice later from the request card in **Requests** or
-**Request Status**. User managers can also manage the default and approval from
-that user's profile settings.
+End users see the assigned behavior in TV request flows. They do not see an
+Episode Queue profile setting and cannot request access or change the default.
+If Episode Queue is enabled but playback is not linked, the user can link their
+own playback account from the request dialog; the administrator still
+controls the queue length.
 
-Choose **Off for this show** to stop future watch-ahead requests. Episodes
-already created remain in Sonarr and in SeerrNG's request history. While the
-queue remains on, SeerrNG may add a missing episode again if it is needed to
-maintain the selected buffer. Episode Queue never deletes downloaded episodes
-or files. A user manager can revoke access from the user's profile; this clears
-their active queue settings and stops future additions. Episodes already
-requested remain in Sonarr and in SeerrNG's request history.
+Changing the default changes future queueing only. It does not delete episodes
+already created in Sonarr or the media library. Episode Queue never deletes
+downloaded episodes or files.
 
 ## What SeerrNG does
 
@@ -65,12 +61,11 @@ While at least one request has a buffer enabled, the worker checks active
 playback every 30 seconds. A matching episode must reach at least 90% of its
 runtime before the queue advances. SeerrNG matches the playing series and
 linked account to the TV request owner; another user's playback does not
-advance your request. New episodes are reconciled at most once every 15
-minutes.
+advance the request. New episodes are reconciled at most once every 15 minutes.
 
-While the TV request is pending approval, SeerrNG remembers your watched
-progress but waits to add episodes. Once the request is approved, SeerrNG checks
-the selected Sonarr library and requests enough upcoming, missing episodes to
+While the TV request is pending approval, SeerrNG remembers watched progress
+but waits to add episodes. Once the request is approved, SeerrNG checks the
+selected Sonarr library and requests enough upcoming, missing episodes to
 maintain the buffer. Episodes already in the library, monitored by Sonarr, or
 covered by another active request count toward that buffer. Specials follow
 the administrator's **Enable Special Episodes** setting.
@@ -83,15 +78,12 @@ tracking the files.
 
 ## API
 
-The request owner can update a request through
-`PUT /api/v1/request/{requestId}/watch-ahead` with a JSON body such as:
+`GET /api/v1/user/{userId}/settings/episode-queue` returns the default queue
+length for the signed-in user or, for a user manager, another user's profile.
+`POST` to the same endpoint with `{"defaultEpisodeCount": 3}` sets the
+administrator-managed default. A value of `0` turns Episode Queue off. Values
+from `0` through `5` are accepted. Only users with `MANAGE_USERS` may update
+the setting.
 
-```json
-{ "episodeCount": 3 }
-```
-
-Use `episodeCount: 0` and `useUserDefault: false` to turn the queue off for this
-show. Use `useUserDefault: true` to follow the profile default. Values from 0
-through 5 are accepted. Enabling the queue requires manager approval, a linked
-account for the configured Plex, Jellyfin, or Emby server, and a matching
-Sonarr destination.
+Request creation uses the request owner's saved default automatically. The
+request API does not accept per-request Episode Queue overrides.

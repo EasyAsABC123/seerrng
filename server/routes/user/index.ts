@@ -5,7 +5,6 @@ import PlexTvAPI, {
 } from '@server/api/plextv';
 import TautulliAPI, { isTautulliNoDataError } from '@server/api/tautulli';
 import TheMovieDb from '@server/api/themoviedb';
-import { EPISODE_QUEUE_ACCESS_STATUS } from '@server/constants/episodeQueueAccess';
 import {
   MediaRequestStatus,
   MediaStatus,
@@ -32,10 +31,7 @@ import type {
   UserResultsResponse,
   UserWatchDataResponse,
 } from '@server/interfaces/api/userInterfaces';
-import type {
-  EpisodeQueueApprovalRequest,
-  TvSeasonWatchGateApprovalRequest,
-} from '@server/interfaces/api/userSettingsInterfaces';
+import type { TvSeasonWatchGateApprovalRequest } from '@server/interfaces/api/userSettingsInterfaces';
 import {
   getAuthAccountAdmissionResource,
   runAuthAccountAdmission,
@@ -679,52 +675,6 @@ const filterPushSubscription = (subscription: UserPushSubscription) => ({
   userAgent: subscription.userAgent,
   createdAt: subscription.createdAt,
 });
-
-router.get<Record<string, never>, EpisodeQueueApprovalRequest[]>(
-  '/episode-queue-requests',
-  isAuthenticated(Permission.MANAGE_USERS),
-  async (req, res, next) => {
-    try {
-      return await runUserSecurityReadWithActor(
-        req.user!.id,
-        req.user!.id,
-        Permission.MANAGE_USERS,
-        async () => {
-          const users = await getRepository(User)
-            .createQueryBuilder('user')
-            .select([
-              'user.id',
-              'user.username',
-              'user.plexUsername',
-              'user.jellyfinUsername',
-              'user.email',
-              'user.avatar',
-              'user.episodeQueueAccessRequestedAt',
-            ])
-            .where('user.episodeQueueAccessStatus = :status', {
-              status: EPISODE_QUEUE_ACCESS_STATUS.PENDING,
-            })
-            .orderBy('user.episodeQueueAccessRequestedAt', 'ASC')
-            .getMany();
-          return res.status(200).json(
-            users.map((user) => ({
-              id: user.id,
-              displayName: user.displayName,
-              avatar: user.avatar,
-              requestedAt: user.episodeQueueAccessRequestedAt ?? null,
-            }))
-          );
-        },
-        { requirePermission: true }
-      );
-    } catch (error) {
-      return next({
-        status: error instanceof UserMutationActorUnauthorizedError ? 403 : 500,
-        message: 'Could not load Episode Queue access requests.',
-      });
-    }
-  }
-);
 
 router.get<Record<string, never>, TvSeasonWatchGateApprovalRequest[]>(
   '/tv-season-watch-gate-requests',

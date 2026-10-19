@@ -5,7 +5,6 @@ import SonarrAPI from '@server/api/servarr/sonarr';
 import SportarrAPI from '@server/api/servarr/sportarr';
 import TheMovieDb from '@server/api/themoviedb';
 import Tvdb from '@server/api/tvdb';
-import { EPISODE_QUEUE_ACCESS_STATUS } from '@server/constants/episodeQueueAccess';
 import {
   MediaRequestFailureReason,
   MediaRequestStatus,
@@ -114,7 +113,6 @@ import {
   type AuthorizedUserSecurityMutationLease,
 } from '@server/lib/userSecurityMutation';
 import { doesUserAllowVideo } from '@server/lib/videoMaturityPolicy';
-import { hasWatchAheadMediaServerLink } from '@server/lib/watchAheadEligibility';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import { parseBookshelfBookId } from '@server/utils/bookshelfCatalog';
@@ -590,50 +588,8 @@ const logRequestValidationFailure = (
   });
 };
 
-const getWatchAheadEligibilityError = (
-  requestUser: User,
-  actorId: number,
-  is4k: boolean,
-  serverId: number | undefined
-): string | undefined => {
-  if (requestUser.id !== actorId) {
-    return 'Only the request owner can enable the requested episode queue.';
-  }
-  if (
-    requestUser.episodeQueueAccessStatus !==
-    EPISODE_QUEUE_ACCESS_STATUS.APPROVED
-  ) {
-    return 'Request Episode Queue access from your profile and wait for approval.';
-  }
-  if (!hasMediaRequestPermission(requestUser, MediaType.TV, is4k)) {
-    return 'Your account does not have permission to request TV.';
-  }
-  const settings = getExternalRuntimeConfig();
-  if (
-    !hasWatchAheadMediaServerLink(requestUser, settings.main.mediaServerType)
-  ) {
-    return 'Link an account for the configured media server to enable the requested episode queue.';
-  }
-  const sonarrServer =
-    serverId === undefined
-      ? settings.sonarr.find(
-          (server) => server.isDefault && Boolean(server.is4k) === is4k
-        )
-      : settings.sonarr.find(
-          (server) => server.id === serverId && Boolean(server.is4k) === is4k
-        );
-  return sonarrServer
-    ? undefined
-    : 'A matching Sonarr server must be configured to enable the Episode Queue.';
-};
-
 const hasWatchAheadTvdbIdentity = (tvdbId: unknown): boolean =>
   Number.isSafeInteger(Number(tvdbId)) && Number(tvdbId) > 0;
-
-const formatEpisodeQueueSetting = (episodeCount: number): string =>
-  episodeCount === 0
-    ? 'Off'
-    : `${episodeCount} ${episodeCount === 1 ? 'episode' : 'episodes'}`;
 
 const parseRequestStatusAction = (
   status: unknown
@@ -1025,6 +981,19 @@ const sanitizeMediaRequestBody = (
   const mediaType = bodyObject.mediaType;
 
   if (
+    bodyObject.watchAheadEpisodeCount !== undefined ||
+    bodyObject.watchAheadUsesUserDefault !== undefined
+  ) {
+    return {
+      error: {
+        status: 403,
+        message:
+          'Episode Queue is managed by an administrator from the user profile.',
+      },
+    };
+  }
+
+  if (
     mediaType !== undefined &&
     !Object.values(MediaType).includes(mediaType as MediaType)
   ) {
@@ -1068,52 +1037,6 @@ const sanitizeMediaRequestBody = (
         status: 400,
         message:
           'requestQuotaApproval is only valid for new movie or TV requests.',
-      },
-    };
-  }
-
-  if (bodyObject.watchAheadEpisodeCount !== undefined) {
-    if (
-      !Number.isSafeInteger(bodyObject.watchAheadEpisodeCount) ||
-      Number(bodyObject.watchAheadEpisodeCount) < 0 ||
-      Number(bodyObject.watchAheadEpisodeCount) > 5
-    ) {
-      return {
-        error: {
-          status: 400,
-          message: 'watchAheadEpisodeCount must be an integer from 0 to 5.',
-        },
-      };
-    }
-    if (mediaType !== MediaType.TV) {
-      return {
-        error: {
-          status: 400,
-          message: 'watchAheadEpisodeCount is only valid for TV requests.',
-        },
-      };
-    }
-  }
-
-  if (
-    bodyObject.watchAheadUsesUserDefault !== undefined &&
-    typeof bodyObject.watchAheadUsesUserDefault !== 'boolean'
-  ) {
-    return {
-      error: {
-        status: 400,
-        message: 'watchAheadUsesUserDefault must be a boolean.',
-      },
-    };
-  }
-  if (
-    bodyObject.watchAheadUsesUserDefault !== undefined &&
-    mediaType !== MediaType.TV
-  ) {
-    return {
-      error: {
-        status: 400,
-        message: 'watchAheadUsesUserDefault is only valid for TV requests.',
       },
     };
   }
@@ -1593,23 +1516,6 @@ const sanitizeMediaRequestBody = (
       },
     };
   }
-  const singleEpisodeStart =
-    seasonRequests.value?.length === 1 ? seasonRequests.value[0] : undefined;
-  if (
-    options.requireCreateIdentity &&
-    mediaType === MediaType.TV &&
-    Number(bodyObject.watchAheadEpisodeCount ?? 0) > 0 &&
-    singleEpisodeStart?.episodeNumbers?.length !== 1
-  ) {
-    return {
-      error: {
-        status: 400,
-        message:
-          'Episode Queue requests must specify exactly one starting episode in seasonRequests.',
-      },
-    };
-  }
-
   const value = {
     ...body,
     is4k: bodyObject.is4k ?? false,
@@ -1634,10 +1540,6 @@ const sanitizeMediaRequestBody = (
       seasonRequests.value?.map((selection) => selection.seasonNumber) ??
       seasons.value,
     seasonRequests: seasonRequests.value,
-    watchAheadEpisodeCount: bodyObject.watchAheadEpisodeCount as
-      number | undefined,
-    watchAheadUsesUserDefault: bodyObject.watchAheadUsesUserDefault as
-      boolean | undefined,
     requestQuotaApproval: bodyObject.requestQuotaApproval as
       boolean | undefined,
   } as MediaRequestBody;
@@ -2668,6 +2570,34 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
         return next(body.error);
       }
 
+      const episodeQueueUser =
+        body.value.userId && body.value.userId !== req.user.id
+          ? await getRepository(User).findOne({
+              where: { id: body.value.userId },
+            })
+          : req.user;
+      const configuredEpisodeQueueCount =
+        body.value.mediaType === MediaType.TV
+          ? (episodeQueueUser?.settings?.episodeQueueDefaultEpisodeCount ?? 0)
+          : 0;
+      const requestUsesEpisodeQueue =
+        configuredEpisodeQueueCount > 0 &&
+        hasWatchAheadTvdbIdentity(body.value.tvdbId);
+
+      if (
+        requestUsesEpisodeQueue &&
+        !isSingleEpisodeWatchAheadSelection(
+          body.value.seasonRequests,
+          configuredEpisodeQueueCount
+        )
+      ) {
+        return next({
+          status: 400,
+          message:
+            'Episode Queue requests must specify exactly one starting episode in seasonRequests.',
+        });
+      }
+
       if (
         body.value.mediaType === MediaType.TV &&
         !getSettings().main.partialRequestsEnabled &&
@@ -2676,7 +2606,7 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
         ) &&
         !isSingleEpisodeWatchAheadSelection(
           body.value.seasonRequests,
-          body.value.watchAheadEpisodeCount ?? 0
+          requestUsesEpisodeQueue ? configuredEpisodeQueueCount : 0
         )
       ) {
         return next({
@@ -2694,28 +2624,6 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
           status: 403,
           message: `${getMediaCategoryLabel(disabledCategory)} requests are disabled by the administrator.`,
         });
-      }
-
-      if ((body.value.watchAheadEpisodeCount ?? 0) > 0) {
-        if (
-          body.value.userId !== undefined &&
-          body.value.userId !== req.user.id
-        ) {
-          return next({
-            status: 403,
-            message:
-              'Only the request owner can enable the requested episode queue.',
-          });
-        }
-        const eligibilityError = getWatchAheadEligibilityError(
-          req.user,
-          req.user.id,
-          body.value.is4k ?? false,
-          body.value.requestServiceServerId ?? body.value.serverId
-        );
-        if (eligibilityError) {
-          return next({ status: 409, message: eligibilityError });
-        }
       }
 
       const request = await MediaRequest.request(body.value, req.user, {
@@ -3858,253 +3766,6 @@ requestRoutes.get('/:requestId', async (req, res, next) => {
 });
 
 requestRoutes.put<{ requestId: string }>(
-  '/:requestId/watch-ahead',
-  async (req, res, next) => {
-    try {
-      const requestId = parseRequestParamId(req.params.requestId);
-      if (!requestId) {
-        return next({ status: 404, message: 'Request not found.' });
-      }
-      const body = req.body as
-        { episodeCount?: unknown; useUserDefault?: unknown } | undefined;
-      const episodeCount = body?.episodeCount;
-      if (
-        !Number.isSafeInteger(episodeCount) ||
-        Number(episodeCount) < 0 ||
-        Number(episodeCount) > 5
-      ) {
-        return next({
-          status: 400,
-          message: 'episodeCount must be an integer from 0 to 5.',
-        });
-      }
-      if (
-        body?.useUserDefault !== undefined &&
-        typeof body.useUserDefault !== 'boolean'
-      ) {
-        return next({
-          status: 400,
-          message: 'useUserDefault must be a boolean.',
-        });
-      }
-      const parsedEpisodeCount = Number(episodeCount);
-      const usesUserDefault = body?.useUserDefault === true;
-
-      const requestRepository = getRepository(MediaRequest);
-      const initialRequest = await requestRepository.findOne({
-        where: { id: requestId },
-        relations: { requestedBy: true, watchAheadParent: true },
-      });
-      if (!initialRequest) {
-        return next({ status: 404, message: 'Request not found.' });
-      }
-
-      return await runUserSecurityMutationWithActor(
-        req.user!.id,
-        initialRequest.requestedBy.id,
-        [Permission.MANAGE_REQUESTS],
-        async (actor) => {
-          // Enabling watch-ahead is explicit consent for future acquisition;
-          // administrators can manage the request but cannot opt in for its owner.
-          if (actor.id !== initialRequest.requestedBy.id) {
-            return next({
-              status: 403,
-              message:
-                'Only the request owner can change the requested episode queue.',
-            });
-          }
-
-          return await runWithRequestAdmission(
-            [getRequestMutationAdmissionKey(requestId)],
-            async () => {
-              const updatedRequest = await dataSource.transaction(
-                async (manager) => {
-                  const repository = manager.getRepository(MediaRequest);
-                  const current = await repository.findOne({
-                    where: { id: requestId },
-                    relations: {
-                      media: true,
-                      requestedBy: true,
-                      watchAheadParent: true,
-                    },
-                  });
-                  if (!current) {
-                    return undefined;
-                  }
-                  if (
-                    current.type !== MediaType.TV ||
-                    current.watchAheadParentRequestId
-                  ) {
-                    throw Object.assign(
-                      new Error(
-                        'Watch-ahead can only be changed on a parent TV request.'
-                      ),
-                      { status: 400 }
-                    );
-                  }
-                  if (current.requestedBy.id !== actor.id) {
-                    throw Object.assign(new Error('Access denied.'), {
-                      status: 403,
-                    });
-                  }
-
-                  const nextEpisodeCount = usesUserDefault
-                    ? (current.requestedBy.settings
-                        ?.episodeQueueDefaultEpisodeCount ?? 0)
-                    : parsedEpisodeCount;
-                  if (nextEpisodeCount > 0) {
-                    if (
-                      ![
-                        MediaRequestStatus.PENDING,
-                        MediaRequestStatus.APPROVED,
-                        MediaRequestStatus.COMPLETED,
-                      ].includes(current.status)
-                    ) {
-                      throw Object.assign(
-                        new Error(
-                          'Watch-ahead can only be enabled for pending, approved, or completed requests.'
-                        ),
-                        { status: 409 }
-                      );
-                    }
-                    const eligibilityError = getWatchAheadEligibilityError(
-                      current.requestedBy,
-                      actor.id,
-                      current.is4k,
-                      current.serverId
-                    );
-                    if (eligibilityError) {
-                      throw Object.assign(new Error(eligibilityError), {
-                        status: 409,
-                      });
-                    }
-                    if (!hasWatchAheadTvdbIdentity(current.media.tvdbId)) {
-                      throw Object.assign(
-                        new Error(
-                          'The requested episode queue requires a valid TVDB identity for this series.'
-                        ),
-                        { status: 409 }
-                      );
-                    }
-                  }
-
-                  const previousEpisodeCount =
-                    current.watchAheadEpisodeCount ?? 0;
-                  const changed =
-                    previousEpisodeCount !== nextEpisodeCount ||
-                    current.watchAheadUsesUserDefault !== usesUserDefault;
-                  await repository.update(current.id, {
-                    watchAheadEpisodeCount: nextEpisodeCount,
-                    watchAheadUsesUserDefault: usesUserDefault,
-                    ...(changed
-                      ? {
-                          watchAheadLastSeason: null,
-                          watchAheadLastEpisode: null,
-                          watchAheadLastReconciledAt: null,
-                        }
-                      : {}),
-                  });
-
-                  if (changed) {
-                    const statusEventRepository = manager.getRepository(
-                      MediaRequestStatusEvent
-                    );
-                    const latestStatusEvent =
-                      await statusEventRepository.findOne({
-                        where: { requestId: current.id },
-                        order: { id: 'DESC' },
-                      });
-                    const fallbackStage =
-                      current.status === MediaRequestStatus.PENDING
-                        ? RequestStatusStage.REQUESTED
-                        : current.status === MediaRequestStatus.FAILED
-                          ? RequestStatusStage.FAILED
-                          : current.status === MediaRequestStatus.DECLINED
-                            ? RequestStatusStage.DECLINED
-                            : current.status === MediaRequestStatus.COMPLETED
-                              ? RequestStatusStage.AVAILABLE
-                              : RequestStatusStage.APPROVED;
-                    const historyMessage = `Episode queue changed from ${formatEpisodeQueueSetting(
-                      previousEpisodeCount
-                    )} to ${formatEpisodeQueueSetting(nextEpisodeCount)}${
-                      usesUserDefault ? ' (account default)' : ''
-                    }.`;
-
-                    await statusEventRepository.insert(
-                      new MediaRequestStatusEvent({
-                        requestId: current.id,
-                        requestedById: current.requestedBy.id,
-                        mediaId: current.media.id,
-                        mediaType: current.type,
-                        stage: latestStatusEvent?.stage ?? fallbackStage,
-                        attempt: latestStatusEvent?.attempt ?? 0,
-                        format: current.bookFormat ?? null,
-                        service: latestStatusEvent?.service ?? null,
-                        message: historyMessage,
-                        percent: latestStatusEvent?.percent ?? null,
-                        size: latestStatusEvent?.size ?? null,
-                        sizeLeft: latestStatusEvent?.sizeLeft ?? null,
-                        estimatedCompletionTime:
-                          latestStatusEvent?.estimatedCompletionTime ?? null,
-                        downloadCount: latestStatusEvent?.downloadCount ?? 0,
-                        downloadId: latestStatusEvent?.downloadId ?? null,
-                        fingerprint: [
-                          'episode-queue',
-                          current.id,
-                          previousEpisodeCount,
-                          parsedEpisodeCount,
-                          Date.now(),
-                        ]
-                          .join(':')
-                          .slice(0, 255),
-                      })
-                    );
-                  }
-
-                  return repository.findOne({
-                    where: { id: current.id },
-                    relations: { media: true, requestedBy: true },
-                  });
-                }
-              );
-
-              if (!updatedRequest) {
-                return next({ status: 404, message: 'Request not found.' });
-              }
-              return res
-                .status(200)
-                .json(filterEntityResponse(updatedRequest, actor));
-            }
-          );
-        },
-        { expectedCredentialVersion: getExpectedCredentialVersion(req) }
-      );
-    } catch (error) {
-      if (error instanceof UserMutationActorUnauthorizedError) {
-        return next({ status: 403, message: 'Access denied.' });
-      }
-      if (
-        error &&
-        typeof error === 'object' &&
-        'status' in error &&
-        typeof error.status === 'number'
-      ) {
-        return next({
-          status: error.status,
-          message: error instanceof Error ? error.message : 'Invalid request.',
-        });
-      }
-      logger.error('Failed to update requested episode queue setting', {
-        label: 'Request',
-        requestId: req.params.requestId,
-        ...getErrorLogFields(error),
-      });
-      return next({ status: 500, message: 'Unable to update watch-ahead.' });
-    }
-  }
-);
-
-requestRoutes.put<{ requestId: string }>(
   '/:requestId',
   async (req, res, next) => {
     const requestRepository = getRepository(MediaRequest);
@@ -4371,61 +4032,6 @@ requestRoutes.put<{ requestId: string }>(
                         body.format ?? request.bookFormat ?? 'ebook';
                     }
                   } else if (request.type === MediaType.TV) {
-                    if (
-                      body.watchAheadEpisodeCount !== undefined ||
-                      body.watchAheadUsesUserDefault !== undefined
-                    ) {
-                      if (requestUser.id !== actor.id) {
-                        return next({
-                          status: 403,
-                          message:
-                            'Only the request owner can change the requested episode queue.',
-                        });
-                      }
-                      const usesUserDefault =
-                        body.watchAheadUsesUserDefault ??
-                        request.watchAheadUsesUserDefault;
-                      const nextEpisodeCount = usesUserDefault
-                        ? (requestUser.settings
-                            ?.episodeQueueDefaultEpisodeCount ?? 0)
-                        : (body.watchAheadEpisodeCount ??
-                          request.watchAheadEpisodeCount);
-                      if (nextEpisodeCount > 0) {
-                        const eligibilityError = getWatchAheadEligibilityError(
-                          requestUser,
-                          actor.id,
-                          request.is4k,
-                          body.serverId ?? request.serverId
-                        );
-                        if (eligibilityError) {
-                          return next({
-                            status: eligibilityError.startsWith(
-                              'Only the request owner'
-                            )
-                              ? 403
-                              : 409,
-                            message: eligibilityError,
-                          });
-                        }
-                        if (!hasWatchAheadTvdbIdentity(request.media.tvdbId)) {
-                          return next({
-                            status: 409,
-                            message:
-                              'The requested episode queue requires a valid TVDB identity for this series.',
-                          });
-                        }
-                      }
-                      const watchAheadChanged =
-                        request.watchAheadEpisodeCount !== nextEpisodeCount ||
-                        request.watchAheadUsesUserDefault !== usesUserDefault;
-                      request.watchAheadEpisodeCount = nextEpisodeCount;
-                      request.watchAheadUsesUserDefault = usesUserDefault;
-                      if (watchAheadChanged) {
-                        request.watchAheadLastSeason = null;
-                        request.watchAheadLastEpisode = null;
-                        request.watchAheadLastReconciledAt = null;
-                      }
-                    }
                     const requestedSeasons =
                       body.seasons === 'all' ? undefined : body.seasons;
                     const requestedSelections:
