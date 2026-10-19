@@ -136,6 +136,23 @@ export interface LinkClassification {
   type?: string;
 }
 
+const isHostOrSubdomain = (host: string, domain: string): boolean => {
+  const hostLabels = host.split('.');
+  const domainLabels = domain.split('.');
+  if (hostLabels.length < domainLabels.length) return false;
+
+  const hostDomainLabels = hostLabels.slice(-domainLabels.length);
+  return domainLabels.every(
+    (label, index) => hostDomainLabels[index] === label
+  );
+};
+
+const isAmazonMarketplaceHost = (host: string): boolean =>
+  /(^|\.)amazon\.(?:[a-z]{2,3}|co\.[a-z]{2}|com\.[a-z]{2})$/.test(host);
+
+const isAudibleMarketplaceHost = (host: string): boolean =>
+  /(^|\.)audible\.(?:[a-z]{2,3}|co\.[a-z]{2}|com\.[a-z]{2})$/.test(host);
+
 export const classifyLink = (raw: string): LinkClassification => {
   let url: URL;
   try {
@@ -143,10 +160,10 @@ export const classifyLink = (raw: string): LinkClassification => {
   } catch {
     return { provider: 'generic' };
   }
-  const host = url.hostname.replace(/^www\.|^m\./, '').toLowerCase();
+  const host = url.hostname.toLowerCase().replace(/^(?:www|m)\./, '');
   const path = url.pathname;
 
-  if (host.endsWith('imdb.com')) {
+  if (isHostOrSubdomain(host, 'imdb.com')) {
     const id = path.match(/\/title\/(tt\d{5,10})/)?.[1];
     return { provider: 'imdb', id };
   }
@@ -154,7 +171,7 @@ export const classifyLink = (raw: string): LinkClassification => {
     const match = path.match(/\/(movie|tv)\/(\d+)/);
     return { provider: 'tmdb', type: match?.[1], id: match?.[2] };
   }
-  if (host.endsWith('letterboxd.com') || host === 'boxd.it') {
+  if (isHostOrSubdomain(host, 'letterboxd.com') || host === 'boxd.it') {
     return { provider: 'letterboxd' };
   }
   if (host === 'store.steampowered.com' || host === 'steamcommunity.com') {
@@ -173,7 +190,9 @@ export const classifyLink = (raw: string): LinkClassification => {
       type: 'anime',
     };
   }
-  if (host.endsWith('goodreads.com')) return { provider: 'goodreads' };
+  if (isHostOrSubdomain(host, 'goodreads.com')) {
+    return { provider: 'goodreads' };
+  }
   if (host === 'hardcover.app') return { provider: 'hardcover' };
   if (host === 'openlibrary.org') {
     return {
@@ -181,13 +200,13 @@ export const classifyLink = (raw: string): LinkClassification => {
       id: path.match(/\/works\/(OL\d+W)/i)?.[1],
     };
   }
-  if (/(^|\.)amazon\.[a-z.]+$/.test(host)) {
+  if (isAmazonMarketplaceHost(host)) {
     return {
       provider: 'amazon',
       id: path.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/)?.[1],
     };
   }
-  if (host.startsWith('audible.')) {
+  if (isAudibleMarketplaceHost(host)) {
     return {
       provider: 'audible',
       id: path.match(/\/pd\/[^/]+\/([A-Z0-9]{10})/)?.[1],

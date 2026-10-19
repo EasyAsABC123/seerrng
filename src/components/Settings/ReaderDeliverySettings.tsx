@@ -19,6 +19,8 @@ const messages = defineMessages('components.ReaderDeliverySettings', {
   title: 'Reader Apps',
   description:
     'Connect Grimmory or BookOrbit to browse and deliver ebooks, audiobooks, comics, and magazine issues to compatible reader apps.',
+  requestWorkflow:
+    'SeerrNG sends approved book requests to the configured acquisition service. Reader Apps show files after that service imports them; BookOrbit’s own request queue is separate from this connection.',
   grimmoryDescription:
     'Recommended. Grimmory provides an OPDS catalog for ebooks and PDFs, a Komga API for streamed comic pages, and a built-in player for M4B, M4A, and MP3 audiobooks.',
   bookorbitDescription:
@@ -642,6 +644,9 @@ const ReaderDeliverySettings = () => {
       </h3>
       <p className="settings-group-description">
         {intl.formatMessage(messages.description)}
+      </p>
+      <p className="settings-group-description">
+        {intl.formatMessage(messages.requestWorkflow)}
       </p>
       <div className="settings-group-content">
         {!data && !error && <LoadingSpinner />}

@@ -22,7 +22,7 @@ export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
 export const sniffImageType = (
   buffer: Buffer
 ): AllowedImageType | undefined => {
-  if (buffer.length < 12) return undefined;
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return undefined;
   if (buffer[0] === 0x89 && buffer.toString('ascii', 1, 4) === 'PNG') {
     return 'image/png';
   }
@@ -155,6 +155,10 @@ const readWithOpenAi = async (
   );
   if (!endpoint)
     throw new AiProviderError('The vision provider URL is invalid.');
+  // The only bytes sent here are the user's uploaded image and credentials
+  // saved for this configured endpoint. The admin consent gate is checked by
+  // readImage/isVisionConfigured, the URL is revalidated, and redirects are
+  // disabled so the API key cannot be forwarded elsewhere.
   const response = await axios.post(
     stringifySafeHttpUrl(endpoint),
     {

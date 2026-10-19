@@ -931,7 +931,8 @@ const Swipe = () => {
       }
       return;
     }
-    const nextSeed = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const entropy = window.crypto.getRandomValues(new Uint32Array(2));
+    const nextSeed = `${Date.now()}-${Array.from(entropy, (word) => word.toString(36)).join('')}`;
     const firstPageUrl = swipeCatalogUrl(
       mediaType,
       effectiveFiltersForMode,

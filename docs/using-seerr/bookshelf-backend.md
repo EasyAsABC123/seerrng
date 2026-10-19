@@ -205,6 +205,35 @@ acceptance. Run it with the instructions in
 Pin the ChaptarrNG image version in reproducible deployments because its
 Readarr-compatible surface can change between releases.
 
+### Troubleshoot a missing or failed ChaptarrNG book
+
+Start with the request's current status and history in SeerrNG. SeerrNG records
+the request, format, service destination, and the lifecycle information the
+backend exposes. It does not copy raw service logs into requester-facing
+status because those can include server paths or other private details.
+
+For a search or download issue, have an administrator check the matching
+ebook or audiobook service entry, then inspect the book in ChaptarrNG:
+
+1. Confirm the requested title and format are monitored. Seeing the author in
+   ChaptarrNG does not mean the requested title is monitored; other books from
+   that author may be catalogued without being searched.
+2. Run an interactive search for that exact book in ChaptarrNG and review the
+   selected metadata, profile, and root folder.
+3. Check ChaptarrNG's indexer results, download client, activity, and logs to
+   see whether a release was found, sent to the client, and imported. If you
+   use Prowlarr, confirm its enabled indexers and credentials are healthy from
+   ChaptarrNG's side as well.
+4. If you copied a file into the library yourself, use ChaptarrNG's manual
+   import to identify and organize it, then run SeerrNG's book availability
+   scan.
+
+Household members can keep requesting in SeerrNG; they do not need accounts in
+ChaptarrNG, Prowlarr, or the download client. These tools remain administrator
+integrations. SeerrNG cannot improve a backend's source coverage or change its
+search profile, so use the backend's diagnostics and logs when results are
+missing.
+
 ## Audiobookshelf availability
 
 SeerrNG can scan one Audiobookshelf book library as a separate,

@@ -56,17 +56,38 @@ export const fetchSharedPage = async (url: string): Promise<string> => {
   }
 };
 
+const decodeNumericEntity = (
+  entity: string,
+  digits: string,
+  radix: number
+): string => {
+  const codePoint = Number.parseInt(digits, radix);
+  if (
+    !Number.isInteger(codePoint) ||
+    codePoint < 1 ||
+    codePoint > 0x10ffff ||
+    (codePoint >= 0xd800 && codePoint <= 0xdfff)
+  ) {
+    return entity;
+  }
+  return String.fromCodePoint(codePoint);
+};
+
 const decodeEntities = (value: string) =>
   value
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
-      String.fromCodePoint(parseInt(hex, 16))
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#x([\da-f]+);/gi, (entity, digits: string) =>
+      decodeNumericEntity(entity, digits, 16)
     )
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)));
+    .replace(/&#(\d+);/g, (entity, digits: string) =>
+      decodeNumericEntity(entity, digits, 10)
+    )
+    // Decode the escape character last so an encoded entity stays encoded.
+    .replace(/&amp;/gi, '&');
 
 export interface PageMetadata {
   title?: string;
@@ -142,11 +163,12 @@ export const extractPageMetadata = (html: string): PageMetadata => {
       if (year) result.year ??= Number(year);
     }
   }
-  const ogTitle =
-    metaContent(html, 'og:title') ??
-    html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+  const metadataTitle = metaContent(html, 'og:title');
+  const pageTitle = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+  const ogTitle = metadataTitle ?? pageTitle;
   if (!result.title && ogTitle) {
-    result.title = decodeEntities(ogTitle).trim();
+    result.title =
+      metadataTitle === undefined ? decodeEntities(ogTitle).trim() : ogTitle;
   }
   if (!result.isbn) {
     const isbn = metaContent(html, 'books:isbn') ?? metaContent(html, 'isbn');

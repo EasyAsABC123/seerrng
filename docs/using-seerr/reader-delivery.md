@@ -10,6 +10,12 @@ SeerrNG connects your existing media libraries to compatible readers through
 Grimmory or BookOrbit. Grimmory is recommended and stays the preferred service
 by default. You can configure either service or both.
 
+Reader Apps are for browsing and reading files that are already in a library.
+They do not search acquisition sources or process SeerrNG requests. BookOrbit's
+own request queue is separate and is not connected to SeerrNG. Use a configured
+book service under **Settings > Services** for ebook or audiobook
+acquisition; SeerrNG sends approved requests there and tracks their progress.
+
 SeerrNG does not copy files into Grimmory or BookOrbit. The reader service must
 index the files it will show in its catalogs and players. SeerrNG also offers
 protected downloads for available files attached to your own requests, so you
