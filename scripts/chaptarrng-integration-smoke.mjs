@@ -61,12 +61,37 @@ assert.equal(capabilitiesResponse.status, 200);
 const capabilities = await capabilitiesResponse.json();
 assert.equal(capabilities.contract, 'chaptarrng-seerr-bookshelf');
 assert.equal(capabilities.contractVersion, 1);
+assert.equal(capabilities.providerIdDialect, 'hc');
 assert.equal(capabilities.features?.restrictedServiceApiKey, true);
 
 // This call uses SeerrNG's adapter and follows the advertised format facade
 // and paged-library contract using the dedicated service key.
 const books = await api.getBooks();
 assert.ok(Array.isArray(books));
+const migratedAudiobook = books.find(
+  (book) => book.title === 'Fixture Audiobook' && book.mediaType === 'audiobook'
+);
+assert.ok(
+  migratedAudiobook,
+  'SeerrNG could not read the audiobook record converted from BookshelfNG schema 158'
+);
+assert.equal(migratedAudiobook.foreignEditionId, 'audio-40');
+assert.equal(migratedAudiobook.hardcoverBookId, 'hc:book-30');
+
+const ebookApi = new ReadarrAPI({
+  url: apiUrl,
+  apiKey: serviceKey,
+  mediaType: 'ebook',
+});
+const ebooks = await ebookApi.getBooks();
+const migratedEbook = ebooks.find(
+  (book) => book.title === 'Fixture Book' && book.mediaType === 'ebook'
+);
+assert.ok(
+  migratedEbook,
+  'SeerrNG could not read the ebook record converted from BookshelfNG schema 158'
+);
+assert.equal(migratedEbook.hardcoverBookId, 'hc:book-30');
 
 const administrativeResponse = await requestWithKey('/config/host', serviceKey);
 assert.ok(
@@ -88,5 +113,5 @@ const globalKeyResponse = await requestWithKey('/config/host', globalKey);
 assert.equal(globalKeyResponse.status, 200);
 
 console.log(
-  `ChaptarrNG ${systemStatus.version} accepted SeerrNG's restricted key for capabilities and the ${books.length}-book paged library; administrative and unrelated command access was denied.`
+  `ChaptarrNG ${systemStatus.version} accepted SeerrNG's restricted key for capabilities and both migrated format libraries (${books.length} audiobooks, ${ebooks.length} ebooks); administrative and unrelated command access was denied.`
 );
