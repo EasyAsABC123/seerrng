@@ -549,6 +549,7 @@ const SettingsServices = ({
   const {
     data: whisparrData,
     error: whisparrError,
+    isValidating: whisparrIsValidating,
     mutate: revalidateWhisparr,
   } = useSWR<WhisparrSettings[]>('/api/v1/settings/whisparr');
   const {
@@ -1335,7 +1336,9 @@ const SettingsServices = ({
           className="app-card-sub section settings-service-section"
           hidden={!showAdultServices}
         >
-          {!whisparrData && !whisparrError && <LoadingSpinner />}
+          {!whisparrData && (!whisparrError || whisparrIsValidating) && (
+            <LoadingSpinner />
+          )}
           {whisparrError && (
             <Alert
               type="error"
@@ -1347,6 +1350,7 @@ const SettingsServices = ({
               <Button
                 buttonType="default"
                 buttonSize="sm"
+                disabled={whisparrIsValidating}
                 onClick={() => void revalidateWhisparr()}
               >
                 {intl.formatMessage(messages.retryWhisparr)}
@@ -1393,24 +1397,27 @@ const SettingsServices = ({
                   }
                 />
               ))}
-              <li className="settings-service-add-card">
-                <div className="settings-service-add-card-content">
-                  <Button
-                    buttonType="success"
-                    buttonSize="standard"
-                    className="mt-3 mb-3"
-                    onClick={() =>
-                      setEditWhisparrModal({ open: true, whisparr: null })
-                    }
-                  >
-                    <PlusIcon
-                      className="settings-service-add-icon"
-                      aria-hidden="true"
-                    />
-                    <span>{intl.formatMessage(messages.addWhisparr)}</span>
-                  </Button>
-                </div>
-              </li>
+              {((whisparrData && !whisparrError) ||
+                (whisparrError && !whisparrData && !whisparrIsValidating)) && (
+                <li className="settings-service-add-card">
+                  <div className="settings-service-add-card-content">
+                    <Button
+                      buttonType="success"
+                      buttonSize="standard"
+                      className="mt-3 mb-3"
+                      onClick={() =>
+                        setEditWhisparrModal({ open: true, whisparr: null })
+                      }
+                    >
+                      <PlusIcon
+                        className="settings-service-add-icon"
+                        aria-hidden="true"
+                      />
+                      <span>{intl.formatMessage(messages.addWhisparr)}</span>
+                    </Button>
+                  </div>
+                </li>
+              )}
             </ul>
           )}
         </div>

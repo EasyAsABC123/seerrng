@@ -6,4 +6,4 @@ action: none
 breaking: false
 ---
 
-Whisparr setup now waits for saved server settings to finish loading before offering to add another server, while keeping setup available if loading fails.
+Whisparr setup waits for saved server settings, including retries, to finish loading before offering to add another server, while keeping setup available after a failed initial load.

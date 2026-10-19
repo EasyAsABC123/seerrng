@@ -102,7 +102,7 @@ describe('service setup categories', () => {
               statusCode: 503,
               body: { error: 'Temporary settings failure.' },
             }
-          : { statusCode: 200, body: [] }
+          : { delay: 1000, statusCode: 200, body: [] }
       );
     }).as('whisparrSettings');
     cy.intercept('POST', '/api/v1/settings/whisparr/test', {
@@ -133,6 +133,7 @@ describe('service setup categories', () => {
       .should('be.visible');
 
     cy.contains('button', 'Retry').click();
+    cy.contains('button', 'Connect Whisparr Server').should('not.exist');
     cy.wait('@whisparrSettings').its('response.statusCode').should('eq', 200);
     cy.contains(
       'No Whisparr servers are connected. Connect one to enable the Adult category.'
