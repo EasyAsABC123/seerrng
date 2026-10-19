@@ -241,6 +241,38 @@ describe('TV season watch-rule access', () => {
 });
 
 describe('administrator-managed Episode Queue defaults', () => {
+  it('lets a user manager set their own default without requesting approval', async () => {
+    const { sessionCookie, userId } = await loginAs(
+      'admin@seerr.dev',
+      'test1234'
+    );
+    const accessRoute = `/user/${userId}/settings/episode-queue`;
+
+    const response = await request(app)
+      .post(accessRoute)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', sessionCookie)
+      .send({ defaultEpisodeCount: 3 });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, {
+      status: 'approved',
+      defaultEpisodeCount: 3,
+    });
+
+    const persistedAccess = await request(app)
+      .get(accessRoute)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', sessionCookie);
+    assert.deepEqual(persistedAccess.body, {
+      status: 'approved',
+      defaultEpisodeCount: 3,
+    });
+
+    const manager = await getRepository(User).findOneByOrFail({ id: userId });
+    assert.equal(manager.episodeQueueAccessRequestedAt, null);
+  });
+
   it('lets only user managers set one default across all of a user’s root TV requests', async () => {
     const friendSession = await loginAs('friend@seerr.dev', 'test1234');
     const friend = await getRepository(User).findOneByOrFail({
