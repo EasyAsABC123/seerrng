@@ -1,5 +1,5 @@
 ---
-category: improved
+category: changed
 audience: users, operators
 area: requests
 action: none
