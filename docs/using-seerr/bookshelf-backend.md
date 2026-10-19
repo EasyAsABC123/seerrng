@@ -523,6 +523,13 @@ For the validated deployment, the important in-container paths were:
 
 ## Installer Script
 
+> **Migration is frozen for now.** ChaptarrNG `v0.9.977` is the latest
+> published release, and BookshelfNG issue #144 keeps production cutover gated
+> on feature parity, representative data and rollback, and installation-channel
+> acceptance. Use the migration helper for read-only preview only. Do not pass
+> `--apply` or start ChaptarrNG against BookshelfNG appdata. Keep the existing
+> BookshelfNG service running until the retirement gates close.
+
 For a new deployment, use the SeerrNG setup assistant to create the standard
 ChaptarrNG stack:
 
@@ -546,8 +553,8 @@ promoting a database. Fill each `mediaType` with `audiobook`, `ebook`, or
 and rerun preview before applying. The same standard ChaptarrNG image reads
 that map during preview, apply, and normal startup.
 
-After reviewing the report and stopping BookshelfNG, apply with an independent
-backup location:
+After issue #144 is closed and production cutover is approved, review the
+report, stop BookshelfNG, and apply with an independent backup location:
 
 ```bash
 BOOKSHELF_EBOOKS_CONFIG_DIR=/path/to/bookshelf-config \
