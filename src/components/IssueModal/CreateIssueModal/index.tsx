@@ -174,9 +174,10 @@ const CreateIssueModal = ({
       value: option.value,
       label: intl.formatMessage(option.name),
     }));
-  const reportableQualities = getReportableIssueQualities(
-    data?.mediaInfo
-  ).filter((quality) => currentSettings.enable4k || quality !== '4k');
+  const availableQualities = getReportableIssueQualities(data?.mediaInfo);
+  const reportableQualities = availableQualities.filter(
+    (quality) => currentSettings.enable4k || quality !== '4k'
+  );
   const hasReportableVideoQuality = reportableQualities.length > 0;
   const initialIs4k = reportableQualities[0] === '4k';
   const qualityOptions = (['hd', '4k'] as const).map((quality) => ({
