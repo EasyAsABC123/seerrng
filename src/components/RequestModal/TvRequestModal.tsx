@@ -156,6 +156,13 @@ const messages = defineMessages('components.RequestModal', {
   seasonWatchGateAccountRequired:
     'Link your Plex, Jellyfin, or Emby account and add this series to its library before requesting a later season.',
   seasonWatchGateLinkAccount: 'Link Playback Account',
+  seasonWatchGateAccessPending:
+    'Your request for TV season access is waiting for a user manager to review it.',
+  seasonWatchGateAccessApproved:
+    'A user manager approved the rule for your account. Turn it on in your profile when you want it to apply to your TV requests.',
+  seasonWatchGateAccessOff:
+    'Want later seasons to unlock after you watch the previous one? Ask a user manager to enable the watch requirement for your account.',
+  seasonWatchGateManageAccess: 'TV Season Rule',
   retryWatchStatus: 'Retry Playback Check',
 });
 
@@ -802,7 +809,8 @@ const TvRequestModal = ({
     seasonWatchGateSelections
   );
   const seasonWatchGateApplies =
-    settings.currentSettings.tvSeasonWatchGateEnabled &&
+    (settings.currentSettings.tvSeasonWatchGateEnabled ||
+      user?.tvSeasonWatchGateStatus === 'enabled') &&
     seasonWatchGateRequirements.length > 0 &&
     isSeasonWatchGateOwner &&
     !canOverrideSeasonWatchGate;
@@ -1386,6 +1394,35 @@ const TvRequestModal = ({
               )}
             </div>
           )}
+          {seasonWatchGateRequirements.length > 0 &&
+            isSeasonWatchGateOwner &&
+            !canOverrideSeasonWatchGate &&
+            !settings.currentSettings.tvSeasonWatchGateEnabled &&
+            user?.tvSeasonWatchGateStatus !== 'enabled' && (
+              <div
+                className="page-error-message"
+                data-severity="info"
+                role="status"
+              >
+                <span>
+                  {user?.tvSeasonWatchGateStatus === 'pending'
+                    ? intl.formatMessage(messages.seasonWatchGateAccessPending)
+                    : user?.tvSeasonWatchGateStatus === 'approved'
+                      ? intl.formatMessage(
+                          messages.seasonWatchGateAccessApproved
+                        )
+                      : intl.formatMessage(messages.seasonWatchGateAccessOff)}
+                </span>
+                <Button
+                  as="a"
+                  href="/profile/settings/tv-request-access"
+                  buttonType="ghost"
+                  buttonSize="sm"
+                >
+                  {intl.formatMessage(messages.seasonWatchGateManageAccess)}
+                </Button>
+              </div>
+            )}
 
           <div className="request-selection-options">
             {!editRequest && (

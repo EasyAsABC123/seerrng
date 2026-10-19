@@ -1,4 +1,5 @@
 import { MediaServerType } from '@server/constants/server';
+import { TV_SEASON_WATCH_GATE_STATUS } from '@server/constants/tvSeasonWatchGate';
 import type Media from '@server/entity/Media';
 import type { User } from '@server/entity/User';
 import { getMediaServerWatchStatus } from '@server/lib/mediaServerWatchStatus';
@@ -46,6 +47,10 @@ const actorCanBypassTvSeasonWatchGate = (actor: User): boolean =>
   actor.hasPermission([Permission.MANAGE_REQUESTS, Permission.ADMIN], {
     type: 'or',
   });
+
+export const isTvSeasonWatchGateEnabledForUser = (requestUser: User): boolean =>
+  getSettings().main.tvSeasonWatchGateEnabled ||
+  requestUser.tvSeasonWatchGateStatus === TV_SEASON_WATCH_GATE_STATUS.ENABLED;
 
 const getVerifiedWatchHistory = async (
   requestUser: User,
@@ -157,7 +162,7 @@ export const filterTvSeasonSelectionsByWatchGate = async (
   selections: TvSeasonWatchGateSelection[]
 ): Promise<TvSeasonWatchGateSelection[]> => {
   if (
-    !getSettings().main.tvSeasonWatchGateEnabled ||
+    !isTvSeasonWatchGateEnabledForUser(requestUser) ||
     actorCanBypassTvSeasonWatchGate(actor)
   ) {
     return selections;
@@ -192,9 +197,8 @@ export const enforceTvSeasonWatchGate = async (
   catalog: TvSeasonWatchGateCatalogEntry[],
   selections: TvSeasonWatchGateSelection[]
 ): Promise<void> => {
-  const settings = getSettings();
   if (
-    !settings.main.tvSeasonWatchGateEnabled ||
+    !isTvSeasonWatchGateEnabledForUser(requestUser) ||
     actorCanBypassTvSeasonWatchGate(actor)
   ) {
     return;

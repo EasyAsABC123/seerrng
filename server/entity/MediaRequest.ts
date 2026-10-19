@@ -68,7 +68,6 @@ import {
   type ServarrServiceType,
 } from '@server/lib/serviceAdmission';
 import {
-  getSettings,
   type BackIssueSettings,
   type KapowarrSettings,
   type MylarSettings,
@@ -81,6 +80,7 @@ import { normalizeStashDbId } from '@server/lib/stashdbIdentity';
 import {
   enforceTvSeasonWatchGate,
   filterTvSeasonSelectionsByWatchGate,
+  isTvSeasonWatchGateEnabledForUser,
 } from '@server/lib/tvSeasonWatchGate';
 import {
   isUserCredentialVersionCurrent,
@@ -544,7 +544,7 @@ export class MediaRequest {
       );
     }
     if (
-      getSettings().main.tvSeasonWatchGateEnabled &&
+      isTvSeasonWatchGateEnabledForUser(requestUser) &&
       requestBody.mediaType === MediaType.TV &&
       !user.hasPermission([Permission.MANAGE_REQUESTS, Permission.ADMIN], {
         type: 'or',
@@ -3049,7 +3049,7 @@ export class MediaRequest {
         : requestedSeasons.map((seasonNumber) => ({ seasonNumber }));
       const isServerStagedFullSeriesRequest =
         !settings.main.partialRequestsEnabled &&
-        settings.main.tvSeasonWatchGateEnabled &&
+        isTvSeasonWatchGateEnabledForUser(requestUser) &&
         requestBody.seasons === 'all' &&
         !requestBody.seasonRequests?.length &&
         watchAheadEpisodeCount === 0;
@@ -3099,7 +3099,7 @@ export class MediaRequest {
           )
         : undefined;
       if (promotablePendingRequest) {
-        if (getSettings().main.tvSeasonWatchGateEnabled) {
+        if (isTvSeasonWatchGateEnabledForUser(requestUser)) {
           await enforceTvSeasonWatchGate(
             user,
             requestUser,
@@ -3188,7 +3188,7 @@ export class MediaRequest {
         throw new NoSeasonsAvailableError('No seasons available to request');
       }
 
-      if (getSettings().main.tvSeasonWatchGateEnabled) {
+      if (isTvSeasonWatchGateEnabledForUser(requestUser)) {
         const watchGateCatalog = tmdbMediaShow.seasons.map((season) => ({
           seasonNumber: season.season_number,
           episodeCount: season.episode_count,

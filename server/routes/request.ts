@@ -101,6 +101,7 @@ import { normalizeStashDbId } from '@server/lib/stashdbIdentity';
 import {
   TvSeasonWatchGateError,
   enforceTvSeasonWatchGate,
+  isTvSeasonWatchGateEnabledForUser,
 } from '@server/lib/tvSeasonWatchGate';
 import {
   UserMutationActorUnauthorizedError,
@@ -4561,7 +4562,7 @@ requestRoutes.put<{ requestId: string }>(
                       : newSeasonSelections;
 
                     if (
-                      getSettings().main.tvSeasonWatchGateEnabled &&
+                      isTvSeasonWatchGateEnabledForUser(request.requestedBy) &&
                       seasonWatchGateSelections.some(
                         ({ seasonNumber }) => seasonNumber > 1
                       ) &&

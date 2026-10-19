@@ -30,6 +30,9 @@ export interface User {
   email: string;
   avatar: string;
   permissions: number;
+  tvSeasonWatchGateStatus?:
+    'off' | 'pending' | 'approved' | 'enabled' | 'denied';
+  tvSeasonWatchGateRequestedAt?: Date | null;
   requestServices?: string[];
   contentRestricted?: boolean | null;
   userType: number;

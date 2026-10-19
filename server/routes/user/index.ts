@@ -11,6 +11,7 @@ import {
   MediaType,
 } from '@server/constants/media';
 import { MediaServerType } from '@server/constants/server';
+import { TV_SEASON_WATCH_GATE_STATUS } from '@server/constants/tvSeasonWatchGate';
 import { UserType } from '@server/constants/user';
 import { USER_SETTINGS_LIMITS } from '@server/constants/userSettings';
 import dataSource, { getRepository } from '@server/datasource';
@@ -30,6 +31,7 @@ import type {
   UserResultsResponse,
   UserWatchDataResponse,
 } from '@server/interfaces/api/userInterfaces';
+import type { TvSeasonWatchGateApprovalRequest } from '@server/interfaces/api/userSettingsInterfaces';
 import {
   getAuthAccountAdmissionResource,
   runAuthAccountAdmission,
@@ -673,6 +675,52 @@ const filterPushSubscription = (subscription: UserPushSubscription) => ({
   userAgent: subscription.userAgent,
   createdAt: subscription.createdAt,
 });
+
+router.get<Record<string, never>, TvSeasonWatchGateApprovalRequest[]>(
+  '/tv-season-watch-gate-requests',
+  isAuthenticated(Permission.MANAGE_USERS),
+  async (req, res, next) => {
+    try {
+      return await runUserSecurityReadWithActor(
+        req.user!.id,
+        req.user!.id,
+        Permission.MANAGE_USERS,
+        async () => {
+          const users = await getRepository(User)
+            .createQueryBuilder('user')
+            .select([
+              'user.id',
+              'user.username',
+              'user.plexUsername',
+              'user.jellyfinUsername',
+              'user.email',
+              'user.avatar',
+              'user.tvSeasonWatchGateRequestedAt',
+            ])
+            .where('user.tvSeasonWatchGateStatus = :status', {
+              status: TV_SEASON_WATCH_GATE_STATUS.PENDING,
+            })
+            .orderBy('user.tvSeasonWatchGateRequestedAt', 'ASC')
+            .getMany();
+          return res.status(200).json(
+            users.map((user) => ({
+              id: user.id,
+              displayName: user.displayName,
+              avatar: user.avatar,
+              requestedAt: user.tvSeasonWatchGateRequestedAt ?? null,
+            }))
+          );
+        },
+        { requirePermission: true }
+      );
+    } catch (error) {
+      return next({
+        status: error instanceof UserMutationActorUnauthorizedError ? 403 : 500,
+        message: 'Could not load TV request access requests.',
+      });
+    }
+  }
+);
 
 router.get(
   '/',

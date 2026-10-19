@@ -6,6 +6,7 @@ import {
 } from '@server/constants/bookHomeSections';
 import { ApiErrorCode } from '@server/constants/error';
 import { MediaServerType } from '@server/constants/server';
+import { TV_SEASON_WATCH_GATE_STATUS } from '@server/constants/tvSeasonWatchGate';
 import { UserType } from '@server/constants/user';
 import { USER_SETTINGS_LIMITS } from '@server/constants/userSettings';
 import {
@@ -21,6 +22,7 @@ import type {
   DetailDisclosureMediaType,
   MovieMaturityLimit,
   TvMaturityLimit,
+  TvSeasonWatchGateAccessResponse,
   UserPreferredLanguages,
   UserRequestRootFolders,
   UserSettingsCardTextResponse,
@@ -102,6 +104,199 @@ import { IsNull, Not, Raw, type FindOptionsWhere } from 'typeorm';
 import { canMakePermissionsChange, isUniqueConstraintError } from '.';
 
 const userSettingsRoutes = Router({ mergeParams: true });
+
+const serializeTvSeasonWatchGateAccess = (
+  user: User
+): TvSeasonWatchGateAccessResponse => ({
+  status: user.tvSeasonWatchGateStatus ?? TV_SEASON_WATCH_GATE_STATUS.OFF,
+  requestedAt: user.tvSeasonWatchGateRequestedAt ?? null,
+  globallyEnabled: getSettings().main.tvSeasonWatchGateEnabled,
+});
+
+userSettingsRoutes.get<{ id: string }, TvSeasonWatchGateAccessResponse>(
+  '/tv-season-watch-gate',
+  isOwnProfileOrAdmin(),
+  async (req, res, next) => {
+    const userId = parseUserSettingsRouteId(req.params.id);
+    if (!userId) return next({ status: 404, message: 'User not found.' });
+    try {
+      return await runUserSecurityReadWithActor(
+        req.user!.id,
+        userId,
+        Permission.MANAGE_USERS,
+        async () => {
+          const user = await getRepository(User).findOne({
+            where: { id: userId },
+          });
+          if (!user) return next({ status: 404, message: 'User not found.' });
+          return res.status(200).json(serializeTvSeasonWatchGateAccess(user));
+        }
+      );
+    } catch (error) {
+      return next({
+        status: error instanceof UserMutationActorUnauthorizedError ? 403 : 500,
+        message: 'Could not load TV request access.',
+      });
+    }
+  }
+);
+
+userSettingsRoutes.post<
+  { id: string },
+  TvSeasonWatchGateAccessResponse,
+  { action?: unknown }
+>('/tv-season-watch-gate', isOwnProfile(), async (req, res, next) => {
+  const userId = parseUserSettingsRouteId(req.params.id);
+  if (!userId) return next({ status: 404, message: 'User not found.' });
+  const action = req.body?.action;
+  if (
+    !req.body ||
+    Array.isArray(req.body) ||
+    Object.keys(req.body).length !== 1 ||
+    typeof action !== 'string' ||
+    !['request', 'cancel', 'enable', 'disable'].includes(action)
+  ) {
+    return next({ status: 400, message: 'Invalid TV request access action.' });
+  }
+  try {
+    return await runUserSecurityMutationWithActor(
+      req.user!.id,
+      userId,
+      Permission.MANAGE_USERS,
+      async (actor) => {
+        if (actor.id !== userId) {
+          return next({ status: 403, message: 'Access denied.' });
+        }
+        const repository = getRepository(User);
+        const user = await repository.findOne({ where: { id: userId } });
+        if (!user) return next({ status: 404, message: 'User not found.' });
+        if (getSettings().main.tvSeasonWatchGateEnabled) {
+          return next({
+            status: 409,
+            message: 'TV season watch requirements are enabled for everyone.',
+          });
+        }
+
+        const status =
+          user.tvSeasonWatchGateStatus ?? TV_SEASON_WATCH_GATE_STATUS.OFF;
+        switch (action as 'request' | 'cancel' | 'enable' | 'disable') {
+          case 'request':
+            if (
+              status !== TV_SEASON_WATCH_GATE_STATUS.ENABLED &&
+              status !== TV_SEASON_WATCH_GATE_STATUS.APPROVED &&
+              status !== TV_SEASON_WATCH_GATE_STATUS.PENDING
+            ) {
+              user.tvSeasonWatchGateStatus =
+                TV_SEASON_WATCH_GATE_STATUS.PENDING;
+              user.tvSeasonWatchGateRequestedAt = new Date();
+              await repository.save(user);
+            }
+            break;
+          case 'cancel':
+            if (status !== TV_SEASON_WATCH_GATE_STATUS.PENDING) {
+              return next({
+                status: 409,
+                message: 'No pending access request.',
+              });
+            }
+            user.tvSeasonWatchGateStatus = TV_SEASON_WATCH_GATE_STATUS.OFF;
+            user.tvSeasonWatchGateRequestedAt = null;
+            await repository.save(user);
+            break;
+          case 'enable':
+            if (status !== TV_SEASON_WATCH_GATE_STATUS.APPROVED) {
+              return next({
+                status: 409,
+                message: 'TV request access has not been approved.',
+              });
+            }
+            user.tvSeasonWatchGateStatus = TV_SEASON_WATCH_GATE_STATUS.ENABLED;
+            await repository.save(user);
+            break;
+          case 'disable':
+            if (status !== TV_SEASON_WATCH_GATE_STATUS.ENABLED) {
+              return next({
+                status: 409,
+                message: 'TV request access is not enabled.',
+              });
+            }
+            user.tvSeasonWatchGateStatus = TV_SEASON_WATCH_GATE_STATUS.APPROVED;
+            await repository.save(user);
+            break;
+        }
+        return res.status(200).json(serializeTvSeasonWatchGateAccess(user));
+      }
+    );
+  } catch (error) {
+    return next({
+      status: error instanceof UserMutationActorUnauthorizedError ? 403 : 500,
+      message: 'Could not update TV request access.',
+    });
+  }
+});
+
+userSettingsRoutes.post<
+  { id: string },
+  TvSeasonWatchGateAccessResponse,
+  { decision?: unknown }
+>(
+  '/tv-season-watch-gate/review',
+  isAuthenticated(Permission.MANAGE_USERS),
+  async (req, res, next) => {
+    const userId = parseUserSettingsRouteId(req.params.id);
+    if (!userId) return next({ status: 404, message: 'User not found.' });
+    const decision = req.body?.decision;
+    if (
+      !req.body ||
+      Array.isArray(req.body) ||
+      Object.keys(req.body).length !== 1 ||
+      typeof decision !== 'string' ||
+      !['approve', 'deny'].includes(decision)
+    ) {
+      return next({
+        status: 400,
+        message: 'Invalid TV request access decision.',
+      });
+    }
+    try {
+      return await runAuthorizedUserSecurityMutation(
+        req.user!.id,
+        userId,
+        Permission.MANAGE_USERS,
+        async (actor) => {
+          if (actor.id === userId) {
+            return next({
+              status: 403,
+              message: 'You cannot review your own request.',
+            });
+          }
+          const repository = getRepository(User);
+          const user = await repository.findOne({ where: { id: userId } });
+          if (!user) return next({ status: 404, message: 'User not found.' });
+          if (
+            user.tvSeasonWatchGateStatus !== TV_SEASON_WATCH_GATE_STATUS.PENDING
+          ) {
+            return next({
+              status: 409,
+              message: 'This access request is no longer pending.',
+            });
+          }
+          user.tvSeasonWatchGateStatus =
+            decision === 'approve'
+              ? TV_SEASON_WATCH_GATE_STATUS.APPROVED
+              : TV_SEASON_WATCH_GATE_STATUS.DENIED;
+          await repository.save(user);
+          return res.status(200).json(serializeTvSeasonWatchGateAccess(user));
+        }
+      );
+    } catch (error) {
+      return next({
+        status: error instanceof UserMutationActorUnauthorizedError ? 403 : 500,
+        message: 'Could not review TV request access.',
+      });
+    }
+  }
+);
 
 userSettingsRoutes.get<
   { id: string; mediaType: string },

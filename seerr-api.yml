@@ -2237,6 +2237,15 @@ components:
         permissions:
           type: number
           example: 0
+        tvSeasonWatchGateStatus:
+          type: string
+          enum: [off, pending, approved, enabled, denied]
+          description: Private to the account owner and callers with `MANAGE_USERS` permission.
+        tvSeasonWatchGateRequestedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Private to the account owner and callers with `MANAGE_USERS` permission.
         requestServices:
           type: array
           description: Additional Radarr or Sonarr request destinations granted to this user.
@@ -2263,6 +2272,34 @@ components:
         - email
         - createdAt
         - updatedAt
+    TvSeasonWatchGateAccess:
+      type: object
+      required: [status, requestedAt, globallyEnabled]
+      properties:
+        status:
+          type: string
+          enum: [off, pending, approved, enabled, denied]
+        requestedAt:
+          type: string
+          format: date-time
+          nullable: true
+        globallyEnabled:
+          type: boolean
+          description: Whether the administrator has enabled the requirement for every account.
+    TvSeasonWatchGateApprovalRequest:
+      type: object
+      required: [id, displayName, avatar, requestedAt]
+      properties:
+        id:
+          type: integer
+        displayName:
+          type: string
+        avatar:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+          nullable: true
     UserSettings:
       type: object
       properties:
@@ -14474,6 +14511,118 @@ paths:
           description: Caller may not update maturity limits
         '404':
           description: User not found
+  /user/{userId}/settings/tv-season-watch-gate:
+    get:
+      summary: Get TV season watch requirement access
+      description: Returns the signed-in user's access state, or another user's state for callers with `MANAGE_USERS` permission.
+      tags: [users]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Access state and global enforcement mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TvSeasonWatchGateAccess'
+        '403':
+          description: Caller may not view this user's access state
+        '404':
+          description: User not found
+    post:
+      summary: Request, cancel, or change personal TV season access
+      description: Self-only. Users can request manager approval, cancel a pending request, turn approved access on, or turn it off while keeping approval. A global administrator setting applies to everyone and prevents personal changes while enabled.
+      tags: [users]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [request, cancel, enable, disable]
+      responses:
+        '200':
+          description: Updated access state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TvSeasonWatchGateAccess'
+        '400':
+          description: Invalid action
+        '403':
+          description: The path user is not the signed-in user
+        '409':
+          description: The action is not available in the current global or request state
+  /user/{userId}/settings/tv-season-watch-gate/review:
+    post:
+      summary: Approve or decline TV season access
+      description: Requires `MANAGE_USERS`. The request must still be pending; user managers cannot approve their own request.
+      tags: [users]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  enum: [approve, deny]
+      responses:
+        '200':
+          description: Reviewed access request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TvSeasonWatchGateAccess'
+        '403':
+          description: Caller lacks permission or is reviewing their own request
+        '404':
+          description: User not found
+        '409':
+          description: The request is no longer pending
+  /user/tv-season-watch-gate-requests:
+    get:
+      summary: List pending TV season access requests
+      description: Requires `MANAGE_USERS`. Returns all pending requests, oldest first.
+      tags: [users]
+      responses:
+        '200':
+          description: Pending access requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TvSeasonWatchGateApprovalRequest'
+        '403':
+          description: Caller lacks user management permission
   /user/{userId}/settings/card-text:
     get:
       summary: Get card text visibility settings for a user

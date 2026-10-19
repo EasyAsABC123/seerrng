@@ -99,7 +99,7 @@ const messages = defineMessages('components.Settings.SettingsMain', {
   partialRequestsEnabled: 'Allow Partial Series Requests',
   tvSeasonWatchGateEnabled: 'Require the Previous Season to Be Watched',
   tvSeasonWatchGateEnabledTip:
-    'When enabled, users must watch every episode of the previous regular season before requesting a later season. Specials are excluded. Requests need playback progress from the user’s linked Plex, Jellyfin, or Emby account. Administrators and request managers can override this rule.',
+    'When enabled, this rule applies to everyone. Otherwise, users can request approval from Profile → TV Season Rule, then turn it on for their own account. Turning it off does not remove their approval. Later-season requests require every episode of the previous regular season to be watched. Specials are excluded; playback is checked against the requester’s linked Plex, Jellyfin, or Emby account. Administrators and request managers can override the rule.',
   personMovieBulkRequestsEnabled:
     'Allow Requesting All Movies From a Person Page',
   personMovieBulkRequestsEnabledTip:
