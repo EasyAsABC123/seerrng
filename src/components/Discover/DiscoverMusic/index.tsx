@@ -1,10 +1,10 @@
-import RelatedTools from '@app/components/Common/RelatedTools';
 import Alert from '@app/components/Common/Alert';
 import Button from '@app/components/Common/Button';
 import CardTextVisibilityToggle from '@app/components/Common/CardTextVisibilityToggle';
 import Header from '@app/components/Common/Header';
 import ListView from '@app/components/Common/ListView';
 import PageTitle from '@app/components/Common/PageTitle';
+import RelatedTools from '@app/components/Common/RelatedTools';
 import AvailabilityQualityControl, {
   type AvailabilityQuality,
 } from '@app/components/Discover/AvailabilityQualityControl';

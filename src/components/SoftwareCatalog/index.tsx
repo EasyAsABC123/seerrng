@@ -1,4 +1,3 @@
-import RelatedTools from '@app/components/Common/RelatedTools';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import Header from '@app/components/Common/Header';
@@ -6,6 +5,7 @@ import IndexerSearchLink from '@app/components/Common/IndexerSearchLink';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import Modal from '@app/components/Common/Modal';
 import PageTitle from '@app/components/Common/PageTitle';
+import RelatedTools from '@app/components/Common/RelatedTools';
 import GameContentPicker from '@app/components/GameContent';
 import PatchPicker from '@app/components/PatchProjects';
 import QuotaDisplay from '@app/components/RequestModal/QuotaDisplay';

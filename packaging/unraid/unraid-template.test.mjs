@@ -121,7 +121,10 @@ test('Unraid Compose project uses the SeerrNG stable image and companion profile
     services['bookshelf-audiobooks'].image,
     'ghcr.io/snapetech-org/bookshelfng:latest'
   );
-  assert.equal(services.romarrng.image, 'ghcr.io/snapetech-org/romarrng:latest');
+  assert.equal(
+    services.romarrng.image,
+    'ghcr.io/snapetech-org/romarrng:latest'
+  );
   assert.equal(
     services.questarrng.image,
     'ghcr.io/snapetech-org/questarrng:latest'
