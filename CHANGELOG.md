@@ -10,6 +10,43 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.70.0](https://github.com/snapetech-org/seerrng/compare/v3.69.0..v3.70.0) - 2026-10-19
+
+### User-facing changes
+
+#### Added
+
+- **Tv Requests:** Users can request approval to enable the previous-season watch requirement for their own account, then turn it on or off from their profile. User managers can approve or decline pending requests from the Users page. The global administrator setting still applies the rule to everyone.
+
+#### Changed
+
+- **Books:** SeerrNG now follows Bindery approval and download progress, explains pending review and service failures in request history, and withdraws requests that are still pending when canceled. Approved acquisitions continue in Bindery.
+- **Bookshelf:** Reader Apps settings now distinguish browsing imported files from book acquisition. SeerrNG sends approved requests to the configured book service; BookOrbit's separate request queue is not part of this connection.
+- **Media Details:** Movie and series pages keep the familiar summary and overview up front, place request and playback controls in a clear side panel on wide screens, and stack those controls above expandable details on phones.
+
+#### Fixed
+
+- **Settings:** The Sportarr connection dialog now uses the same theme-aware form controls as the rest of the settings interface, keeping fields readable while configuring a server.
+
+#### Security
+
+- **Shared Links:** Shared-link matching now checks provider hostnames precisely and decodes HTML entities once, so lookalike domains and double-encoded links are not treated as trusted media providers.
+
+### 🚀 Features
+- *(setup)* Make service setup category aware - ([a3ede55](https://github.com/snapetech-org/seerrng/commit/a3ede55d97ad50cae85e281fdee4e367fede88bb))
+- *(tv)* Add per-user season watch rule approval - ([5555fc3](https://github.com/snapetech-org/seerrng/commit/5555fc3fe58a76209651f9bec24231a23b60f2d2))
+- Refine details and book request guidance - ([33050de](https://github.com/snapetech-org/seerrng/commit/33050deebb7a9c1cf9181b29fda0a36d1ae5026e))
+
+### 🐛 Bug Fixes
+- *(ui)* Use shared styles for TV approval cards - ([8a1594a](https://github.com/snapetech-org/seerrng/commit/8a1594ada43ef8edb8754cbad7200a7f35641437))
+- Close release validation gaps - ([6af9d76](https://github.com/snapetech-org/seerrng/commit/6af9d768ed82ffbb87ca2a70b44c62cf313a8956))
+
+### 🎨 Styling
+- Satisfy repository formatting checks - ([6448e45](https://github.com/snapetech-org/seerrng/commit/6448e457169423e57e4d96a86f119149af9e0e9d))
+
+### ⚙️ Miscellaneous Tasks
+- *(setup)* Record branch already merged as PR #350 - ([317046f](https://github.com/snapetech-org/seerrng/commit/317046f01bbb543e60b07b82635f4103fbdc77a6))
+
 ## [3.69.0](https://github.com/snapetech-org/seerrng/compare/v3.68.0..v3.69.0) - 2026-10-19
 
 ### User-facing changes
