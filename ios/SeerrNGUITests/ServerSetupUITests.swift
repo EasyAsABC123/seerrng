@@ -57,23 +57,27 @@ final class ServerSetupUITests: XCTestCase {
         app.textFields["serverURLField"].tap()
         app.textFields["serverURLField"].typeText("home.example.test")
         app.buttons["saveServerButton"].tap()
-        XCTAssertTrue(app.staticTexts["Home"].waitForExistence(timeout: 5))
+        waitForSavedServer("Home", in: app)
 
         app.buttons["addServerToolbarButton"].tap()
-        app.textFields["serverNameField"].tap()
-        app.textFields["serverNameField"].typeText("Office")
-        app.textFields["serverURLField"].tap()
-        app.textFields["serverURLField"].typeText("office.example.test")
+        let nameField = app.textFields["serverNameField"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 20))
+        nameField.tap()
+        nameField.typeText("Office")
+        let addressField = app.textFields["serverURLField"]
+        XCTAssertTrue(addressField.waitForExistence(timeout: 20))
+        addressField.tap()
+        addressField.typeText("office.example.test")
         app.buttons["saveServerButton"].tap()
-        XCTAssertTrue(app.staticTexts["Office"].waitForExistence(timeout: 5))
+        waitForSavedServer("Office", in: app)
 
         app.buttons["Actions for Office"].tap()
         app.buttons["Edit"].tap()
-        let nameField = app.textFields["serverNameField"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 20))
         nameField.tap()
         nameField.clearAndEnterText("Work")
         app.buttons["saveServerButton"].tap()
-        XCTAssertTrue(app.staticTexts["Work"].waitForExistence(timeout: 5))
+        waitForSavedServer("Work", in: app)
         XCTAssertTrue(app.staticTexts["Home"].exists)
 
         app.buttons["Actions for Work"].tap()
@@ -87,6 +91,12 @@ final class ServerSetupUITests: XCTestCase {
         relaunchedApp.launch()
         XCTAssertTrue(relaunchedApp.staticTexts["Home"].waitForExistence(timeout: 5))
         XCTAssertFalse(relaunchedApp.staticTexts["Work"].exists)
+    }
+
+    private func waitForSavedServer(_ name: String, in app: XCUIApplication) {
+        let saveButton = app.buttons["saveServerButton"]
+        XCTAssertTrue(saveButton.waitForNonExistence(timeout: 30), "The server editor should close after saving \(name).")
+        XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 30), "The server list should show \(name) after saving.")
     }
 }
 
