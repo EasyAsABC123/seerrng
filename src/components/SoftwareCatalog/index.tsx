@@ -1,3 +1,4 @@
+import RelatedTools from '@app/components/Common/RelatedTools';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import Header from '@app/components/Common/Header';
@@ -583,6 +584,9 @@ const SoftwareCatalog = ({
           <Header subtext={intl.formatMessage(messages.intro)}>
             {intl.formatMessage(messages.title)}
           </Header>
+        )}
+        {!embedded && (
+          <RelatedTools tools={['gameFinder', 'patches', 'following']} />
         )}
 
         <div className="mt-6 flex flex-wrap gap-2" role="tablist">

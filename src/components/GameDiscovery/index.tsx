@@ -424,7 +424,12 @@ const GameDiscovery = () => {
                           legacyBehavior
                           passHref
                         >
-                          <Button as="a" buttonType="primary" buttonSize="sm">
+                          <Button
+                            aria-label={`${intl.formatMessage(messages.request)}: ${game.title}`}
+                            as="a"
+                            buttonType="primary"
+                            buttonSize="sm"
+                          >
                             {intl.formatMessage(messages.request)}
                           </Button>
                         </Link>
@@ -529,6 +534,7 @@ const GameDiscovery = () => {
                 </div>
                 <div className="app-action-row">
                   <Button
+                    aria-label={`${intl.formatMessage(messages.run)}: ${entry.name}`}
                     buttonType="primary"
                     buttonSize="sm"
                     onClick={() => load(entry)}
@@ -536,6 +542,7 @@ const GameDiscovery = () => {
                     {intl.formatMessage(messages.run)}
                   </Button>
                   <Button
+                    aria-label={`${intl.formatMessage(messages.remove)}: ${entry.name}`}
                     buttonType="danger"
                     buttonSize="sm"
                     onClick={() =>

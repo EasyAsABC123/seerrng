@@ -68,6 +68,7 @@ const FollowButton = ({
       buttonSize={buttonSize}
       disabled={busy}
       aria-pressed={!!existing}
+      aria-label={`${existing ? intl.formatMessage(messages.following) : (label ?? intl.formatMessage(messages.follow))}: ${input.subjectLabel}`}
       onClick={() => void toggle()}
     >
       {existing

@@ -1,3 +1,4 @@
+import RelatedTools from '@app/components/Common/RelatedTools';
 import Alert from '@app/components/Common/Alert';
 import Button from '@app/components/Common/Button';
 import CardTextVisibilityToggle from '@app/components/Common/CardTextVisibilityToggle';
@@ -235,6 +236,7 @@ const DiscoverMusic = ({
             </Button>
           </div>
         </div>
+        <RelatedTools tools={['share', 'collectors', 'following']} />
         {mediaFilters}
         <PinnedFilterSectionGroup
           mediaType="music"

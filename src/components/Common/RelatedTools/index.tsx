@@ -1,0 +1,90 @@
+import { Permission, useUser } from '@app/hooks/useUser';
+import defineMessages from '@app/utils/defineMessages';
+import Link from 'next/link';
+import { useIntl } from 'react-intl';
+
+const messages = defineMessages('components.Common.RelatedTools', {
+  label: 'Related Tools',
+  share: 'Share & Identify',
+  shareText:
+    'Paste a link, ISBN, list, or photo and request the matches. Works from your phone’s Share menu.',
+  following: 'Following',
+  followingText:
+    'Personal news about the narrators, series, games, and artists you follow.',
+  vibes: 'Book Vibes',
+  vibesText:
+    'Steer Hardcover recommendation feeds, then request in the format you want.',
+  collectors: 'Collector Picks',
+  collectorsText: 'Releases shared by collectors you follow in slskdN.',
+  gameFinder: 'Game Finder',
+  gameFinderText:
+    'Save a search by theme, mode, perspective, language, and length.',
+  patches: 'Translations & Hacks',
+  patchesText:
+    'Fan translations and ROM hacks with exact versions and completeness.',
+});
+
+const TOOLS = {
+  share: { href: '/share', title: messages.share, text: messages.shareText },
+  following: {
+    href: '/following',
+    title: messages.following,
+    text: messages.followingText,
+  },
+  vibes: {
+    href: '/discover/vibes',
+    title: messages.vibes,
+    text: messages.vibesText,
+  },
+  collectors: {
+    href: '/discover/collectors',
+    title: messages.collectors,
+    text: messages.collectorsText,
+  },
+  gameFinder: {
+    href: '/discover/games',
+    title: messages.gameFinder,
+    text: messages.gameFinderText,
+  },
+  patches: {
+    href: '/discover/patches',
+    title: messages.patches,
+    text: messages.patchesText,
+  },
+} as const;
+
+export type RelatedToolId = keyof typeof TOOLS;
+
+/** A short, labelled row of links to the tools that extend the current page. */
+const RelatedTools = ({ tools }: { tools: RelatedToolId[] }) => {
+  const intl = useIntl();
+  const { hasPermission } = useUser();
+  if (!hasPermission(Permission.REQUEST)) return null;
+
+  return (
+    <nav
+      aria-label={intl.formatMessage(messages.label)}
+      className="related-tools"
+    >
+      <ul className="related-tools-list">
+        {tools.map((id) => {
+          const tool = TOOLS[id];
+          return (
+            <li key={id}>
+              <Link href={tool.href} className="related-tools-link">
+                <span className="related-tools-title">
+                  {intl.formatMessage(tool.title)}
+                </span>
+                <span className="related-tools-text">
+                  {intl.formatMessage(tool.text)}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+};
+
+export default RelatedTools;

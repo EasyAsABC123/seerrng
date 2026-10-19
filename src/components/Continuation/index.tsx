@@ -39,6 +39,8 @@ const messages = defineMessages('components.Continuation', {
   confidenceHigh: 'Documented',
   confidenceModerate: 'Partly Documented',
   confidenceLow: 'Uncertain',
+  confidenceHelp:
+    'How well the catalogs document this source and where the season ends. The reasons are listed under Why We Think So.',
   endsAt: 'This season ends at {position} of the source.',
   endUnknown: 'Where this season ends in the source is not documented.',
   continueAt: 'Continue in volume {volume}, starting at chapter {chapter}.',
@@ -256,6 +258,7 @@ export const ContinuationModal = ({
                         )}
                       </Badge>
                       <Badge
+                        title={intl.formatMessage(messages.confidenceHelp)}
                         badgeType={
                           source.confidence === 'high'
                             ? 'success'

@@ -3,6 +3,7 @@ import Button from '@app/components/Common/Button';
 import CoverImage from '@app/components/Common/CoverImage';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
+import RelatedTools from '@app/components/Common/RelatedTools';
 import {
   targetHref,
   type FollowTarget,
@@ -55,6 +56,12 @@ const messages = defineMessages('components.Following', {
   new: 'New',
   markSeen: 'Mark Seen',
   failed: 'This could not be saved.',
+  howHeading: 'How Following Works',
+  howBody:
+    'Press Follow on a narrator, series, game, artist, or patch project. SeerrNG checks for changes about every 30 minutes and adds an item here with the reason it appeared. Nothing is requested for you unless you turn on Request Automatically, which is limited to books.',
+  startFollowing: 'Places to start following',
+  unreadAnnounce:
+    '{count, plural, =0 {No unread updates.} one {# unread update.} other {# unread updates.}}',
   kindNarrator: 'Narrator',
   kindAuthor: 'Author',
   kindSeries: 'Series Language',
@@ -146,6 +153,13 @@ const Following = () => {
       <p className="card-body-text">
         {intl.formatMessage(messages.description)}
       </p>
+      <details className="card-body-text">
+        <summary>{intl.formatMessage(messages.howHeading)}</summary>
+        <p>{intl.formatMessage(messages.howBody)}</p>
+      </details>
+      <p className="visually-hidden" role="status" aria-live="polite">
+        {intl.formatMessage(messages.unreadAnnounce, { count: unseen })}
+      </p>
 
       <div className="page-title-row">
         <h2 className="page-heading">{intl.formatMessage(messages.news)}</h2>
@@ -208,6 +222,11 @@ const Following = () => {
                       >
                         <Button
                           as="a"
+                          aria-label={`${intl.formatMessage(
+                            event.target && event.target.mediaType !== 'search'
+                              ? messages.request
+                              : messages.open
+                          )}: ${event.title}`}
                           buttonType="primary"
                           buttonSize="sm"
                           onClick={() => void markSeen({ ids: [event.id] })}
@@ -221,6 +240,7 @@ const Following = () => {
                       </Link>
                       {!event.seen && (
                         <Button
+                          aria-label={`${intl.formatMessage(messages.markSeen)}: ${event.title}`}
                           buttonType="default"
                           buttonSize="sm"
                           onClick={() => void markSeen({ ids: [event.id] })}
@@ -254,6 +274,12 @@ const Following = () => {
           <p className="card-body-text">
             {intl.formatMessage(messages.nothingFollowed)}
           </p>
+          <h3 className="card-subheading">
+            {intl.formatMessage(messages.startFollowing)}
+          </h3>
+          <RelatedTools
+            tools={['vibes', 'collectors', 'gameFinder', 'patches']}
+          />
         </section>
       ) : (
         <ul className="card-list" data-list-layout="stacked">

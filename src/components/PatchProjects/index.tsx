@@ -105,7 +105,12 @@ export const PatchPicker = ({
   return (
     <section className="app-card-inset card-layout">
       <h3 className="card-title">{intl.formatMessage(messages.heading)}</h3>
-      <ul className="card-list" data-list-layout="stacked">
+      <ul
+        className="card-list"
+        data-list-layout="stacked"
+        role="radiogroup"
+        aria-label={intl.formatMessage(messages.heading)}
+      >
         <li>
           <label
             className="app-card-sub card-layout media-choice-card"

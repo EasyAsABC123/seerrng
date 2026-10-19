@@ -87,3 +87,16 @@ for the recommended image and metadata setup. For software services, see the
 [software requests guide](/using-seerr/software-acquisition). The
 [Unraid Compose guide](/getting-started/third-parties/unraid) documents its
 optional profiles and appdata, media, and download mounts.
+
+## What each service adds for cross-media features
+
+| Service | Capability SeerrNG looks for | Used for |
+| --- | --- | --- |
+| ChaptarrNG | `editionCatalog`, `seriesNarratorMatrix`, `wantedEditionVariants` | Edition and narration cards, series narrator comparison, a second performance alongside the first |
+| BookshelfNG | `editionCatalog` | Edition cards with narrators (no second performance) |
+| QuestarrNG | `editions`, `discover`, `wantedContent` | Game editions and selected content, Game Finder |
+| ROMarrNG | `patchCatalog` | Translation, hack, and improvement patch requests |
+| slskdN | taste recommendations | Collector Picks and artist release radar |
+| Lidarr | none | Pins the album release you chose |
+
+SeerrNG reads these from each service's handshake or capabilities endpoint, so older versions keep working with the feature hidden. See [what each cross-media feature needs](./cross-media-requirements.md).

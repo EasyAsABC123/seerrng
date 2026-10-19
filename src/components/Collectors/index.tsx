@@ -128,13 +128,19 @@ const Collectors = () => {
                 <div className="app-action-row">
                   {pick.album && (
                     <Link href={pick.album.href} legacyBehavior passHref>
-                      <Button as="a" buttonType="primary" buttonSize="sm">
+                      <Button
+                        aria-label={`${intl.formatMessage(messages.openAlbum)}: ${pick.title}`}
+                        as="a"
+                        buttonType="primary"
+                        buttonSize="sm"
+                      >
                         {intl.formatMessage(messages.openAlbum)}
                       </Button>
                     </Link>
                   )}
                   {pick.artistId && (
                     <Button
+                      aria-label={`${intl.formatMessage(messages.followArtist)}: ${pick.title}`}
                       buttonType="default"
                       buttonSize="sm"
                       onClick={() => void follow(pick)}

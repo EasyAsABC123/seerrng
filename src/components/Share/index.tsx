@@ -47,6 +47,20 @@ const messages = defineMessages('components.Share', {
   firstSeason: 'First Season',
   allSeasons: 'All Seasons',
   results: 'What We Found',
+  resultCount:
+    '{count, plural, =0 {No items recognised.} one {# item recognised.} other {# items recognised.}}',
+  helpHeading: 'Share From Your Phone',
+  helpAndroidApp:
+    'Android app: choose SeerrNG in the Share menu. With one saved server it opens straight to this page.',
+  helpAndroidWeb:
+    'Installed web app on Android: add SeerrNG to your home screen, then choose it in the Share menu.',
+  helpIos:
+    'iPhone or iPad: build a Shortcut that opens this page with the shared text. The guide has the steps.',
+  helpGuide: 'Read the Share to Request guide',
+  helpBrowser:
+    'On a computer, the SeerrNG Companion extension adds a request button to title pages on other sites.',
+  helpPrivacy:
+    'Links are read by this server from public addresses only. Photos are processed in memory and are not stored.',
   noResults: 'Nothing recognizable was found. Try adding a title or author.',
   includeItem: 'Include “{input}”',
   noneOfThese: 'None of these',
@@ -58,6 +72,8 @@ const messages = defineMessages('components.Share', {
   confidenceHigh: 'Strong Match',
   confidenceModerate: 'Possible Match',
   confidenceLow: 'Weak Match',
+  confidenceHelp:
+    'How sure SeerrNG is that this is what you meant. The evidence is listed on the card.',
   requestSelected:
     'Request {count, plural, one {# Selected Item} other {# Selected Items}}',
   openSelected: 'Open',
@@ -125,6 +141,8 @@ const Share = () => {
   const [notice, setNotice] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const picked = useRef(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
 
   const acceptImage = useCallback(
     async (file: File) => {
@@ -200,6 +218,9 @@ const Share = () => {
 
   const applyResponse = (result: ResolveResponse) => {
     setResponse(result);
+    // Move focus to the results so keyboard and screen-reader users land on
+    // them instead of searching the page.
+    window.setTimeout(() => resultsHeading.current?.focus(), 0);
     setChoices(
       Object.fromEntries(
         result.groups.map((group, index) => [index, group.autoSelected ?? -1])
@@ -378,6 +399,8 @@ const Share = () => {
       ) : (
         <section
           className="app-card-main card-layout share-drop-area"
+          role="group"
+          aria-label={intl.formatMessage(messages.title)}
           data-drop-active={dragging}
           onDragOver={(event) => {
             event.preventDefault();
@@ -409,14 +432,22 @@ const Share = () => {
           </div>
 
           <div className="media-fact-row">
-            <label className="app-button-default" htmlFor="share-image">
+            <Button
+              type="button"
+              buttonType="default"
+              buttonSize="sm"
+              onClick={() => fileInput.current?.click()}
+            >
               {intl.formatMessage(messages.addImage)}
-            </label>
+            </Button>
             <input
+              ref={fileInput}
               id="share-image"
               type="file"
               accept="image/*"
-              hidden
+              className="visually-hidden"
+              tabIndex={-1}
+              aria-label={intl.formatMessage(messages.addImage)}
               onChange={onFile}
             />
             {image ? (
@@ -441,12 +472,12 @@ const Share = () => {
             )}
           </div>
           {capabilities && !capabilities.image && image && (
-            <p className="card-body-text" role="status">
+            <p className="card-body-text" role="alert">
               {intl.formatMessage(messages.imageNoReader)}
             </p>
           )}
           {notice && (
-            <p className="card-body-text" role="status">
+            <p className="card-body-text" role="alert">
               {notice}
             </p>
           )}
@@ -477,6 +508,24 @@ const Share = () => {
             </span>
           </fieldset>
 
+          <details className="card-body-text">
+            <summary>{intl.formatMessage(messages.helpHeading)}</summary>
+            <ul>
+              <li>{intl.formatMessage(messages.helpAndroidApp)}</li>
+              <li>{intl.formatMessage(messages.helpAndroidWeb)}</li>
+              <li>{intl.formatMessage(messages.helpIos)}</li>
+              <li>{intl.formatMessage(messages.helpBrowser)}</li>
+              <li>{intl.formatMessage(messages.helpPrivacy)}</li>
+            </ul>
+            <a
+              href="https://github.com/snapetech-org/seerrng/blob/main/docs/using-seerr/share-to-request.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {intl.formatMessage(messages.helpGuide)}
+            </a>
+          </details>
+
           <div className="app-action-row">
             <Button
               type="button"
@@ -493,9 +542,14 @@ const Share = () => {
 
       {response && (
         <>
-          <h2 className="page-heading">
+          <h2 className="page-heading" ref={resultsHeading} tabIndex={-1}>
             {intl.formatMessage(messages.results)}
           </h2>
+          <p className="visually-hidden" role="status" aria-live="polite">
+            {intl.formatMessage(messages.resultCount, {
+              count: response.groups.length,
+            })}
+          </p>
           {response.usedExternalProvider && (
             <p className="card-subheading">
               {intl.formatMessage(messages.externalNotice)}
@@ -552,7 +606,12 @@ const Share = () => {
                       </div>
                     )}
                     {group.candidates.length > 0 && (
-                      <ul className="card-list" data-list-layout="choices">
+                      <ul
+                        className="card-list"
+                        data-list-layout="choices"
+                        role="radiogroup"
+                        aria-label={group.input}
+                      >
                         {group.candidates.map(
                           (candidate: ResolveCandidate, candidateIndex) => {
                             const selected =
@@ -611,6 +670,9 @@ const Share = () => {
                                         )}
                                       </Badge>
                                       <Badge
+                                        title={intl.formatMessage(
+                                          messages.confidenceHelp
+                                        )}
                                         badgeType={
                                           candidate.confidence === 'high'
                                             ? 'success'
