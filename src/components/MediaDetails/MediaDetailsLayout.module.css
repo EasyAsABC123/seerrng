@@ -20,6 +20,7 @@
 
 .actionPanel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--card-spacing);
 }
@@ -32,6 +33,11 @@
 .actionPanel :global(.media-request-action-row) {
   margin-top: 0;
   flex-wrap: wrap;
+}
+
+.actionPanel :global(.media-primary-action-row) {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .actionPanel :global(.media-request-search-action) {

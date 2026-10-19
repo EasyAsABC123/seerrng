@@ -649,6 +649,37 @@ jobs:
       - name: Generate and attest per-platform SBOMs
         run: |
           set -euo pipefail
+          attest_with_retry() {
+            local predicate="$1"
+            local image="$2"
+            local error_log
+            local attempt
+            local status
+            error_log="$(mktemp)"
+            for attempt in 1 2 3; do
+              if cosign attest \
+                --type cyclonedx \
+                --predicate "$predicate" \
+                "$image" 2>"$error_log"; then
+                cat "$error_log" >&2
+                rm -f "$error_log"
+                return 0
+              else
+                status=$?
+              fi
+              cat "$error_log" >&2
+              if ! grep -Eiq 'retrieving ID token|fetching ambient OIDC credentials' "$error_log"; then
+                rm -f "$error_log"
+                return "$status"
+              fi
+              if [[ "$attempt" -lt 3 ]]; then
+                echo "Cosign could not fetch the GitHub OIDC token; retrying attestation (attempt $((attempt + 1))/3)."
+                sleep "$((attempt * 5))"
+              fi
+            done
+            rm -f "$error_log"
+            return "$status"
+          }
           while IFS=$'\t' read -r arch digest; do
             ghcr_sbom="seerr-ghcr-${arch}-${{ env.VERSION }}.sbom"
             dockerhub_sbom="seerr-dockerhub-${arch}-${{ env.VERSION }}.sbom"
@@ -658,14 +689,8 @@ jobs:
             trivy image --platform "linux/$arch" --timeout 15m --format cyclonedx \
               --output "$dockerhub_sbom" \
               "${{ env.DOCKER_HUB }}@$digest"
-            cosign attest \
-              --type cyclonedx \
-              --predicate "$ghcr_sbom" \
-              "${GHCR_IMAGE}@$digest"
-            cosign attest \
-              --type cyclonedx \
-              --predicate "$dockerhub_sbom" \
-              "${{ env.DOCKER_HUB }}@$digest"
+            attest_with_retry "$ghcr_sbom" "${GHCR_IMAGE}@$digest"
+            attest_with_retry "$dockerhub_sbom" "${{ env.DOCKER_HUB }}@$digest"
           done < "$RUNNER_TEMP/seerrng-platform-digests"
 
       - name: Upload SBOMs

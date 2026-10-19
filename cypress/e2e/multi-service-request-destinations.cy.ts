@@ -53,6 +53,8 @@ const openRequestDialog = (mediaType: 'movie' | 'tv') => {
 describe('Per-service movie and series request destinations', () => {
   beforeEach(() => {
     cy.loginAsUser();
+    requestServices(['radarr:2', 'radarr:3']);
+    videoServices('radarr');
     cy.intercept('GET', '/api/v1/user/*/settings/request-root-folders', {
       body: {},
     });
@@ -64,9 +66,8 @@ describe('Per-service movie and series request destinations', () => {
     });
   });
 
-  it('shows only the granted, eligible movie destinations and keeps the selector usable when narrow', () => {
-    requestServices(['radarr:2', 'radarr:3']);
-    videoServices('radarr');
+  it('shows only the granted, eligible movie destinations', () => {
+    cy.viewport(1280, 900);
     openTitleDetailsFromSearch({
       id: 438148,
       mediaType: 'movie',
@@ -91,8 +92,34 @@ describe('Per-service movie and series request destinations', () => {
     cy.screenshot('request-destination-movie-desktop', {
       capture: 'viewport',
     });
+
+    cy.intercept('POST', '/api/v1/request', {
+      statusCode: 201,
+      body: { id: 1, media: { status: 1, status4k: 1 } },
+    }).as('submitDestinationRequest');
+    cy.get('[role="dialog"] [data-testid="modal-ok-button"]').click();
+    cy.wait('@submitDestinationRequest').then(({ request }) => {
+      expect(request.body).to.include({
+        mediaType: 'movie',
+        mediaId: 438148,
+        requestServiceServerId: 2,
+      });
+      expect(request.body).not.to.have.property('serverId');
+    });
+  });
+
+  it('keeps the destination selector usable on a narrow screen', () => {
     cy.viewport(390, 844);
-    cy.get('[role="dialog"]').should('be.visible');
+    openTitleDetailsFromSearch({
+      id: 438148,
+      mediaType: 'movie',
+      title: 'Minions: The Rise of Gru',
+      date: '2022-06-29',
+    });
+
+    openRequestDialog('movie');
+    cy.get('#movie-request-destination').click();
+    cy.contains('[role="option"]', 'Archive (Radarr 2)').click();
     cy.get('#movie-request-destination')
       .should('be.visible')
       .and('contain.text', 'Archive (Radarr 2)');
@@ -103,7 +130,6 @@ describe('Per-service movie and series request destinations', () => {
       capture: 'viewport',
     });
 
-    cy.viewport(1280, 900);
     cy.intercept('POST', '/api/v1/request', {
       statusCode: 201,
       body: { id: 1, media: { status: 1, status4k: 1 } },

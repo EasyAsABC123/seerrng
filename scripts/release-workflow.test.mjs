@@ -161,6 +161,22 @@ test('container workflows use the canonical lowercase GitHub Container Registry 
   assert.match(digestResolver.run, /image="\$\{GHCR_IMAGE\}:\$\{VERSION\}"/u);
 });
 
+test('release retries only transient GitHub OIDC token failures for SBOM attestations', () => {
+  const sign = readWorkflow('release.yml').jobs.sign;
+  const attestation = sign.steps.find(
+    (step) => step.name === 'Generate and attest per-platform SBOMs'
+  );
+
+  assert.ok(attestation);
+  assert.match(attestation.run, /attest_with_retry\(\)/u);
+  assert.match(attestation.run, /for attempt in 1 2 3/u);
+  assert.match(
+    attestation.run,
+    /retrieving ID token\|fetching ambient OIDC credentials/u
+  );
+  assert.match(attestation.run, /return "\$status"/u);
+});
+
 test('AppImage pins its builder, uses the current launcher, and loads its bundled WASM compiler', () => {
   const workflow = readWorkflow('release-linux-packages.yml');
   const job = workflow.jobs.appimage;
