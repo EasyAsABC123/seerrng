@@ -418,7 +418,8 @@ const getProviderRequest = async (
           request.externalRequestId,
           request.title,
           variant,
-          request.catalogId ?? undefined
+          request.catalogId ?? undefined,
+          request.selection
         )
       : getRomarr().createRequest(
           request.externalRequestId,
@@ -431,7 +432,8 @@ const getProviderRequest = async (
                 catalogKey: request.catalogKey,
                 platformSlug: request.platformSlug ?? '',
               }
-            : undefined
+            : undefined,
+          request.selection
         );
   }
 };

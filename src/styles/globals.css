@@ -1,5 +1,6 @@
 @config '../../tailwind.config.js';
 @import 'tailwindcss';
+@import './crossMedia.css';
 
 @layer base {
   :root {

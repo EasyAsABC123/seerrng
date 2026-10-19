@@ -7,6 +7,7 @@ import downloadRecovery from '@server/lib/downloadRecovery';
 import downloadTracker from '@server/lib/downloadtracker';
 import episodeWatchAhead from '@server/lib/episodeWatchAhead';
 import { syncAllExternalRequestLists } from '@server/lib/externalRequestLists';
+import { syncFollows } from '@server/lib/follow';
 import ImageProxy from '@server/lib/imageproxy';
 import { guideIndex } from '@server/lib/liveTv/guideIndex';
 import {
@@ -213,6 +214,22 @@ export const startJobs = (): void => {
         );
       }
     ),
+  });
+
+  scheduledJobs.push({
+    id: 'follow-sync',
+    name: 'Followed Interests Sync',
+    type: 'process',
+    interval: 'minutes',
+    cronSchedule: jobs['follow-sync'].schedule,
+    job: schedule.scheduleJob(jobs['follow-sync'].schedule, () => {
+      logger.info('Starting scheduled job: Followed Interests Sync', {
+        label: 'Jobs',
+      });
+      return runTrackedJob('Followed Interests Sync', syncFollows, {
+        logCompletion: true,
+      });
+    }),
   });
 
   scheduledJobs.push({

@@ -40,6 +40,14 @@ export interface LidarrAlbumResult extends LidarrMediaResult {
     albumType: string;
     genres: string[];
     images: LidarrImage[];
+    /** Releases Lidarr knows for this album; the chosen one is monitored. */
+    releases?: {
+      foreignReleaseId: string;
+      title?: string;
+      trackCount?: number;
+      monitored?: boolean;
+      [key: string]: unknown;
+    }[];
     artist: {
       id: number;
       status: string;

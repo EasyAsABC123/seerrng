@@ -1450,6 +1450,59 @@ const sanitizeMediaRequestBody = (
     return preferredEditionId;
   }
 
+  const editionPolicy = parseOptionalRequestString(
+    bodyObject.editionPolicy,
+    'editionPolicy',
+    16
+  );
+  if ('error' in editionPolicy) {
+    return editionPolicy;
+  }
+  if (
+    editionPolicy.value !== undefined &&
+    !['only', 'either', 'alongside'].includes(editionPolicy.value)
+  ) {
+    return {
+      error: {
+        status: 400,
+        message: 'editionPolicy must be only, either, or alongside.',
+      },
+    };
+  }
+  const variantKey = parseOptionalRequestString(
+    bodyObject.variantKey,
+    'variantKey',
+    maxBulkRequestItemTextLength
+  );
+  if ('error' in variantKey) {
+    return variantKey;
+  }
+  if (
+    mediaType !== MediaType.BOOK &&
+    (editionPolicy.value !== undefined ||
+      (variantKey.value !== undefined && mediaType !== MediaType.MUSIC))
+  ) {
+    return {
+      error: {
+        status: 400,
+        message:
+          'Edition policy is only valid for book requests, and a release choice only for books and music.',
+      },
+    };
+  }
+  if (
+    mediaType === MediaType.MUSIC &&
+    variantKey.value !== undefined &&
+    !/^[0-9a-f-]{36}$/i.test(variantKey.value)
+  ) {
+    return {
+      error: {
+        status: 400,
+        message: 'variantKey must be a MusicBrainz release id for music.',
+      },
+    };
+  }
+
   const preferredIsbn13 = parseOptionalRequestString(
     bodyObject.preferredIsbn13,
     'preferredIsbn13',
@@ -1541,6 +1594,9 @@ const sanitizeMediaRequestBody = (
     format: format.value,
     preferredEditionId: preferredEditionId.value,
     preferredIsbn13: normalizedPreferredIsbn13,
+    editionPolicy: editionPolicy.value as
+      'only' | 'either' | 'alongside' | undefined,
+    variantKey: variantKey.value,
     userId: userId.value,
     tags: tags.value,
     seasons:

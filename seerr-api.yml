@@ -20,6 +20,24 @@ tags:
     description: Soulseek track requests, library-health fixes, and SongID through slskdN.
   - name: swipe
     description: Swipe discovery decks and swipe decisions.
+  - name: resolve
+    description: Turn links, ISBNs, lists, and images into requestable matches.
+  - name: continuation
+    description: Source manga and novels that continue an anime.
+  - name: editions
+    description: Edition, narration, and series-narrator comparison.
+  - name: follow
+    description: Standing interests and the personal news they produce.
+  - name: franchise
+    description: Related works and curated cross-media links.
+  - name: game-content
+    description: Game editions, add-ons, and saved game discovery.
+  - name: patches
+    description: Translation, hack, and improvement projects.
+  - name: vibes
+    description: Hardcover vibes feeds.
+  - name: collectors
+    description: Releases shared by followed collectors and album edition comparison.
   - name: auth
     description: Endpoints related to logging in or out, and the currently authenticated user.
   - name: users
@@ -106,6 +124,65 @@ components:
         reason:
           type: string
           description: AI explanation when an AI provider ranked the deck.
+    RecognitionSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        localOcr:
+          type: boolean
+        visionProvider:
+          type: string
+          enum: [none, anthropic, openai]
+        visionApiKey:
+          type: string
+          description: Redacted on read. Send the redacted value to keep the saved key.
+        clearVisionApiKey:
+          type: boolean
+        visionModel:
+          type: string
+        visionBaseUrl:
+          type: string
+        externalConsent:
+          type: boolean
+        maxImageBytes:
+          type: integer
+    ResolveResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usedExternalProvider:
+          type: boolean
+    Follow:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+        subjectKey:
+          type: string
+        subjectLabel:
+          type: string
+        conditions:
+          type: object
+          nullable: true
+          additionalProperties: true
+        notify:
+          type: boolean
+        autoRequest:
+          type: boolean
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
     SwipeSettings:
       type: object
       properties:
@@ -10438,6 +10515,938 @@ paths:
           description: Invalid settings
         '502':
           description: The provider rejected or failed the request
+  /settings/recognition:
+    get:
+      summary: Get share and image recognition settings
+      description: The vision provider API key is always redacted.
+      tags:
+        - settings
+      responses:
+        '200':
+          description: Recognition settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecognitionSettings'
+    put:
+      summary: Update share and image recognition settings
+      description: An external vision provider cannot be enabled until the administrator confirms that uploaded images may be sent to it.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecognitionSettings'
+      responses:
+        '200':
+          description: Saved
+        '400':
+          description: Invalid settings
+  /resolve/capabilities:
+    get:
+      summary: What share recognition can do on this server
+      tags:
+        - resolve
+      responses:
+        '200':
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  links:
+                    type: boolean
+                  text:
+                    type: boolean
+                  image:
+                    type: boolean
+                  localOcr:
+                    type: boolean
+                  externalVision:
+                    type: boolean
+                  maxImageBytes:
+                    type: integer
+  /resolve:
+    post:
+      summary: Resolve a link, ISBN, or pasted list into requestable matches
+      description: Never requests anything. Returns ranked candidates for each recognised item; the person confirms them.
+      tags:
+        - resolve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  maxLength: 16000
+                url:
+                  type: string
+                  maxLength: 2048
+                isbn:
+                  type: string
+                  maxLength: 32
+                types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [movie, tv, book, album, artist, game, anime]
+                formatHint:
+                  type: string
+                  enum: [ebook, audiobook]
+                language:
+                  type: string
+                  maxLength: 16
+      responses:
+        '200':
+          description: Groups of candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveResponse'
+        '400':
+          description: Nothing to resolve
+        '403':
+          description: Request access is required
+  /resolve/image:
+    post:
+      summary: Resolve a photo or screenshot into requestable matches
+      description: The image is processed in memory and never stored. Local text recognition runs first; an external vision provider is used only when an administrator enabled it and confirmed consent.
+      tags:
+        - resolve
+      parameters:
+        - in: query
+          name: types
+          schema:
+            type: string
+        - in: query
+          name: formatHint
+          schema:
+            type: string
+            enum: [ebook, audiobook]
+        - in: query
+          name: language
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+          image/gif:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Groups of candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveResponse'
+        '400':
+          description: No image sent
+        '413':
+          description: Image is larger than the server allows
+        '422':
+          description: The server cannot read images
+  /continuation/tv/{tvId}:
+    get:
+      summary: Source material that continues an anime
+      description: Finds the manga or light novel an anime adapts, where the chosen season ends, and where the story continues. Uncertain mappings are labelled, never guessed.
+      tags:
+        - continuation
+      parameters:
+        - in: path
+          name: tvId
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: season
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: language
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Continuation sources
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /continuation/anilist/{id}:
+    get:
+      summary: Source material for an AniList anime
+      tags:
+        - continuation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: season
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: language
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Continuation sources
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /editions/book:
+    get:
+      summary: Compare editions and narrations of a book
+      description: Returns comparable edition cards. Details the catalog does not provide are listed as unknown.
+      tags:
+        - editions
+      parameters:
+        - in: query
+          name: format
+          required: true
+          schema:
+            type: string
+            enum: [ebook, audiobook]
+        - in: query
+          name: mediaId
+          schema:
+            type: integer
+        - in: query
+          name: term
+          schema:
+            type: string
+        - in: query
+          name: title
+          schema:
+            type: string
+        - in: query
+          name: foreignBookId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Edition comparison
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /editions/series-narrators:
+    get:
+      summary: Compare narrators across a series
+      tags:
+        - editions
+      parameters:
+        - in: query
+          name: title
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: authorId
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Per-narrator coverage of the series
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /editions/series-narrators/prefer:
+    post:
+      summary: Collect a series with one narrator
+      tags:
+        - editions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, narrator]
+              properties:
+                title:
+                  type: string
+                narrator:
+                  type: string
+                authorId:
+                  type: integer
+      responses:
+        '200':
+          description: Preference saved
+        '403':
+          description: Advanced request access is required
+        '404':
+          description: No audiobook library knows this series
+  /editions/capabilities:
+    get:
+      summary: Whether independent narration variants are supported
+      tags:
+        - editions
+      parameters:
+        - in: query
+          name: mediaId
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alongside:
+                    type: boolean
+                  catalog:
+                    type: boolean
+  /follow:
+    get:
+      summary: List what the current user follows
+      tags:
+        - follow
+      responses:
+        '200':
+          description: Follows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Follow'
+    post:
+      summary: Follow a narrator, series, game, artist, or project
+      description: Idempotent for the same subject. The first evaluation records a baseline so only later changes become news.
+      tags:
+        - follow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, subjectKey, subjectLabel]
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    [narrator, author, series-language, edition, expansion, artist-release-type, patch-project, franchise]
+                subjectKey:
+                  type: string
+                subjectLabel:
+                  type: string
+                conditions:
+                  type: object
+                  additionalProperties: true
+                notify:
+                  type: boolean
+                autoRequest:
+                  type: boolean
+      responses:
+        '201':
+          description: Follow saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Follow'
+        '400':
+          description: Invalid follow
+        '409':
+          description: Follow limit reached
+  /follow/{id}:
+    patch:
+      summary: Change notification or auto-request for a follow
+      tags:
+        - follow
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notify:
+                  type: boolean
+                autoRequest:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated
+        '404':
+          description: Not found
+    delete:
+      summary: Stop following
+      tags:
+        - follow
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Removed
+        '404':
+          description: Not found
+  /follow/events:
+    get:
+      summary: Personal news about followed interests
+      tags:
+        - follow
+      parameters:
+        - in: query
+          name: take
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - in: query
+          name: skip
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: unseen
+          schema:
+            type: string
+            enum: ['true', 'false']
+      responses:
+        '200':
+          description: News items, each with the reason it appeared
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /follow/events/count:
+    get:
+      summary: Unseen personal news count
+      tags:
+        - follow
+      responses:
+        '200':
+          description: Count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unseen:
+                    type: integer
+  /follow/events/seen:
+    post:
+      summary: Mark personal news as seen
+      tags:
+        - follow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                all:
+                  type: boolean
+                ids:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '204':
+          description: Marked
+  /franchise/{mediaType}/{id}:
+    get:
+      summary: Related works for a series or anime
+      description: Source works, adaptations, sequels, side stories, and curated cross-media links, each with confidence and evidence.
+      tags:
+        - franchise
+      parameters:
+        - in: path
+          name: mediaType
+          required: true
+          schema:
+            type: string
+            enum: [tv, anime]
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: language
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Franchise
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Not found
+  /franchise/relations/{id}:
+    patch:
+      summary: Confirm or hide a relationship
+      tags:
+        - franchise
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                verified:
+                  type: boolean
+                rejected:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated
+        '403':
+          description: Not allowed
+        '404':
+          description: Not found
+  /franchise/relations:
+    post:
+      summary: Add a curated cross-media link
+      tags:
+        - franchise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromType, fromId, toType, toId, relation]
+              properties:
+                fromType:
+                  type: string
+                fromId:
+                  type: string
+                toType:
+                  type: string
+                toId:
+                  type: string
+                relation:
+                  type: string
+                  enum: [source-material, adaptation, sequel, prequel, side-story, soundtrack, same-franchise]
+                title:
+                  type: string
+                href:
+                  type: string
+                imageUrl:
+                  type: string
+                evidence:
+                  type: string
+      responses:
+        '201':
+          description: Saved
+        '400':
+          description: Invalid relationship
+        '403':
+          description: Not allowed
+  /game-content/{igdbId}/editions:
+    get:
+      summary: Editions, included content, and add-ons for a game
+      tags:
+        - game-content
+      parameters:
+        - in: path
+          name: igdbId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Editions, or available false when QuestarrNG does not support them
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /game-content/discover:
+    post:
+      summary: Find games by themes, modes, perspectives, and languages
+      tags:
+        - game-content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filters]
+              properties:
+                filters:
+                  type: object
+                  additionalProperties: true
+                exclusions:
+                  type: object
+                  additionalProperties: true
+                cursor:
+                  type: string
+      responses:
+        '200':
+          description: Matches with the reasons they matched
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Choose at least one filter
+  /game-content/saved:
+    get:
+      summary: List saved game searches
+      tags:
+        - game-content
+      responses:
+        '200':
+          description: Saved searches
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      summary: Save a game search
+      tags:
+        - game-content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, filters]
+              properties:
+                name:
+                  type: string
+                filters:
+                  type: object
+                  additionalProperties: true
+                exclusions:
+                  type: object
+                  additionalProperties: true
+                notify:
+                  type: boolean
+      responses:
+        '201':
+          description: Saved
+        '400':
+          description: Invalid search
+        '409':
+          description: Saved search limit reached
+  /game-content/saved/{id}:
+    delete:
+      summary: Delete a saved game search
+      tags:
+        - game-content
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+  /game-content/saved/{id}/run:
+    get:
+      summary: Run a saved game search
+      tags:
+        - game-content
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: cursor
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matches
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Not found
+  /patches/search:
+    get:
+      summary: Search translation, hack, and improvement projects
+      description: Requires a ROMarrNG that exposes the patch catalog; otherwise available is false.
+      tags:
+        - patches
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: platform
+          schema:
+            type: string
+        - in: query
+          name: kind
+          schema:
+            type: string
+            enum: [translation, hack, improvement]
+        - in: query
+          name: language
+          schema:
+            type: string
+        - in: query
+          name: completeOnly
+          schema:
+            type: string
+            enum: ['true', 'false']
+        - in: query
+          name: catalogKey
+          schema:
+            type: string
+        - in: query
+          name: cursor
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Projects with versions and completeness
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /patches/projects/{id}:
+    get:
+      summary: Get one patch project
+      tags:
+        - patches
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Project
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Not found
+  /vibes:
+    get:
+      summary: List Hardcover vibes
+      description: Uses the Hardcover token saved on the person's Hardcover list. The token needs the read:vibes scope.
+      tags:
+        - vibes
+      responses:
+        '200':
+          description: Vibes, or available false with the reason
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      summary: Create a custom vibe on Hardcover
+      description: Hardcover requires a Supporter account for this.
+      tags:
+        - vibes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                mood:
+                  type: string
+                seriesPosition:
+                  type: string
+                  enum: [standalone, first_or_standalone]
+                lessPopular:
+                  type: boolean
+                likeBookIds:
+                  type: array
+                  items:
+                    type: integer
+                dislikeBookIds:
+                  type: array
+                  items:
+                    type: integer
+                authorIds:
+                  type: array
+                  items:
+                    type: integer
+                genres:
+                  type: array
+                  items:
+                    type: string
+                avoidGenres:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Created
+        '403':
+          description: Hardcover Supporter account required
+  /vibes/{id}/books:
+    post:
+      summary: Books in a vibe, with SeerrNG-side tuning
+      tags:
+        - vibes
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tuning:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Books
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /collectors:
+    get:
+      summary: Releases shared by collectors the person follows
+      tags:
+        - collectors
+      responses:
+        '200':
+          description: Picks with the reasons they appeared, or available false
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /collectors/radar:
+    post:
+      summary: Follow an artist's releases
+      tags:
+        - collectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [artistId, artist]
+              properties:
+                artistId:
+                  type: string
+                artist:
+                  type: string
+                includeEps:
+                  type: boolean
+      responses:
+        '201':
+          description: Following
+        '400':
+          description: Invalid artist
+  /collectors/variants/{releaseGroupId}:
+    get:
+      summary: Compare standard, deluxe, and remaster releases
+      tags:
+        - collectors
+      parameters:
+        - in: path
+          name: releaseGroupId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Release variants with track differences
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
   /settings/readmeabook:
     get:
       summary: Get ReadMeABook connection settings
@@ -18131,6 +19140,10 @@ paths:
                   minimum: 1
                 platformSlug:
                   type: string
+                selection:
+                  type: object
+                  description: Content chosen beyond the base title, either game editions and add-ons or a translation or hack version.
+                  additionalProperties: true
                 variant:
                   type: object
                   required: [operatingSystem, architecture]

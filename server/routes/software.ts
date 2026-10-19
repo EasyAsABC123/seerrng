@@ -12,6 +12,7 @@ import SoftwareRequest, {
   type SoftwareRequestCategory,
   type SoftwareRequestProvider,
   type SoftwareRequestStatus,
+  type SoftwareSelection,
 } from '@server/entity/SoftwareRequest';
 import SoftwareRequestStatusEvent from '@server/entity/SoftwareRequestStatusEvent';
 import { User } from '@server/entity/User';
@@ -863,6 +864,7 @@ const serializeRequest = (
   title: request.title,
   summary: request.summary ?? null,
   coverUrl: request.coverUrl ?? null,
+  selection: request.selection ?? null,
   catalogId: request.catalogId ?? null,
   catalogProvider: request.catalogProvider ?? 'igdb',
   catalogKey: request.catalogKey ?? null,
@@ -1344,6 +1346,82 @@ softwareRoutes.get('/catalog/games/:id', async (req, res) => {
   }
 });
 
+const SELECTION_ID = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,127}$/;
+const MAX_SELECTED_ADDONS = 30;
+
+const parseSoftwareSelection = (
+  value: unknown,
+  category: unknown
+):
+  | { selection: SoftwareSelection | null; selectionKey: string | null }
+  | { error: string } => {
+  if (value === undefined || value === null) {
+    return { selection: null, selectionKey: null };
+  }
+  if (!isRecord(value)) return { error: 'Selection must be an object.' };
+
+  if (value.kind === 'game-content') {
+    if (category !== 'game') {
+      return { error: 'Game content can only be selected for PC games.' };
+    }
+    const mode = value.mode;
+    if (mode !== 'edition' && mode !== 'missing-selected') {
+      return { error: 'Choose an edition or the missing content.' };
+    }
+    const editionId =
+      value.editionId === undefined ? undefined : Number(value.editionId);
+    if (
+      editionId !== undefined &&
+      (!Number.isSafeInteger(editionId) || editionId <= 0)
+    ) {
+      return { error: 'The selected edition is invalid.' };
+    }
+    const addonIds = Array.isArray(value.addonIds)
+      ? [...new Set(value.addonIds.map(Number))].sort((a, b) => a - b)
+      : [];
+    if (
+      addonIds.length > MAX_SELECTED_ADDONS ||
+      addonIds.some((id) => !Number.isSafeInteger(id) || id <= 0)
+    ) {
+      return { error: 'The selected content is invalid.' };
+    }
+    if (mode === 'edition' && !editionId) {
+      return { error: 'Choose an edition.' };
+    }
+    if (mode === 'missing-selected' && !addonIds.length) {
+      return { error: 'Choose at least one piece of content.' };
+    }
+    return {
+      selection: { kind: 'game-content', mode, editionId, addonIds },
+      selectionKey: `game:${mode}:${editionId ?? 0}:${addonIds.join(',')}`,
+    };
+  }
+
+  if (value.kind === 'patch') {
+    if (category !== 'retro' && category !== 'modern') {
+      return { error: 'Patches can only be selected for emulation titles.' };
+    }
+    const projectId = value.projectId;
+    const versionId = value.versionId;
+    if (typeof projectId !== 'string' || !SELECTION_ID.test(projectId)) {
+      return { error: 'The selected patch project is invalid.' };
+    }
+    if (
+      versionId !== undefined &&
+      (typeof versionId !== 'string' || !SELECTION_ID.test(versionId))
+    ) {
+      return { error: 'The selected patch version is invalid.' };
+    }
+    const keepOriginal = value.keepOriginal !== false;
+    return {
+      selection: { kind: 'patch', projectId, versionId, keepOriginal },
+      selectionKey: `patch:${projectId}@${versionId ?? 'latest'}:${keepOriginal ? 'keep' : 'replace'}`,
+    };
+  }
+
+  return { error: 'Unknown selection.' };
+};
+
 softwareRoutes.post('/', async (req, res) => {
   const body = isRecord(req.body) ? req.body : {};
   const category = body.category;
@@ -1392,6 +1470,12 @@ softwareRoutes.post('/', async (req, res) => {
   ) {
     return res.status(403).json({ error: 'SOFTWARE_QUOTA_EXCEEDED' });
   }
+
+  const parsedSelection = parseSoftwareSelection(body.selection, category);
+  if ('error' in parsedSelection) {
+    return res.status(400).json({ error: parsedSelection.error });
+  }
+  const { selection, selectionKey } = parsedSelection;
 
   const repository = getRepository(SoftwareRequest);
   try {
@@ -1465,6 +1549,11 @@ softwareRoutes.post('/', async (req, res) => {
       .andWhere('request.status IN (:...statuses)', {
         statuses: [...ACTIVE_STATUSES, 'available'],
       });
+    if (selectionKey) {
+      query.andWhere('request.selectionKey = :selectionKey', { selectionKey });
+    } else {
+      query.andWhere('request.selectionKey IS NULL');
+    }
     if (platformSlug)
       query.andWhere('request.platformSlug = :platformSlug', { platformSlug });
     if (variant) {
@@ -1499,6 +1588,8 @@ softwareRoutes.post('/', async (req, res) => {
       platformId,
       operatingSystem: variant?.operatingSystem ?? null,
       architecture: variant?.architecture ?? null,
+      selection,
+      selectionKey,
       attempt: 0,
       providerStage: 'pending',
       failureCode: null,

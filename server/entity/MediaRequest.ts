@@ -1310,6 +1310,8 @@ export class MediaRequest {
       const request = new MediaRequest({
         type: MediaType.MUSIC,
         media,
+        // The MusicBrainz release the person chose (standard, deluxe, ...).
+        variantKey: requestBody.variantKey,
         requestedBy: requestUser,
         status: autoApproved
           ? MediaRequestStatus.APPROVED
@@ -1634,6 +1636,8 @@ export class MediaRequest {
         bookFormat: requestedBookFormat,
         preferredEditionId: requestBody.preferredEditionId,
         preferredIsbn13: normalizeValidIsbn(requestBody.preferredIsbn13),
+        editionPolicy: requestBody.editionPolicy,
+        variantKey: requestBody.variantKey,
         isAutoRequest: options.isAutoRequest ?? false,
         ignoreQuota,
       });
@@ -3479,6 +3483,18 @@ export class MediaRequest {
 
   @Column({ nullable: true, type: 'varchar' })
   public preferredIsbn13?: string | null;
+
+  /**
+   * How a chosen edition relates to what the library already holds:
+   * `only` replaces the selection, `either` accepts any listed edition,
+   * `alongside` tracks it as an additional variant (e.g. a second narration).
+   */
+  @Column({ nullable: true, type: 'varchar' })
+  public editionPolicy?: 'only' | 'either' | 'alongside' | null;
+
+  /** Narration or edition variant key, e.g. a narrator name or edition id. */
+  @Column({ nullable: true, type: 'varchar' })
+  public variantKey?: string | null;
 
   @Column({
     type: 'text',

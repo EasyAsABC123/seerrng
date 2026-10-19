@@ -7,6 +7,7 @@ import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import MediaServerPlayButton from '@app/components/Common/MediaServerPlayButton';
 import PageTitle from '@app/components/Common/PageTitle';
 import Tooltip from '@app/components/Common/Tooltip';
+import { MusicEditionCompare } from '@app/components/EditionCompare';
 import IssueBlock from '@app/components/IssueBlock';
 import MusicDetailsLayout from '@app/components/MusicDetails/MusicDetailsLayout';
 import AlbumLibraryHealthButton from '@app/components/Soulseek/AlbumLibraryHealthButton';
@@ -631,7 +632,12 @@ const MusicDetails = () => {
         catalogActions={catalogActions}
         playbackActions={playbackActions}
         ratingData={ratingData}
-        additionalContent={additionalContent}
+        additionalContent={
+          <>
+            {additionalContent}
+            {albumId && <MusicEditionCompare releaseGroupId={albumId} />}
+          </>
+        }
       />
     </>
   );

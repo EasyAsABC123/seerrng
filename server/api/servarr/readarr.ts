@@ -49,7 +49,50 @@ interface ChaptarrIntegrationCapabilities {
     pendingAuthorImports?: boolean;
     pendingImportCancellation?: boolean;
     restrictedServiceApiKey?: boolean;
+    /** Wanted editions can be tracked alongside the current selection. */
+    wantedEditionVariants?: boolean;
+    /** Catalog-wide per-volume narrator comparison for a series. */
+    seriesNarratorMatrix?: boolean;
+    /** Edition catalog with narrator, production, and duration details. */
+    editionCatalog?: boolean;
   };
+}
+
+export interface ChaptarrEditionCard {
+  editionId: number;
+  foreignEditionId?: string;
+  title: string;
+  language?: string;
+  format?: string;
+  isEbook: boolean;
+  narrators: string[];
+  production: 'solo' | 'full-cast' | 'unknown';
+  abridged: 'abridged' | 'unabridged' | 'unknown';
+  durationSeconds?: number;
+  publisher?: string;
+  releaseDate?: string;
+  imageUrl?: string;
+  monitored: boolean;
+  owned: boolean;
+}
+
+export interface ChaptarrNarratorMatrix {
+  seriesId: number;
+  seriesTitle: string;
+  totalBooks: number;
+  narrators: {
+    name: string;
+    production: 'solo' | 'full-cast' | 'unknown';
+    coveredBookIds: number[];
+    missingBookIds: number[];
+    ownedBookIds: number[];
+  }[];
+  books: {
+    bookId: number;
+    title: string;
+    position?: number;
+    narrators: { name: string; editionId: number; owned: boolean }[];
+  }[];
 }
 const CHAPTARR_REQUEST_TIMEOUT_MS = 60_000;
 const CHAPTARR_LIBRARY_PAGE_SIZE = 500;
@@ -309,6 +352,8 @@ export interface ReadarrBookOptions extends ReadarrBookLookupResult {
   rootFolderPath: string;
   monitored: boolean;
   useRequestedEdition?: boolean;
+  /** `alongside` tracks the requested edition as an additional variant. */
+  editionPolicy?: 'only' | 'either' | 'alongside';
   tags?: number[];
   addOptions?: {
     searchForNewBook: boolean;
@@ -1957,6 +2002,12 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     try {
       await this.ensureProvider();
       const existingBook = await this.findExistingBookForAdd(options);
+      const alongside = existingBook
+        ? await this.addEditionAlongside(existingBook, options)
+        : undefined;
+      if (alongside) {
+        return alongside;
+      }
       const editionUpdate = existingBook
         ? this.getRequestedEditionUpdate(existingBook, options)
         : undefined;
@@ -2191,11 +2242,156 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     };
   }
 
+  /** Loads the companion's capability contract; the supports* checks need it. */
+  public async ensureCapabilities(): Promise<void> {
+    await this.ensureProvider();
+  }
+
+  public supportsWantedEditionVariants(): boolean {
+    return this.chaptarrCapabilities?.features?.wantedEditionVariants === true;
+  }
+
+  public supportsSeriesNarratorMatrix(): boolean {
+    return this.chaptarrCapabilities?.features?.seriesNarratorMatrix === true;
+  }
+
+  public supportsEditionCatalog(): boolean {
+    return this.chaptarrCapabilities?.features?.editionCatalog === true;
+  }
+
+  /**
+   * Track a distinct performance next to the one already selected. Returns
+   * undefined when the policy, capability, or edition does not apply so the
+   * caller falls back to the ordinary single-selection path.
+   */
+  private async addEditionAlongside(
+    existingBook: ReadarrBook,
+    options: ReadarrBookOptions
+  ): Promise<ReadarrAddBookResult | undefined> {
+    if (options.editionPolicy !== 'alongside' || !this.isChaptarr()) {
+      return undefined;
+    }
+    await this.ensureCapabilities();
+    if (!this.supportsWantedEditionVariants()) {
+      return undefined;
+    }
+    const requested = options.editions?.find((edition) => edition.monitored);
+    if (!requested) {
+      return undefined;
+    }
+    const catalog = await this.getEditionCatalog(existingBook.id);
+    const match = catalog.find(
+      (edition) => edition.foreignEditionId === requested.foreignEditionId
+    );
+    if (!match) {
+      return undefined;
+    }
+    if (match.monitored) {
+      return { ...existingBook, createdBook: false, createdAuthor: false };
+    }
+    const wanted = await this.addWantedEdition(
+      existingBook.id,
+      match.editionId,
+      {
+        asNewVariant: true,
+        search: options.addOptions?.searchForNewBook === true,
+      }
+    );
+    return { ...wanted, createdBook: false, createdAuthor: false };
+  }
+
+  public async addWantedEdition(
+    bookId: number,
+    editionId: number,
+    options: { asNewVariant?: boolean; search?: boolean } = {}
+  ): Promise<ReadarrBook> {
+    const response = await this.request<ReadarrBook>(
+      'POST',
+      `/book/${bookId}/editions/wanted`,
+      {
+        editionId,
+        asNewVariant: options.asNewVariant === true,
+        searchForNewBook: options.search === true,
+      },
+      this.getRequestConfig()
+    );
+    return response.data;
+  }
+
+  /** Makes one narrator the preferred performance for a whole series. */
+  public async setSeriesPreferredNarrator(
+    seriesId: number,
+    narrator: string,
+    applyToAllBooks = true
+  ): Promise<void> {
+    await this.request(
+      'PUT',
+      `/series/${seriesId}/narrators/preferred`,
+      { narrator, applyToAllBooks, overrideExisting: false },
+      this.getRequestConfig()
+    );
+  }
+
+  public async getEditionCatalog(
+    bookId: number
+  ): Promise<ChaptarrEditionCard[]> {
+    await this.ensureCapabilities();
+    if (!this.supportsEditionCatalog()) {
+      return [];
+    }
+    try {
+      const response = await this.request<ChaptarrEditionCard[]>(
+        'GET',
+        `/book/${bookId}/editions/catalog`,
+        undefined,
+        this.getRequestConfig()
+      );
+      return Array.isArray(response.data) ? response.data.slice(0, 200) : [];
+    } catch (e) {
+      logger.warn('Failed to load the Chaptarr edition catalog', {
+        label: 'Readarr API',
+        bookId,
+        errorMessage: getReadarrErrorMessage(e),
+      });
+      return [];
+    }
+  }
+
+  public async getSeriesNarratorMatrix(lookup: {
+    title: string;
+    authorId?: number;
+  }): Promise<ChaptarrNarratorMatrix | undefined> {
+    await this.ensureCapabilities();
+    if (!this.supportsSeriesNarratorMatrix()) {
+      return undefined;
+    }
+    try {
+      const response = await this.request<ChaptarrNarratorMatrix>(
+        'GET',
+        '/series/narrators/matrix',
+        undefined,
+        this.getRequestConfig({
+          title: lookup.title,
+          ...(lookup.authorId ? { authorId: lookup.authorId } : {}),
+        })
+      );
+      return response.data;
+    } catch (e) {
+      logger.warn('Failed to load the Chaptarr series narrator matrix', {
+        label: 'Readarr API',
+        seriesTitle: lookup.title,
+        errorMessage: getReadarrErrorMessage(e),
+      });
+      return undefined;
+    }
+  }
+
   private getBookAddPayload(
     options: ReadarrBookOptions
   ): Record<string, unknown> {
     const payload = { ...options };
     delete payload.useRequestedEdition;
+    delete payload.editionPolicy;
     return payload;
   }
 

@@ -14,6 +14,7 @@ import SettingsDownloadClients from '@app/components/Settings/SettingsDownloadCl
 import { useSettingsPageAction } from '@app/components/Settings/SettingsLayout';
 import SettingsProwlarr from '@app/components/Settings/SettingsProwlarr';
 import SettingsReadMeABook from '@app/components/Settings/SettingsReadMeABook';
+import SettingsRecognition from '@app/components/Settings/SettingsRecognition';
 import SettingsSlskdn from '@app/components/Settings/SettingsSlskdn';
 import SettingsSoftwareAcquisition from '@app/components/Settings/SettingsSoftwareAcquisition';
 import SettingsSwipe from '@app/components/Settings/SettingsSwipe';
@@ -2230,6 +2231,7 @@ const SettingsServices = ({
         className={activeServiceCategory === 'tools-other' ? '' : 'hidden'}
       >
         {!setupEnabledMediaCategories && <SettingsSwipe />}
+        {!setupEnabledMediaCategories && <SettingsRecognition />}
         {showSoftwareAcquisition && <SettingsSoftwareAcquisition />}
       </div>
       {overrideRuleModal.open &&

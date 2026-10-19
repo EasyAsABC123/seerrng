@@ -26,6 +26,9 @@
     <string name="use_http">Connect over HTTP</string>
     <string name="server_saved">Server saved</string>
     <string name="server_removed">Server removed</string>
+    <string name="share_needs_server">Add a server first, then share again.</string>
+    <string name="share_choose_server">Choose the server to share to.</string>
+    <string name="share_image_unreadable">The shared image could not be read.</string>
     <string name="invalid_server_url">Enter a valid HTTP or HTTPS server URL</string>
     <string name="remove_server_title">Remove server?</string>
     <string name="remove_server_message">This removes the saved address and sign-in for %1$s from this device.</string>

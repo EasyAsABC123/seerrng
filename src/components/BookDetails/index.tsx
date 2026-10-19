@@ -15,6 +15,7 @@ import PageTitle from '@app/components/Common/PageTitle';
 import ReaderDeliveryLink from '@app/components/Common/ReaderDeliveryLink';
 import RequestDownloadAction from '@app/components/Common/RequestDownloadAction';
 import Tooltip from '@app/components/Common/Tooltip';
+import FollowButton from '@app/components/Following/FollowButton';
 import IssueBlock from '@app/components/IssueBlock';
 import BulkRequestModal from '@app/components/RequestModal/BulkRequestModal';
 import {
@@ -89,6 +90,7 @@ const messages = defineMessages('components.BookDetails', {
   watchlistError: 'Something went wrong. Please try again.',
   removefromwatchlist: 'Remove From Watchlist',
   addtowatchlist: 'Add To Watchlist',
+  followauthor: 'Follow New Releases',
   viewrequest: 'View Request',
   viewRequestFormat: 'View {format} request',
   requestBookFormat: 'Request {format}',
@@ -726,6 +728,17 @@ const BookDetails = () => {
 
   const secondaryActions = (
     <>
+      {data.authorId && data.author && (
+        <FollowButton
+          label={intl.formatMessage(messages.followauthor)}
+          input={{
+            kind: 'author',
+            subjectKey: `author:${data.authorId}`,
+            subjectLabel: data.author,
+            conditions: { ref: { authorId: data.authorId } },
+          }}
+        />
+      )}
       {canWatchlist && (
         <Tooltip
           content={intl.formatMessage(

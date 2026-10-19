@@ -32,6 +32,8 @@ export type AvailableCacheIds =
   | 'associations'
   | 'trakt'
   | 'anilist'
+  | 'mangaupdates'
+  | 'ranobedb'
   | 'simkl'
   | 'personallibrary'
   | 'mdblist';
@@ -161,6 +163,14 @@ class CacheManager {
       maxBytes: 8 * 1024 * 1024,
     }),
     anilist: new Cache('anilist', 'AniList API', {
+      maxKeys: 500,
+      maxBytes: 8 * 1024 * 1024,
+    }),
+    mangaupdates: new Cache('mangaupdates', 'MangaUpdates API', {
+      maxKeys: 500,
+      maxBytes: 8 * 1024 * 1024,
+    }),
+    ranobedb: new Cache('ranobedb', 'RanobeDB API', {
       maxKeys: 500,
       maxBytes: 8 * 1024 * 1024,
     }),

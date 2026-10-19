@@ -2,6 +2,10 @@ import Alert from '@app/components/Common/Alert';
 import { getBookFormatMessage } from '@app/components/Common/BookFormatBadge';
 import CachedImage from '@app/components/Common/CachedImage';
 import Modal from '@app/components/Common/Modal';
+import {
+  EditionCardPicker,
+  type EditionChoice,
+} from '@app/components/EditionCompare';
 import MediaQualitySelect from '@app/components/MediaDetails/MediaQualitySelect';
 import AdvancedOptionsDisclosureButton from '@app/components/RequestModal/AdvancedOptionsDisclosureButton';
 import type { RequestOverrides } from '@app/components/RequestModal/AdvancedRequester';
@@ -147,6 +151,9 @@ const BookRequestModal = ({
   );
   const [hasUserSelectedFormat, setHasUserSelectedFormat] = useState(false);
   const [selectedIsbn, setSelectedIsbn] = useState<string>('');
+  const [editionChoice, setEditionChoice] = useState<EditionChoice>({
+    policy: 'only',
+  });
   const [preferredLanguage, setPreferredLanguage] = useState('');
   const [appliedPreferenceUserId, setAppliedPreferenceUserId] = useState<
     number | null
@@ -570,7 +577,14 @@ const BookRequestModal = ({
         isbn13: selectedIsbn || data?.isbn13,
         editionId: selectedEdition?.editionId ?? data?.editionId,
         preferredIsbn13: selectedIsbn || undefined,
-        preferredEditionId: selectedEdition?.editionId,
+        preferredEditionId:
+          editionChoice.editionId ?? selectedEdition?.editionId,
+        ...(editionChoice.editionId
+          ? {
+              editionPolicy: editionChoice.policy,
+              variantKey: editionChoice.variantKey,
+            }
+          : {}),
         authorId: data?.authorId,
         format: bookFormat,
         ...getOverrideParams(),
@@ -631,6 +645,7 @@ const BookRequestModal = ({
     getOverrideParams,
     selectedDestinationCovered,
     selectedIsbn,
+    editionChoice,
   ]);
 
   const cancelRequest = async () => {
@@ -1017,6 +1032,27 @@ const BookRequestModal = ({
             </div>
           )}
         </div>
+        {data && (
+          <EditionCardPicker
+            key={bookFormat}
+            mediaId={
+              bookFormat === 'audiobook'
+                ? data.mediaInfo?.audiobookExternalServiceId !== undefined &&
+                  data.mediaInfo?.audiobookExternalServiceId !== null
+                  ? data.mediaInfo.id
+                  : undefined
+                : data.mediaInfo?.externalServiceId !== undefined &&
+                    data.mediaInfo?.externalServiceId !== null
+                  ? data.mediaInfo.id
+                  : undefined
+            }
+            format={bookFormat}
+            title={data.title}
+            author={data.author}
+            value={editionChoice}
+            onChange={setEditionChoice}
+          />
+        )}
         {formatWarning && (
           <div className="mt-2">
             <Alert title={intl.formatMessage(formatWarning)} type="warning" />

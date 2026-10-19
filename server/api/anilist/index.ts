@@ -8,6 +8,7 @@ import type {
   AnilistMediaPage,
   AnilistMediaSeason,
   AnilistMediaSort,
+  AnilistMediaWithRelations,
   AnilistTokenResponse,
   AnilistTokenState,
   AnilistViewer,
@@ -107,6 +108,31 @@ const MEDIA_LIST_COLLECTION_QUERY = `
 const MEDIA_QUERY = `
   query Media($id: Int) {
     Media(id: $id, type: ANIME) { ${MEDIA_FIELDS} }
+  }
+`;
+
+const MEDIA_RELATIONS_QUERY = `
+  query MediaRelations($id: Int) {
+    Media(id: $id) {
+      ${MEDIA_FIELDS}
+      type
+      relations {
+        edges {
+          relationType
+          node { ${MEDIA_FIELDS} type }
+        }
+      }
+    }
+  }
+`;
+
+const SEARCH_ANIME_QUERY = `
+  query SearchAnime($search: String, $perPage: Int) {
+    Page(page: 1, perPage: $perPage) {
+      media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
+        ${MEDIA_FIELDS}
+      }
+    }
   }
 `;
 
@@ -358,6 +384,29 @@ class AnilistAPI extends ExternalAPI {
       0
     );
     return data.Media ?? null;
+  }
+
+  /**
+   * One anime with its relationship edges (sequels, prequels, and the manga
+   * or novel it adapts). Kept separate from MEDIA_FIELDS so list queries stay
+   * small; cached for a day because relations rarely change.
+   */
+  async getMediaWithRelations(
+    id: number
+  ): Promise<AnilistMediaWithRelations | null> {
+    const data = await this.graphql<{
+      Media: AnilistMediaWithRelations | null;
+    }>(MEDIA_RELATIONS_QUERY, { id }, 24 * 60 * 60);
+    return data.Media ?? null;
+  }
+
+  async searchAnime(search: string, perPage = 5): Promise<AnilistMedia[]> {
+    const data = await this.graphql<{ Page: { media: AnilistMedia[] } }>(
+      SEARCH_ANIME_QUERY,
+      { search, perPage },
+      PUBLIC_PAGE_CACHE_TTL_SECONDS * 12
+    );
+    return data.Page?.media ?? [];
   }
 
   async saveMediaListEntry(options: {

@@ -5,6 +5,7 @@ import IndexerSearchLink from '@app/components/Common/IndexerSearchLink';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import MediaTypeBadge from '@app/components/Common/MediaTypeBadge';
 import PageTitle from '@app/components/Common/PageTitle';
+import FollowButton from '@app/components/Following/FollowButton';
 import MediaSlider from '@app/components/MediaSlider';
 import TitleCard from '@app/components/TitleCard';
 import { Permission, useUser } from '@app/hooks/useUser';
@@ -37,6 +38,7 @@ const messages = defineMessages('components.ArtistDetails', {
   showall: 'Show All',
   showless: 'Show Less',
   requestdiscography: 'Request Discography',
+  followreleases: 'Follow New Albums',
 });
 
 interface Album {
@@ -272,6 +274,23 @@ const ArtistDetails = () => {
                 </Button>
               )}
               <IndexerSearchLink category="music" title={artistName} />
+            </div>
+          )}
+          {artistId && artistName && (
+            <div className="mt-3 flex flex-wrap justify-center gap-3 lg:justify-start">
+              <FollowButton
+                label={intl.formatMessage(messages.followreleases)}
+                input={{
+                  kind: 'artist-release-type',
+                  subjectKey: `mb-artist:${artistId.toLowerCase()}`,
+                  subjectLabel: artistName,
+                  conditions: {
+                    includeTypes: ['Album'],
+                    excludeTypes: ['Single', 'Compilation', 'Live', 'reissue'],
+                    ref: { mbid: artistId.toLowerCase() },
+                  },
+                }}
+              />
             </div>
           )}
         </div>

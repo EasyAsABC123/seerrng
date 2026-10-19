@@ -1,4 +1,5 @@
 import Badge from '@app/components/Common/Badge';
+import FollowUnreadCount from '@app/components/Following/FollowUnreadCount';
 import {
   menuMessages,
   navigationSections,
@@ -102,6 +103,7 @@ const Sidebar = ({
       >
         {cloneElement(link.svgIcon, { className: iconClass })}
         {intl.formatMessage(menuMessages[link.messagesKey])}
+        {link.messagesKey === 'following' && <FollowUnreadCount />}
         {device === 'desktop' &&
           link.messagesKey === 'requests' &&
           pendingRequestsCount > 0 &&

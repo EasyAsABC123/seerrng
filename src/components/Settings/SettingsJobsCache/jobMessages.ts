@@ -33,6 +33,7 @@ const jobMessages = defineMessages('components.Settings.SettingsJobsCache', {
   'availability-sync': 'Media Availability Sync',
   'external-request-list-sync': 'External Request List Sync',
   'reader-delivery-kobo-sync': 'BookOrbit Kobo Collection Sync',
+  'follow-sync': 'Followed Interests Sync',
   'process-blocklisted-tags': 'Process Blocklisted Tags',
 } satisfies Record<JobId, string>);
 

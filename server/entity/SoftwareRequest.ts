@@ -13,6 +13,23 @@ import { User } from './User';
 export type SoftwareRequestCategory = 'retro' | 'modern' | 'game';
 export type SoftwareRequestProvider = 'romarr' | 'questarr';
 export type SoftwareCatalogProvider = 'igdb' | 'dat';
+/** Content the person picked beyond the base title. */
+export type SoftwareSelection =
+  | {
+      kind: 'game-content';
+      /** `edition` acquires a whole edition; `missing-selected` only the picks. */
+      mode: 'edition' | 'missing-selected';
+      editionId?: number;
+      addonIds?: number[];
+    }
+  | {
+      kind: 'patch';
+      projectId: string;
+      versionId?: string;
+      /** Keep the unmodified game next to the patched one. */
+      keepOriginal: boolean;
+    };
+
 export type SoftwareRequestStatus =
   | 'pending'
   | 'approved'
@@ -94,6 +111,13 @@ export class SoftwareRequest {
 
   @Column({ type: 'varchar', length: 16, nullable: true })
   public architecture?: 'x64' | 'arm64' | 'x86' | 'universal' | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  public selection?: SoftwareSelection | null;
+
+  /** Stable signature of `selection`, so distinct picks are not duplicates. */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  public selectionKey?: string | null;
 
   @Column({ type: 'integer', default: 0 })
   public attempt: number;

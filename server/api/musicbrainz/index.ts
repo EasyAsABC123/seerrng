@@ -372,6 +372,23 @@ export const sanitizeMusicBrainzRecording = (
   };
 };
 
+export interface MusicBrainzEditionRelease {
+  id: string;
+  title: string;
+  disambiguation: string;
+  date: string;
+  country: string;
+  trackCount: number;
+  formats: string[];
+}
+
+export interface MusicBrainzReleaseTrack {
+  disc: number;
+  position: number;
+  title: string;
+  lengthMs?: number;
+}
+
 class MusicBrainz extends ExternalAPI {
   /** Distinguish a release ID from an unrelated release-group ID without hiding outages. */
   public async collectionReleaseGroup(
@@ -830,6 +847,98 @@ class MusicBrainz extends ExternalAPI {
         { cause: e }
       );
     }
+  }
+
+  /** Releases in one release group, for comparing editions of an album. */
+  public async getReleaseGroupReleases({
+    releaseGroupId,
+  }: {
+    releaseGroupId: string;
+  }): Promise<MusicBrainzEditionRelease[]> {
+    const id = normalizeMusicBrainzId(releaseGroupId);
+    if (!isValidMusicBrainzResourceId(id)) {
+      throw new Error('Invalid MusicBrainz release group ID');
+    }
+    const data = await this.get<{
+      releases?: Record<string, unknown>[];
+    }>(
+      '/release',
+      {
+        params: {
+          'release-group': id,
+          inc: 'media',
+          status: 'official',
+          limit: 100,
+          fmt: 'json',
+        },
+      },
+      43200
+    );
+    return (Array.isArray(data?.releases) ? data.releases : [])
+      .slice(0, 100)
+      .flatMap((release) => {
+        if (!isRecord(release) || typeof release.id !== 'string') return [];
+        const media = Array.isArray(release.media) ? release.media : [];
+        return [
+          {
+            id: boundText(release.id, 128),
+            title: boundText(release.title, 300),
+            disambiguation: boundText(release.disambiguation, 300),
+            date: boundText(release.date, 16),
+            country: boundText(release.country, 8),
+            trackCount: media.reduce(
+              (sum: number, medium) =>
+                sum +
+                (isRecord(medium) ? Number(medium['track-count']) || 0 : 0),
+              0
+            ),
+            formats: [
+              ...new Set(
+                media.flatMap((medium) =>
+                  isRecord(medium) && typeof medium.format === 'string'
+                    ? [boundText(medium.format, 48)]
+                    : []
+                )
+              ),
+            ],
+          },
+        ];
+      });
+  }
+
+  /** Track titles and lengths for one release. */
+  public async getReleaseTracks({
+    releaseId,
+  }: {
+    releaseId: string;
+  }): Promise<MusicBrainzReleaseTrack[]> {
+    const id = normalizeMusicBrainzId(releaseId);
+    if (!isValidMusicBrainzResourceId(id)) {
+      throw new Error('Invalid MusicBrainz release ID');
+    }
+    const data = await this.get<{ media?: Record<string, unknown>[] }>(
+      `/release/${encodeURIComponent(id)}`,
+      { params: { inc: 'recordings', fmt: 'json' } },
+      43200
+    );
+    return (Array.isArray(data?.media) ? data.media : [])
+      .slice(0, 20)
+      .flatMap((medium, mediumIndex) =>
+        (isRecord(medium) && Array.isArray(medium.tracks) ? medium.tracks : [])
+          .slice(0, 200)
+          .flatMap((track: unknown) =>
+            isRecord(track)
+              ? [
+                  {
+                    disc: mediumIndex + 1,
+                    position: Number(track.position) || 0,
+                    title: boundText(track.title, 300),
+                    lengthMs: Number(track.length) || undefined,
+                  },
+                ]
+              : []
+          )
+      );
   }
 
   public async getArtistWikipediaExtract({
