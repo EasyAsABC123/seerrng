@@ -10,6 +10,54 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.71.0](https://github.com/snapetech-org/seerrng/compare/v3.70.1..v3.71.0) - 2026-10-19
+
+### User-facing changes
+
+#### Added
+
+- **Requests:** Administrators can now disable 4K support globally in Settings → Main. Turning it off hides movie and TV 4K request, issue-reporting, and availability options, blocks new 4K requests and issue reports, and stops future scans from recording 4K separately. Existing records and Radarr/Sonarr server classifications are preserved.
+- **Tv Requests:** Users can request approval to enable the previous-season watch requirement for their own account, then turn it on or off from their profile. User managers can approve or decline pending requests from the Users page. The global administrator setting still applies the rule to everyone.
+
+#### Changed
+
+- **Books:** SeerrNG now follows Bindery approval and download progress, explains pending review and service failures in request history, and withdraws requests that are still pending when canceled. Approved acquisitions continue in Bindery.
+- **Bookshelf:** Reader Apps settings now distinguish browsing imported files from book acquisition. SeerrNG sends approved requests to the configured book service; BookOrbit's separate request queue is not part of this connection.
+- **Requests:** Episode Queue now supports user manager approval and a saved per-user default for all current and future TV requests. Users can override the queue length per show, and profile, TV detail, request, and request management screens surface the setting and its approval status.
+- **Media Details:** Movie and series pages keep the familiar summary and overview up front, place request and playback controls in a clear side panel on wide screens, and stack those controls above expandable details on phones.
+
+#### Fixed
+
+- **Books:** Bindery setup now retains the API key you type, so connection testing and saving work as expected.
+- **Details:** Movie and TV detail actions now stay within the page at wide desktop sizes and wrap cleanly on smaller layouts.
+- **Settings:** The Sportarr connection dialog now uses the same theme-aware form controls as the rest of the settings interface, keeping fields readable while configuring a server.
+- **Media Details:** Movie and series detail pages now load their responsive layout styles in production, so request and playback controls stay in the side panel on wide screens and above the details on phones.
+- **Settings:** Settings forms now use consistent, readable text sizing, and provider test actions remain clear of their selectors.
+
+#### Security
+
+- **Shared Links:** Shared-link matching now checks provider hostnames precisely and decodes HTML entities once, so lookalike domains and double-encoded links are not treated as trusted media providers.
+
+### 🚀 Features
+- *(settings)* Clarify global 4K control - ([9a6714e](https://github.com/snapetech-org/seerrng/commit/9a6714e8d838791336c10f19a21d43341966234c))
+- Add per-user Episode Queue defaults and approval - ([0908b6b](https://github.com/snapetech-org/seerrng/commit/0908b6bed89df167c968160c7689372a28dd8444))
+- Add global 4K setting - ([ed853f8](https://github.com/snapetech-org/seerrng/commit/ed853f84e152cb99cce28f268b701b4de5630d00))
+
+### 🐛 Bug Fixes
+- *(bindery)* Store API keys and cover setup flow - ([8b1136d](https://github.com/snapetech-org/seerrng/commit/8b1136d232ea7efd6b0ef31be0da427128648a18))
+- *(i18n)* Sort extracted 4k messages - ([6bdefb9](https://github.com/snapetech-org/seerrng/commit/6bdefb97e95a7cec0c7f847bb2ceec60450ed579))
+- *(release)* Use supported Episode Queue note category - ([6eb0b79](https://github.com/snapetech-org/seerrng/commit/6eb0b79ae3bb5f3e40c2d5457a3dab8710ec7166))
+- *(ui)* Retain issue quality eligibility check - ([ca79366](https://github.com/snapetech-org/seerrng/commit/ca793661fa9c2e27180946204120d6c0f0e87c79))
+- Stabilize details layout and release attestations - ([196552f](https://github.com/snapetech-org/seerrng/commit/196552f98a6b61a9973cc138869713ba9280a012))
+
+### 🧪 Testing
+- *(e2e)* Stabilize settings integration fixtures - ([babb7b7](https://github.com/snapetech-org/seerrng/commit/babb7b71d454e085fc9ccd7d7fc55487594a333a))
+- *(ios)* Wait for server actions before editing - ([27d172a](https://github.com/snapetech-org/seerrng/commit/27d172afc8f0fcc989d57caa2c58b4dcaa601a53))
+- *(ios)* Wait for saved server row to appear - ([a82de4e](https://github.com/snapetech-org/seerrng/commit/a82de4eefbbe79bf81cfeaf5897982b347e2eb28))
+- Cover global 4K feature gate - ([22f3bbc](https://github.com/snapetech-org/seerrng/commit/22f3bbc5874752b50a3b1206ca0bd3ebe0309f95))
+- Mark Cypress exception filter internal - ([86c6908](https://github.com/snapetech-org/seerrng/commit/86c6908e53777fd6cdab525bab56abf27176e3b4))
+- Contain anchored listbox resize warning - ([37e772e](https://github.com/snapetech-org/seerrng/commit/37e772ed5786746ac09e0b01950dcd265c419ad7))
+
 ## [3.70.1](https://github.com/snapetech-org/seerrng/compare/v3.70.0..v3.70.1) - 2026-10-19
 
 ### User-facing changes
