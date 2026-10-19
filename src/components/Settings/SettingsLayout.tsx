@@ -67,6 +67,12 @@ type SettingsSearchDestination = {
 
 const settingsSearchTargets = [
   {
+    route: '/settings/main',
+    targetId: 'enable4k',
+    terms: ['4k', '4k requests', '4k settings', 'uhd'],
+    adminOnly: false,
+  },
+  {
     route: '/settings/prowlarr',
     targetId: 'prowlarr-settings-title',
     terms: [

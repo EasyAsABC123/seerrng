@@ -19,7 +19,7 @@ const defaultSettings: PublicSettingsResponse = {
   hideBlocklisted: false,
   hideRequested: false,
   otherUsersAvailability: OtherUserAvailabilityMode.SHOW,
-  enable4k: false,
+  enable4k: true,
   localLogin: true,
   mediaServerLogin: true,
   movie4kEnabled: false,

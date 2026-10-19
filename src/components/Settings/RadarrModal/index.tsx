@@ -56,7 +56,7 @@ const messages = defineMessages('components.Settings.RadarrModal', {
   minimumAvailability: 'Minimum Availability',
   server4k: '4K Server',
   server4kHelp:
-    'Only if you have a separate 4K instance. Leave unchecked for a single server.',
+    'Marks this separate instance as a 4K destination; it does not enable 4K by itself. Leave unchecked when one server handles both resolutions. Control 4K under Settings → Main → Enable 4K.',
   selectQualityProfile: 'Select quality profile',
   selectRootFolder: 'Select root folder',
   selectMinimumAvailability: 'Select minimum availability',

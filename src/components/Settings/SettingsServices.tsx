@@ -120,6 +120,10 @@ const messages = defineMessages('components.Settings', {
   serviceCategoryMusic: 'Music',
   serviceCategoryTools: 'System',
   serviceCategories: 'Service categories',
+  fourKDisabledTitle: 'Global 4K support is off',
+  fourKDisabledDescription:
+    'The 4K Server badge is a saved classification for a separate Radarr or Sonarr instance; it does not turn 4K on. Enable the global setting to restore 4K request options and separate availability tracking.',
+  fourKSettingsLink: 'Open 4K settings',
   noSetupCategories:
     'No request categories are enabled. You can finish setup now and add service connections after enabling a category in Settings.',
   spotifyPlaylistSettings:
@@ -988,6 +992,23 @@ const SettingsServices = ({
         hidden={activeServiceCategory !== 'tv-movies'}
         className={activeServiceCategory === 'tv-movies' ? '' : 'hidden'}
       >
+        {!currentSettings.enable4k && (showMovieServices || showTvServices) && (
+          <Alert
+            type="info"
+            title={intl.formatMessage(messages.fourKDisabledTitle)}
+          >
+            <p>{intl.formatMessage(messages.fourKDisabledDescription)}</p>
+            <Button
+              as="a"
+              href="/settings/main?settingsSearchTarget=enable4k#enable4k"
+              buttonType="default"
+              buttonSize="standard"
+              className="mt-3"
+            >
+              {intl.formatMessage(messages.fourKSettingsLink)}
+            </Button>
+          </Alert>
+        )}
         <div className="mb-6" hidden={!showMovieServices}>
           <h3 className="heading">
             {intl.formatMessage(messages.radarrsettings)}

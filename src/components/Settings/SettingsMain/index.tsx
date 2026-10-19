@@ -89,7 +89,7 @@ const messages = defineMessages('components.Settings.SettingsMain', {
     'Hide media that has been requested from the discover pages but not search results',
   enable4k: 'Enable 4K',
   enable4kTip:
-    'Allow 4K movie and TV requests, issue reports, and separate availability tracking. Turning this off hides those options and stops future scans from recording 4K separately; existing request and issue records are retained.',
+    'This global switch controls 4K movie and TV requests, issue reports, and separate availability tracking. The “4K Server” option on a Radarr or Sonarr connection only marks a separate instance for 4K; it does not enable 4K. When off, 4K options are hidden and future scans stop recording 4K separately. Existing request and issue records are retained.',
   cacheImages: 'Enable Image Caching',
   cacheImagesTip:
     'Cache externally sourced images (requires a significant amount of disk space)',
