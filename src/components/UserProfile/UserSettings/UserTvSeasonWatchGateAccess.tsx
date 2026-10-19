@@ -232,12 +232,12 @@ const UserTvSeasonWatchGateAccess = () => {
           </Badge>
         </div>
 
-        <div className="mt-5 rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+        <div className="refreshed-inset-surface mt-5 rounded-lg border border-gray-700 p-4">
           <p className="text-sm leading-6 text-gray-300">
             {intl.formatMessage(description)}
           </p>
           {data.requestedAt && status !== 'off' && (
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="refreshed-detail-text-muted mt-2 text-xs">
               {intl.formatMessage(messages.requestedAt, {
                 date: intl.formatDate(new Date(data.requestedAt), {
                   dateStyle: 'medium',

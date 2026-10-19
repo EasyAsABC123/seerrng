@@ -106,7 +106,7 @@ const TvSeasonWatchGateApprovalQueue = () => {
             <h3 className="text-base font-semibold text-white">
               {intl.formatMessage(messages.title)}
             </h3>
-            <p className="mt-1 text-sm text-gray-400">
+            <p className="refreshed-detail-text-muted mt-1 text-sm">
               {intl.formatMessage(messages.description)}
             </p>
           </div>
@@ -145,7 +145,7 @@ const TvSeasonWatchGateApprovalQueue = () => {
                       {request.displayName}
                     </div>
                     {request.requestedAt && (
-                      <div className="text-xs text-gray-400">
+                      <div className="refreshed-detail-text-muted text-xs">
                         {intl.formatMessage(messages.requested, {
                           date: intl.formatDate(new Date(request.requestedAt), {
                             dateStyle: 'medium',
@@ -156,7 +156,7 @@ const TvSeasonWatchGateApprovalQueue = () => {
                   </div>
                 </div>
                 {currentUser?.id === request.id ? (
-                  <span className="text-xs text-gray-400">
+                  <span className="refreshed-detail-text-muted text-xs">
                     {intl.formatMessage(messages.ownRequest)}
                   </span>
                 ) : (
@@ -185,7 +185,7 @@ const TvSeasonWatchGateApprovalQueue = () => {
             ))}
           </ul>
         ) : (
-          <p className="rounded-lg bg-gray-800/70 px-3 py-3 text-sm text-gray-400">
+          <p className="refreshed-inset-surface rounded-lg px-3 py-3 text-sm">
             {intl.formatMessage(messages.empty)}
           </p>
         )}
