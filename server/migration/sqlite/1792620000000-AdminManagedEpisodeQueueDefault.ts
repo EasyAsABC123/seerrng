@@ -12,7 +12,8 @@ export class AdminManagedEpisodeQueueDefault1792620000000 implements MigrationIn
     );
   }
 
-  public async down(): Promise<void> {
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    void queryRunner;
     // The previous per-show values cannot be reconstructed after collapsing
     // them into a single per-user default.
   }
