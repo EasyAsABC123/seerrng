@@ -1368,49 +1368,51 @@ const SettingsServices = ({
                 })}
               />
             )}
-          <ul className="settings-service-grid">
-            {whisparrData?.map((service) => (
-              <ServerInstance
-                key={`whisparr-config-${service.id}`}
-                name={service.name}
-                hostname={service.hostname}
-                port={service.port}
-                profileName={service.activeProfileName}
-                isSSL={service.useSsl}
-                isDefault={service.isDefault}
-                isAdult
-                externalUrl={service.externalUrl}
-                onEdit={() =>
-                  setEditWhisparrModal({ open: true, whisparr: service })
-                }
-                onDelete={() =>
-                  setDeleteServerModal({
-                    open: true,
-                    serverId: service.id,
-                    type: 'whisparr',
-                  })
-                }
-              />
-            ))}
-            <li className="settings-service-add-card">
-              <div className="settings-service-add-card-content">
-                <Button
-                  buttonType="success"
-                  buttonSize="standard"
-                  className="mt-3 mb-3"
-                  onClick={() =>
-                    setEditWhisparrModal({ open: true, whisparr: null })
+          {(whisparrData || whisparrError) && (
+            <ul className="settings-service-grid">
+              {whisparrData?.map((service) => (
+                <ServerInstance
+                  key={`whisparr-config-${service.id}`}
+                  name={service.name}
+                  hostname={service.hostname}
+                  port={service.port}
+                  profileName={service.activeProfileName}
+                  isSSL={service.useSsl}
+                  isDefault={service.isDefault}
+                  isAdult
+                  externalUrl={service.externalUrl}
+                  onEdit={() =>
+                    setEditWhisparrModal({ open: true, whisparr: service })
                   }
-                >
-                  <PlusIcon
-                    className="settings-service-add-icon"
-                    aria-hidden="true"
-                  />
-                  <span>{intl.formatMessage(messages.addWhisparr)}</span>
-                </Button>
-              </div>
-            </li>
-          </ul>
+                  onDelete={() =>
+                    setDeleteServerModal({
+                      open: true,
+                      serverId: service.id,
+                      type: 'whisparr',
+                    })
+                  }
+                />
+              ))}
+              <li className="settings-service-add-card">
+                <div className="settings-service-add-card-content">
+                  <Button
+                    buttonType="success"
+                    buttonSize="standard"
+                    className="mt-3 mb-3"
+                    onClick={() =>
+                      setEditWhisparrModal({ open: true, whisparr: null })
+                    }
+                  >
+                    <PlusIcon
+                      className="settings-service-add-icon"
+                      aria-hidden="true"
+                    />
+                    <span>{intl.formatMessage(messages.addWhisparr)}</span>
+                  </Button>
+                </div>
+              </li>
+            </ul>
+          )}
         </div>
         <div className="mt-10 mb-6" hidden={!showTvServices}>
           <h3 className="heading">

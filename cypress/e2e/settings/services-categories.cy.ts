@@ -97,7 +97,11 @@ describe('service setup categories', () => {
       attempts += 1;
       request.reply(
         attempts === 1
-          ? { statusCode: 503, body: { error: 'Temporary settings failure.' } }
+          ? {
+              delay: 1000,
+              statusCode: 503,
+              body: { error: 'Temporary settings failure.' },
+            }
           : { statusCode: 200, body: [] }
       );
     }).as('whisparrSettings');
@@ -111,6 +115,7 @@ describe('service setup categories', () => {
     }).as('whisparrTest');
 
     cy.visit('/settings/services?serviceCategory=tv-movies');
+    cy.contains('button', 'Connect Whisparr Server').should('not.exist');
     cy.wait('@whisparrSettings').its('response.statusCode').should('eq', 503);
 
     cy.get('[data-settings-category="tv-movies"]')
