@@ -71,7 +71,9 @@ final class ServerSetupUITests: XCTestCase {
         app.buttons["saveServerButton"].tap()
         waitForSavedServer("Office", in: app)
 
-        app.buttons["Actions for Office"].tap()
+        let officeActions = app.buttons["Actions for Office"]
+        XCTAssertTrue(officeActions.waitForExistence(timeout: 20))
+        officeActions.tap()
         app.buttons["Edit"].tap()
         XCTAssertTrue(nameField.waitForExistence(timeout: 20))
         nameField.tap()
@@ -80,7 +82,9 @@ final class ServerSetupUITests: XCTestCase {
         waitForSavedServer("Work", in: app)
         XCTAssertTrue(app.staticTexts["Home"].exists)
 
-        app.buttons["Actions for Work"].tap()
+        let workActions = app.buttons["Actions for Work"]
+        XCTAssertTrue(workActions.waitForExistence(timeout: 20))
+        workActions.tap()
         app.buttons["Delete Work"].tap()
         let deletionAlert = app.alerts["Delete server?"]
         XCTAssertTrue(deletionAlert.waitForExistence(timeout: 3))
