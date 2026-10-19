@@ -1,3 +1,4 @@
+import RelatedTools from '@app/components/Common/RelatedTools';
 import Button from '@app/components/Common/Button';
 import ConfirmButton from '@app/components/Common/ConfirmButton';
 import Header from '@app/components/Common/Header';
@@ -243,6 +244,7 @@ const Discover = ({ initialSliders }: DiscoverProps) => {
     >
       <PageTitle title={intl.formatMessage(messages.discover)} />
       <Header>{intl.formatMessage(messages.discover)}</Header>
+      <RelatedTools tools={['share', 'following']} />
       <Link
         href="/discover/providers"
         className="mb-4 inline-flex text-sm text-blue-400 hover:text-blue-300"

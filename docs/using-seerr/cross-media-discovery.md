@@ -46,3 +46,13 @@ A PC game request can ask for editions and content (needs QuestarrNG): the base 
 ## Following
 
 **Follow** buttons (narrators, authors, series in a language, game expansions, artists, patch projects, franchises) feed the **Following** page: personal news that says why each item appeared. Auto-request is off by default, applies to books only, and still follows your quota and approval rules.
+
+## Accessibility and keyboard
+
+- Every card choice is a native radio or checkbox inside a labelled group, so arrow keys and Space work and screen readers announce the group, the item, and whether it is selected. A visible focus ring is drawn on the focused card, thicker when it is also selected.
+- Buttons that repeat on a list (**Request**, **More like this**, **Follow**) carry the item's title in their accessible name.
+- Results, unread counts, and errors are announced through polite live regions; focus moves to the results heading after a search.
+- Confidence badges explain their meaning on hover and to assistive technology. Anything not provided by a catalog is written out as "not provided" instead of left blank.
+- The file picker is a real button, and drag-and-drop is optional.
+
+See also [what each feature needs](./cross-media-requirements.md), [Following](./following.md), and [troubleshooting](./cross-media-troubleshooting.md).

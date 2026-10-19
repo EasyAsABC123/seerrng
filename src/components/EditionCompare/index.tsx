@@ -169,7 +169,12 @@ export const EditionCardPicker = ({
   return (
     <section className="app-card-inset card-layout">
       <h3 className="card-title">{intl.formatMessage(messages.heading)}</h3>
-      <ul className="card-list" data-list-layout="choices">
+      <ul
+        className="card-list"
+        data-list-layout="choices"
+        role="radiogroup"
+        aria-label={intl.formatMessage(messages.heading)}
+      >
         <li>
           <label
             className="app-card-sub card-layout media-choice-card"

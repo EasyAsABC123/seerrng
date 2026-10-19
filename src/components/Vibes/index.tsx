@@ -259,6 +259,7 @@ const Vibes = () => {
                 </p>
                 <div className="app-action-row">
                   <Button
+                    aria-label={`${intl.formatMessage(messages.open)}: ${vibe.title}`}
                     buttonType={openId === vibe.id ? 'default' : 'primary'}
                     buttonSize="sm"
                     onClick={() => {
@@ -407,6 +408,7 @@ const Vibes = () => {
                     )}
                     <div className="app-action-row">
                       <Button
+                        aria-label={`${intl.formatMessage(messages.request)}: ${book.title}`}
                         buttonType="primary"
                         buttonSize="sm"
                         onClick={() => void requestBook(book)}
@@ -414,6 +416,7 @@ const Vibes = () => {
                         {intl.formatMessage(messages.request)}
                       </Button>
                       <Button
+                        aria-label={`${intl.formatMessage(messages.moreLike)}: ${book.title}`}
                         buttonType={
                           more.includes(book.id) ? 'success' : 'default'
                         }
@@ -426,6 +429,7 @@ const Vibes = () => {
                         {intl.formatMessage(messages.moreLike)}
                       </Button>
                       <Button
+                        aria-label={`${intl.formatMessage(messages.lessLike)}: ${book.title}`}
                         buttonType={
                           less.includes(book.id) ? 'danger' : 'default'
                         }

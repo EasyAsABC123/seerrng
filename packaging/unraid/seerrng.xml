@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>SeerrNG</Name>
-  <Repository>ghcr.io/snapetech-org/seerrng:main</Repository>
+  <Repository>ghcr.io/snapetech-org/seerrng:latest</Repository>
   <Registry>https://ghcr.io/snapetech-org/seerrng</Registry>
   <Network>bridge</Network>
   <Shell>bash</Shell>
@@ -16,7 +16,7 @@
   <ReadMe>https://github.com/snapetech-org/seerrng/blob/main/README.md</ReadMe>
   <Category>MediaApp:Video Status:Stable</Category>
   <ExtraSearchTerms>seerrng seerr jellyseerr overseerr plex jellyfin emby requests movies tv music books ebooks audiobooks comics magazines radarr sonarr lidarr bookshelf bookshelfng readarr chaptarr chaptarrng mylar3 kapowarr lazylibrarian romarrng questarrng roms games</ExtraSearchTerms>
-  <Changes>Image moved to ghcr.io/snapetech-org/seerrng. Existing installs using ghcr.io/snapetech/seerrng must update Repository to ghcr.io/snapetech-org/seerrng:main to receive the latest validated main build.</Changes>
+  <Changes>Image moved to ghcr.io/snapetech-org/seerrng and now follows the latest stable release. Existing installs using ghcr.io/snapetech/seerrng or the previous :main tag must update Repository to ghcr.io/snapetech-org/seerrng:latest to receive stable updates.</Changes>
   <License>MIT License</License>
   <Requires>Requires Docker, network access for metadata and external service integrations, and a persistent host directory for /app/config. Set the host directory ownership to UID 1000 and GID 1000 before the first start because the image does not run as root.</Requires>
   <Screenshot>https://raw.githubusercontent.com/snapetech-org/seerrng/main/public/readme-discover-covers.jpg</Screenshot>

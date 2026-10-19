@@ -1,3 +1,4 @@
+import RelatedTools from '@app/components/Common/RelatedTools';
 import Button from '@app/components/Common/Button';
 import CardTextVisibilityToggle from '@app/components/Common/CardTextVisibilityToggle';
 import Header from '@app/components/Common/Header';
@@ -282,6 +283,7 @@ const DiscoverBooks = ({
       <PageTitle title={title} />
       <div className="app-filter-section-gap">
         <Header>{title}</Header>
+        <RelatedTools tools={['share', 'vibes', 'following']} />
         {activeFormat === 'audiobook' && <ReadMeABookSearch />}
         {mediaFilters}
         {showFormatTabs && (

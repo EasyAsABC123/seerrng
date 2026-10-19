@@ -36,6 +36,8 @@ const messages = defineMessages('components.Franchise', {
   confidenceHigh: 'Documented',
   confidenceModerate: 'Partly Documented',
   confidenceLow: 'Uncertain',
+  confidenceHelp:
+    'How well this link is documented. Administrators can confirm or hide links.',
   verified: 'Confirmed',
   open: 'Open',
   confirm: 'Confirm',
@@ -180,6 +182,7 @@ const Franchise = () => {
                           )}
                         </Badge>
                         <Badge
+                          title={intl.formatMessage(messages.confidenceHelp)}
                           badgeType={
                             item.verified
                               ? 'success'
@@ -200,7 +203,12 @@ const Franchise = () => {
                       )}
                       <div className="app-action-row">
                         <Link href={item.href} legacyBehavior passHref>
-                          <Button as="a" buttonType="primary" buttonSize="sm">
+                          <Button
+                            aria-label={`${intl.formatMessage(messages.open)}: ${item.title}`}
+                            as="a"
+                            buttonType="primary"
+                            buttonSize="sm"
+                          >
                             {intl.formatMessage(messages.open)}
                           </Button>
                         </Link>
@@ -208,6 +216,7 @@ const Franchise = () => {
                           <>
                             {!item.verified && (
                               <Button
+                                aria-label={`${intl.formatMessage(messages.confirm)}: ${item.title}`}
                                 buttonType="default"
                                 buttonSize="sm"
                                 onClick={() =>
@@ -220,6 +229,7 @@ const Franchise = () => {
                               </Button>
                             )}
                             <Button
+                              aria-label={`${intl.formatMessage(messages.hide)}: ${item.title}`}
                               buttonType="danger"
                               buttonSize="sm"
                               onClick={() =>
