@@ -183,6 +183,12 @@ const messages = defineMessages('components.Settings', {
   addWhisparr: 'Connect Whisparr Server',
   adultServiceSettingsDescription:
     'Connect the scene-focused Whisparr v3 Eros branch. Adult media uses its own request permission and stays out of ordinary movie discovery.',
+  whisparrEmpty:
+    'No Whisparr servers are connected. Connect one to enable the Adult category.',
+  whisparrLoadError: 'Whisparr server settings could not be loaded.',
+  whisparrLoadErrorHelp:
+    'Retry to check saved connections before adding another server.',
+  retryWhisparr: 'Retry',
   addSportarr: 'Connect Sportarr Server',
   sportarrDescription:
     'Search and request sports leagues in Sportarr. Sportarr uses its own root folder and monitoring defaults when SeerrNG adds a league.',
@@ -1330,59 +1336,81 @@ const SettingsServices = ({
           hidden={!showAdultServices}
         >
           {!whisparrData && !whisparrError && <LoadingSpinner />}
-          {whisparrData && !whisparrError && (
-            <>
-              {whisparrData.length > 0 &&
-                !whisparrData.some((service) => service.isDefault) && (
-                  <Alert
-                    title={intl.formatMessage(messages.noDefaultServer, {
-                      serverType: 'Whisparr',
-                      mediaType: intl.formatMessage(messages.mediaTypeAdult),
-                    })}
-                  />
-                )}
-              <ul className="settings-service-grid">
-                {whisparrData.map((service) => (
-                  <ServerInstance
-                    key={`whisparr-config-${service.id}`}
-                    name={service.name}
-                    hostname={service.hostname}
-                    port={service.port}
-                    profileName={service.activeProfileName}
-                    isSSL={service.useSsl}
-                    isDefault={service.isDefault}
-                    isAdult
-                    externalUrl={service.externalUrl}
-                    onEdit={() =>
-                      setEditWhisparrModal({ open: true, whisparr: service })
-                    }
-                    onDelete={() =>
-                      setDeleteServerModal({
-                        open: true,
-                        serverId: service.id,
-                        type: 'whisparr',
-                      })
-                    }
-                  />
-                ))}
-                <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
-                  <div className="flex h-full w-full items-center justify-center">
-                    <Button
-                      buttonType="success"
-                      buttonSize="standard"
-                      className="mt-3 mb-3"
-                      onClick={() =>
-                        setEditWhisparrModal({ open: true, whisparr: null })
-                      }
-                    >
-                      <PlusIcon />
-                      <span>{intl.formatMessage(messages.addWhisparr)}</span>
-                    </Button>
-                  </div>
-                </li>
-              </ul>
-            </>
+          {whisparrError && (
+            <Alert
+              type="error"
+              title={intl.formatMessage(messages.whisparrLoadError)}
+            >
+              <p className="mb-3">
+                {intl.formatMessage(messages.whisparrLoadErrorHelp)}
+              </p>
+              <Button
+                buttonType="default"
+                buttonSize="sm"
+                onClick={() => void revalidateWhisparr()}
+              >
+                {intl.formatMessage(messages.retryWhisparr)}
+              </Button>
+            </Alert>
           )}
+          {whisparrData?.length === 0 && !whisparrError && (
+            <p className="description mb-4">
+              {intl.formatMessage(messages.whisparrEmpty)}
+            </p>
+          )}
+          {whisparrData &&
+            whisparrData.length > 0 &&
+            !whisparrData.some((service) => service.isDefault) && (
+              <Alert
+                title={intl.formatMessage(messages.noDefaultServer, {
+                  serverType: 'Whisparr',
+                  mediaType: intl.formatMessage(messages.mediaTypeAdult),
+                })}
+              />
+            )}
+          <ul className="settings-service-grid">
+            {whisparrData?.map((service) => (
+              <ServerInstance
+                key={`whisparr-config-${service.id}`}
+                name={service.name}
+                hostname={service.hostname}
+                port={service.port}
+                profileName={service.activeProfileName}
+                isSSL={service.useSsl}
+                isDefault={service.isDefault}
+                isAdult
+                externalUrl={service.externalUrl}
+                onEdit={() =>
+                  setEditWhisparrModal({ open: true, whisparr: service })
+                }
+                onDelete={() =>
+                  setDeleteServerModal({
+                    open: true,
+                    serverId: service.id,
+                    type: 'whisparr',
+                  })
+                }
+              />
+            ))}
+            <li className="settings-service-add-card">
+              <div className="settings-service-add-card-content">
+                <Button
+                  buttonType="success"
+                  buttonSize="standard"
+                  className="mt-3 mb-3"
+                  onClick={() =>
+                    setEditWhisparrModal({ open: true, whisparr: null })
+                  }
+                >
+                  <PlusIcon
+                    className="settings-service-add-icon"
+                    aria-hidden="true"
+                  />
+                  <span>{intl.formatMessage(messages.addWhisparr)}</span>
+                </Button>
+              </div>
+            </li>
+          </ul>
         </div>
         <div className="mt-10 mb-6" hidden={!showTvServices}>
           <h3 className="heading">

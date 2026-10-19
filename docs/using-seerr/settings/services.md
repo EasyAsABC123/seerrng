@@ -17,7 +17,9 @@ Seerr checks these linked servers to determine whether or not media has already 
 ### Whisparr Settings
 
 SeerrNG supports the scene-focused [Whisparr Eros v3 API](https://github.com/Whisparr/Whisparr-Eros).
-Connect Whisparr to enable the opt-in Adult category. Configure its indexers,
+Open **Settings → Services → TV & Movies → Whisparr Settings** and select
+**Connect Whisparr Server**. Connect Whisparr to enable the opt-in Adult
+category. Configure its indexers,
 download client, and acquisition settings in Whisparr; SeerrNG sends approved
 scene requests there and reads the queue and library when **Enable Library
 Scan** is selected. See [Adult media](../adult-media.md) for setup,

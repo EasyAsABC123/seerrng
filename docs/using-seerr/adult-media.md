@@ -19,9 +19,9 @@ studio-focused Whisparr v2 API.
 
 1. Configure indexers, download clients, and acquisition behavior in Whisparr.
    Whisparr owns scene searching, grabbing, downloading, and importing.
-2. In SeerrNG, open **Settings → Services → Whisparr** and add a connection.
-   Enter the hostname and port reachable from SeerrNG, API key, and optional
-   URL base.
+2. In SeerrNG, open **Settings → Services → TV & Movies → Whisparr Settings**
+   and select **Connect Whisparr Server**. Enter the hostname and port reachable
+   from SeerrNG, API key, and optional URL base.
 3. Select **Test**. SeerrNG checks the scene API and loads Whisparr quality
    profiles and root folders.
 4. Choose the profile and root folder for new scenes. Mark one connection as

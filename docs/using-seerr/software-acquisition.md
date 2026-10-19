@@ -276,6 +276,15 @@ or the download client. Request Status explains this limit and hides the
 unavailable cancellation action. The provider remains authoritative and may
 refuse cancellation if its state changed while the page was open.
 
+For a request that is already **Downloading** or **Verifying Import**, choose
+**Remove from Requests** to stop tracking it in SeerrNG without stopping the
+external acquisition. SeerrNG removes the request and its saved status history
+and no longer shows progress or sends request updates. The transfer continues
+in ROMarrNG or the download client; cancel it there if you want it to stop.
+Requesting the same title again before that transfer finishes may start a
+second acquisition. Installed software is not deleted. Only the requester or
+an administrator with **Manage Requests** can remove the entry.
+
 The same action is exposed to authorized clients as
 `POST /api/v1/request/software/status/{id}/cancel`. The requester must retain
 **Request** permission; an administrator needs **Manage Requests**. The route

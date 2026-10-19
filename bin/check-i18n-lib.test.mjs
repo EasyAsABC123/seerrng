@@ -148,6 +148,16 @@ const assertNewClientMessages = () => {
 
   const requiredKeys = [
     ...requestStatusMessageIds,
+    'components.RequestStatus.SoftwareRequests.removeFromRequests',
+    'components.RequestStatus.SoftwareRequests.removeFromRequestsDescription',
+    'components.RequestStatus.SoftwareRequests.removeFromRequestsFailed',
+    'components.RequestStatus.SoftwareRequests.removeFromRequestsSuccess',
+    'components.RequestStatus.SoftwareRequests.removeFromRequestsTitle',
+    'components.RequestStatus.SoftwareRequests.removeFromRequestsTooltip',
+    'components.Settings.whisparrEmpty',
+    'components.Settings.whisparrLoadError',
+    'components.Settings.whisparrLoadErrorHelp',
+    'components.Settings.retryWhisparr',
     'pages.profile.advancedTheme.dividerShadowValues',
   ];
   for (const key of requiredKeys)

@@ -91,6 +91,76 @@ describe('service setup categories', () => {
     cy.get('[data-settings-category="tools-other"]').should('not.be.visible');
   });
 
+  it('keeps Whisparr setup available when its saved server list fails to load', () => {
+    let attempts = 0;
+    cy.intercept('GET', '/api/v1/settings/whisparr', (request) => {
+      attempts += 1;
+      request.reply(
+        attempts === 1
+          ? { statusCode: 503, body: { error: 'Temporary settings failure.' } }
+          : { statusCode: 200, body: [] }
+      );
+    }).as('whisparrSettings');
+    cy.intercept('POST', '/api/v1/settings/whisparr/test', {
+      statusCode: 200,
+      body: {
+        profiles: [{ id: 1, name: 'Default' }],
+        rootFolders: [{ id: 1, path: '/media/adult' }],
+        tags: [],
+      },
+    }).as('whisparrTest');
+
+    cy.visit('/settings/services?serviceCategory=tv-movies');
+    cy.wait('@whisparrSettings').its('response.statusCode').should('eq', 503);
+
+    cy.get('[data-settings-category="tv-movies"]')
+      .contains('h3', 'Whisparr Settings')
+      .scrollIntoView()
+      .should('be.visible');
+    cy.contains('Whisparr server settings could not be loaded.')
+      .scrollIntoView()
+      .should('be.visible');
+    cy.contains(
+      'Retry to check saved connections before adding another server.'
+    ).should('be.visible');
+    cy.contains('button', 'Connect Whisparr Server')
+      .scrollIntoView()
+      .should('be.visible');
+
+    cy.contains('button', 'Retry').click();
+    cy.wait('@whisparrSettings').its('response.statusCode').should('eq', 200);
+    cy.contains(
+      'No Whisparr servers are connected. Connect one to enable the Adult category.'
+    ).should('be.visible');
+
+    cy.viewport(390, 640);
+    cy.contains('button', 'Connect Whisparr Server')
+      .scrollIntoView()
+      .should('be.visible')
+      .click();
+    cy.get('[role="dialog"]')
+      .should('have.attr', 'aria-modal', 'true')
+      .and('contain', 'Connect Whisparr')
+      .within(() => {
+        cy.get('#name').type('Adult Library');
+        cy.get('#hostname').type('whisparr.local');
+        cy.get('#port').clear().type('6969');
+        cy.get('#apiKey').type('test-api-key');
+        cy.contains('button', 'Test').click();
+      });
+    cy.wait('@whisparrTest').its('response.statusCode').should('eq', 200);
+    cy.get('[role="dialog"] #activeProfileId').select('1');
+    cy.get('[role="dialog"] #rootFolder').select('/media/adult');
+    cy.get('[role="dialog"] [data-testid="modal-ok-button"]').should(
+      'be.enabled'
+    );
+    cy.document().then((document) => {
+      expect(document.documentElement.scrollWidth).to.be.at.most(
+        document.documentElement.clientWidth + 1
+      );
+    });
+  });
+
   it('keeps the category chooser usable on a narrow screen', () => {
     cy.viewport(390, 640);
     cy.visit('/settings/services');

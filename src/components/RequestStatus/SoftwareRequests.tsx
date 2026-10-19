@@ -72,6 +72,15 @@ const messages = defineMessages('components.RequestStatus.SoftwareRequests', {
     'This removes the cancelled request and its saved status history from Seerr. It does not delete installed software.',
   clearSuccess: 'Cancelled request cleared.',
   clearFailed: 'Unable to clear this cancelled request.',
+  removeFromRequests: 'Remove from Requests',
+  removeFromRequestsTooltip:
+    'Remove this request from SeerrNG without stopping a download already handed to ROMarrNG or a download client.',
+  removeFromRequestsTitle: 'Remove This Request from SeerrNG?',
+  removeFromRequestsDescription:
+    'This removes the request and its saved status history from SeerrNG. Any download already handed to ROMarrNG or a download client will keep running; cancel it there if you want to stop it. SeerrNG will stop showing progress and sending updates for this request. Requesting the same title again before this transfer finishes may start a second acquisition. Installed software is not deleted.',
+  removeFromRequestsSuccess:
+    'Request removed from SeerrNG. Any active download will keep running.',
+  removeFromRequestsFailed: 'Unable to remove this request from SeerrNG.',
   loadError: 'Software request status could not be loaded.',
   noRequests: 'No software requests yet.',
   quotaExceeded: 'Your software request limit has been reached.',
@@ -327,6 +336,8 @@ const SoftwareRequests = ({
   } | null>(null);
   const [clearSelection, setClearSelection] = useState<number | null>(null);
   const [clearingId, setClearingId] = useState<number | null>(null);
+  const [removeSelection, setRemoveSelection] = useState<number | null>(null);
+  const [removingId, setRemovingId] = useState<number | null>(null);
   const historyEndpoint = historyRequestId
     ? `/api/v1/request/software/status/${historyRequestId}`
     : null;
@@ -416,6 +427,34 @@ const SoftwareRequests = ({
       return;
     } finally {
       setClearingId(null);
+    }
+    await mutate().catch(() => undefined);
+  };
+
+  const removeRequestFromSeerr = async () => {
+    if (removeSelection === null) return;
+    const requestId = removeSelection;
+    setRemovingId(requestId);
+    try {
+      await axios.post(
+        `/api/v1/request/software/status/${requestId}/stop-tracking`
+      );
+      setRemoveSelection(null);
+      setHistoryRequestId((current) =>
+        current === requestId ? null : current
+      );
+      addToast(intl.formatMessage(messages.removeFromRequestsSuccess), {
+        appearance: 'success',
+        autoDismiss: true,
+      });
+    } catch {
+      addToast(intl.formatMessage(messages.removeFromRequestsFailed), {
+        appearance: 'error',
+        autoDismiss: true,
+      });
+      return;
+    } finally {
+      setRemovingId(null);
     }
     await mutate().catch(() => undefined);
   };
@@ -526,6 +565,19 @@ const SoftwareRequests = ({
           busy={clearingId === clearSelection}
           onConfirm={() => void clearCancelledRequest()}
           onCancel={() => setClearSelection(null)}
+        />
+      )}
+      {removeSelection !== null && (
+        <RequestActionConfirmation
+          action="delete"
+          heading={intl.formatMessage(messages.removeFromRequestsTitle)}
+          explanation={intl.formatMessage(
+            messages.removeFromRequestsDescription
+          )}
+          confirmLabel={intl.formatMessage(messages.removeFromRequests)}
+          busy={removingId === removeSelection}
+          onConfirm={() => void removeRequestFromSeerr()}
+          onCancel={() => setRemoveSelection(null)}
         />
       )}
       <h2 className="app-section-heading">
@@ -707,6 +759,22 @@ const SoftwareRequests = ({
                           {intl.formatMessage(messages.cancel)}
                         </Button>
                       )}
+                      {['downloading', 'importing'].includes(status) &&
+                        canManageRequest(request) && (
+                          <RequestActionButton
+                            action="delete"
+                            buttonSize="sm"
+                            label={intl.formatMessage(
+                              messages.removeFromRequests
+                            )}
+                            tooltip={intl.formatMessage(
+                              messages.removeFromRequestsTooltip
+                            )}
+                            busy={removingId === request.id}
+                            disabled={workingId === request.id}
+                            onClick={() => setRemoveSelection(request.id)}
+                          />
+                        )}
                       {status === 'failed' && canRetryRequest(request) && (
                         <Button
                           buttonType="default"

@@ -1861,6 +1861,67 @@ softwareRoutes.delete('/status/:id', async (req, res) => {
   }
 });
 
+softwareRoutes.post('/status/:id/stop-tracking', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid software request id.' });
+  }
+
+  const request = await getRepository(SoftwareRequest).findOneBy({ id });
+  if (!request) {
+    return res.status(404).json({ error: 'Software request not found.' });
+  }
+
+  const canManage = req.user!.hasPermission(Permission.MANAGE_REQUESTS);
+  const isOwner = request.requestedById === req.user!.id;
+  if (
+    !canManage &&
+    (!isOwner || !req.user!.hasPermission(Permission.REQUEST))
+  ) {
+    return res.status(404).json({ error: 'Software request not found.' });
+  }
+
+  try {
+    await dataSource.transaction(async (manager) => {
+      const current = await manager.findOneBy(SoftwareRequest, { id });
+      if (!current) {
+        throw new SoftwareRequestStateError(
+          'This software request is no longer available to remove.'
+        );
+      }
+      if (!['downloading', 'importing'].includes(current.status)) {
+        throw new SoftwareRequestStateError(
+          'Only downloading or importing software requests can be removed from Requests.'
+        );
+      }
+
+      const deletion = await manager.delete(SoftwareRequest, {
+        id,
+        status: In(['downloading', 'importing']),
+      });
+      if (deletion.affected !== 1) {
+        throw new SoftwareRequestStateError(
+          'This software request changed before it could be removed.'
+        );
+      }
+      await manager.delete(SoftwareRequestStatusEvent, { requestId: id });
+    });
+    return res.status(204).send();
+  } catch (error) {
+    if (error instanceof SoftwareRequestStateError) {
+      return res.status(409).json({ error: error.message });
+    }
+    logger.error('Failed to stop tracking a software request', {
+      label: 'Software Request',
+      requestId: id,
+      ...getHttpErrorDetails(error),
+    });
+    return res
+      .status(500)
+      .json({ error: 'Software request could not be removed from Requests.' });
+  }
+});
+
 softwareRoutes.post('/status/:id/approve', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id <= 0) {

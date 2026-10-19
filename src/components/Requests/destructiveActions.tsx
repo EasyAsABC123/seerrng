@@ -50,6 +50,7 @@ export const deleteLibraryMedia = (target: LibraryRemovalTarget) => {
 
 export const RequestActionButton = ({
   action,
+  buttonSize = 'standard',
   busy = false,
   disabled = false,
   unavailable = false,
@@ -59,6 +60,7 @@ export const RequestActionButton = ({
   onClick,
 }: {
   action: 'delete' | 'remove';
+  buttonSize?: 'sm' | 'standard';
   busy?: boolean;
   disabled?: boolean;
   unavailable?: boolean;
@@ -88,7 +90,7 @@ export const RequestActionButton = ({
         <Button
           type="button"
           buttonType="danger"
-          buttonSize="standard"
+          buttonSize={buttonSize}
           disabled={disabled || busy}
           onClick={onClick}
         >

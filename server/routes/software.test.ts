@@ -322,6 +322,100 @@ describe('software request routes', () => {
     );
   });
 
+  it('lets request owners stop tracking handed-off work without contacting ROMarrNG', async () => {
+    const saved = await createSoftwareRequest({
+      status: 'downloading',
+      externalRequestId: 'seerrng:software:stop-tracking',
+    });
+    await getRepository(SoftwareRequestStatusEvent).save({
+      requestId: saved.id,
+      requestedById: saved.requestedById,
+      status: 'downloading',
+      message: 'The download was handed to the client.',
+      percent: 42,
+      providerStage: 'downloading',
+      fingerprint: 'downloading:stop-tracking-test',
+      createdAt: new Date(),
+    });
+    const cancelRequest = mock.method(
+      ROMarrNGAPI.prototype,
+      'cancelRequest',
+      async () => acceptedRequest(saved.externalRequestId, 'cancelled')
+    );
+
+    const response = await request(createApp()).post(
+      `/request/software/status/${saved.id}/stop-tracking`
+    );
+
+    assert.strictEqual(response.status, 204);
+    assert.strictEqual(cancelRequest.mock.callCount(), 0);
+    assert.strictEqual(
+      await getRepository(SoftwareRequest).countBy({ id: saved.id }),
+      0
+    );
+    assert.strictEqual(
+      await getRepository(SoftwareRequestStatusEvent).countBy({
+        requestId: saved.id,
+      }),
+      0
+    );
+  });
+
+  it('keeps stop-tracking limited to handed-off requests and authorized users', async () => {
+    const owned = await createSoftwareRequest({
+      status: 'importing',
+      externalRequestId: 'seerrng:software:stop-tracking-owner',
+    });
+    const managerTarget = await createSoftwareRequest({
+      status: 'downloading',
+      requestedById: 2,
+      externalRequestId: 'seerrng:software:stop-tracking-manager',
+    });
+    const searching = await createSoftwareRequest({
+      status: 'searching',
+      externalRequestId: 'seerrng:software:stop-tracking-searching',
+    });
+
+    const outsiderResponse = await request(
+      createApp(3, Permission.REQUEST)
+    ).post(`/request/software/status/${owned.id}/stop-tracking`);
+    const managerResponse = await request(
+      createApp(1, Permission.MANAGE_REQUESTS)
+    ).post(`/request/software/status/${managerTarget.id}/stop-tracking`);
+    const wrongStateResponse = await request(createApp()).post(
+      `/request/software/status/${searching.id}/stop-tracking`
+    );
+    const invalidIdResponse = await request(createApp()).post(
+      '/request/software/status/not-a-number/stop-tracking'
+    );
+
+    assert.strictEqual(outsiderResponse.status, 404);
+    assert.strictEqual(managerResponse.status, 204);
+    assert.strictEqual(wrongStateResponse.status, 409);
+    assert.strictEqual(invalidIdResponse.status, 400);
+    assert.strictEqual(
+      await getRepository(SoftwareRequest).countBy({ id: owned.id }),
+      1
+    );
+    assert.strictEqual(
+      await getRepository(SoftwareRequest).countBy({ id: searching.id }),
+      1
+    );
+  });
+
+  it('validates stop-tracking against the OpenAPI contract', async () => {
+    const saved = await createSoftwareRequest({
+      status: 'downloading',
+      externalRequestId: 'seerrng:software:stop-tracking-openapi',
+    });
+
+    const response = await request(createOpenApiValidatedApp()).post(
+      `/api/v1/request/software/status/${saved.id}/stop-tracking`
+    );
+
+    assert.strictEqual(response.status, 204);
+  });
+
   it('reconciles tracked requests using the effective last-check order', async () => {
     const saved = await createSoftwareRequest({
       status: 'approved',

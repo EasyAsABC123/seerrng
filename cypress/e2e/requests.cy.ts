@@ -172,7 +172,7 @@ describe('Requests', () => {
       }
     });
     cy.get('[role="dialog"]')
-      .should('be.visible')
+      .should('have.attr', 'aria-modal', 'true')
       .within(() => {
         cy.get('[data-testid="modal-title"]').should(
           'have.text',
@@ -191,5 +191,112 @@ describe('Requests', () => {
     cy.contains(
       'No movie, show, music, book, comic, magazine, or adult requests match these filters.'
     ).should('be.visible');
+  });
+
+  it('removes a handed-off download from Requests without cancelling the transfer', () => {
+    let removed = false;
+    let cancelCalled = false;
+    cy.viewport(390, 720);
+    cy.intercept('GET', '/api/v1/request/status*', {
+      pageInfo: { page: 1, pages: 1, pageSize: 10, results: 0 },
+      results: [],
+      counts: {
+        total: 0,
+        active: 0,
+        incomplete: 0,
+        attention: 0,
+        completed: 0,
+        unavailable: 0,
+        failed: 0,
+      },
+      olderCount: 0,
+    });
+    cy.intercept('GET', '/api/v1/request/software/status*', (request) => {
+      request.reply({
+        pageInfo: {
+          page: 1,
+          pages: removed ? 0 : 1,
+          pageSize: 20,
+          results: removed ? 0 : 1,
+        },
+        results: removed
+          ? []
+          : [
+              {
+                request: {
+                  id: 503,
+                  requestedBy: { id: 1, displayName: 'admin', avatar: null },
+                  category: 'retro',
+                  provider: 'romarr',
+                  status: 'downloading',
+                  title: 'Super Mario World',
+                  percent: 64,
+                  actions: {
+                    retry: false,
+                    cancel: false,
+                    cancelReason:
+                      'ROMarrNG has handed this request to the download client; cancel the transfer there.',
+                  },
+                  createdAt: '2026-09-30T12:00:00.000Z',
+                },
+                status: 'downloading',
+                message: null,
+                assets: [],
+              },
+            ],
+      });
+    }).as('softwareStatus');
+    cy.intercept(
+      'POST',
+      '/api/v1/request/software/status/503/stop-tracking',
+      (request) => {
+        removed = true;
+        request.reply({ statusCode: 204, body: null });
+      }
+    ).as('stopTracking');
+    cy.intercept(
+      'POST',
+      '/api/v1/request/software/status/503/cancel',
+      (request) => {
+        cancelCalled = true;
+        request.reply({ statusCode: 409, body: { error: 'Not cancellable.' } });
+      }
+    );
+
+    cy.visit('/requests');
+    cy.wait('@softwareStatus');
+    cy.get('[aria-label="Software Requests"] article')
+      .should('contain', 'Super Mario World')
+      .and('contain', 'cancel the transfer there');
+    cy.get('[aria-label="Software Requests"] article')
+      .contains('button', 'Cancel')
+      .should('not.exist');
+    cy.get('[aria-label="Software Requests"] article')
+      .contains('button', 'Remove from Requests')
+      .should('be.visible')
+      .click();
+    cy.get('[role="dialog"]')
+      .should('have.attr', 'aria-modal', 'true')
+      .and(
+        'contain',
+        'Any download already handed to ROMarrNG or a download client will keep running'
+      )
+      .and('contain', 'may start a second acquisition')
+      .and('contain', 'Installed software is not deleted')
+      .within(() => {
+        cy.contains('button', 'Remove from Requests').click();
+      });
+
+    cy.wait('@stopTracking').its('response.statusCode').should('eq', 204);
+    cy.contains(
+      'Request removed from SeerrNG. Any active download will keep running.'
+    ).should('be.visible');
+    cy.contains('Super Mario World').should('not.exist');
+    cy.document().then((document) => {
+      expect(document.documentElement.scrollWidth).to.be.at.most(
+        document.documentElement.clientWidth + 1
+      );
+    });
+    cy.then(() => expect(cancelCalled).to.equal(false));
   });
 });
