@@ -189,6 +189,8 @@ describe('safety', () => {
       sniffImageType({ length: 12 } as unknown as Buffer),
       undefined
     );
+    assert.equal(sniffImageType('untrusted image input'), undefined);
+    assert.equal(sniffImageType(new Array(12).fill(0)), undefined);
   });
 
   it('refuses private and non-http addresses', async () => {

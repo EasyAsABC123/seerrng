@@ -20,9 +20,18 @@ export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
 
 /** Magic-number sniffing so a declared type cannot smuggle other content. */
 export const sniffImageType = (
-  buffer: Buffer
+  value: unknown
 ): AllowedImageType | undefined => {
-  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return undefined;
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value) ||
+    !Buffer.isBuffer(value)
+  ) {
+    return undefined;
+  }
+  const buffer = value;
+  if (buffer.length < 12) return undefined;
   if (buffer[0] === 0x89 && buffer.toString('ascii', 1, 4) === 'PNG') {
     return 'image/png';
   }

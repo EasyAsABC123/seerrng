@@ -195,7 +195,7 @@ const SportarrModal = ({ settings, onClose, onSave }: SportarrModalProps) => {
             onSecondary={() => void testConnection()}
             secondaryDisabled={isSubmitting || isTesting || !canTestConnection}
           >
-            <Form>
+            <Form className="settings-page-content">
               <p className="description">
                 {intl.formatMessage(messages.intro)}
               </p>

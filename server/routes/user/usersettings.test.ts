@@ -161,6 +161,82 @@ describe('POST /user/:id/settings/linked-accounts/jellyfin/quickconnect', () => 
   });
 });
 
+describe('TV season watch-rule access', () => {
+  it('supports a user request, manager approval, and personal enable/disable', async (t) => {
+    const settings = getSettings();
+    const previousGateSetting = settings.main.tvSeasonWatchGateEnabled;
+    settings.main.tvSeasonWatchGateEnabled = false;
+    t.after(() => {
+      settings.main.tvSeasonWatchGateEnabled = previousGateSetting;
+    });
+
+    const friendSession = await loginAs('friend@seerr.dev', 'test1234');
+    const friend = await getRepository(User).findOneByOrFail({
+      email: 'friend@seerr.dev',
+    });
+    const admin = await loginAs('admin@seerr.dev', 'test1234');
+    const accessRoute = `/user/${friend.id}/settings/tv-season-watch-gate`;
+
+    const initial = await request(app)
+      .get(accessRoute)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', friendSession.sessionCookie);
+    assert.equal(initial.status, 200);
+    assert.deepEqual(initial.body, {
+      status: 'off',
+      requestedAt: null,
+      globallyEnabled: false,
+    });
+
+    const requested = await request(app)
+      .post(accessRoute)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', friendSession.sessionCookie)
+      .send({ action: 'request' });
+    assert.equal(requested.status, 200);
+    assert.equal(requested.body.status, 'pending');
+    assert.ok(requested.body.requestedAt);
+
+    const queue = await request(app)
+      .get('/user/tv-season-watch-gate-requests')
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', admin.sessionCookie);
+    assert.equal(queue.status, 200);
+    assert.ok(queue.body.some((item: { id: number }) => item.id === friend.id));
+
+    const reviewed = await request(app)
+      .post(`${accessRoute}/review`)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', admin.sessionCookie)
+      .send({ decision: 'approve' });
+    assert.equal(reviewed.status, 200);
+    assert.equal(reviewed.body.status, 'approved');
+
+    const enabled = await request(app)
+      .post(accessRoute)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', friendSession.sessionCookie)
+      .send({ action: 'enable' });
+    assert.equal(enabled.status, 200);
+    assert.equal(enabled.body.status, 'enabled');
+
+    const disabled = await request(app)
+      .post(accessRoute)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', friendSession.sessionCookie)
+      .send({ action: 'disable' });
+    assert.equal(disabled.status, 200);
+    assert.equal(disabled.body.status, 'approved');
+
+    const repeatedReview = await request(app)
+      .post(`${accessRoute}/review`)
+      .set('X-Forwarded-Proto', 'https')
+      .set('Cookie', admin.sessionCookie)
+      .send({ decision: 'approve' });
+    assert.equal(repeatedReview.status, 409);
+  });
+});
+
 describe('user request destination permissions', () => {
   it('saves and returns grants for configured service instances', async (t) => {
     const settings = getSettings();

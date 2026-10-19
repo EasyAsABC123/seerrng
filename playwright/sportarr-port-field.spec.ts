@@ -43,12 +43,18 @@ test('Sportarr Port remains readable while configuring a connection', async ({
   await expect(port).toHaveValue('1867');
   const colors = await port.evaluate((element) => {
     const style = getComputedStyle(element);
+    const themeControlText = style
+      .getPropertyValue('--theme-control-text')
+      .trim()
+      .split(/\s+/)
+      .join(', ');
     return {
       backgroundColor: style.backgroundColor,
       color: style.color,
+      expectedTextColor: `rgb(${themeControlText})`,
     };
   });
-  expect(colors.color).toBe('rgb(255, 255, 255)');
+  expect(colors.color).toBe(colors.expectedTextColor);
   expect(colors.backgroundColor).not.toBe('rgb(255, 255, 255)');
   await page.screenshot({
     path: '/tmp/seerrng-sportarr-port-desktop.png',
