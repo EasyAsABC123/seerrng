@@ -10,6 +10,17 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.71.4](https://github.com/snapetech-org/seerrng/compare/v3.71.3..v3.71.4) - 2026-10-20
+
+### User-facing changes
+
+#### Fixed
+
+- **Settings:** The About page now marks the installed release explicitly and reports when GitHub could not be checked, instead of showing a failed version check as up to date.
+
+### 🐛 Bug Fixes
+- *(update)* Clarify installed and available releases - ([bd48b01](https://github.com/snapetech-org/seerrng/commit/bd48b01ca5249d0b93a2e77e5c25b7e5403c6946))
+
 ## [3.71.3](https://github.com/snapetech-org/seerrng/compare/v3.71.2..v3.71.3) - 2026-10-20
 
 ### User-facing changes
