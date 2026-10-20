@@ -67,7 +67,7 @@ test('all offered themes share the server allowlist', () => {
   expect(themePalettes.map((p) => p.id)).toEqual([...THEME_PALETTE_IDS]);
 });
 
-test('new installs and migrated logins ignore legacy browser palettes and use SeerrNG', async () => {
+test('new installs use SeerrNG and keep its palette selected in light mode', async () => {
   localStorage.setItem('seerr-theme-palette', 'classic');
   localStorage.setItem('seerr-theme-mode', 'light');
   await act(async () => render());
@@ -76,9 +76,8 @@ test('new installs and migrated logins ignore legacy browser palettes and use Se
   fixture.user = account(1);
   await act(async () => render());
   expect(theme.palette).toBe('seerr');
-  // The saved choice stays SeerrNG; light mode renders it with Seerr's light
-  // chrome because black chrome with the inverted text scale is unreadable.
-  expect(document.documentElement.dataset.themePalette).toBe('classic');
+  expect(document.documentElement.dataset.themePalette).toBe('seerr');
+  expect(document.documentElement.dataset.themeMode).toBe('light');
   expect(fixture.post).not.toHaveBeenCalled();
 });
 

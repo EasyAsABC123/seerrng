@@ -45,19 +45,19 @@ export const themePalettes: ThemePalette[] = [
   {
     id: 'seerr',
     name: 'SeerrNG',
-    swatches: ['#000000', '#1a3260', '#333333'],
+    swatches: ['#111827', '#1f2937', '#284478'],
     surface: 'gray',
-    primary: 'indigo',
-    secondary: 'purple',
-    chrome: 'blackout',
+    primary: 'seerrBlue',
+    secondary: 'slate',
+    chrome: 'classic',
   },
   {
     id: 'classic',
     name: 'Seerr',
-    swatches: ['#1f2937', '#4f46e5', '#9333ea'],
-    surface: 'gray',
-    primary: 'indigo',
-    secondary: 'purple',
+    swatches: ['#0f172a', '#1e293b', '#284478'],
+    surface: 'slate',
+    primary: 'seerrBlue',
+    secondary: 'slate',
     chrome: 'classic',
   },
   {
@@ -402,6 +402,19 @@ const themeScales = {
     '30 58 138',
     '23 37 84',
   ],
+  seerrBlue: [
+    '239 246 255',
+    '219 234 254',
+    '191 219 254',
+    '147 197 253',
+    '112 146 190',
+    '59 91 143',
+    '40 68 120',
+    '33 56 96',
+    '24 42 73',
+    '17 29 50',
+    '8 16 30',
+  ],
   indigo: [
     '238 242 255',
     '224 231 255',
@@ -719,12 +732,12 @@ const getThemeChromeTokens = (
       : mixRgb(primaryScale[6], secondaryScale[5], 0.32);
 
   const pageSpotlightCenter = classicDark
-    ? '194 169 255'
+    ? '40 68 120'
     : mode === 'dark'
       ? mixRgb(primaryScale[2], secondaryScale[2], 0.5)
       : mixRgb(primaryScale[1], secondaryScale[1], 0.5);
   const pageSpotlightEdge = classicDark
-    ? '151 115 246'
+    ? '59 91 143'
     : mode === 'dark'
       ? mixRgb(primaryScale[4], secondaryScale[4], 0.5)
       : mixRgb(primaryScale[2], secondaryScale[2], 0.5);
@@ -732,21 +745,21 @@ const getThemeChromeTokens = (
   const pageGradientLight = blackout
     ? '0 0 0'
     : classicDark
-      ? '76 67 189'
+      ? '31 41 55'
       : mode === 'dark'
         ? mixRgb(pageGlowStart, primaryScale[6], 0.18)
         : pageGlowStart;
   const pageGradientMain = blackout
     ? '40 68 120'
     : classicDark
-      ? '52 51 157'
+      ? '40 68 120'
       : mode === 'dark'
         ? mixRgb(pageBg, primaryScale[8], 0.35)
         : mixRgb(pageBg, pageGlowStart, 0.2);
   const pageGradientDeep = blackout
     ? '14 28 58'
     : classicDark
-      ? '23 29 89'
+      ? '17 24 39'
       : mode === 'dark'
         ? mixRgb(surfaceScale[10], primaryScale[9], 0.42)
         : mixRgb(pageBg, surfaceScale[8], 0.2);
@@ -756,21 +769,21 @@ const getThemeChromeTokens = (
   const controlSurface = blackout
     ? '0 0 0'
     : classicDark
-      ? '49 46 129'
+      ? '31 41 55'
       : mode === 'dark'
         ? mixRgb(surfaceScale[8], primaryScale[9], 0.18)
         : mixRgb(surfaceScale[9], secondaryScale[0], 0.12);
   const controlSurfaceHover = blackout
     ? '0 0 0'
     : classicDark
-      ? '55 48 163'
+      ? '55 65 81'
       : mode === 'dark'
         ? mixRgb(surfaceScale[7], primaryScale[8], 0.18)
         : mixRgb(surfaceScale[8], secondaryScale[0], 0.1);
-  const controlBorder = classicDark ? '99 102 241' : primaryScale[5];
+  const controlBorder = classicDark ? '40 68 120' : primaryScale[5];
   const controlText =
     blackout || classicDark
-      ? '199 210 254'
+      ? '219 234 254'
       : mode === 'dark'
         ? primaryScale[2]
         : mixRgb(surfaceScale[2], primaryScale[9], 0.12);
@@ -871,9 +884,7 @@ const resetAdvancedThemeOverrides = (root: HTMLElement) => {
 
 export const getThemeTokens = (mode: ThemeMode, palette: string) => {
   const basePalette = getThemePalette(palette);
-  // Blackout's black canvas only exists in dark mode. Light mode inverts the
-  // gray text scale, so keeping black chrome there leaves dark text on black.
-  // Light SeerrNG therefore renders with the original Seerr light chrome.
+  // Keep legacy blackout preferences on the readable Seerr chrome in light mode.
   const activePalette: ThemePalette =
     basePalette.chrome === 'blackout' && mode === 'light'
       ? { ...basePalette, id: 'classic', chrome: 'classic' }
@@ -883,7 +894,7 @@ export const getThemeTokens = (mode: ThemeMode, palette: string) => {
   const surfaceScale =
     mode === 'dark' &&
     (activePalette.chrome === 'classic' || activePalette.chrome === 'blackout')
-      ? themeScales.gray
+      ? themeScales[activePalette.surface]
       : createSurfaceScale(
           themeScales[activePalette.surface],
           primaryScale,
@@ -902,7 +913,7 @@ export const getThemeTokens = (mode: ThemeMode, palette: string) => {
       ? surfaceScale
       : activePalette.chrome === 'classic' ||
           activePalette.chrome === 'blackout'
-        ? themeScales.gray
+        ? themeScales[activePalette.surface]
         : createSurfaceScale(
             themeScales[activePalette.surface],
             primaryScale,

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import postcss from 'postcss';
 import { styleContract } from './cssContract.mjs';
 
 const css = readFileSync(new URL('./globals.css', import.meta.url), 'utf8');
@@ -9,17 +8,15 @@ const themeContext = readFileSync(
   new URL('../context/ThemeContext.tsx', import.meta.url),
   'utf8'
 );
-const assertBlackoutBackground = (stylesheet) => {
-  // Blackout is the chrome family; its persisted/runtime palette identifier is seerr.
+const assertSolidTheme = (stylesheet) => {
   const palettes = [
     ...themeContext.matchAll(/\{\s*id: '([^']+)',([^{}]*?)\},/g),
   ];
-  const blackout = palettes.filter(([, , body]) =>
-    body.includes("chrome: 'blackout'")
-  );
-  assert.deepEqual(
-    blackout.map(([, id]) => id),
-    ['seerr']
+  const seerr = palettes.filter(([, id]) => id === 'seerr');
+  assert.equal(seerr.length, 1);
+  assert.match(
+    seerr[0][2],
+    /primary: 'seerrBlue',[\s\S]*secondary: 'slate',[\s\S]*chrome: 'classic'/
   );
   assert.match(
     themeContext,
@@ -29,7 +26,7 @@ const assertBlackoutBackground = (stylesheet) => {
   const contract = styleContract(stylesheet);
   assert.equal(
     contract.declaration(':root', '--theme-page-spotlight-strength'),
-    '1'
+    '0'
   );
   assert.equal(
     contract.declaration(palette, '--theme-page-spotlight-strength'),
@@ -41,9 +38,9 @@ const assertBlackoutBackground = (stylesheet) => {
       undefined
     );
   for (const [stop, value] of Object.entries({
-    light: '0 0 0',
+    light: '31 41 55',
     main: '40 68 120',
-    deep: '14 28 58',
+    deep: '17 24 39',
     black: '0 0 0',
   })) {
     assert.equal(
@@ -55,36 +52,47 @@ const assertBlackoutBackground = (stylesheet) => {
     contract.declaration(palette, '--theme-page-gradient-main-stop'),
     '50%'
   );
-  const disabledSpotlights = [];
-  postcss
-    .parse(stylesheet)
-    .walkDecls('--theme-page-spotlight-strength', (decl) => {
-      if (decl.value === '0') disabledSpotlights.push(...decl.parent.selectors);
-    });
-  assert.deepEqual(disabledSpotlights, [palette]);
+  for (const [selector, property, value] of [
+    ['.sidebar', 'background-color', 'rgb(var(--theme-sidebar-start))'],
+    ['.app-backdrop', 'background-color', 'rgb(var(--theme-page-bg))'],
+    [
+      '.app-menu-gradient',
+      'background-color',
+      'rgb(var(--theme-overlay-menu))',
+    ],
+    [
+      '.sidebar-link-selected',
+      'background-color',
+      'rgb(var(--theme-control-border))',
+    ],
+  ]) {
+    assert.equal(contract.declaration(selector, property), value, selector);
+    assert.doesNotMatch(
+      contract.declaration(selector, 'background') ?? '',
+      /gradient|radial/i,
+      selector
+    );
+  }
+  assert.equal(
+    contract.declaration('.page-title', 'background-image'),
+    undefined
+  );
+  assert.equal(
+    contract.declaration('.page-title', 'color'),
+    'rgb(var(--theme-heading-text))'
+  );
 };
 
-test('only the runtime Blackout palette disables the spotlight and retains its blue gradient', () => {
-  assertBlackoutBackground(css);
+test('the default theme uses solid slate surfaces and muted Seerr blue', () => {
+  assertSolidTheme(css);
 });
 
-test('Blackout check rejects a spotlight override leaked into another palette', () => {
+test('solid chrome check rejects a gradient reintroduced into the app backdrop', () => {
   assert.throws(
     () =>
-      assertBlackoutBackground(
-        css +
-          "\n[data-theme-palette='classic'] { --theme-page-spotlight-strength: 0; }"
+      assertSolidTheme(
+        css + '\n.app-backdrop { background: radial-gradient(white, black); }'
       ),
     assert.AssertionError
   );
-});
-test('every shared background spotlight honors the palette strength', () => {
-  const stops =
-    css.match(
-      /rgb\(\s*var\(--theme-page-spotlight-(?:center|edge)\)[\s\S]*?\)\s+(?:0|34)%/g
-    ) || [];
-  assert.equal(stops.length, 12);
-  for (const stop of stops)
-    assert.ok(stop.includes('var(--theme-page-spotlight-strength)'), stop);
-  assert.match(css, /rgb\(var\(--theme-page-gradient-black\) \/ 0\.8\) 0%/);
 });

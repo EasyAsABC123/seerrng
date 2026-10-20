@@ -584,13 +584,13 @@ test('Request Status timeline uses the shared green completion treatment', () =>
   );
 });
 
-test('page titles have one global typography and purple-gradient owner', () => {
+test('page titles have one global typography and solid color owner', () => {
   const title = rule('.page-title');
-  assert.match(title, /background-image: linear-gradient/);
-  assert.match(title, /rgb\(var\(--color-indigo-400\)\)/);
-  assert.match(title, /rgb\(var\(--color-purple-400\)\)/);
-  assert.match(title, /background-clip: text/);
-  assert.match(title, /color: transparent/);
+  assert.match(title, /color: rgb\(var\(--theme-heading-text\)\)/);
+  assert.doesNotMatch(
+    title,
+    /background-image: linear-gradient|background-clip: text|color: transparent/
+  );
   assert.match(title, /width: fit-content/);
   assert.match(title, /--page-title-font-size: 1\.5rem/);
   assert.match(title, /font-size: var\(--page-title-font-size\)/);
@@ -711,7 +711,8 @@ test('section headings share page-title treatment with their independent 24px si
   const shared = rule('.page-title');
   const heading = rules('.page-heading');
   assert.match(css, /\.page-title,\s*\.page-heading\s*\{/);
-  assert.match(shared, /background-image: linear-gradient/);
+  assert.match(shared, /color: rgb\(var\(--theme-heading-text\)\)/);
+  assert.doesNotMatch(shared, /background-image: linear-gradient/);
   assert.match(shared, /font-weight: 700/);
   assert.match(heading, /font-size: var\(--page-heading-font-size\)/);
   assert.match(heading, /line-height: var\(--page-heading-line-height\)/);
