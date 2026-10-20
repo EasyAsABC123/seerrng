@@ -10,6 +10,17 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.71.2](https://github.com/snapetech-org/seerrng/compare/v3.71.1..v3.71.2) - 2026-10-20
+
+### User-facing changes
+
+#### Changed
+
+- **Settings:** Settings > Services now groups integrations by purpose, making request destinations, media libraries, reader tools, downloads, and system controls easier to scan. Compact add actions reduce empty space, and Reader Apps stay available whenever book services are enabled.
+
+### 🚜 Refactor
+- *(settings)* Organize services page by purpose - ([b624980](https://github.com/snapetech-org/seerrng/commit/b624980d7f66a99fd65917690a04a6099a826a00))
+
 ## [3.71.1](https://github.com/snapetech-org/seerrng/compare/v3.71.0..v3.71.1) - 2026-10-20
 
 ### User-facing changes
