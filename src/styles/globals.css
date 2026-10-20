@@ -5033,7 +5033,8 @@
   }
 
   input[type='checkbox'] {
-    @apply h-4 w-4 rounded-full text-emerald-500 transition duration-150 ease-in-out focus:ring-2 disabled:cursor-not-allowed disabled:opacity-40;
+    /* 24px is the WCAG 2.2 minimum target size; the check mark scales with it. */
+    @apply h-6 w-6 rounded-full text-emerald-500 transition duration-150 ease-in-out focus:ring-2 disabled:cursor-not-allowed disabled:opacity-40;
     border-color: rgb(var(--theme-control-border) / 0.72);
     background-color: rgb(var(--theme-control-surface) / 0.92);
     --tw-ring-color: rgb(var(--theme-control-border));
@@ -6805,6 +6806,19 @@
     padding: 0;
     background: transparent;
     color: transparent;
+  }
+
+  /* In action rows the circle sits beside 24px buttons, where a 16px target
+     fails WCAG 2.2 target spacing. Give it a 24px hit area there; the drawn
+     circle and the surrounding layout are unchanged. Dense trees keep the
+     shared 16px box (their row pitch already satisfies the spacing rule). */
+  .app-action-row > .selection-circle {
+    --selection-circle-hit-size: 1.5rem;
+    width: var(--selection-circle-hit-size);
+    height: var(--selection-circle-hit-size);
+    margin: calc(
+      (var(--detail-row-height) - var(--selection-circle-hit-size)) / 2
+    );
   }
 
   .selection-circle:focus-visible {

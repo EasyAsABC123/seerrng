@@ -5282,7 +5282,7 @@ const validateCurrentBatchContract = (files) => {
   );
   requireText(
     globals,
-    "input[type='checkbox'] {\n    @apply h-4 w-4 rounded-full text-emerald-500",
+    "input[type='checkbox'] {\n    /* 24px is the WCAG 2.2 minimum target size; the check mark scales with it. */\n    @apply h-6 w-6 rounded-full text-emerald-500",
     'native selection circles must share the standard global geometry'
   );
   requireText(
