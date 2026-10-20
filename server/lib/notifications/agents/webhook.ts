@@ -332,8 +332,11 @@ class WebhookAgent
             : typeof keymapValue === 'function'
               ? keymapValue(payload, type)
               : get(payload, keymapValue) || 'test';
-        webhookUrl = webhookUrl.replace(
-          new RegExp(`{{${keymapKey}}}`, 'g'),
+        // A literal replacement: no pattern is built from the key, and
+        // encodeURIComponent never emits "$", so the value cannot inject a
+        // replacement token.
+        webhookUrl = webhookUrl.replaceAll(
+          `{{${keymapKey}}}`,
           encodeURIComponent(variableValue)
         );
       });

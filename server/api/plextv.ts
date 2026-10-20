@@ -393,6 +393,11 @@ export const createPlexWatchlistPageCacheKey = (
   size: number
 ) => `${cacheKeyPrefix}:${offset}:${size}`;
 
+const PLEX_GUID_PATTERNS = {
+  tmdb: /^tmdb:\/\/(\d{1,10})$/,
+  tvdb: /^tvdb:\/\/(\d{1,10})$/,
+} as const;
+
 const parsePlexGuidId = (
   value: unknown,
   provider: 'tmdb' | 'tvdb'
@@ -401,7 +406,7 @@ const parsePlexGuidId = (
     return undefined;
   }
 
-  const match = new RegExp(`^${provider}:\\/\\/(\\d{1,10})$`).exec(value);
+  const match = PLEX_GUID_PATTERNS[provider].exec(value);
   const id = match ? Number(match[1]) : undefined;
   return typeof id === 'number' &&
     Number.isSafeInteger(id) &&

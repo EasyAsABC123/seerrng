@@ -4,6 +4,7 @@ import {
   isValidHttpUrl,
 } from '@server/utils/security';
 import axios from 'axios';
+import { escapeRegExp } from 'lodash';
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 5_000;
@@ -97,7 +98,8 @@ export interface PageMetadata {
   type?: string;
 }
 
-const metaContent = (html: string, property: string): string | undefined => {
+const metaContent = (html: string, rawProperty: string): string | undefined => {
+  const property = escapeRegExp(rawProperty);
   const pattern = new RegExp(
     `<meta[^>]+(?:property|name)=["']${property}["'][^>]*content=["']([^"']*)["']|<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${property}["']`,
     'i'
