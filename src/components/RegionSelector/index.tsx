@@ -132,7 +132,7 @@ const RegionSelector = ({
                 className={
                   compact
                     ? 'app-filter-select-trigger'
-                    : 'settings-compatible-listbox-button relative flex w-full cursor-default items-center rounded-md border pr-8 pl-2 text-left text-white transition duration-150 ease-in-out focus:outline-none'
+                    : 'settings-compatible-listbox-button relative flex w-full cursor-default items-center rounded-md border pr-8 pl-2 text-left text-gray-100 transition duration-150 ease-in-out focus:outline-none'
                 }
                 data-filter-region={compact ? 'trigger' : undefined}
               >

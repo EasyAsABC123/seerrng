@@ -31,8 +31,8 @@ const verifyContentGeometry = (stylesheet) => {
     declarations(stylesheet, ':root', ['--action-control-content-height']).get(
       '--action-control-content-height'
     ),
-    'calc(var(--action-control-height) - 2px)',
-    'action contents use the shared interior height'
+    '0.875rem',
+    'action contents use the shared glyph box, independent of control height'
   );
   for (const selector of [
     '.format-request-label svg',

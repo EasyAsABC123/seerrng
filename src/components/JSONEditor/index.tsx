@@ -18,6 +18,10 @@ const JSONEditor = ({ name, value, onUpdate, onBlur }: JSONEditorProps) => {
         onChange={onUpdate}
         name={name}
         editorProps={{ $blockScrolling: true }}
+        // Ace tries to load a separate worker-json.js for live linting. The
+        // bundle never ships it, so every editor logged an uncaught importScripts
+        // error; forms validate the JSON themselves.
+        setOptions={{ useWorker: false }}
         value={value}
         onBlur={onBlur}
         height="300px"

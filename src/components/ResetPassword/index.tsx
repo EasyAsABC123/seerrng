@@ -126,7 +126,7 @@ const ResetPassword = () => {
                               name="password"
                               type="password"
                               autoComplete="new-password"
-                              className="form-input-area block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-white transition duration-150 ease-in-out sm:text-sm sm:leading-5"
+                              className="form-input-area block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-gray-100 transition duration-150 ease-in-out sm:text-sm sm:leading-5"
                             />
                           </div>
                           {errors.password &&
@@ -149,7 +149,7 @@ const ResetPassword = () => {
                               name="confirmPassword"
                               type="password"
                               autoComplete="new-password"
-                              className="form-input-area block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-white transition duration-150 ease-in-out sm:text-sm sm:leading-5"
+                              className="form-input-area block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-gray-100 transition duration-150 ease-in-out sm:text-sm sm:leading-5"
                             />
                           </div>
                           {errors.confirmPassword &&

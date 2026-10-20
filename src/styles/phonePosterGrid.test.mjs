@@ -74,3 +74,38 @@ test('vertical card grids use fixed poster-width columns so posters never overla
     );
   assert.equal(columns?.value, 'repeat(auto-fill, var(--poster-width))');
 });
+
+test('secondary poster actions hide only for fine hover pointers, never on touch', () => {
+  const hiding = [];
+  root.walkRules((rule) => {
+    if (!/association-slot/.test(rule.selector)) return;
+    rule.walkDecls('opacity', (decl) => {
+      if (decl.value === '0') hiding.push(rule);
+    });
+  });
+  assert.equal(hiding.length, 1, 'exactly one rule hides the slots');
+  const media = hiding[0].parent;
+  assert.equal(media.type, 'atrule');
+  assert.match(media.params, /hover:\s*hover/);
+  assert.match(media.params, /pointer:\s*fine/);
+  assert.match(hiding[0].selector, /:not\(:hover\)/);
+  assert.match(hiding[0].selector, /:not\(:focus-within\)/);
+  const noClicks = hiding[0].nodes.find(
+    (node) => node.type === 'decl' && node.prop === 'pointer-events'
+  );
+  assert.equal(noClicks?.value, 'none', 'invisible controls cannot be pressed');
+});
+
+test('the shared control height meets the 24px WCAG 2.2 minimum', () => {
+  const heights = {};
+  root.walkRules(':root', (rule) =>
+    rule.walkDecls(/^--(action|poster)-control(-content)?-height$/, (decl) => {
+      heights[decl.prop] = decl.value;
+    })
+  );
+  assert.equal(heights['--action-control-height'], '1.5rem');
+  assert.equal(heights['--poster-control-height'], '1.5rem');
+  // Glyphs stay 14px: only the hit area grows.
+  assert.equal(heights['--action-control-content-height'], '0.875rem');
+  assert.equal(heights['--poster-control-content-height'], '0.875rem');
+});

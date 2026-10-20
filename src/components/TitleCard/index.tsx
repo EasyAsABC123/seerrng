@@ -1255,7 +1255,12 @@ const TitleCard = ({
                 data-poster-region="detail-link"
                 data-poster-detail={showFullDetailOverlay ? 'full' : 'compact'}
                 data-poster-has-action={
-                  canShowRequestButton && showFullDetailOverlay
+                  showFullDetailOverlay &&
+                  Boolean(
+                    canShowRequestButton ||
+                    sportarrRequestState ||
+                    magazineRequestState
+                  )
                 }
               >
                 <div data-poster-region="copy-anchor">
