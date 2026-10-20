@@ -94,9 +94,10 @@ The workflow compares their multi-architecture manifest digests and fails if
 any tag differs. This keeps the four channel aliases on the latest published
 stable release while allowing main-branch CI to check untagged commits.
 
-To repair registry tags manually, run the **Promote stable container aliases**
-workflow from `main`. It selects the highest published stable release, checks
-the image provenance and source revision, then moves and verifies the aliases.
+The **Promote stable container aliases** workflow also runs after each SeerrNG
+release workflow completes. It selects the highest published stable release,
+checks the image provenance and source revision, then moves and verifies the
+aliases. Run it from `main` to repair registry tags manually.
 
 Main CI no longer preflights or deploys to `seerr.home`, because those
 operations required direct access to the deployment host. Live deployment must

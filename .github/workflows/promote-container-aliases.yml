@@ -4,6 +4,9 @@ name: Promote stable container aliases
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: [SeerrNG Release]
+    types: [completed]
 
 permissions:
   contents: read

@@ -803,13 +803,12 @@ jobs:
     permissions:
       contents: read
       packages: write
-    env:
-      VERSION: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: Checkout current alias tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Docker Buildx
@@ -830,7 +829,16 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve latest published stable release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: echo "version=$(scripts/latest-published-release-tag.sh)" >> "$GITHUB_OUTPUT"
+
       - name: Promote and verify stable aliases
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
         run: bash scripts/promote-container-aliases.sh "$VERSION" "$GHCR_IMAGE" "$DOCKER_HUB"
 
   dispatch-chocolatey:

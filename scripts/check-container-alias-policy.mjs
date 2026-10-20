@@ -104,6 +104,8 @@ if (
   !releaseWorkflow.includes(
     'bash scripts/promote-container-aliases.sh "$VERSION" "$GHCR_IMAGE" "$DOCKER_HUB"'
   ) ||
+  !releaseWorkflow.includes('scripts/latest-published-release-tag.sh') ||
+  !releaseWorkflow.includes('fetch-depth: 0') ||
   !releaseWorkflow.includes('group: seerrng-stable-container-aliases')
 ) {
   console.error(
@@ -122,6 +124,8 @@ if (
 }
 
 if (
+  !manualPromotionWorkflow.includes('workflow_run:') ||
+  !manualPromotionWorkflow.includes('workflows: [SeerrNG Release]') ||
   !manualPromotionWorkflow.includes(
     'scripts/latest-published-release-tag.sh'
   ) ||
