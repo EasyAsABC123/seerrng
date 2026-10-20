@@ -198,12 +198,16 @@ const parseWatchRegion = (value: unknown) =>
 export const getCommitUpdateStatus = (
   commits: { sha: string; commit: { message: string } }[],
   commitTag: string
-): { updateAvailable: boolean; commitsBehind: number } => {
+): { updateAvailable: boolean; commitsBehind: number } | null => {
   const relevantCommits = commits.filter(
     (commit) => !commit.commit.message.includes('[skip ci]')
   );
 
-  if (relevantCommits.length === 0 || relevantCommits[0].sha === commitTag) {
+  if (relevantCommits.length === 0) {
+    return null;
+  }
+
+  if (relevantCommits[0].sha === commitTag) {
     return { updateAvailable: false, commitsBehind: 0 };
   }
 
@@ -226,17 +230,22 @@ export const getReleaseUpdateStatus = (
     draft: boolean;
   }[],
   currentVersion: string
-): boolean => {
+): boolean | null => {
   const installedVersion = semver.valid(currentVersion);
   if (!installedVersion) {
-    return false;
+    return null;
   }
 
-  return releases
+  const stableVersions = releases
     .filter((release) => !release.prerelease && !release.draft)
     .map((release) => semver.valid(release.tag_name))
-    .filter((version): version is string => version !== null)
-    .some((version) => semver.gt(version, installedVersion));
+    .filter((version): version is string => version !== null);
+
+  if (stableVersions.length === 0) {
+    return null;
+  }
+
+  return stableVersions.some((version) => semver.gt(version, installedVersion));
 };
 
 router.use(checkUser);
@@ -355,6 +364,7 @@ router.get<Record<string, never>, StatusResponse>(
       parsedCheckUpdate.value ?? settings.fullPublicSettings.versionCheck;
     let updateAvailable = false;
     let commitsBehind = 0;
+    let updateCheckSucceeded = false;
 
     if (checkUpdate) {
       const githubApi = new GithubAPI();
@@ -365,15 +375,17 @@ router.get<Record<string, never>, StatusResponse>(
           branch: branchMatch[1],
         });
 
-        ({ updateAvailable, commitsBehind } = getCommitUpdateStatus(
-          commits,
-          commitTag
-        ));
+        const updateStatus = getCommitUpdateStatus(commits, commitTag);
+        if (updateStatus) {
+          updateCheckSucceeded = true;
+          ({ updateAvailable, commitsBehind } = updateStatus);
+        }
       } else if (commitTag !== 'local') {
         const releases = await githubApi.getSeerrReleases();
-
-        if (releases.length) {
-          updateAvailable = getReleaseUpdateStatus(releases, currentVersion);
+        const updateStatus = getReleaseUpdateStatus(releases, currentVersion);
+        if (updateStatus !== null) {
+          updateCheckSucceeded = true;
+          updateAvailable = updateStatus;
         }
       }
     }
@@ -381,7 +393,11 @@ router.get<Record<string, never>, StatusResponse>(
     return res.status(200).json({
       version: getAppVersion(),
       commitTag: getCommitTag(),
-      ...(checkUpdate && { updateAvailable, commitsBehind }),
+      ...(checkUpdate && {
+        updateAvailable,
+        ...(commitTag !== 'local' && { updateCheckSucceeded }),
+        commitsBehind,
+      }),
       restartRequired: restartFlag.isSet(),
     });
   }

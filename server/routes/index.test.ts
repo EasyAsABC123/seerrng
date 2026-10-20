@@ -226,13 +226,13 @@ describe('commit update status', () => {
     commit: { message },
   });
 
-  it('handles pages containing only skipped commits', () => {
+  it('treats pages containing only skipped commits as an unknown check', () => {
     assert.deepEqual(
       getCommitUpdateStatus(
         [commit('a', '[skip ci] docs'), commit('b', 'build [skip ci]')],
         'older'
       ),
-      { updateAvailable: false, commitsBehind: 0 }
+      null
     );
   });
 
@@ -278,6 +278,10 @@ describe('stable release update status', () => {
     );
   });
 
+  it('recognizes the current published release as newer than version 3.53.0', () => {
+    assert.equal(getReleaseUpdateStatus([release('v3.71.3')], '3.53.0'), true);
+  });
+
   it('ignores prerelease and draft releases', () => {
     assert.equal(
       getReleaseUpdateStatus(
@@ -287,14 +291,22 @@ describe('stable release update status', () => {
         ],
         '3.18.0'
       ),
-      false
+      null
     );
   });
 
   it('ignores invalid installed versions and release tags', () => {
     assert.equal(
       getReleaseUpdateStatus([release('not-a-version')], 'main-abc123'),
-      false
+      null
+    );
+  });
+
+  it('treats an empty or unusable release feed as an unknown check', () => {
+    assert.equal(getReleaseUpdateStatus([], '3.53.0'), null);
+    assert.equal(
+      getReleaseUpdateStatus([release('not-a-version')], '3.53.0'),
+      null
     );
   });
 });

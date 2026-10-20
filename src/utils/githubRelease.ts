@@ -11,6 +11,7 @@ export interface SafeGithubRelease {
   html_url: string;
   id: number;
   name: string;
+  tag_name: string;
 }
 
 export const sanitizeGithubReleaseResponse = (
@@ -30,6 +31,7 @@ export const sanitizeGithubReleaseResponse = (
       typeof release.name === 'string' && release.name.trim()
         ? release.name
         : release.tag_name;
+    const tagName = release.tag_name;
     const rawDate =
       typeof release.created_at === 'string'
         ? release.created_at
@@ -43,6 +45,9 @@ export const sanitizeGithubReleaseResponse = (
       (release.id as number) <= 0 ||
       typeof rawName !== 'string' ||
       !rawName.trim() ||
+      typeof tagName !== 'string' ||
+      !tagName.trim() ||
+      tagName.length > 128 ||
       typeof rawDate !== 'string' ||
       rawDate.length > MAX_GITHUB_RELEASE_DATE_LENGTH ||
       !Number.isFinite(Date.parse(rawDate)) ||
@@ -58,6 +63,7 @@ export const sanitizeGithubReleaseResponse = (
         name: rawName.slice(0, MAX_GITHUB_RELEASE_NAME_LENGTH),
         created_at: rawDate,
         html_url: htmlUrl,
+        tag_name: tagName,
         body:
           typeof release.body === 'string'
             ? release.body.slice(0, MAX_GITHUB_RELEASE_BODY_LENGTH)

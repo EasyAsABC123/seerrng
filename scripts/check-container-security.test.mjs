@@ -28,6 +28,15 @@ for (const composeFile of composeFiles) {
     const service = document.services.seerrng;
 
     assert.equal(service.init, true);
+    if (composeFile === 'deploy/compose.readonly-local.yml') {
+      assert.equal(service.image, 'seerrng:readonly-local');
+    } else {
+      assert.equal(
+        service.image,
+        'ghcr.io/snapetech-org/seerrng:${SEERRNG_TAG:-stable}',
+        'deployments should follow the latest stable image by default'
+      );
+    }
     assert.equal(service.user, '1000:1000');
     assert.equal(service.read_only, true);
     assert.deepEqual(service.cap_drop, ['ALL']);

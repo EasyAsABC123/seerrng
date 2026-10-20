@@ -32,6 +32,7 @@ const messages = defineMessages('components.Settings.SettingsAbout', {
   documentation: 'Documentation',
   outofdate: 'Out of Date',
   uptodate: 'Up to Date',
+  updateCheckUnavailable: 'Could not check for updates',
   runningMain:
     'You are running the <code>main</code> branch of SeerrNG, which is only recommended for those contributing to development or assisting with bleeding-edge testing.',
   legalUse:
@@ -51,9 +52,15 @@ const SettingsAbout = () => {
     '/api/v1/settings/about'
   );
 
-  const { data: status } = useSWR<StatusResponse>(
+  const { data: status, error: statusError } = useSWR<StatusResponse>(
     settings.currentSettings.versionCheck ? '/api/v1/status' : null
   );
+  const updateCheckUnavailable =
+    settings.currentSettings.versionCheck &&
+    (Boolean(statusError) ||
+      Boolean(
+        status && status.commitTag !== 'local' && !status.updateCheckSucceeded
+      ));
 
   if (!data && !error) {
     return <LoadingSpinner />;
@@ -90,7 +97,20 @@ const SettingsAbout = () => {
               {data.version.replace('main-', '')}
             </span>
             {settings.currentSettings.versionCheck ? (
-              status && status.commitTag !== 'local' ? (
+              updateCheckUnavailable ? (
+                <a
+                  href="https://github.com/snapetech-org/seerrng/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Badge
+                    badgeType="warning"
+                    className="ml-2 !cursor-pointer transition hover:bg-yellow-400"
+                  >
+                    {intl.formatMessage(messages.updateCheckUnavailable)}
+                  </Badge>
+                </a>
+              ) : status && status.commitTag !== 'local' ? (
                 status.updateAvailable ? (
                   <a
                     href={

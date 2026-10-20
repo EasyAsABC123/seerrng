@@ -16,6 +16,7 @@ const messages = defineMessages('components.Layout.VersionStatus', {
   streammain: 'SeerrNG Main',
   streamstable: 'SeerrNG Stable',
   outofdate: 'Out of Date',
+  updateCheckUnavailable: 'Update check unavailable',
   commitsbehind:
     '{commitsBehind} {commitsBehind, plural, one {commit} other {commits}} behind',
 });
@@ -91,7 +92,11 @@ const VersionStatus = ({ onClick }: VersionStatusProps) => {
       )}
       <div className="flex min-w-0 flex-1 flex-col truncate px-2 last:pe-0">
         <span className="font-bold">{versionStream}</span>
-        {data.commitsBehind !== undefined && (
+        {data.updateCheckSucceeded === false ? (
+          <span className="truncate">
+            {intl.formatMessage(messages.updateCheckUnavailable)}
+          </span>
+        ) : data.commitsBehind !== undefined ? (
           <span className="truncate">
             {data.commitTag === 'local' ? (
               '(⌐■_■)'
@@ -107,7 +112,7 @@ const VersionStatus = ({ onClick }: VersionStatusProps) => {
               </code>
             )}
           </span>
-        )}
+        ) : null}
       </div>
       {data.updateAvailable && <ArrowUpCircleIcon className="h-6 w-6" />}
     </Link>

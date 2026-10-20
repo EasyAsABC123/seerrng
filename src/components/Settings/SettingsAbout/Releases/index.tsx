@@ -27,7 +27,7 @@ const messages = defineMessages('components.Settings.SettingsAbout.Releases', {
   versionChangelog: '{version} Changelog',
   viewongithub: 'View on GitHub',
   latestversion: 'Latest',
-  currentversion: 'Current',
+  installedversion: 'Installed',
   viewchangelog: 'View Changelog',
 });
 
@@ -90,9 +90,10 @@ const Release = ({ currentVersion, release, isLatest }: ReleaseProps) => {
             {intl.formatMessage(messages.latestversion)}
           </Badge>
         )}
-        {release.name.includes(currentVersion) && (
+        {release.tag_name.replace(/^v/u, '') ===
+          currentVersion.replace(/^v/u, '') && (
           <Badge badgeType="primary">
-            {intl.formatMessage(messages.currentversion)}
+            {intl.formatMessage(messages.installedversion)}
           </Badge>
         )}
       </div>
