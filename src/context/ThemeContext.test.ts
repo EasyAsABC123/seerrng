@@ -57,10 +57,20 @@ describe('themePalettes', () => {
       ] as const) {
         assert.deepEqual(seerrng[field], original[field], field);
       }
-      assert.equal(seerrng.chrome, 'blackout');
-      assert.equal(seerrng.searchbarScrolled, '0 0 0');
-      assert.equal(seerrng.sidebarStart, '0 0 0');
-      assert.equal(seerrng.sidebarEnd, '0 0 0');
+      if (mode === 'dark') {
+        assert.equal(seerrng.chrome, 'blackout');
+        assert.equal(seerrng.activePaletteId, 'seerr');
+        assert.equal(seerrng.searchbarScrolled, '0 0 0');
+        assert.equal(seerrng.sidebarStart, '0 0 0');
+        assert.equal(seerrng.sidebarEnd, '0 0 0');
+      } else {
+        // Black chrome with the inverted light text scale was unreadable.
+        assert.equal(seerrng.chrome, 'classic');
+        assert.equal(seerrng.activePaletteId, 'classic');
+        assert.equal(seerrng.selectedPaletteId, 'seerr');
+        assert.deepEqual(seerrng.sidebarStart, original.sidebarStart);
+        assert.deepEqual(seerrng.searchbarScrolled, original.searchbarScrolled);
+      }
     }
   });
 
@@ -220,7 +230,11 @@ describe('themePalettes', () => {
 
   it('gives every palette distinct page and sidebar chrome in both modes', () => {
     for (const mode of ['dark', 'light'] as const) {
-      const chromeSignatures = themePalettes.map((palette) => {
+      // Light SeerrNG intentionally renders with Seerr's light chrome.
+      const palettes = themePalettes.filter(
+        (palette) => !(mode === 'light' && palette.id === 'seerr')
+      );
+      const chromeSignatures = palettes.map((palette) => {
         const tokens = getThemeTokens(mode, palette.id);
 
         return [
@@ -235,7 +249,7 @@ describe('themePalettes', () => {
 
       assert.equal(
         new Set(chromeSignatures).size,
-        themePalettes.length,
+        palettes.length,
         `${mode} theme chrome should be unique per palette`
       );
     }

@@ -61,7 +61,10 @@ test('number fields use the shared readable form control surface', () => {
   });
   assert.equal(rule.length, 1);
   assert.match(rule[0].toString(), /bg-gray-700/);
-  assert.match(rule[0].toString(), /text-white/);
+  // gray-100 is near-white in dark mode and inverts in light mode; a literal
+  // white made field text unreadable on light surfaces.
+  assert.match(rule[0].toString(), /text-gray-100/);
+  assert.doesNotMatch(rule[0].toString(), /text-white/);
 
   const sportarr = read('Settings/SportarrModal/index.tsx');
   assert.match(sportarr, /id="port"[\s\S]*?name="port"[\s\S]*?type="number"/);

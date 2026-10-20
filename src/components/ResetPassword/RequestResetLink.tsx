@@ -1,5 +1,4 @@
 import Button from '@app/components/Common/Button';
-import ImageFader from '@app/components/Common/ImageFader';
 import PageTitle from '@app/components/Common/PageTitle';
 import LanguagePicker from '@app/components/Layout/LanguagePicker';
 import defineMessages from '@app/utils/defineMessages';
@@ -42,17 +41,6 @@ const ResetPassword = () => {
   return (
     <div className="relative flex min-h-screen flex-col bg-gray-900 py-14">
       <PageTitle title={intl.formatMessage(messages.passwordreset)} />
-      <ImageFader
-        forceOptimize
-        backgroundImages={[
-          '/images/rotate1.jpg',
-          '/images/rotate2.jpg',
-          '/images/rotate3.jpg',
-          '/images/rotate4.jpg',
-          '/images/rotate5.jpg',
-          '/images/rotate6.jpg',
-        ]}
-      />
       <div className="absolute top-4 right-4 z-50">
         <LanguagePicker />
       </div>

@@ -173,6 +173,16 @@
     --dropdown-menu-border: rgb(var(--theme-control-border) / 0.75);
   }
 
+  /* Touch screens cannot hit a 16px control reliably (WCAG 2.2 target size
+     needs at least 24px). Pointer-precise devices keep the compact 16px
+     standard; coarse pointers get the larger target from the same owners. */
+  @media (pointer: coarse) {
+    :root:root {
+      --action-control-height: 1.75rem;
+      --poster-control-height: 1.75rem;
+    }
+  }
+
   /* Blackout owns its canvas and readability colors. Other palettes and semantic
      colors stay unchanged; each shared component keeps its existing alpha. */
   [data-theme-palette='seerr'] {
@@ -1015,6 +1025,15 @@
 
   .page-layout [data-page-layout-part='content'] {
     padding-inline: var(--page-layout-margin-inline);
+  }
+
+  /* Pages whose children are independent blocks (cards, filter rows, notices)
+     need one shared vertical rhythm so those blocks never touch or overlap. */
+  .page-layout [data-page-layout-part='content'][data-page-flow='stack'] {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: calc(2 * var(--card-spacing));
   }
 
   /* Embedded content stays in normal flow; standalone backdrop offsets must
@@ -4557,8 +4576,14 @@
     gap: calc(2 * var(--card-spacing));
   }
 
+  /* Every vertical card is a fixed-width poster, so columns must be at least as
+     wide as the poster: narrower flexible columns made posters overlap their
+     neighbours and push the last column past the viewport edge. */
   ul.cards-vertical {
-    grid-template-columns: repeat(auto-fill, minmax(9.375rem, 1fr));
+    grid-template-columns: repeat(auto-fill, var(--poster-width));
+    /* Spread leftover width between columns instead of leaving a ragged,
+       empty right edge at every viewport width. */
+    justify-content: space-between;
   }
 
   ul.cards-horizontal {
@@ -4585,6 +4610,15 @@
 
   ul.cards-vertical.poster-grid {
     grid-template-columns: repeat(auto-fill, var(--poster-width));
+  }
+
+  /* Phones narrower than two fixed posters plus gutters and gap (about 390px)
+     would otherwise show one poster per row beside a blank half-screen. Share
+     the row between two posters until the fixed width fits twice. */
+  @media (max-width: 389px) {
+    :root:root {
+      --poster-width: calc((100vw - 2rem - 2 * var(--card-spacing)) / 2);
+    }
   }
 
   ul.cards-horizontal > li {
@@ -5022,7 +5056,7 @@
   }
 
   .section {
-    @apply mt-6 mb-10 text-white;
+    @apply mt-6 mb-10 text-gray-100;
   }
 
   .form-row {
@@ -5087,7 +5121,7 @@
   }
 
   .label-tip {
-    @apply block font-medium text-gray-500;
+    @apply block font-medium text-gray-400;
   }
 
   button,
@@ -5113,7 +5147,7 @@
   input[type='password'],
   select,
   textarea {
-    @apply block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-white transition duration-150 ease-in-out sm:text-sm sm:leading-5;
+    @apply block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-gray-100 transition duration-150 ease-in-out sm:text-sm sm:leading-5;
   }
 
   input.rounded-s-only,
@@ -5797,14 +5831,18 @@
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
-    flex-shrink: 0;
     margin-inline-start: auto;
     gap: var(--button-content-gap);
     color: var(--palette-orange-light);
     font-size: var(--card-title-font-size);
     line-height: 1.25rem;
     font-weight: 600;
-    white-space: nowrap;
+    /* Statuses can be full sentences (for example the Steam import notice);
+       they must wrap instead of widening the whole page. */
+    white-space: normal;
+    min-width: 0;
+    flex-shrink: 1;
+    overflow-wrap: anywhere;
   }
 
   .page-status svg {
@@ -5956,6 +5994,12 @@
 
   .page-error-message .card-title {
     color: inherit;
+  }
+
+  /* The message surface is a translucent tint over the page, so white text is
+     only readable on dark pages; light mode needs the inverted gray scale. */
+  :root[data-theme-mode='light'] .page-error-message {
+    --page-error-message-text: rgb(var(--color-gray-100));
   }
 
   .page-error-message-detail {
@@ -6218,7 +6262,11 @@
 
   @media (min-width: 640px) {
     .page-title {
-      overflow: visible;
+      /* Keep large glyph ascenders/descenders visible vertically, but clip the
+         line horizontally so a long title ellipsizes instead of widening the
+         whole page. */
+      overflow-x: clip;
+      overflow-y: visible;
       --page-title-font-size: 2.25rem;
     }
 
@@ -6582,6 +6630,13 @@
     position: fixed;
     z-index: 100;
     pointer-events: none;
+  }
+
+  /* The rating popover floats above everything (z-index 100) and is portaled to
+     <body>, so it stayed visible on top of an opened modal. Hide it while any
+     page overlay is open. */
+  body:has(.page-overlay) .poster-rating-popover {
+    display: none;
   }
 
   .detail-disclosure-control[data-reorder-state] .detail-disclosure-button {
@@ -7519,6 +7574,12 @@
     outline-offset: 1px;
   }
 
+  /* Light pages need a dark label on the active filter's translucent tint. */
+  :root[data-theme-mode='light'] .app-filter-button-active {
+    color: rgb(var(--color-indigo-950));
+    background-color: rgb(var(--color-indigo-200) / 0.7);
+  }
+
   .app-filter-button-active:focus-within,
   .app-filter-button-active:focus-visible {
     outline-width: 2px;
@@ -7835,6 +7896,15 @@
     @apply inline-flex flex-nowrap items-center gap-[5px] whitespace-nowrap;
   }
 
+  /* Two badges plus a label are wider than a 320px phone; let the badges wrap
+     there instead of widening the whole settings page. */
+  @media (max-width: 380px) {
+    .settings-badge-row {
+      max-width: 100%;
+      flex-wrap: wrap;
+    }
+  }
+
   .settings-provider-status-list {
     display: flex;
     flex-direction: column;
@@ -7911,7 +7981,7 @@
   }
 
   .settings-form-label-line {
-    @apply inline-flex flex-wrap items-center gap-[5px];
+    @apply inline-flex flex-nowrap items-center gap-[5px] whitespace-nowrap;
   }
 
   .settings-plain-value {
@@ -8726,6 +8796,16 @@
   .discover-filter-control-label-active {
     background-color: rgb(var(--color-indigo-500) / 0.35);
     color: #fff;
+  }
+
+  /* The indigo scale does not invert in light mode, so pale labels vanish on
+     light control surfaces. */
+  :root[data-theme-mode='light'] .discover-filter-control-label {
+    color: rgb(var(--color-indigo-950));
+  }
+
+  :root[data-theme-mode='light'] .discover-filter-control-label-active {
+    color: rgb(var(--color-indigo-950));
   }
 
   .compact-select-warning .discover-filter-control-label,
@@ -9605,6 +9685,21 @@
     .pwa-only {
       @apply hidden;
     }
+  }
+
+  .request-episode-queue-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--card-spacing);
+  }
+
+  .request-episode-queue-title {
+    color: #fff;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
   }
 
   .request-selection-layout {

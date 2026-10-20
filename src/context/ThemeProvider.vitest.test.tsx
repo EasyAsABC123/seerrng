@@ -76,7 +76,9 @@ test('new installs and migrated logins ignore legacy browser palettes and use Se
   fixture.user = account(1);
   await act(async () => render());
   expect(theme.palette).toBe('seerr');
-  expect(document.documentElement.dataset.themePalette).toBe('seerr');
+  // The saved choice stays SeerrNG; light mode renders it with Seerr's light
+  // chrome because black chrome with the inverted text scale is unreadable.
+  expect(document.documentElement.dataset.themePalette).toBe('classic');
   expect(fixture.post).not.toHaveBeenCalled();
 });
 

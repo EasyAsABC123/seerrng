@@ -870,7 +870,14 @@ const resetAdvancedThemeOverrides = (root: HTMLElement) => {
 };
 
 export const getThemeTokens = (mode: ThemeMode, palette: string) => {
-  const activePalette = getThemePalette(palette);
+  const basePalette = getThemePalette(palette);
+  // Blackout's black canvas only exists in dark mode. Light mode inverts the
+  // gray text scale, so keeping black chrome there leaves dark text on black.
+  // Light SeerrNG therefore renders with the original Seerr light chrome.
+  const activePalette: ThemePalette =
+    basePalette.chrome === 'blackout' && mode === 'light'
+      ? { ...basePalette, id: 'classic', chrome: 'classic' }
+      : basePalette;
   const primaryScale = themeScales[activePalette.primary];
   const secondaryScale = themeScales[activePalette.secondary];
   const surfaceScale =
@@ -915,6 +922,7 @@ export const getThemeTokens = (mode: ThemeMode, palette: string) => {
 
   return {
     activePaletteId: activePalette.id,
+    selectedPaletteId: basePalette.id,
     primaryScale,
     secondaryScale,
     surfaceScale,
@@ -980,7 +988,7 @@ const applyTheme = (
       )
     );
   writeLocalStorageValue(THEME_MODE_KEY, mode);
-  writeLocalStorageValue(THEME_PALETTE_KEY, themeTokens.activePaletteId);
+  writeLocalStorageValue(THEME_PALETTE_KEY, themeTokens.selectedPaletteId);
 };
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {

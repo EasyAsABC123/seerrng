@@ -906,7 +906,7 @@ const GameLibrary = () => {
     <>
       <PageTitle title={intl.formatMessage(messages.title)} />
       <main className="page-layout">
-        <div data-page-layout-part="content">
+        <div data-page-layout-part="content" data-page-flow="stack">
           <div className="page-title-row">
             <h1 className="page-title">{intl.formatMessage(messages.title)}</h1>
             {tab === 'library' && (

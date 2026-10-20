@@ -1,5 +1,4 @@
 import Button from '@app/components/Common/Button';
-import ImageFader from '@app/components/Common/ImageFader';
 import SensitiveInput from '@app/components/Common/SensitiveInput';
 import LanguagePicker from '@app/components/Layout/LanguagePicker';
 import globalMessages from '@app/i18n/globalMessages';
@@ -53,17 +52,6 @@ const ResetPassword = () => {
 
   return (
     <div className="relative flex min-h-screen flex-col bg-gray-900 py-14">
-      <ImageFader
-        forceOptimize
-        backgroundImages={[
-          '/images/rotate1.jpg',
-          '/images/rotate2.jpg',
-          '/images/rotate3.jpg',
-          '/images/rotate4.jpg',
-          '/images/rotate5.jpg',
-          '/images/rotate6.jpg',
-        ]}
-      />
       <div className="absolute top-4 right-4 z-50">
         <LanguagePicker />
       </div>

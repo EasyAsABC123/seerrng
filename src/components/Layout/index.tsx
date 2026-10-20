@@ -284,7 +284,7 @@ const Layout = ({ children }: LayoutProps) => {
 
         <main className="page-layout" tabIndex={0}>
           <div className="mb-6">
-            <div className="max-w-8xl mx-auto" data-page-layout-part="content">
+            <div className="mx-auto" data-page-layout-part="content">
               <UserWarnings />
               {hasPermission(Permission.ADMIN) && <AppDataWarning />}
               {discoveryMediaType && currentSettings.swipeEnabled !== false && (

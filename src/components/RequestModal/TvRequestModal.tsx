@@ -1560,10 +1560,10 @@ const TvRequestModal = ({
                 className="app-card-inset refreshed-inset-surface detail-item-padded request-episode-queue"
                 aria-labelledby="tv-episode-queue-heading"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="request-episode-queue-header">
                   <h3
                     id="tv-episode-queue-heading"
-                    className="text-sm font-semibold text-white"
+                    className="request-episode-queue-title"
                   >
                     {intl.formatMessage(messages.watchAheadLabel)}
                   </h3>

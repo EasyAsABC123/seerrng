@@ -43,6 +43,8 @@ const buttonJavascript = ts.transpileModule(
 ).outputText;
 new Function('require', 'module', 'exports', buttonJavascript)(
   (id) => {
+    // The shared Button's CSS module only supplies a class name.
+    if (id === './Button.module.css') return { default: { button: 'button' } };
     assert.ok(
       [
         'react',

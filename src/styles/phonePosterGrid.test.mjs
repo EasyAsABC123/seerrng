@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import postcss from 'postcss';
+
+const css = readFileSync(new URL('./globals.css', import.meta.url), 'utf8');
+const root = postcss.parse(css);
+
+const rootDefinitions = new Set();
+root.walkRules((rule) => {
+  if (rule.selectors.some((selector) => selector.trim() === ':root'))
+    rule.walkDecls(/^--/, (decl) => rootDefinitions.add(decl.prop));
+});
+
+const mediaRules = (predicate) => {
+  const found = [];
+  root.walkAtRules('media', (media) => {
+    if (predicate(media.params))
+      media.walkRules((rule) => found.push({ media, rule }));
+  });
+  return found;
+};
+
+test('narrow phones share one row between two posters instead of one per row', () => {
+  const [entry] = mediaRules((params) => /max-width:\s*389px/.test(params));
+  assert.ok(entry, 'a sub-390px poster width override exists');
+  const width = entry.rule.nodes.find(
+    (node) => node.type === 'decl' && node.prop === '--poster-width'
+  );
+  assert.ok(width, 'the override sets --poster-width');
+  assert.match(
+    width.value,
+    /100vw/,
+    'poster width follows the viewport so two fit in one row'
+  );
+});
+
+test('custom properties used by root-level overrides are defined at :root', () => {
+  // A var() that is only defined on a descendant (for example .page-layout) is
+  // invalid at :root, which made --poster-width empty and collapsed posters.
+  for (const { rule } of mediaRules(() => true)) {
+    if (!rule.selectors.some((selector) => selector.includes(':root')))
+      continue;
+    rule.walkDecls((decl) => {
+      for (const match of decl.value.matchAll(/var\((--[a-z\d-]+)/g))
+        assert.ok(
+          rootDefinitions.has(match[1]),
+          `${decl.prop} in ${rule.selector} uses ${match[1]}, which is not defined at :root`
+        );
+    });
+  }
+});
+
+test('coarse pointers get a larger shared action target without touching the 16px default', () => {
+  const [entry] = mediaRules((params) => /pointer:\s*coarse/.test(params));
+  assert.ok(entry, 'a coarse-pointer override exists');
+  const rem = (prop) =>
+    parseFloat(
+      entry.rule.nodes.find(
+        (node) => node.type === 'decl' && node.prop === prop
+      )?.value
+    );
+  assert.ok(rem('--action-control-height') >= 1.5, 'at least 24px');
+  assert.ok(rem('--poster-control-height') >= 1.5, 'at least 24px');
+});
+
+test('vertical card grids use fixed poster-width columns so posters never overlap', () => {
+  const rules = [];
+  root.walkRules('ul.cards-vertical', (rule) => rules.push(rule));
+  const columns = rules
+    .flatMap((rule) => rule.nodes)
+    .find(
+      (node) => node.type === 'decl' && node.prop === 'grid-template-columns'
+    );
+  assert.equal(columns?.value, 'repeat(auto-fill, var(--poster-width))');
+});

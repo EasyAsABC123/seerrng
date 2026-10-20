@@ -28,7 +28,7 @@ const alertDesign = {
   error: {
     bgColor: 'bg-red-600',
     titleColor: 'text-red-100',
-    textColor: 'text-red-300',
+    textColor: 'text-red-100',
     svg: <XCircleIcon className="h-5 w-5" />,
   },
 };
@@ -45,7 +45,7 @@ const Alert = memo(
           <div className={`flex-shrink-0 ${design.titleColor}`}>
             {design.svg}
           </div>
-          <div className="ms-3">
+          <div className="ms-3 min-w-0 break-words">
             {title && (
               <div className={`text-sm font-medium ${design.titleColor}`}>
                 {title}

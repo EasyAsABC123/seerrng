@@ -167,7 +167,7 @@ const UserSettings = ({ children }: UserSettingsProps) => {
       <div className="mt-6">
         <SettingsTabs settingsRoutes={settingsRoutes} />
       </div>
-      <div className="mt-10 text-white">{children}</div>
+      <div className="mt-10 text-gray-100">{children}</div>
     </>
   );
 };

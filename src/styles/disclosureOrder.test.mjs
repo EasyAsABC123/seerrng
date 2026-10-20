@@ -453,7 +453,10 @@ test('server persistence is tv-scoped, self-owned and independent of pins; migra
     'utf8'
   );
   const orderSection = route.slice(
-    route.indexOf('const userSettingsRoutes'),
+    route.lastIndexOf(
+      'userSettingsRoutes.get<',
+      route.indexOf("'/detail-disclosure-order/:mediaType'")
+    ),
     route.indexOf('const updateMediaFilterPin')
   );
   assert.equal((orderSection.match(/isOwnProfile\(\)/g) ?? []).length, 2);
@@ -484,10 +487,17 @@ test('actual settings handlers validate inputs and save only the current user wi
     path.join(sourceRoot, 'server/routes/user/usersettings.ts'),
     'utf8'
   );
-  const section = source.slice(
-    source.indexOf('const userSettingsRoutes'),
-    source.indexOf('const updateMediaFilterPin')
-  );
+  // Start at the disclosure-order routes: earlier routes (for example the TV
+  // season watch gate) have their own owners and dependencies.
+  const section =
+    'const userSettingsRoutes = Router();\n' +
+    source.slice(
+      source.lastIndexOf(
+        'userSettingsRoutes.get<',
+        source.indexOf("'/detail-disclosure-order/:mediaType'")
+      ),
+      source.indexOf('const updateMediaFilterPin')
+    );
   const code = ts.transpileModule(section, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2020,

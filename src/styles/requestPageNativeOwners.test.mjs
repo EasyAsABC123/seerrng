@@ -247,14 +247,16 @@ const verifyNativeCSS = (source) => {
     ['inset 0 0 0 2px var(--request-listbox-focus-color)'],
     'native focus follows its palette owner'
   );
+  // The green action-row listbox variant was removed with the Episode Queue
+  // controls that used it; no request-status action row hosts a listbox now.
   assert.deepEqual(
     declarations(
       rules,
       '.request-status-action-row .request-listbox-control',
       '--request-listbox-focus-color'
     ),
-    ['var(--palette-green)'],
-    'action focus retains its green palette'
+    [],
+    'no orphaned action-row focus palette'
   );
   assert.deepEqual(
     declarations(rules, '.request-listbox-button:disabled', 'cursor'),
@@ -353,8 +355,8 @@ const verifyNativeCSS = (source) => {
       '.request-status-action-row .request-listbox-control',
       'height'
     ),
-    ['var(--action-control-height)'],
-    'request action keeps the 16px variant'
+    [],
+    'no orphaned action-row height override competes with the shared token'
   );
   assert.deepEqual(
     declarations(rules, '.request-listbox-button', 'max-width'),
@@ -433,13 +435,8 @@ const verifyNativeCSS = (source) => {
     )
   );
   assert(
-    paletteDeclarations.some((decl) =>
-      decl.value.includes('--theme-control-')
-    ) &&
-      paletteDeclarations.some((decl) =>
-        decl.value.includes('--palette-green')
-      ),
-    'shared dropdown and request action variant keep palette authority'
+    paletteDeclarations.some((decl) => decl.value.includes('--theme-control-')),
+    'shared dropdown keeps palette authority'
   );
 };
 const verifyReducedMotion = (source) => {
