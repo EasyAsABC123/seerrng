@@ -7,11 +7,22 @@ import {
   getImageErrorFallback,
   getInitialImageUrl,
 } from '@app/utils/imageCache';
+import {
+  getImageRetryDelayMs,
+  isRetryableImageUrl,
+} from '@app/utils/imageRetry';
 import type { ImageVariant } from '@app/utils/loadedImages';
 import { UserIcon } from '@heroicons/react/24/solid';
 import type { ImageLoader, ImageProps } from 'next/image';
 import Image from 'next/image';
-import { memo, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SyntheticEvent,
+} from 'react';
 
 const AVATAR_PRELOAD_RETRY_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000];
 
@@ -100,6 +111,16 @@ const CachedImage = memo(
     const [activeImageUrl, setActiveImageUrl] = useState(() =>
       getInitialImageUrl(type, imageUrl)
     );
+    // A transient failure (for example the proxy's 429) is retried a couple
+    // of times, with backoff and jitter, before the placeholder is shown.
+    const [retryAttempt, setRetryAttempt] = useState(0);
+    const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+      undefined
+    );
+    useEffect(() => {
+      setRetryAttempt(0);
+      return () => clearTimeout(retryTimer.current);
+    }, [primaryImageKey]);
 
     useEffect(() => {
       if (type !== 'avatar' || imageUrl === AVATAR_FALLBACK_IMAGE) {
@@ -172,6 +193,7 @@ const CachedImage = memo(
 
     return (
       <Image
+        key={retryAttempt}
         unoptimized
         loader={imageLoader}
         src={displayImageUrl}
@@ -184,6 +206,23 @@ const CachedImage = memo(
           onLoad?.(event);
         }}
         onError={(event: SyntheticEvent<HTMLImageElement>) => {
+          if (
+            type !== 'avatar' &&
+            // Only the base image is retried; a failed larger variant is
+            // handled by the progressive loader falling back to the base.
+            displayImageUrl === imageUrl &&
+            isRetryableImageUrl(displayImageUrl)
+          ) {
+            const delayMs = getImageRetryDelayMs(retryAttempt);
+            if (delayMs !== undefined) {
+              clearTimeout(retryTimer.current);
+              retryTimer.current = setTimeout(
+                () => setRetryAttempt((attempt) => attempt + 1),
+                delayMs
+              );
+              return;
+            }
+          }
           if (type !== 'avatar') progressiveImage.onError(event.currentTarget);
           if (
             type !== 'avatar' &&

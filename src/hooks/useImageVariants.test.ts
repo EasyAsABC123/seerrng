@@ -2,7 +2,7 @@ import CachedImage from '@app/components/Common/CachedImage';
 import { loadedImages } from '@app/utils/loadedImages';
 import { JSDOM } from 'jsdom';
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { act, createElement, type SyntheticEvent } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
@@ -554,5 +554,85 @@ describe('CachedImage integration', () => {
     await act(async () => downloads[0].onerror?.());
     assert.ok(dom.window.document.querySelector('svg'));
     assert.equal(downloads.length, 1);
+  });
+});
+
+describe('CachedImage transient failures', () => {
+  const proxied = () =>
+    new URL(`/imageproxy/tmdb/t/p/w342/${family}.jpg`, dom.window.location.href)
+      .href;
+  const fail = () =>
+    act(async () =>
+      dom.window.document
+        .querySelector('img')!
+        .dispatchEvent(new dom.window.Event('error'))
+    );
+  const renderBase = async (onError: () => void) => {
+    root = createRoot(dom.window.document.getElementById('root')!);
+    await act(async () =>
+      root?.render(
+        createElement(CachedImage, {
+          src: `https://image.tmdb.org/t/p/w342/${family}.jpg`,
+          fallbackSrc: '/images/seerr_poster_not_found.png',
+          type: 'tmdb',
+          width: 128,
+          height: 192,
+          alt: 'Poster',
+          onError,
+        })
+      )
+    );
+  };
+
+  afterEach(() => mock.timers.reset());
+
+  it('retries a failed proxied poster with backoff before showing the placeholder', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    let failures = 0;
+    await renderBase(() => failures++);
+    assert.equal(imageSrc(), proxied());
+
+    // First failure (for example the proxy answering 429): keep the poster and
+    // wait instead of falling through to the placeholder.
+    await fail();
+    assert.equal(imageSrc(), proxied());
+    assert.equal(failures, 0);
+    await act(async () => mock.timers.tick(4000));
+    assert.equal(imageSrc(), proxied(), 'retried the same URL');
+
+    await fail();
+    assert.equal(imageSrc(), proxied());
+    assert.equal(failures, 0);
+    await act(async () => mock.timers.tick(8000));
+
+    // Out of retries: now the placeholder takes over.
+    await fail();
+    assert.equal(
+      dom.window.document.querySelector('img')?.src,
+      new URL('/images/seerr_poster_not_found.png', dom.window.location.href)
+        .href
+    );
+    assert.equal(failures, 1);
+  });
+
+  it('never retries an image that is not served by the proxy', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    let failures = 0;
+    root = createRoot(dom.window.document.getElementById('root')!);
+    await act(async () =>
+      root?.render(
+        createElement(CachedImage, {
+          src: '/images/local.png',
+          fallbackSrc: '/images/seerr_poster_not_found.png',
+          type: 'tmdb',
+          width: 128,
+          height: 192,
+          alt: 'Poster',
+          onError: () => failures++,
+        })
+      )
+    );
+    await fail();
+    assert.equal(failures, 1);
   });
 });

@@ -21,6 +21,9 @@ const maxProxyImagePathLength = 2048;
 
 export const IMAGE_PROXY_REQUEST_LIMIT = 1200;
 export const IMAGE_PROXY_CACHE_MISS_LIMIT = 600;
+// One page can warm several shelves; the client batches and spaces its calls,
+// and several users can share one proxy address, so allow headroom.
+export const IMAGE_WARM_REQUEST_LIMIT = 30;
 
 type RateLimitRequest = Request & {
   rateLimit?: {
@@ -68,7 +71,7 @@ const proxyCacheMissRateLimit = rateLimit({
 
 export const imageCacheWarmRateLimit = rateLimit({
   windowMs: 60 * 1000,
-  limit: 10,
+  limit: IMAGE_WARM_REQUEST_LIMIT,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getRateLimitKey,

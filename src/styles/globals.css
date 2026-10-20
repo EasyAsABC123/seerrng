@@ -158,10 +158,13 @@
     --detail-heading-gap: var(--card-spacing);
     /* Keep action sizing independent so the former 1.875rem height can return
        without changing any page's button variant or typography. */
-    --action-control-height: 1rem;
-    --action-control-content-height: calc(var(--action-control-height) - 2px);
-    --poster-control-height: 1rem;
-    --poster-control-content-height: calc(var(--poster-control-height) - 2px);
+    /* 24px is the WCAG 2.2 minimum target size (2.5.8). The glyph box (icons,
+       chevrons, rating marks, line height) stays 14px and is centred in the
+       taller control, so only the hit area grows. */
+    --action-control-height: 1.5rem;
+    --action-control-content-height: 0.875rem;
+    --poster-control-height: 1.5rem;
+    --poster-control-content-height: 0.875rem;
     --button-padding-x: 5px;
     --action-control-padding-x: var(--button-padding-x);
     /* One visual space between every button icon and its label. */
@@ -175,9 +178,8 @@
     --dropdown-menu-border: rgb(var(--theme-control-border) / 0.75);
   }
 
-  /* Touch screens cannot hit a 16px control reliably (WCAG 2.2 target size
-     needs at least 24px). Pointer-precise devices keep the compact 16px
-     standard; coarse pointers get the larger target from the same owners. */
+  /* Touch screens need a larger hit area than a mouse; coarse pointers get
+     28px from the same owners (the glyph box is unchanged). */
   @media (pointer: coarse) {
     :root:root {
       --action-control-height: 1.75rem;
@@ -521,6 +523,10 @@
 
   body {
     background-color: rgb(var(--theme-page-bg));
+    /* Text without an explicit colour used to inherit the browser default
+       (black), which is unreadable on every dark page. gray-100 is near-white
+       in dark mode and dark in light mode (the gray scale inverts). */
+    color: rgb(var(--color-gray-100));
     -webkit-overflow-scrolling: touch;
   }
 
@@ -1545,10 +1551,14 @@
     align-self: stretch;
     overflow: hidden;
     border-right: 1px solid rgb(var(--color-gray-700));
-    background-color: #fff;
+    background-color: rgb(var(--color-gray-900));
   }
 
   .app-card-sub[data-card-layout='portrait'] > [data-card-part='artwork'] img {
+    /* The artwork column stretches with the card, so the image must fill it;
+       a fixed-size image left the rest of the column as a blank white block. */
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     object-position: top;
   }
@@ -3391,6 +3401,9 @@
 
   .sportarr-detail-page {
     display: grid;
+    /* A bare grid track grows to its widest child, so the non-wrapping page
+       title stretched the whole page to ~3000px. Let the track shrink. */
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--card-body-spacing-before);
   }
 
@@ -3466,7 +3479,7 @@
 
   .sportarr-event-date,
   .sportarr-event-state {
-    color: rgb(var(--theme-control-text) / 0.76);
+    color: rgb(var(--theme-control-text) / 0.9);
     font-size: var(--card-body-font-size);
   }
 
@@ -3485,6 +3498,10 @@
 
   .sportarr-event-file-ready {
     color: var(--palette-green-light);
+  }
+
+  :root[data-theme-mode='light'] .sportarr-event-file-ready {
+    color: color-mix(in srgb, var(--palette-green-dark) 70%, black);
   }
 
   .sportarr-event-file-ready svg {
@@ -4162,6 +4179,33 @@
   .poster-layout [data-poster-region='association-slot'],
   .poster-layout [data-poster-region='watchlist-slot'] {
     min-width: 0;
+  }
+
+  /* Secondary actions (associations, blocklist) sat on top of every poster's
+     artwork and title at all times. With a pointer they now appear on hover or
+     keyboard focus; touch screens have no hover, so they stay visible there.
+     Hidden slots also stop receiving clicks so nothing invisible is pressed. */
+  @media (hover: hover) and (pointer: fine) {
+    .poster-layout [data-poster-region='association-slot'],
+    .poster-layout [data-poster-region='blocklist-slot'] {
+      transition: opacity 150ms ease-in-out;
+    }
+
+    .poster-layout:not(:hover):not(:focus-within)
+      :is(
+        [data-poster-region='association-slot'],
+        [data-poster-region='blocklist-slot']
+      ) {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .poster-layout [data-poster-region='association-slot'],
+    .poster-layout [data-poster-region='blocklist-slot'] {
+      transition: none;
+    }
   }
 
   .poster-layout [data-poster-region='status-slot'] {
@@ -4999,9 +5043,14 @@
     @apply border-emerald-400 bg-emerald-500;
   }
 
+  /* An <input> with no type attribute (and url/email fields) matched none of
+     these selectors and rendered as a native white box on dark pages. */
+  input:not([type]),
   input[type='text'],
   input[type='number'],
   input[type='password'],
+  input[type='url'],
+  input[type='email'],
   select,
   textarea {
     @apply block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-gray-100 transition duration-150 ease-in-out sm:text-sm sm:leading-5;
@@ -5089,6 +5138,29 @@
       drop-shadow(0 0 3px rgb(0 0 0 / 0.95));
   }
 
+  /* The black halo exists to keep white labels legible over dark artwork. On a
+     light page it just smudges dark labels (and fails contrast), so light mode
+     drops it from ordinary buttons; poster controls keep theirs because they
+     always sit on artwork. */
+  :root[data-theme-mode='light']
+    :is(
+      .app-button,
+      button:not(.app-filter-button):not(.app-control-shadow-exempt)
+    ):not(.poster-control) {
+    text-shadow: none;
+  }
+
+  :root[data-theme-mode='light']
+    :is(
+      .app-button,
+      button:not(.app-filter-button):not(.app-control-shadow-exempt),
+      .detail-disclosure-control,
+      .selection-circle
+    ):not(.poster-control)
+    svg {
+    filter: none;
+  }
+
   button.app-button:disabled {
     text-shadow: none;
   }
@@ -5119,6 +5191,20 @@
 
   .app-button-primary {
     @apply border-indigo-500/90 bg-indigo-950/55 text-indigo-200 hover:border-indigo-300 hover:bg-indigo-900/70 hover:text-white focus:border-indigo-300 focus:ring-indigo-500 active:border-indigo-400 active:bg-indigo-900/85;
+  }
+
+  /* The dark-mode treatment (translucent dark tint, pale label) becomes a mid
+     tint with a dark label on a light page, about 2:1. Use a solid accent with
+     a white label there. */
+  :root[data-theme-mode='light'] .app-button-primary {
+    border-color: rgb(var(--color-indigo-700));
+    background-color: rgb(var(--color-indigo-700));
+    color: #fff;
+  }
+
+  :root[data-theme-mode='light'] .app-button-primary:hover {
+    background-color: rgb(var(--color-indigo-600));
+    color: #fff;
   }
 
   .app-button-danger,
@@ -6160,6 +6246,11 @@
     color: hsl(217 100% 72%);
   }
 
+  /* Pale blue on the mid tint a dark translucent fill becomes over a light page. */
+  :root[data-theme-mode='light'] .app-button-prowlarr {
+    color: #fff;
+  }
+
   .app-button-prowlarr:hover {
     border-color: color-mix(in srgb, var(--palette-blue) 65%, white);
     background-color: hsl(217 100% 20% / 0.7);
@@ -6733,7 +6824,10 @@
     color: #fff;
   }
 
-  .game-library-sharing-label {
+  /* Labels beside a selection circle share one size; most callers render a
+     bare <span> and never selected this class, so they fell back to 16px. */
+  .game-library-sharing-label,
+  .app-action-row > .selection-circle + span {
     font-size: var(--card-body-font-size);
     line-height: var(--card-copy-line-height);
     color: rgb(var(--theme-control-text) / 0.9);

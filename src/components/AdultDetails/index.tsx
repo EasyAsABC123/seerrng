@@ -147,7 +147,7 @@ const AdultDetails = () => {
 
   if (!data) {
     return (
-      <div className="media-page grid animate-pulse gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className="media-page grid animate-pulse grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <section className="space-y-5">
           <div className="h-5 w-36 rounded bg-gray-800" />
           <div className="h-10 w-3/4 rounded bg-gray-800" />
@@ -168,7 +168,7 @@ const AdultDetails = () => {
     <>
       <PageTitle title={data.title} />
       <div className="media-page space-y-5">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <section className="order-2 space-y-5 lg:order-1">
             <Link
               href={returnHref}
@@ -202,7 +202,7 @@ const AdultDetails = () => {
               </p>
             )}
 
-            <dl className="grid max-w-3xl gap-4 sm:grid-cols-[9rem_minmax(0,1fr)]">
+            <dl className="grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-[9rem_minmax(0,1fr)]">
               {data.studio && (
                 <>
                   <dt className="text-sm font-medium text-gray-400">

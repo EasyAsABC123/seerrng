@@ -172,6 +172,44 @@ describe('themePalettes', () => {
     assert.equal(lightTokens.artworkGradientBlack, '0 0 0');
   });
 
+  it('keeps every light-mode text shade readable on its page background in every palette', () => {
+    for (const palette of themePalettes) {
+      const tokens = getThemeTokens('light', palette.id);
+
+      // gray-50..gray-500 are body, secondary and label text.
+      for (const [index, shade] of tokens.surfaceScale.slice(0, 6).entries()) {
+        for (const background of [
+          tokens.pageBg,
+          tokens.pageGlowStart,
+          tokens.pageGradientMain,
+        ]) {
+          assert.ok(
+            getContrastRatio(shade, background) >= 4.5,
+            `${palette.name} light gray-${[50, 100, 200, 300, 400, 500][index]} needs 4.5:1 on ${background}`
+          );
+        }
+      }
+    }
+  });
+
+  it('keeps light-mode accent text shades (indigo and purple 100-400) readable', () => {
+    for (const palette of themePalettes) {
+      const tokens = getThemeTokens('light', palette.id);
+
+      for (const [name, scale] of [
+        ['indigo', tokens.primaryScale],
+        ['purple', tokens.secondaryScale],
+      ] as const) {
+        for (const index of [1, 2, 3, 4]) {
+          assert.ok(
+            getContrastRatio(scale[index], tokens.pageBg) >= 4.5,
+            `${palette.name} light ${name}-${[50, 100, 200, 300, 400][index]} needs 4.5:1 on the page`
+          );
+        }
+      }
+    }
+  });
+
   it('keeps light-mode control and heading colors readable across palettes', () => {
     for (const palette of themePalettes) {
       const tokens = getThemeTokens('light', palette.id);

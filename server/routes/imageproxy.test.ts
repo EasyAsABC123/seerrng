@@ -9,6 +9,7 @@ import request from 'supertest';
 import imageproxyRoutes, {
   IMAGE_PROXY_CACHE_MISS_LIMIT,
   IMAGE_PROXY_REQUEST_LIMIT,
+  IMAGE_WARM_REQUEST_LIMIT,
 } from './imageproxy';
 
 const imageResponse: ImageResponse = {
@@ -314,6 +315,9 @@ describe('POST /imageproxy/warm', () => {
 
     assert.equal(res.status, 202);
     assert.deepEqual(res.body, { accepted: true });
-    assert.equal(Number(res.headers['ratelimit-limit']), 10);
+    assert.equal(
+      Number(res.headers['ratelimit-limit']),
+      IMAGE_WARM_REQUEST_LIMIT
+    );
   });
 });

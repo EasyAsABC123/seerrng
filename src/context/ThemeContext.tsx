@@ -636,6 +636,68 @@ const mixRgb = (from: string, to: string, amount: number): string => {
     .join(' ');
 };
 
+const getRelativeLuminance = (value: string): number => {
+  const [red, green, blue] = parseRgb(value).map((channel) => {
+    const normalized = channel / 255;
+
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+};
+
+export const getContrastRatio = (
+  foreground: string,
+  background: string
+): number => {
+  const [lighter, darker] = [
+    getRelativeLuminance(foreground),
+    getRelativeLuminance(background),
+  ].sort((left, right) => right - left);
+
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+/** Gray shades 50-500 are used as body, secondary and label text. */
+const TEXT_SHADE_COUNT = 6;
+export const LIGHT_TEXT_MIN_CONTRAST = 4.5;
+
+/**
+ * Light surface scales are blended from each palette's hues, and several
+ * (Citrus, Gold, Forest, Moss, Ember...) ended up with secondary text near
+ * 2.4:1 against their own page. Darken only the text shades until each one
+ * meets the contrast minimum on every background it can sit on.
+ */
+const ensureReadableLightText = (
+  scale: readonly string[],
+  backgrounds: readonly string[],
+  firstShade = 0,
+  lastShade = TEXT_SHADE_COUNT - 1
+): string[] =>
+  scale.map((shade, index) => {
+    if (index < firstShade || index > lastShade) {
+      return shade;
+    }
+
+    const worst = (candidate: string) =>
+      Math.min(
+        ...backgrounds.map((background) =>
+          getContrastRatio(candidate, background)
+        )
+      );
+
+    for (let step = 0; step <= 20; step++) {
+      const candidate = mixRgb(shade, '0 0 0', step * 0.05);
+      if (worst(candidate) >= LIGHT_TEXT_MIN_CONTRAST) {
+        return candidate;
+      }
+    }
+
+    return mixRgb(shade, '0 0 0', 1);
+  });
+
 const rgbToHex = (value: string): string =>
   `#${parseRgb(value)
     .map((channel) => channel.toString(16).padStart(2, '0'))
@@ -891,7 +953,7 @@ export const getThemeTokens = (mode: ThemeMode, palette: string) => {
       : basePalette;
   const primaryScale = themeScales[activePalette.primary];
   const secondaryScale = themeScales[activePalette.secondary];
-  const surfaceScale =
+  const baseSurfaceScale =
     mode === 'dark' &&
     (activePalette.chrome === 'classic' || activePalette.chrome === 'blackout')
       ? themeScales[activePalette.surface]
@@ -901,13 +963,31 @@ export const getThemeTokens = (mode: ThemeMode, palette: string) => {
           secondaryScale,
           mode
         );
-  const chromeTokens = getThemeChromeTokens(
-    surfaceScale,
+  const baseChromeTokens = getThemeChromeTokens(
+    baseSurfaceScale,
     primaryScale,
     secondaryScale,
     mode,
     activePalette.chrome
   );
+  const surfaceScale =
+    mode === 'light'
+      ? ensureReadableLightText(baseSurfaceScale, [
+          baseChromeTokens.pageBg,
+          baseChromeTokens.pageGlowStart,
+          baseChromeTokens.pageGradientMain,
+        ])
+      : baseSurfaceScale;
+  const chromeTokens =
+    mode === 'light'
+      ? getThemeChromeTokens(
+          surfaceScale,
+          primaryScale,
+          secondaryScale,
+          mode,
+          activePalette.chrome
+        )
+      : baseChromeTokens;
   const darkSurfaceScale =
     mode === 'dark'
       ? surfaceScale
@@ -931,11 +1011,28 @@ export const getThemeTokens = (mode: ThemeMode, palette: string) => {
           activePalette.chrome
         );
 
+  // Accent text (text-indigo-200/300/400 links, labels and values) is a pale
+  // tint in the shared scale, which vanishes on a light page. Darken only
+  // shades 100-400 in light mode; 500+ stay as the button and ring colours.
+  const accentBackgrounds = [
+    chromeTokens.pageBg,
+    chromeTokens.pageGlowStart,
+    chromeTokens.pageGradientMain,
+  ];
+  const readablePrimaryScale =
+    mode === 'light'
+      ? ensureReadableLightText(primaryScale, accentBackgrounds, 1, 4)
+      : primaryScale;
+  const readableSecondaryScale =
+    mode === 'light'
+      ? ensureReadableLightText(secondaryScale, accentBackgrounds, 1, 4)
+      : secondaryScale;
+
   return {
     activePaletteId: activePalette.id,
     selectedPaletteId: basePalette.id,
-    primaryScale,
-    secondaryScale,
+    primaryScale: readablePrimaryScale,
+    secondaryScale: readableSecondaryScale,
     surfaceScale,
     chrome: activePalette.chrome,
     ...chromeTokens,

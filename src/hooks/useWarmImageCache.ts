@@ -1,6 +1,6 @@
 import useSettings from '@app/hooks/useSettings';
 import { getTmdbPosterImageUrl } from '@app/utils/imageCache';
-import axios from 'axios';
+import { enqueueImageWarm } from '@app/utils/imageWarmQueue';
 import { useEffect, useMemo } from 'react';
 
 type ImageWarmableResult = {
@@ -104,36 +104,20 @@ const useWarmImageCache = (
       return;
     }
 
-    const controller = new AbortController();
-    const warm = () => {
-      axios
-        .post(
-          '/api/v1/imageproxy/warm',
-          { urls: imageUrls },
-          { signal: controller.signal }
-        )
-        .catch(() => {
-          // Cache warming is opportunistic and should never affect the UI.
-        });
-    };
+    // All components share one rate-aware queue (see imageWarmQueue).
+    const warm = () => enqueueImageWarm(imageUrls);
 
     if ('requestIdleCallback' in window) {
       const idleCallbackId = window.requestIdleCallback(warm, {
         timeout: 3000,
       });
 
-      return () => {
-        window.cancelIdleCallback(idleCallbackId);
-        controller.abort();
-      };
+      return () => window.cancelIdleCallback(idleCallbackId);
     }
 
     const timeoutId = globalThis.setTimeout(warm, 250);
 
-    return () => {
-      globalThis.clearTimeout(timeoutId);
-      controller.abort();
-    };
+    return () => globalThis.clearTimeout(timeoutId);
   }, [currentSettings.cacheImages, enabled, imageUrls]);
 };
 

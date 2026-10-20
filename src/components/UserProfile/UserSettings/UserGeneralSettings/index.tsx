@@ -995,7 +995,7 @@ const UserGeneralSettings = () => {
                             ) => (
                               <a
                                 href="https://support.plex.tv/articles/universal-watchlist/"
-                                className="text-white transition duration-300 hover:underline"
+                                className="text-gray-100 transition duration-300 hover:underline"
                                 target="_blank"
                                 rel="noreferrer"
                               >
@@ -1040,7 +1040,7 @@ const UserGeneralSettings = () => {
                             ) => (
                               <a
                                 href="https://support.plex.tv/articles/universal-watchlist/"
-                                className="text-white transition duration-300 hover:underline"
+                                className="text-gray-100 transition duration-300 hover:underline"
                                 target="_blank"
                                 rel="noreferrer"
                               >

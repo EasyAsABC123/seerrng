@@ -96,8 +96,9 @@ test('Request preserves its typography, color and border styling', () => {
   assert.doesNotMatch(requestRule, /@apply/);
 });
 
-test('action buttons fit a 16px detail row without shrinking their text', () => {
-  assert.match(css, /--action-control-height: 1rem;/);
+test('action buttons keep the 24px WCAG target without growing their text or glyphs', () => {
+  assert.match(css, /--action-control-height: 1\.5rem;/);
+  assert.match(css, /--action-control-content-height: 0\.875rem;/);
   assert.match(css, /--button-padding-x: 5px;/);
   assert.match(css, /--action-control-padding-x: var\(--button-padding-x\);/);
   assert.match(css, /--compact-button-padding-x: var\(--button-padding-x\);/);
@@ -129,7 +130,8 @@ test('editable inputs retain 20px while dropdown buttons share 16px action sizin
 });
 
 test('poster badges keep the shared compact poster geometry', () => {
-  assert.match(css, /--poster-control-height: 1rem;/);
+  assert.match(css, /--poster-control-height: 1\.5rem;/);
+  assert.match(css, /--poster-control-content-height: 0\.875rem;/);
   assert.match(css, /--poster-control-padding-x: var\(--button-padding-x\);/);
   assert.match(css, /--poster-control-gap: 0\.125rem;/);
   assert.match(

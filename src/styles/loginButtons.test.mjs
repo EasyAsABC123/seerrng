@@ -27,7 +27,7 @@ const assertLoginGeometry = (stylesheet) => {
   }
   assert.equal(
     contract.declaration(':root', '--action-control-height'),
-    '1rem'
+    '1.5rem'
   );
   assert.equal(contract.declaration(':root', '--button-padding-x'), '5px');
   assert.equal(

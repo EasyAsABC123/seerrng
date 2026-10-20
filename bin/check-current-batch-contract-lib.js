@@ -1865,8 +1865,8 @@ const validateCurrentBatchContract = (files) => {
   );
   requireText(
     globals,
-    '--action-control-height: 1rem;',
-    'all shared action-button aliases must resolve through the approved 16-pixel action token'
+    '--action-control-height: 1.5rem;',
+    'all shared action-button aliases must resolve through the approved 24-pixel action token'
   );
   requireText(
     globals,
@@ -6169,8 +6169,8 @@ const validateCurrentBatchContract = (files) => {
   );
   requireText(
     globals,
-    '--action-control-height: 1rem;',
-    'the shared standard-size token must resolve to the approved 16-pixel height'
+    '--action-control-height: 1.5rem;',
+    'the shared standard-size token must resolve to the approved 24-pixel height'
   );
   for (const token of [
     'expect(bounds.height).to.eq(16)',
