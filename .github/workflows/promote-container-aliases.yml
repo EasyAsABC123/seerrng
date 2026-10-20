@@ -55,7 +55,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: echo "tag=$(scripts/latest-published-release-tag.sh)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          tag="$(scripts/latest-published-release-tag.sh)"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
 
       - name: Verify release image provenance and version
         env:
