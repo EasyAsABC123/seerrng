@@ -833,3 +833,7 @@ Contributions should target SeerrNG behavior and this repository's current branc
 ## Attribution
 
 SeerrNG builds on Seerr, Jellyseerr, and Overseerr. Inherited code, documentation, and design remain credited to their original contributors. Fork-specific changes are credited to snapetech and SeerrNG contributors unless otherwise noted. See [NOTICE.md](./NOTICE.md) for the full attribution policy.
+
+## Local security scanning
+
+Run `./scripts/security-scan-local.sh` for local Semgrep CE and the Trivy scanners that fit this repository. The installed pre-commit hook scans the staged source/config snapshot after linting; Trivy runs on demand or in CI. This public repository also runs Semgrep CE and Trivy in GitHub Actions on main changes, pull requests, and weekly. Semgrep reports are retained as run artifacts for triage. See [security-scanning.md](docs/security-scanning.md). Use `./scripts/update-security-tools.sh` to refresh local scanner data and the Trivy database.

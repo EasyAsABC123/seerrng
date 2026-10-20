@@ -168,9 +168,11 @@ jobs:
             echo "Launchpad PPA does not exist or is not public: $archive_web" >&2
             echo "Create that PPA, or set LAUNCHPAD_PPA to an existing archive owned by ${owner}." >&2
             echo "Public PPAs currently visible for ${owner}:" >&2
-            curl --fail --silent "https://api.launchpad.net/1.0/${owner}/ppas" \
-              | python3 -c 'import json, sys; data=json.load(sys.stdin); [print("  {} ({})".format(entry["reference"], entry["web_link"])) for entry in data.get("entries", [])]' >&2 \
-              || true
+            ppa_list="$(mktemp)"
+            if curl --fail --silent "https://api.launchpad.net/1.0/${owner}/ppas" --output "$ppa_list"; then
+              python3 -c 'import json, sys; data=json.load(open(sys.argv[1])); [print("  {} ({})".format(entry["reference"], entry["web_link"])) for entry in data.get("entries", [])]' "$ppa_list" >&2 || true
+            fi
+            rm -f "$ppa_list"
             exit 1
           fi
 

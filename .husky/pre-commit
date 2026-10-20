@@ -1,2 +1,5 @@
+#!/bin/sh
+repo_root="$(git rev-parse --show-toplevel)"
 [ -n "$HUSKY_BYPASS" ] || pnpm attribution:check || exit $?
 pnpm exec lint-staged || exit $?
+"$repo_root/scripts/security-scan-local.sh" --staged --semgrep-only
