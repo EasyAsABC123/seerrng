@@ -69,6 +69,7 @@ for (const alias of requiredAliases) {
 if (
   publishStart < 0 ||
   scanStart < 0 ||
+  !publishBlock.includes('flavor: latest=false') ||
   releaseTags.length !== 1 ||
   releaseTags[0] !== 'type=semver,pattern={{raw}},value=${{ env.VERSION }}' ||
   /type=raw,value=(?:main|master|latest|stable)|pattern=v\{\{major\}\}/u.test(
@@ -84,6 +85,7 @@ if (
 if (
   mainPublishStart < 0 ||
   mainScanStart < 0 ||
+  !mainPublishBlock.includes('flavor: latest=false') ||
   mainTags.length !== 1 ||
   mainTags[0] !== 'type=sha' ||
   /type=raw,value=(?:main|master|latest|stable)/u.test(mainPublishBlock)

@@ -391,6 +391,7 @@ jobs:
           images: |
             ${{ env.DOCKER_HUB }}
             ${{ env.GHCR_IMAGE }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{raw}},value=${{ env.VERSION }}
           labels: |
