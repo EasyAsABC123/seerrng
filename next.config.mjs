@@ -28,16 +28,6 @@ const nextConfig = {
     commitTag: process.env.COMMIT_TAG || 'local',
     unsafeDoNotUseDemo: process.env.UNSAFE_DO_NOT_USE_DEMO,
   },
-  async redirects() {
-    return [
-      // "Book Vibes" was renamed to Book Recommendations; keep old links working.
-      {
-        source: '/discover/vibes',
-        destination: '/discover/book-recommendations',
-        permanent: true,
-      },
-    ];
-  },
   async headers() {
     if (process.env.NODE_ENV === 'development') {
       return [];
