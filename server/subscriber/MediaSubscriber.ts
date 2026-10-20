@@ -209,8 +209,10 @@ export class MediaSubscriber implements EntitySubscriberInterface<Media> {
           }
         }
 
-        if (completedRequests.length > 0) {
-          await requestRepository.save(completedRequests);
+        // A batched save would run each afterUpdate concurrently on this
+        // connection and collide on savepoints; save one request at a time.
+        for (const request of completedRequests) {
+          await requestRepository.save(request);
         }
       }
     );
