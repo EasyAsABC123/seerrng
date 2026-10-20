@@ -23,7 +23,7 @@ Every cross-media feature is optional. When a service is missing or too old, the
 | Game editions and selected content | QuestarrNG with `editions` and `wantedContent` | The base-game request |
 | Game Finder | QuestarrNG with `discover` | An explanation that discovery needs QuestarrNG |
 | Translations & Hacks | ROMarrNG with `patchCatalog` and a patch catalogue | An explanation; the original-game request still works |
-| Book Vibes | A Hardcover API token with the `read:vibes` scope on your Hardcover list | An explanation of what to add |
+| Book recommendations | A Hardcover API token with permission to read recommendation feeds on your Hardcover list | An explanation of what to add |
 | Collector Picks | slskdN with social federation enabled | An explanation |
 | Following | Nothing | — |
 | Auto-request from Following | Book follows only; your request permission and quota | The option is hidden for other kinds |

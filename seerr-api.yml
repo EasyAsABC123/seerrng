@@ -34,8 +34,8 @@ tags:
     description: Game editions, add-ons, and saved game discovery.
   - name: patches
     description: Translation, hack, and improvement projects.
-  - name: vibes
-    description: Hardcover vibes feeds.
+  - name: book-recommendations
+    description: Hardcover book recommendation feeds.
   - name: collectors
     description: Releases shared by followed collectors and album edition comparison.
   - name: auth
@@ -11409,25 +11409,25 @@ paths:
                 additionalProperties: true
         '404':
           description: Not found
-  /vibes:
+  /book-recommendations:
     get:
-      summary: List Hardcover vibes
-      description: Uses the Hardcover token saved on the person's Hardcover list. The token needs the read:vibes scope.
+      summary: List Hardcover book recommendation feeds
+      description: Uses the Hardcover token saved on the person's Hardcover list with permission to read recommendation feeds.
       tags:
-        - vibes
+        - book-recommendations
       responses:
         '200':
-          description: Vibes, or available false with the reason
+          description: Recommendation feeds, or available false with the reason
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties: true
     post:
-      summary: Create a custom vibe on Hardcover
+      summary: Create a personalized recommendation feed on Hardcover
       description: Hardcover requires a Supporter account for this.
       tags:
-        - vibes
+        - book-recommendations
       requestBody:
         required: true
         content:
@@ -11472,11 +11472,11 @@ paths:
           description: Created
         '403':
           description: Hardcover Supporter account required
-  /vibes/{id}/books:
+  /book-recommendations/{id}/books:
     post:
-      summary: Books in a vibe, with SeerrNG-side tuning
+      summary: Books in a recommendation feed, with SeerrNG-side tuning
       tags:
-        - vibes
+        - book-recommendations
       parameters:
         - in: path
           name: id

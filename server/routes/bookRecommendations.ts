@@ -1,20 +1,20 @@
 import {
-  createCustomVibe,
+  createPersonalizedFeed,
   getHardcoverToken,
   getHardcoverUserId,
-  getVibeBooks,
-  HardcoverVibesError,
-  listVibes,
-  type VibeTuning,
-} from '@server/lib/hardcoverVibes';
+  getRecommendedBooks,
+  HardcoverRecommendationsError,
+  listRecommendationFeeds,
+  type RecommendationTuning,
+} from '@server/lib/hardcoverRecommendations';
 import logger from '@server/logger';
 import type { Response } from 'express';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 
-const vibeRoutes = Router();
+const bookRecommendationRoutes = Router();
 
-vibeRoutes.use(
+bookRecommendationRoutes.use(
   rateLimit({
     windowMs: 60 * 1000,
     limit: 30,
@@ -26,7 +26,7 @@ vibeRoutes.use(
 );
 
 const respondError = (res: Response, error: unknown) => {
-  if (error instanceof HardcoverVibesError) {
+  if (error instanceof HardcoverRecommendationsError) {
     const status =
       error.code === 'no-token'
         ? 200
@@ -39,8 +39,8 @@ const respondError = (res: Response, error: unknown) => {
       .status(status)
       .json({ available: false, code: error.code, error: error.message });
   }
-  logger.warn('Hardcover vibes failed', {
-    label: 'Vibes',
+  logger.warn('Hardcover book recommendations failed', {
+    label: 'Book Recommendations',
     errorMessage: error instanceof Error ? error.message : String(error),
   });
   return res.status(502).json({
@@ -68,7 +68,7 @@ const names = (value: unknown): string[] | undefined =>
         .slice(0, 20)
     : undefined;
 
-const parseTuning = (value: unknown): VibeTuning => {
+const parseTuning = (value: unknown): RecommendationTuning => {
   const raw = (value && typeof value === 'object' ? value : {}) as Record<
     string,
     unknown
@@ -84,7 +84,7 @@ const parseTuning = (value: unknown): VibeTuning => {
   };
 };
 
-vibeRoutes.get('/', async (req, res) => {
+bookRecommendationRoutes.get('/', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in.' });
   const token = await getHardcoverToken(req.user.id);
   if (!token) {
@@ -95,36 +95,43 @@ vibeRoutes.get('/', async (req, res) => {
   try {
     return res
       .status(200)
-      .json({ available: true, results: await listVibes(token) });
+      .json({ available: true, results: await listRecommendationFeeds(token) });
   } catch (error) {
     return respondError(res, error);
   }
 });
 
-vibeRoutes.post<{ id: string }>('/:id/books', async (req, res) => {
-  if (!req.user) return res.status(401).json({ error: 'Sign in.' });
-  const id = Number(req.params.id);
-  if (!Number.isSafeInteger(id) || id <= 0) {
-    return res.status(400).json({ error: 'Invalid vibe.' });
+bookRecommendationRoutes.post<{ id: string }>(
+  '/:id/books',
+  async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Sign in.' });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid recommendation feed.' });
+    }
+    const token = await getHardcoverToken(req.user.id);
+    if (!token) {
+      return res
+        .status(200)
+        .json({ available: false, code: 'no-token', books: [] });
+    }
+    try {
+      return res.status(200).json({
+        available: true,
+        ...(await getRecommendedBooks(
+          token,
+          id,
+          parseTuning(req.body?.tuning)
+        )),
+      });
+    } catch (error) {
+      return respondError(res, error);
+    }
   }
-  const token = await getHardcoverToken(req.user.id);
-  if (!token) {
-    return res
-      .status(200)
-      .json({ available: false, code: 'no-token', books: [] });
-  }
-  try {
-    return res.status(200).json({
-      available: true,
-      ...(await getVibeBooks(token, id, parseTuning(req.body?.tuning))),
-    });
-  } catch (error) {
-    return respondError(res, error);
-  }
-});
+);
 
 /** Supporter-only. Hardcover enforces it; we pass its answer through. */
-vibeRoutes.post('/', async (req, res) => {
+bookRecommendationRoutes.post('/', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in.' });
   const body = (req.body ?? {}) as Record<string, unknown>;
   const title = typeof body.title === 'string' ? body.title.trim() : '';
@@ -136,7 +143,7 @@ vibeRoutes.post('/', async (req, res) => {
     return res.status(200).json({ available: false, code: 'no-token' });
   try {
     const hardcoverUserId = await getHardcoverUserId(token);
-    const created = await createCustomVibe(token, {
+    const created = await createPersonalizedFeed(token, {
       title,
       description:
         typeof body.description === 'string' ? body.description : undefined,
@@ -160,4 +167,4 @@ vibeRoutes.post('/', async (req, res) => {
   }
 });
 
-export default vibeRoutes;
+export default bookRecommendationRoutes;

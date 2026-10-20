@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting cross-media features
-description: Fixes for share, continuation, edition, patch, Vibes, and Following problems.
+description: Fixes for share, continuation, edition, patch, book recommendation, and Following problems.
 sidebar_position: 16
 ---
 
@@ -24,7 +24,7 @@ sidebar_position: 16
 
 **A patch request fails with `BASE_MISMATCH`.** The base game in the library is not the dump the patch was made for. Request the base game in the right region or revision first.
 
-**Book Vibes asks for a token.** Add a Hardcover list with your API token (it must include the `read:vibes` scope). Creating a vibe needs a Hardcover Supporter account.
+**Book recommendations ask for a token.** Add a Hardcover list with an API token that can read recommendation feeds. Creating a personalized feed needs a Hardcover Supporter account.
 
 **Collector Picks is empty.** slskdN needs social federation enabled and trusted collectors followed.
 

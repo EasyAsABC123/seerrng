@@ -278,7 +278,12 @@ const Following = () => {
             {intl.formatMessage(messages.startFollowing)}
           </h3>
           <RelatedTools
-            tools={['vibes', 'collectors', 'gameFinder', 'patches']}
+            tools={[
+              'bookRecommendations',
+              'collectors',
+              'gameFinder',
+              'patches',
+            ]}
           />
         </section>
       ) : (

@@ -36,7 +36,7 @@ const screens: [string, string][] = [
   ['/following', 'Following'],
   ['/franchise/tv/1396', 'Franchise'],
   ['/discover/games', 'Game'],
-  ['/discover/vibes', 'Vibes'],
+  ['/discover/book-recommendations', 'Book Recommendations'],
   ['/discover/collectors', 'Collector'],
   ['/discover/patches', 'Patch'],
   ['/', 'Share & Identify'],

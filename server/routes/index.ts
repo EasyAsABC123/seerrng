@@ -64,6 +64,7 @@ import authRoutes from './auth';
 import authorRoutes from './author';
 import blocklistRoutes from './blocklist';
 import bookRoutes from './book';
+import bookRecommendationRoutes from './bookRecommendations';
 import calendarRoutes from './calendar';
 import collectionRoutes from './collection';
 import collectionCatalogRoutes from './collectionCatalog';
@@ -107,7 +108,6 @@ import sportarrRoutes from './sportarr';
 import swipeRoutes from './swipe';
 import tvRoutes from './tv';
 import user from './user';
-import vibeRoutes from './vibes';
 
 const router = Router();
 const maxTmdbId = 1_000_000_000;
@@ -430,7 +430,11 @@ router.use('/follow', isAuthenticated(), followRoutes);
 router.use('/franchise', isAuthenticated(), franchiseRoutes);
 router.use('/game-content', isAuthenticated(), gameContentRoutes);
 router.use('/patches', isAuthenticated(), patchRoutes);
-router.use('/vibes', isAuthenticated(), vibeRoutes);
+router.use(
+  '/book-recommendations',
+  isAuthenticated(),
+  bookRecommendationRoutes
+);
 router.use('/collectors', isAuthenticated(), collectorRoutes);
 router.use('/readmeabook', isAuthenticated(), readMeABookRoutes);
 router.get('/settings/public', async (req, res) => {

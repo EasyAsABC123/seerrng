@@ -3,20 +3,20 @@ import { ExternalRequestList } from '@server/entity/ExternalRequestList';
 import axios from 'axios';
 
 const HARDCOVER_GRAPHQL_URL = 'https://api.hardcover.app/v1/graphql';
-const MAX_VIBE_BOOKS = 100;
+const MAX_RECOMMENDED_BOOKS = 100;
 
-export class HardcoverVibesError extends Error {
+export class HardcoverRecommendationsError extends Error {
   constructor(
     message: string,
     public readonly code:
       'no-token' | 'rejected' | 'scope' | 'supporter-required' | 'unavailable'
   ) {
     super(message);
-    this.name = 'HardcoverVibesError';
+    this.name = 'HardcoverRecommendationsError';
   }
 }
 
-export interface VibeSummary {
+export interface RecommendationFeed {
   id: number;
   title: string;
   description?: string | null;
@@ -25,10 +25,10 @@ export interface VibeSummary {
   owner?: string;
   /** mine, featured, or popular: why this feed is being shown. */
   source: 'mine' | 'featured' | 'popular';
-  vibeType?: number;
+  feedType?: number;
 }
 
-export interface VibeBook {
+export interface BookRecommendation {
   id: number;
   title: string;
   slug?: string;
@@ -40,7 +40,7 @@ export interface VibeBook {
   isbn13?: string;
 }
 
-export interface VibeTuning {
+export interface RecommendationTuning {
   /** Keep only books that are not part of a series. */
   standalones?: boolean;
   /** Keep standalones and the first book of each series. */
@@ -93,102 +93,112 @@ const gql = async <T>(
     }
   );
   if (response.status === 401 || response.status === 403) {
-    throw new HardcoverVibesError(
+    throw new HardcoverRecommendationsError(
       'Hardcover rejected the API token.',
       'rejected'
     );
   }
   if (response.status < 200 || response.status >= 300) {
-    throw new HardcoverVibesError('Hardcover is unavailable.', 'unavailable');
+    throw new HardcoverRecommendationsError(
+      'Hardcover is unavailable.',
+      'unavailable'
+    );
   }
   const message = response.data?.errors?.[0]?.message ?? '';
   if (message) {
     if (/supporter/i.test(message)) {
-      throw new HardcoverVibesError(
-        'Creating vibes requires a Hardcover Supporter account.',
+      throw new HardcoverRecommendationsError(
+        'Creating personalized feeds requires a Hardcover Supporter account.',
         'supporter-required'
       );
     }
     if (/scope|permission|not authorized|access/i.test(message)) {
-      throw new HardcoverVibesError(
-        'The Hardcover token needs the read:vibes scope.',
+      throw new HardcoverRecommendationsError(
+        'The Hardcover token needs permission to read book recommendation feeds.',
         'scope'
       );
     }
-    throw new HardcoverVibesError(
-      'Hardcover rejected the vibe query.',
+    throw new HardcoverRecommendationsError(
+      'Hardcover rejected the book recommendation query.',
       'unavailable'
     );
   }
   if (!response.data?.data) {
-    throw new HardcoverVibesError('Hardcover returned no data.', 'unavailable');
+    throw new HardcoverRecommendationsError(
+      'Hardcover returned no data.',
+      'unavailable'
+    );
   }
   return response.data.data;
 };
 
-interface RawVibe {
+// Keep Hardcover's provider-specific GraphQL field names inside this adapter.
+interface RawFeed {
   id: number;
   title: string;
   slug?: string;
   description?: string | null;
   likes_count?: number;
-  vibe_type?: number;
+  feedType?: number;
   user?: { username?: string } | null;
 }
 
 const toSummary = (
-  vibe: RawVibe,
-  source: VibeSummary['source']
-): VibeSummary => ({
-  id: vibe.id,
-  title: vibe.title,
-  description: vibe.description ?? null,
-  slug: vibe.slug,
-  likes: vibe.likes_count ?? 0,
-  owner: vibe.user?.username,
+  feed: RawFeed,
+  source: RecommendationFeed['source']
+): RecommendationFeed => ({
+  id: feed.id,
+  title: feed.title,
+  description: feed.description ?? null,
+  slug: feed.slug,
+  likes: feed.likes_count ?? 0,
+  owner: feed.user?.username,
   source,
-  vibeType: vibe.vibe_type,
+  feedType: feed.feedType,
 });
 
-const VIBE_FIELDS = `id title slug description likes_count vibe_type user { username }`;
+// Keep Hardcover's provider-specific schema identifiers inside this adapter.
+const FEED_FIELDS = `id title slug description likes_count feedType: vibe_type user { username }`;
 
-/** The person's own vibes, then featured and popular public feeds. */
-export const listVibes = async (token: string): Promise<VibeSummary[]> => {
+/** The person's own feeds, then featured and popular public feeds. */
+export const listRecommendationFeeds = async (
+  token: string
+): Promise<RecommendationFeed[]> => {
   const data = await gql<{
     me: { id: number }[] | { id: number };
-    featured: RawVibe[];
-    popular: RawVibe[];
+    featured: RawFeed[];
+    popular: RawFeed[];
   }>(
     token,
-    `query SeerrNGVibes {
+    `query SeerrNGBookRecommendations {
       me { id }
-      featured: vibes(where: {featured: {_eq: true}}, order_by: {featured_at: desc}, limit: 12) { ${VIBE_FIELDS} }
-      popular: vibes(where: {privacy_setting_id: {_eq: 1}, vibe_type: {_eq: 0}}, order_by: {likes_count: desc}, limit: 12) { ${VIBE_FIELDS} }
+      featured: vibes(where: {featured: {_eq: true}}, order_by: {featured_at: desc}, limit: 12) { ${FEED_FIELDS} }
+      popular: vibes(where: {privacy_setting_id: {_eq: 1}, vibe_type: {_eq: 0}}, order_by: {likes_count: desc}, limit: 12) { ${FEED_FIELDS} }
     }`
   );
   const meId = Array.isArray(data.me) ? data.me[0]?.id : data.me?.id;
-  let mine: RawVibe[] = [];
+  let mine: RawFeed[] = [];
   if (meId) {
-    const own = await gql<{ vibes: RawVibe[] }>(
+    const own = await gql<{ personalFeeds: RawFeed[] }>(
       token,
-      `query SeerrNGMyVibes($id: Int!) {
-        vibes(where: {user_id: {_eq: $id}}, order_by: {updated_at: desc}, limit: 30) { ${VIBE_FIELDS} }
+      `query SeerrNGMyBookRecommendations($id: Int!) {
+        personalFeeds: vibes(where: {user_id: {_eq: $id}}, order_by: {updated_at: desc}, limit: 30) { ${FEED_FIELDS} }
       }`,
       { id: meId }
     );
-    mine = own.vibes ?? [];
+    mine = own.personalFeeds ?? [];
   }
   const seen = new Set<number>();
-  const out: VibeSummary[] = [];
+  const out: RecommendationFeed[] = [];
   for (const [list, source] of [
     [mine, 'mine'],
     [data.featured ?? [], 'featured'],
     [data.popular ?? [], 'popular'],
   ] as const) {
-    for (const vibe of list) {
-      if (seen.has(vibe.id)) continue;
-      seen.add(vibe.id);
-      out.push(toSummary(vibe, source));
+    for (const feed of list) {
+      if (seen.has(feed.id)) continue;
+      seen.add(feed.id);
+      out.push(toSummary(feed, source));
     }
   }
   return out;
@@ -215,7 +225,7 @@ const authorOf = (book: RawBook) => {
   return first?.author?.name ?? first?.name;
 };
 
-const toBook = (book: RawBook): VibeBook => {
+const toBook = (book: RawBook): BookRecommendation => {
   const series = book.book_series?.[0];
   return {
     id: book.id,
@@ -237,12 +247,12 @@ const norm = (value: string) => value.trim().toLowerCase();
 /**
  * Hardcover returns a ranked feed. Series position, popularity, and author
  * preferences are applied here: those are not controllable on an existing
- * feed, and custom vibes need Supporter status.
+ * feed, and personalized feeds need Supporter status.
  */
 export const tuneBooks = (
-  books: VibeBook[],
-  tuning: VibeTuning
-): VibeBook[] => {
+  books: BookRecommendation[],
+  tuning: RecommendationTuning
+): BookRecommendation[] => {
   let out = books;
   if (tuning.standalones) out = out.filter((book) => !book.series);
   else if (tuning.firstInSeries) {
@@ -272,7 +282,7 @@ export const tuneBooks = (
   if (tuning.moreLike?.length || tuning.lessLike?.length) {
     const more = new Set(tuning.moreLike ?? []);
     const less = new Set(tuning.lessLike ?? []);
-    const scoreFor = (book: VibeBook) => {
+    const scoreFor = (book: BookRecommendation) => {
       let score = 0;
       for (const other of books) {
         const sameAuthor =
@@ -299,30 +309,37 @@ export const tuneBooks = (
   return out;
 };
 
-export const getVibeBooks = async (
+export const getRecommendedBooks = async (
   token: string,
-  vibeId: number,
-  tuning: VibeTuning = {}
-): Promise<{ vibe: VibeSummary; books: VibeBook[]; total: number }> => {
-  const vibeData = await gql<{
-    vibes_by_pk: (RawVibe & { cached_book_ids?: number[] }) | null;
+  feedId: number,
+  tuning: RecommendationTuning = {}
+): Promise<{
+  feed: RecommendationFeed;
+  books: BookRecommendation[];
+  total: number;
+}> => {
+  const recommendationData = await gql<{
+    recommendationFeed: (RawFeed & { cached_book_ids?: number[] }) | null;
   }>(
     token,
-    `query SeerrNGVibe($id: Int!) {
-      vibes_by_pk(id: $id) { ${VIBE_FIELDS} cached_book_ids }
+    `query SeerrNGRecommendationFeed($id: Int!) {
+      recommendationFeed: vibes_by_pk(id: $id) { ${FEED_FIELDS} cached_book_ids }
     }`,
-    { id: vibeId }
+    { id: feedId }
   );
-  const vibe = vibeData.vibes_by_pk;
-  if (!vibe)
-    throw new HardcoverVibesError('That vibe was not found.', 'unavailable');
-  const ids = (vibe.cached_book_ids ?? []).slice(0, MAX_VIBE_BOOKS);
+  const feed = recommendationData.recommendationFeed;
+  if (!feed)
+    throw new HardcoverRecommendationsError(
+      'That recommendation feed was not found.',
+      'unavailable'
+    );
+  const ids = (feed.cached_book_ids ?? []).slice(0, MAX_RECOMMENDED_BOOKS);
   if (!ids.length) {
-    return { vibe: toSummary(vibe, 'popular'), books: [], total: 0 };
+    return { feed: toSummary(feed, 'popular'), books: [], total: 0 };
   }
   const booksData = await gql<{ books: RawBook[] }>(
     token,
-    `query SeerrNGVibeBooks($ids: [Int!]) {
+    `query SeerrNGRecommendedBooks($ids: [Int!]) {
       books(where: {id: {_in: $ids}}) {
         id title slug cached_contributors cached_image release_year ratings_count
         book_series { position series { name } }
@@ -338,7 +355,7 @@ export const getVibeBooks = async (
     return book ? [toBook(book)] : [];
   });
   return {
-    vibe: toSummary(vibe, 'popular'),
+    feed: toSummary(feed, 'popular'),
     books: tuneBooks(ordered, tuning),
     total: ordered.length,
   };
@@ -351,14 +368,14 @@ export const getHardcoverUserId = async (token: string): Promise<number> => {
   );
   const id = Array.isArray(data.me) ? data.me[0]?.id : data.me?.id;
   if (!id)
-    throw new HardcoverVibesError(
+    throw new HardcoverRecommendationsError(
       'Hardcover returned no account.',
       'unavailable'
     );
   return id;
 };
 
-export interface CustomVibeInput {
+export interface PersonalizedFeedInput {
   title: string;
   description?: string;
   userId: number;
@@ -373,9 +390,9 @@ export interface CustomVibeInput {
 }
 
 /** Supporter-only on Hardcover; surfaces a clear error otherwise. */
-export const createCustomVibe = async (
+export const createPersonalizedFeed = async (
   token: string,
-  input: CustomVibeInput
+  input: PersonalizedFeedInput
 ): Promise<{ id: number }> => {
   const signals: Record<string, unknown>[] = [
     { signal_type: 'user', value: String(input.userId), weight: 5 },
@@ -424,10 +441,10 @@ export const createCustomVibe = async (
     signal.position = index;
   });
 
-  const data = await gql<{ insert_vibe: { id?: number; errors?: unknown } }>(
+  const data = await gql<{ createdFeed: { id?: number; errors?: unknown } }>(
     token,
-    `mutation SeerrNGCreateVibe($object: VibeInput!) {
-      insert_vibe(object: $object) { id errors }
+    `mutation SeerrNGCreateRecommendationFeed($object: VibeInput!) {
+      createdFeed: insert_vibe(object: $object) { id errors }
     }`,
     {
       object: {
@@ -438,13 +455,13 @@ export const createCustomVibe = async (
       },
     }
   );
-  if (!data.insert_vibe?.id) {
-    throw new HardcoverVibesError(
-      'Hardcover could not create that vibe.',
-      /supporter/i.test(JSON.stringify(data.insert_vibe?.errors ?? ''))
+  if (!data.createdFeed?.id) {
+    throw new HardcoverRecommendationsError(
+      'Hardcover could not create that personalized feed.',
+      /supporter/i.test(JSON.stringify(data.createdFeed?.errors ?? ''))
         ? 'supporter-required'
         : 'unavailable'
     );
   }
-  return { id: data.insert_vibe.id };
+  return { id: data.createdFeed.id };
 };

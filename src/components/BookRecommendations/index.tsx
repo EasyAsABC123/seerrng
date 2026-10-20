@@ -5,19 +5,23 @@ import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
 import useToasts from '@app/hooks/useToasts';
 import defineMessages from '@app/utils/defineMessages';
-import type { VibeBook, VibeSummary } from '@server/lib/hardcoverVibes';
+import type {
+  BookRecommendation,
+  RecommendationFeed,
+} from '@server/lib/hardcoverRecommendations';
 import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
 
-const messages = defineMessages('components.Vibes', {
-  title: 'Book Vibes',
+const messages = defineMessages('components.BookRecommendations', {
+  title: 'Book Recommendations',
   description:
-    'Feeds from Hardcover, tuned to your reading. Steer one with the controls, then request what you want in the format you prefer.',
+    'Browse personal, featured, and popular book recommendations from Hardcover. Filter a feed, then request a book in your preferred format.',
   noToken:
-    'Connect Hardcover to use Vibes. Add your Hardcover API token to a Hardcover list in your profile, with the read:vibes permission.',
-  scope: 'Your Hardcover token needs the read:vibes permission.',
+    'Connect Hardcover by adding an API token to a Hardcover list in your profile with permission to read book recommendation feeds.',
+  scope:
+    'Your Hardcover token needs permission to read book recommendation feeds.',
   rejected: 'Hardcover rejected your API token.',
   unavailable: 'Hardcover is not responding.',
   sourceMine: 'Yours',
@@ -25,7 +29,7 @@ const messages = defineMessages('components.Vibes', {
   sourcePopular: 'Popular',
   likes: '{count, plural, one {# like} other {# likes}}',
   open: 'Show Books',
-  tuning: 'Steer This Feed',
+  tuning: 'Filter This Feed',
   standalones: 'Standalones only',
   firstInSeries: 'Standalones and first books in a series',
   lessPopular: 'Less popular discoveries',
@@ -42,27 +46,28 @@ const messages = defineMessages('components.Vibes', {
   ebook: 'Book',
   audiobook: 'Audiobook',
   noMatch: 'We could not find “{title}” in the catalog yet.',
-  createHeading: 'Create Your Own Vibe',
+  createHeading: 'Create a Personalized Feed',
   createHelp:
-    'Creating vibes on Hardcover needs a Supporter account. SeerrNG sends the settings; Hardcover decides.',
+    'Hardcover requires a Supporter account to create a personalized recommendation feed. SeerrNG sends your settings to Hardcover.',
   createTitle: 'Name',
   createMood: 'Mood (optional)',
   createFirst: 'Standalones and first books',
   create: 'Create on Hardcover',
-  created: 'Created the vibe on Hardcover.',
-  supporter: 'Creating vibes requires a Hardcover Supporter account.',
-  createFailed: 'The vibe could not be created.',
+  created: 'Created your personalized feed on Hardcover.',
+  supporter:
+    'Creating a personalized feed requires a Hardcover Supporter account.',
+  createFailed: 'The personalized feed could not be created.',
 });
 
-interface VibesResponse {
+interface BookRecommendationsResponse {
   available: boolean;
   code?: 'no-token' | 'rejected' | 'scope' | 'unavailable';
-  results?: VibeSummary[];
+  results?: RecommendationFeed[];
 }
 
 interface BooksResponse {
   available: boolean;
-  books: VibeBook[];
+  books: BookRecommendation[];
   total: number;
 }
 
@@ -78,10 +83,12 @@ const splitNames = (value: string) =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-const Vibes = () => {
+const BookRecommendations = () => {
   const intl = useIntl();
   const { addToast } = useToasts();
-  const { data } = useSWR<VibesResponse>('/api/v1/vibes');
+  const { data } = useSWR<BookRecommendationsResponse>(
+    '/api/v1/book-recommendations'
+  );
   const [openId, setOpenId] = useState<number>();
   const [standalones, setStandalones] = useState(false);
   const [firstInSeries, setFirstInSeries] = useState(false);
@@ -102,7 +109,7 @@ const Vibes = () => {
     setLoading(true);
     try {
       const response = await axios.post<BooksResponse>(
-        `/api/v1/vibes/${openId}/books`,
+        `/api/v1/book-recommendations/${openId}/books`,
         {
           tuning: {
             standalones,
@@ -134,7 +141,7 @@ const Vibes = () => {
     void load();
   }, [load]);
 
-  const requestBook = async (book: VibeBook) => {
+  const requestBook = async (book: BookRecommendation) => {
     try {
       const resolved = await axios.post<{
         groups: { candidates: { id: string; href: string }[] }[];
@@ -165,7 +172,7 @@ const Vibes = () => {
 
   const create = async () => {
     try {
-      await axios.post('/api/v1/vibes', {
+      await axios.post('/api/v1/book-recommendations', {
         title: createTitle,
         mood: createMood || undefined,
         seriesPosition: createFirst ? 'first_or_standalone' : undefined,
@@ -234,36 +241,36 @@ const Vibes = () => {
       )}
       {data?.available && (
         <ul className="card-list" data-list-layout="choices">
-          {data.results?.map((vibe) => (
-            <li key={vibe.id}>
+          {data.results?.map((feed) => (
+            <li key={feed.id}>
               <article
                 className="app-card-sub card-layout"
-                data-choice-selected={openId === vibe.id}
+                data-choice-selected={openId === feed.id}
               >
                 <div className="media-fact-row">
-                  <h3 className="card-title">{vibe.title}</h3>
+                  <h3 className="card-title">{feed.title}</h3>
                   <Badge badgeType="primary">
-                    {intl.formatMessage(sourceMessages[vibe.source])}
+                    {intl.formatMessage(sourceMessages[feed.source])}
                   </Badge>
                 </div>
-                {vibe.description && (
-                  <p className="card-body-text">{vibe.description}</p>
+                {feed.description && (
+                  <p className="card-body-text">{feed.description}</p>
                 )}
                 <p className="card-subheading">
                   {[
-                    vibe.owner,
-                    intl.formatMessage(messages.likes, { count: vibe.likes }),
+                    feed.owner,
+                    intl.formatMessage(messages.likes, { count: feed.likes }),
                   ]
                     .filter(Boolean)
                     .join(' · ')}
                 </p>
                 <div className="app-action-row">
                   <Button
-                    aria-label={`${intl.formatMessage(messages.open)}: ${vibe.title}`}
-                    buttonType={openId === vibe.id ? 'default' : 'primary'}
+                    aria-label={`${intl.formatMessage(messages.open)}: ${feed.title}`}
+                    buttonType={openId === feed.id ? 'default' : 'primary'}
                     buttonSize="sm"
                     onClick={() => {
-                      setOpenId(vibe.id);
+                      setOpenId(feed.id);
                       setMore([]);
                       setLess([]);
                     }}
@@ -317,13 +324,13 @@ const Vibes = () => {
             </fieldset>
             <div className="filter-field-grid">
               <div className="form-row">
-                <label htmlFor="vibe-include">
+                <label htmlFor="recommendation-include">
                   {intl.formatMessage(messages.includeAuthors)}
                 </label>
                 <div className="form-input-area">
                   <div className="form-input-field">
                     <input
-                      id="vibe-include"
+                      id="recommendation-include"
                       type="text"
                       value={include}
                       onChange={(event) =>
@@ -334,13 +341,13 @@ const Vibes = () => {
                 </div>
               </div>
               <div className="form-row">
-                <label htmlFor="vibe-exclude">
+                <label htmlFor="recommendation-exclude">
                   {intl.formatMessage(messages.excludeAuthors)}
                 </label>
                 <div className="form-input-area">
                   <div className="form-input-field">
                     <input
-                      id="vibe-exclude"
+                      id="recommendation-exclude"
                       type="text"
                       value={exclude}
                       onChange={(event) =>
@@ -359,7 +366,7 @@ const Vibes = () => {
                 <label key={value} className="card-body-text">
                   <input
                     type="radio"
-                    name="vibe-format"
+                    name="recommendation-format"
                     checked={format === value}
                     onChange={() => setFormat(value)}
                   />
@@ -457,13 +464,13 @@ const Vibes = () => {
             </p>
             <div className="filter-field-grid">
               <div className="form-row">
-                <label htmlFor="vibe-title">
+                <label htmlFor="recommendation-title">
                   {intl.formatMessage(messages.createTitle)}
                 </label>
                 <div className="form-input-area">
                   <div className="form-input-field">
                     <input
-                      id="vibe-title"
+                      id="recommendation-title"
                       type="text"
                       maxLength={120}
                       value={createTitle}
@@ -475,13 +482,13 @@ const Vibes = () => {
                 </div>
               </div>
               <div className="form-row">
-                <label htmlFor="vibe-mood">
+                <label htmlFor="recommendation-mood">
                   {intl.formatMessage(messages.createMood)}
                 </label>
                 <div className="form-input-area">
                   <div className="form-input-field">
                     <input
-                      id="vibe-mood"
+                      id="recommendation-mood"
                       type="text"
                       maxLength={200}
                       value={createMood}
@@ -520,4 +527,4 @@ const Vibes = () => {
   );
 };
 
-export default Vibes;
+export default BookRecommendations;

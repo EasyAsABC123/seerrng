@@ -3,7 +3,6 @@ import ConfirmButton from '@app/components/Common/ConfirmButton';
 import Header from '@app/components/Common/Header';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
-import RelatedTools from '@app/components/Common/RelatedTools';
 import Tooltip from '@app/components/Common/Tooltip';
 import { sliderTitles } from '@app/components/Discover/constants';
 import ReadMeABookHomeSection from '@app/components/Discover/ReadMeABookHomeSection';
@@ -244,7 +243,6 @@ const Discover = ({ initialSliders }: DiscoverProps) => {
     >
       <PageTitle title={intl.formatMessage(messages.discover)} />
       <Header>{intl.formatMessage(messages.discover)}</Header>
-      <RelatedTools tools={['share', 'following']} />
       <Link
         href="/discover/providers"
         className="mb-4 inline-flex text-sm text-blue-400 hover:text-blue-300"

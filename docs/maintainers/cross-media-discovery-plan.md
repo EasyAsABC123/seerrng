@@ -228,10 +228,10 @@ selected content ids; `expansion` Follow kind.
 
 Three independent slices, shippable in any order:
 
-- **Hardcover Vibes**: read existing personal/public feeds through the existing
+- **Hardcover book recommendations**: read existing personal/public feeds through the existing
   discovery-integration layer (`server/lib/discoveryIntegrations/`,
   `server/entity/ExternalRequestList.ts`). Series-position filtering applied in
-  SeerrNG. Custom Vibe creation shown only for Supporter accounts; detect and
+  SeerrNG. Personalized feed creation shown only for Supporter accounts; detect and
   explain rather than fail.
 - **Saved game searches**: `server/entity/SavedDiscovery.ts`, themes/modes/
   perspectives/language from an extended QuestarrNG projection; "why this

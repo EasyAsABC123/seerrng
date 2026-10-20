@@ -39,7 +39,7 @@ describe('cross-media routes behind the OpenAPI validator', () => {
     app.get('/api/v1/franchise/:mediaType/:id', ok);
     app.post('/api/v1/game-content/discover', ok);
     app.get('/api/v1/patches/search', ok);
-    app.get('/api/v1/vibes', ok);
+    app.get('/api/v1/book-recommendations', ok);
     app.get('/api/v1/collectors', ok);
     app.get('/api/v1/settings/recognition', ok);
     app.use(
@@ -117,7 +117,7 @@ describe('cross-media routes behind the OpenAPI validator', () => {
       '/api/v1/follow',
       '/api/v1/follow/events?take=10&unseen=true',
       '/api/v1/franchise/tv/94605?language=en',
-      '/api/v1/vibes',
+      '/api/v1/book-recommendations',
       '/api/v1/collectors',
       '/api/v1/settings/recognition',
     ]) {

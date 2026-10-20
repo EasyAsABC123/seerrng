@@ -11,9 +11,9 @@ const messages = defineMessages('components.Common.RelatedTools', {
   following: 'Following',
   followingText:
     'Personal news about the narrators, series, games, and artists you follow.',
-  vibes: 'Book Vibes',
-  vibesText:
-    'Steer Hardcover recommendation feeds, then request in the format you want.',
+  bookRecommendations: 'Book Recommendations',
+  bookRecommendationsText:
+    'Browse and filter Hardcover book recommendations, then request a book in your preferred format.',
   collectors: 'Collector Picks',
   collectorsText: 'Releases shared by collectors you follow in slskdN.',
   gameFinder: 'Game Finder',
@@ -31,10 +31,10 @@ const TOOLS = {
     title: messages.following,
     text: messages.followingText,
   },
-  vibes: {
-    href: '/discover/vibes',
-    title: messages.vibes,
-    text: messages.vibesText,
+  bookRecommendations: {
+    href: '/discover/book-recommendations',
+    title: messages.bookRecommendations,
+    text: messages.bookRecommendationsText,
   },
   collectors: {
     href: '/discover/collectors',

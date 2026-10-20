@@ -135,7 +135,7 @@
     flex: none;
   }
 
-  /* Stacked filter fields (game discovery, vibe tuning). */
+  /* Stacked filter fields (game discovery, recommendation tuning). */
   .filter-field-grid {
     display: grid;
     gap: var(--card-spacing);

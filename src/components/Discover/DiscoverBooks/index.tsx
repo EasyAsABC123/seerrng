@@ -283,7 +283,7 @@ const DiscoverBooks = ({
       <PageTitle title={title} />
       <div className="app-filter-section-gap">
         <Header>{title}</Header>
-        <RelatedTools tools={['share', 'vibes', 'following']} />
+        <RelatedTools tools={['share', 'bookRecommendations', 'following']} />
         {activeFormat === 'audiobook' && <ReadMeABookSearch />}
         {mediaFilters}
         {showFormatTabs && (

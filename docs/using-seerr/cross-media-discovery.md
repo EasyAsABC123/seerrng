@@ -37,9 +37,9 @@ A PC game request can ask for editions and content (needs QuestarrNG): the base 
 
 **Game Finder** saves searches by themes, modes, perspectives, languages, and length, with visible exclusions, and tells you what matched.
 
-## Hardcover Vibes and Collector Picks
+## Hardcover book recommendations and Collector Picks
 
-**Book Vibes** reads your Hardcover vibes, featured vibes, and popular public vibes using the Hardcover token on your Hardcover list (it needs the `read:vibes` permission). You can steer a feed with standalone-only, first-in-series, less popular, and author filters, and more-like or less-like marks. Creating a vibe on Hardcover needs a Hardcover Supporter account.
+**Book Recommendations** shows your personal, featured, and popular Hardcover recommendation feeds using the token saved on your Hardcover list. You can filter for standalones, first books in a series, less popular books, and specific authors, then mark books as more or less like the ones you want. Creating a personalized feed on Hardcover requires a Supporter account.
 
 **Collector Picks** shows releases shared by collectors you follow in slskdN, with the reasons they appeared.
 
