@@ -179,7 +179,10 @@ describe('Prowlarr settings on a short mobile screen', () => {
 
     cy.contains('section.app-card-sub', 'Connect your apps')
       .should('be.visible')
-      .and('contain', 'probe common ports on a selected host');
+      .and(
+        'contain',
+        'Find services with a Compose starter, Docker discovery, host checks, or a manual connection report.'
+      );
     cy.contains('a', 'Open the setup guide')
       .should('be.visible')
       .should(
