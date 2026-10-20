@@ -28,6 +28,11 @@ export interface EditionChoice {
 const messages = defineMessages('components.EditionCompare', {
   heading: 'Choose a Version',
   loading: 'Comparing editions…',
+  editionLoadFailed:
+    'Edition options could not be loaded. You can still submit this request without choosing a version.',
+  seriesLoadFailed:
+    'Narrator comparison could not be loaded. You can still request individual books.',
+  retry: 'Retry',
   automatic: 'Best available match',
   automaticHelp: 'Let the library pick the edition it finds first.',
   narrators: 'Narrated by {names}',
@@ -136,7 +141,9 @@ export const EditionCardPicker = ({
   });
   if (mediaId) params.set('mediaId', String(mediaId));
   if (foreignBookId) params.set('foreignBookId', foreignBookId);
-  const { data } = useSWR<EditionComparison>(`/api/v1/editions/book?${params}`);
+  const { data, error, mutate } = useSWR<EditionComparison>(
+    `/api/v1/editions/book?${params}`
+  );
 
   const hasLibraryVersion = !!data?.editions.some(
     (card) => card.selected || card.owned
@@ -149,6 +156,25 @@ export const EditionCardPicker = ({
       onChange({ ...value, policy: 'only' });
     }
   }, [alongsideAvailable, onChange, value]);
+
+  if (error && !data) {
+    return (
+      <div className="app-card-inset card-layout">
+        <p className="card-body-text" role="alert">
+          {intl.formatMessage(messages.editionLoadFailed)}
+        </p>
+        <Button
+          type="button"
+          buttonType="ghost"
+          buttonSize="sm"
+          buttonIcon="retry"
+          onClick={() => void mutate()}
+        >
+          {intl.formatMessage(messages.retry)}
+        </Button>
+      </div>
+    );
+  }
 
   if (!data) {
     return (
@@ -388,9 +414,30 @@ export const SeriesNarratorPlanner = ({
   };
   const params = new URLSearchParams({ title });
   if (authorId) params.set('authorId', String(authorId));
-  const { data } = useSWR<SeriesNarratorResponse>(
+  const { data, error, mutate } = useSWR<SeriesNarratorResponse>(
     `/api/v1/editions/series-narrators?${params}`
   );
+  if (error && !data) {
+    return (
+      <section className="app-card-main card-layout">
+        <h2 className="page-heading">
+          {intl.formatMessage(messages.seriesHeading)}
+        </h2>
+        <p className="card-body-text" role="alert">
+          {intl.formatMessage(messages.seriesLoadFailed)}
+        </p>
+        <Button
+          type="button"
+          buttonType="ghost"
+          buttonSize="sm"
+          buttonIcon="retry"
+          onClick={() => void mutate()}
+        >
+          {intl.formatMessage(messages.retry)}
+        </Button>
+      </section>
+    );
+  }
   if (!data) return null;
   if (!data.supported || data.plans.length === 0) return null;
   const titles = new Map(
