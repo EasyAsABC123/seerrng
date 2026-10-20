@@ -390,18 +390,19 @@ export const clampReadarrProviderRetryDelay = (delayMs: number): number =>
     Math.max(READARR_MIN_PROVIDER_RETRY_DELAY_MS, delayMs)
   );
 
-const lookupReadarrBookWithRetry = async (
+const lookupReadarrWithRetry = async <T>(
   readarr: ReadarrAPI,
   term: string,
   context: {
     mediaId: number;
     requestId: number;
     serviceType: 'ebook' | 'audiobook';
-  }
-): Promise<ReadarrBookLookupResult[]> => {
+  },
+  lookup: () => Promise<T>
+): Promise<T> => {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await readarr.lookupBook(term);
+      return await lookup();
     } catch (error) {
       if (
         !isTransientExternalError(error) ||
@@ -433,6 +434,42 @@ const lookupReadarrBookWithRetry = async (
     }
   }
 };
+
+const lookupReadarrBookWithRetry = (
+  readarr: ReadarrAPI,
+  term: string,
+  context: {
+    mediaId: number;
+    requestId: number;
+    serviceType: 'ebook' | 'audiobook';
+  }
+): Promise<ReadarrBookLookupResult[]> =>
+  lookupReadarrWithRetry(readarr, term, context, () =>
+    readarr.lookupBook(term)
+  );
+
+const lookupReadarrBookByProviderIdentityWithRetry = (
+  readarr: ReadarrAPI,
+  providerBookId: string,
+  providerEditionId: string | undefined,
+  context: {
+    mediaId: number;
+    requestId: number;
+    serviceType: 'ebook' | 'audiobook';
+  }
+): Promise<ReadarrBookLookupResult[]> =>
+  lookupReadarrWithRetry(
+    readarr,
+    `provider ID ${providerBookId}`,
+    context,
+    async () => {
+      const book = await readarr.lookupBookByProviderIdentity(
+        providerBookId,
+        providerEditionId
+      );
+      return book ? [book] : [];
+    }
+  );
 
 const hydrateBookshelfLookupResults = async (
   readarr: ReadarrAPI,
@@ -2558,11 +2595,56 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         let searchResults: ReadarrBookLookupResult[] = [];
         let lookupTerm: string | undefined;
 
-        const termsToTry = [...lookupTerms];
+        const termsToTry = lookupTerms.filter(
+          (term) => term !== bookshelfLookupId
+        );
         let expandedLookupTermsAdded = false;
         let sawIncompleteLookupResult = false;
 
-        for (let index = 0; index < termsToTry.length; index++) {
+        if (bookshelfLookupId) {
+          lookupTerm = bookshelfLookupId;
+          searchResults = await lookupReadarrBookByProviderIdentityWithRetry(
+            readarr,
+            bookshelfLookupId,
+            preferredEditionId,
+            {
+              mediaId: media.id,
+              requestId: entity.id,
+              serviceType,
+            }
+          );
+          searchResults = await hydrateBookshelfLookupResults(
+            readarr,
+            searchResults,
+            normalizedIsbn
+          );
+          const addableSearchResults = searchResults.filter(
+            isAddableBookshelfLookupResult
+          );
+          if (addableSearchResults.length) {
+            searchResults = addableSearchResults;
+          } else if (searchResults.length) {
+            sawIncompleteLookupResult = true;
+            logger.warn(
+              'Bookshelf provider-ID lookup returned incomplete metadata; continuing fallback lookup.',
+              {
+                label: 'Readarr',
+                mediaId: media.id,
+                requestId: entity.id,
+                serviceType,
+                lookupTerm: bookshelfLookupId,
+                resultCount: searchResults.length,
+              }
+            );
+            searchResults = [];
+          }
+        }
+
+        for (
+          let index = 0;
+          !searchResults.length && index < termsToTry.length;
+          index++
+        ) {
           const term = termsToTry[index];
           lookupTerm = term;
           searchResults = await lookupReadarrBookWithRetry(readarr, term, {

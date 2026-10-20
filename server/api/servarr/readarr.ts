@@ -2,7 +2,7 @@ import {
   normalizeOpenLibraryEditionId,
   normalizeOpenLibraryWorkId,
 } from '@server/lib/externalIds';
-import { normalizeIsbn } from '@server/lib/isbn';
+import { normalizeIsbn, normalizeValidIsbn } from '@server/lib/isbn';
 import logger from '@server/logger';
 import {
   fetchSafeRemoteImage,
@@ -1867,24 +1867,38 @@ class ReadarrAPI extends ServarrBase<ReadarrQueueItem> {
     providerEditionId?: string
   ): Promise<ReadarrBookLookupResult | undefined> {
     await this.ensureProvider();
+    const bareNumericProviderBookId = providerBookId.trim().match(/^\d+$/)?.[0];
+    const lookupProviderBookId =
+      this.isChaptarr() &&
+      bareNumericProviderBookId &&
+      !normalizeValidIsbn(bareNumericProviderBookId)
+        ? `${this.chaptarrDialect ?? 'hc'}:${bareNumericProviderBookId}`
+        : providerBookId;
     const addressableEditionId =
       this.isChaptarr() &&
       this.chaptarrCapabilities?.features?.providerScopedEditionIdentity !==
         true
         ? undefined
         : providerEditionId;
-    const terms = [...new Set([providerBookId, addressableEditionId])].filter(
-      (term): term is string => !!term?.trim()
-    );
+    const terms = [
+      ...new Set([lookupProviderBookId, addressableEditionId]),
+    ].filter((term): term is string => !!term?.trim());
 
     for (const term of terms) {
       const results = await this.lookupBook(term);
-      const match = results.find((book) =>
-        matchesReadarrBookProviderIdentity(
-          book,
-          providerBookId,
-          addressableEditionId
-        )
+      const match = results.find(
+        (book) =>
+          matchesReadarrBookProviderIdentity(
+            book,
+            providerBookId,
+            addressableEditionId
+          ) ||
+          (lookupProviderBookId !== providerBookId &&
+            matchesReadarrBookProviderIdentity(
+              book,
+              lookupProviderBookId,
+              addressableEditionId
+            ))
       );
       if (match) return match;
     }

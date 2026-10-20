@@ -9,6 +9,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 
 import type {
   ReadarrBook,
+  ReadarrBookLookupResult,
   ReadarrBookOptions,
 } from '@server/api/servarr/readarr';
 import ReadarrAPI from '@server/api/servarr/readarr';
@@ -1369,6 +1370,174 @@ describe('ReadarrAPI Chaptarr compatibility', () => {
       ),
       undefined
     );
+  });
+
+  it('qualifies a bare numeric Hardcover work ID before lookup', async () => {
+    const api = new ReadarrAPI({
+      url: 'http://localhost:8787/api/v1',
+      apiKey: 'key',
+      mediaType: 'ebook',
+    });
+    const internalApi = api as unknown as {
+      detectedSystemStatus?: { appName?: string };
+      chaptarrCapabilities?: {
+        features?: { providerScopedEditionIdentity?: boolean };
+      };
+      chaptarrDialect?: 'hc' | 'gr';
+      ensureProvider: () => Promise<void>;
+    };
+    internalApi.detectedSystemStatus = { appName: 'Chaptarr' };
+    internalApi.chaptarrCapabilities = {
+      features: { providerScopedEditionIdentity: true },
+    };
+    internalApi.chaptarrDialect = 'hc';
+    mock.method(internalApi, 'ensureProvider', async () => undefined);
+    const lookupTerms: string[] = [];
+    mock.method(
+      api as unknown as {
+        lookupBook: (term: string) => Promise<ReadarrBookLookupResult[]>;
+      },
+      'lookupBook',
+      async (term: string) => {
+        lookupTerms.push(term);
+        return [
+          {
+            title: 'Example Book',
+            foreignBookId: 'hc:374541',
+            author: { foreignAuthorId: 'hc:author-1', authorName: 'A. Author' },
+            editions: [
+              { foreignEditionId: 'hc:edition-1', title: 'Example Book' },
+            ],
+          },
+        ];
+      }
+    );
+
+    const result = await api.lookupBookByProviderIdentity('374541');
+    const isbnResult = await api.lookupBookByProviderIdentity('9780306406157');
+
+    assert.equal(result?.foreignBookId, 'hc:374541');
+    assert.equal(isbnResult, undefined);
+    assert.deepEqual(lookupTerms, ['hc:374541', '9780306406157']);
+  });
+
+  it('uses the supported Chaptarr narrator routes and preserves query values', async () => {
+    const api = new ReadarrAPI({
+      url: 'http://localhost:8787/api/v1',
+      apiKey: 'key',
+      mediaType: 'audiobook',
+    });
+    const internalApi = api as unknown as {
+      chaptarrCapabilities?: {
+        features?: { seriesNarratorMatrix?: boolean };
+      };
+      ensureCapabilities: () => Promise<void>;
+    };
+    internalApi.chaptarrCapabilities = {
+      features: { seriesNarratorMatrix: true },
+    };
+    mock.method(internalApi, 'ensureCapabilities', async () => undefined);
+    const requestMock = mock.method(
+      api as unknown as MockableReadarr,
+      'request',
+      async () => ({
+        data: {
+          seriesId: 21,
+          seriesTitle: 'The Long Series Name',
+          totalBooks: 2,
+          narrators: [],
+          books: [],
+        },
+      })
+    );
+
+    await api.getSeriesNarratorMatrix({
+      title: 'The Long Series Name',
+      authorId: 21,
+    });
+    await api.setSeriesPreferredNarrator(21, 'Jane Doe');
+
+    assert.equal(requestMock.mock.calls[0].arguments[0], 'GET');
+    assert.equal(
+      requestMock.mock.calls[0].arguments[1],
+      '/series/narrators/matrix'
+    );
+    assert.deepEqual(
+      (requestMock.mock.calls[0].arguments[3] as { params: unknown }).params,
+      {
+        title: 'The Long Series Name',
+        authorId: 21,
+        mediaType: 'audiobook',
+      }
+    );
+    assert.equal(requestMock.mock.calls[1].arguments[0], 'PUT');
+    assert.equal(
+      requestMock.mock.calls[1].arguments[1],
+      '/series/21/narrators/preferred'
+    );
+    assert.deepEqual(requestMock.mock.calls[1].arguments[2], {
+      narrator: 'Jane Doe',
+      applyToAllBooks: true,
+      overrideExisting: false,
+    });
+  });
+
+  it('sends plus-encoded spaces and the audiobook scope in the narrator query', async () => {
+    let receivedUrl: URL | undefined;
+    const server = createServer((request, response) => {
+      receivedUrl = new URL(request.url ?? '/', 'http://localhost');
+      writeJson(response, 200, {
+        seriesId: 21,
+        seriesTitle: 'The Long Series Name',
+        totalBooks: 2,
+        narrators: [],
+        books: [],
+      });
+    });
+
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+
+    try {
+      const api = new ReadarrAPI({
+        url: `http://127.0.0.1:${address.port}/api/v1`,
+        apiKey: 'key',
+        mediaType: 'audiobook',
+      });
+      const internalApi = api as unknown as {
+        chaptarrCapabilities?: {
+          features?: { seriesNarratorMatrix?: boolean };
+        };
+        ensureCapabilities: () => Promise<void>;
+        ensureProvider: () => Promise<void>;
+      };
+      internalApi.chaptarrCapabilities = {
+        features: { seriesNarratorMatrix: true },
+      };
+      mock.method(internalApi, 'ensureCapabilities', async () => undefined);
+      mock.method(internalApi, 'ensureProvider', async () => undefined);
+
+      const result = await api.getSeriesNarratorMatrix({
+        title: 'The Long Series Name',
+        authorId: 21,
+      });
+
+      assert.ok(receivedUrl);
+      assert.match(receivedUrl.search, /title=The\+Long\+Series\+Name/);
+      assert.equal(
+        receivedUrl.searchParams.get('title'),
+        'The Long Series Name'
+      );
+      assert.equal(receivedUrl.searchParams.get('authorId'), '21');
+      assert.equal(receivedUrl.searchParams.get('mediaType'), 'audiobook');
+      assert.equal(result?.seriesId, 21);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+      await once(server, 'close');
+    }
   });
 
   it('adds a book without fetching an oversized unfiltered library', async () => {
