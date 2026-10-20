@@ -10,6 +10,37 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.71.1](https://github.com/snapetech-org/seerrng/compare/v3.71.0..v3.71.1) - 2026-10-20
+
+### User-facing changes
+
+#### Changed
+
+- **Episode Queue:** Episode Queue is managed by a user manager from each user's profile. One default applies to all of that user's existing and future interactive TV requests. Only user managers see the setting; end users see how it applies when they request a TV show, with no access request or per-show controls. Automatic full-season requests keep their normal behavior.
+
+#### Fixed
+
+- **Software:** Requesters can remove a handed-off software request from SeerrNG without stopping the download, and Whisparr setup stays visible when saved server settings cannot be loaded.
+- **Settings:** Whisparr setup waits for saved server settings, including retries, to finish loading before offering to add another server, while keeping setup available after a failed initial load.
+- **Settings:** Administrators can now select and save a Sportarr quality profile when adding or editing a Sportarr connection.
+
+### 🐛 Bug Fixes
+- *(migration)* Keep Episode Queue rollback signature - ([881294b](https://github.com/snapetech-org/seerrng/commit/881294bf7995e5a7aa0c6dae19b420ee15dd0bd1))
+- *(requests)* Simplify episode queue gates - ([589642d](https://github.com/snapetech-org/seerrng/commit/589642d27bbc2faa546e14b2e42a3293d12c2b86))
+- *(requests)* Make Episode Queue admin-managed - ([45a26e4](https://github.com/snapetech-org/seerrng/commit/45a26e48828ff66532dcc728bcc998448a742dc0))
+- *(settings)* Disable Whisparr add during retries - ([f2d83c0](https://github.com/snapetech-org/seerrng/commit/f2d83c0e6553e6a7be858188e348d052b621d342))
+- *(settings)* Wait for Whisparr server settings - ([54d995f](https://github.com/snapetech-org/seerrng/commit/54d995fbf0bcf6d451aeee27b30f4bfc568caad9))
+- Improve handed-off software request cleanup - ([0cf95a5](https://github.com/snapetech-org/seerrng/commit/0cf95a5e451919353a1930a82261fbda63217d93))
+- Allow selecting Sportarr quality profiles - ([17845c2](https://github.com/snapetech-org/seerrng/commit/17845c261828853f36f4998435bc5bf9914b269a))
+
+### 📖 Documentation
+- *(release)* Note Whisparr setup loading fix - ([0782b99](https://github.com/snapetech-org/seerrng/commit/0782b99e7b7702529edefa80b4ef1093dd69d006))
+
+### 🧪 Testing
+- *(requests)* Cover owner Episode Queue settings - ([f233488](https://github.com/snapetech-org/seerrng/commit/f233488213c2219bcf6b4e82dac1bc00ccbe336f))
+- *(settings)* Cover Sportarr profile selection - ([967bc0c](https://github.com/snapetech-org/seerrng/commit/967bc0c8a0e4abdf6b7a5ad4f8e223f71d16678b))
+- *(software)* Cover catalog platform mapping - ([c633fcd](https://github.com/snapetech-org/seerrng/commit/c633fcd5756e652263f32922866ecd1a64a19a98))
+
 ## [3.71.0](https://github.com/snapetech-org/seerrng/compare/v3.70.1..v3.71.0) - 2026-10-19
 
 ### User-facing changes
