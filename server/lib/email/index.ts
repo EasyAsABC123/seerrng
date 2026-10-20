@@ -61,7 +61,8 @@ class PreparedEmail extends Email {
       ignoreTLS: settings.options.ignoreTls,
       requireTLS: settings.options.requireTls,
       tls: settings.options.allowSelfSigned
-        ? {
+        ? // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification -- explicit administrator opt-in (allowSelfSigned)
+          {
             rejectUnauthorized: false,
           }
         : undefined,

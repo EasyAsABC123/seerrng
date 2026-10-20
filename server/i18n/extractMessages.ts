@@ -10,6 +10,7 @@ async function getFiles(dir: string): Promise<string[]> {
   );
   const files = await Promise.all(
     entries.map((entry) => {
+      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- the path comes from a fixed allow-list or is containment-checked here, not from user input
       const path = join(dir, entry.name);
       return entry.isDirectory() ? getFiles(path) : [path];
     })

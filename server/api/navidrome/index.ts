@@ -44,6 +44,7 @@ export const subsonicAuthParams = (
   username: string,
   password: string,
   salt: string = randomBytes(8).toString('hex')
+  // nosemgrep: javascript.lang.security.audit.md5-used-as-password.md5-used-as-password -- Subsonic token authentication mandates md5(password + salt)
 ): { u: string; t: string; s: string; v: string; c: string; f: string } => ({
   u: username,
   t: createHash('md5').update(`${password}${salt}`).digest('hex'),

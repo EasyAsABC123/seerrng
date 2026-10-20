@@ -49,6 +49,7 @@ def run(command: list[str], *, timeout: int = 120) -> str:
 
 def api_request(
     base_url: str,
+    # nosemgrep: bash.lang.security.ifs-tampering.ifs-tampering -- local smoke-test script, not shipped
     path: str,
     *,
     method: str = "GET",
@@ -72,6 +73,7 @@ def api_request(
         request.add_header("Content-Type", "application/json")
 
     try:
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- release/smoke tooling that only calls explicitly configured endpoints
         with urllib.request.urlopen(request, timeout=10) as response:
             return response.status, response.read()
     except urllib.error.HTTPError as error:

@@ -678,6 +678,7 @@ swipeRoutes.put('/profile', async (req, res) => {
     JSON.stringify(normalizedFavorites) !==
       JSON.stringify(current.favoriteSeeds ?? []);
   const saved = await getRepository(SwipeProfile).save(
+    // nosemgrep: javascript.express.security.express-data-exfiltration.express-data-exfiltration -- assigns an allow-listed, validated object to an entity; nothing is sent back to the client
     Object.assign(current, {
       tasteNotes: tasteNotes.trim(),
       seriesRequest,

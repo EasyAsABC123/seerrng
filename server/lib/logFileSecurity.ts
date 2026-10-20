@@ -19,6 +19,7 @@ const assertManagedLogSymlink = (directory: string, file: string): void => {
     throw new Error(`Unexpected symlink in log directory: ${file}`);
   }
 
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- the path comes from a fixed allow-list or is containment-checked here, not from user input
   const filePath = path.join(directory, file);
   const target = fs.readlinkSync(filePath);
   if (

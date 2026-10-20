@@ -2386,7 +2386,8 @@ settingsRoutes.get(
     }
     const search = parsedSearch.value ?? '';
     const searchRegexp = search
-      ? new RegExp(escapeRegExp(search), 'i')
+      ? // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- the user's text is escaped with escapeRegExp
+        new RegExp(escapeRegExp(search), 'i')
       : undefined;
 
     let filter: string[] = [];

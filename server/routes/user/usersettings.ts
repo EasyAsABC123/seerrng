@@ -1814,6 +1814,7 @@ userSettingsRoutes.post<
               'softwareQuotaLimit',
             ] as const) {
               if (hasOwn(body, fieldName)) {
+                // nosemgrep: javascript.express.security.express-data-exfiltration.express-data-exfiltration -- assigns an allow-listed, validated object to an entity; nothing is sent back to the client
                 Object.assign(user, { [fieldName]: body[fieldName] ?? null });
               }
             }

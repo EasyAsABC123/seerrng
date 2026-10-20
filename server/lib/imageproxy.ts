@@ -221,6 +221,7 @@ const resolveCachePath = (...segments: string[]): string => {
 };
 
 const assertCachePath = (target: string): string => {
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- the path comes from a fixed allow-list or is containment-checked here, not from user input
   const resolved = path.resolve(target);
   const relative = path.relative(resolvedBaseCacheDirectory, resolved);
 

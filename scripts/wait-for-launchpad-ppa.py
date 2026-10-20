@@ -81,6 +81,7 @@ def classify_failed_upload(
             "upload log; refusing to republish an unclassified failure."
         )
 
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- release/smoke tooling that only calls explicitly configured endpoints
     with urlopen(upload_log_url, timeout=30) as response:
         upload_log = response.read()
     if upload_log_url.endswith(".gz"):

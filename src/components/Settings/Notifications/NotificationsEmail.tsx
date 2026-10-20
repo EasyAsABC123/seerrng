@@ -116,6 +116,7 @@ const NotificationsEmail = () => {
         })
         .matches(
           new RegExp(
+            // nosemgrep: generic.secrets.security.detected-pgp-private-key-block.detected-pgp-private-key-block -- format validation for a user-supplied key; not a key
             `^(?:\\${REDACTED_SECRET}|-----BEGIN PGP PRIVATE KEY BLOCK-----.+-----END PGP PRIVATE KEY BLOCK-----)$`,
             's'
           ),

@@ -318,6 +318,7 @@ routes.post('/requests', async (req, res) => {
     }
   }
 
+  // nosemgrep: javascript.express.security.express-data-exfiltration.express-data-exfiltration -- assigns an allow-listed, validated object to an entity; nothing is sent back to the client
   const row: ReadMeABookRequest = Object.assign(
     existing ?? new ReadMeABookRequest(),
     {

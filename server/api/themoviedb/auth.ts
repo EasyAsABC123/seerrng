@@ -1,3 +1,4 @@
+// nosemgrep: generic.secrets.security.detected-generic-api-key.detected-generic-api-key -- public upstream TMDB client key that is intentionally shipped
 const UPSTREAM_TMDB_API_KEY = '431a8708161bcd1f1fbe7536137e61ed';
 
 const getReadAccessToken = (): string | undefined =>

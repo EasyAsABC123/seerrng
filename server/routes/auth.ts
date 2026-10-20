@@ -99,6 +99,7 @@ export const MAX_OIDC_CALLBACK_URL_LENGTH = 8_192;
 // the same bcrypt path as local-account failures without storing a usable
 // credential.
 const DUMMY_LOGIN_PASSWORD_HASH =
+  // nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash -- constant dummy hash used to equalise login timing, not a credential
   '$2b$12$TvIVLU3omWLxBO4nurmty.NhNjbAP3IiFNA6CfrvFp2K2he8VOqwm';
 export const LOCAL_LOGIN_FAILURE_LIMIT = 10;
 export const LOCAL_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;

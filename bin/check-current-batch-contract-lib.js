@@ -166,6 +166,7 @@ const validateSeriesRequestEntryEvidence = (source) => {
       const match = node.text.match(/^\/(.*)\/([a-z]*)$/);
       if (!match || !match[1].startsWith('^') || !match[1].endsWith('$'))
         return false;
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- the pattern is built from repository files, never from user input
       const pattern = new RegExp(match[1], match[2]);
       return pattern.test(expected) && !pattern.test(`${expected} Extra`);
     };

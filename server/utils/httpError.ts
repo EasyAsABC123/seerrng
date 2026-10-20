@@ -296,6 +296,7 @@ export const hasHttpStatus = (
           : '';
     if (
       message.trim() === String(expectedStatus) ||
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- expectedStatus is a number, never user text
       new RegExp(
         `(?:http|status(?:\\s+code)?)\\D{0,20}${expectedStatus}(?:\\D|$)`,
         'i'

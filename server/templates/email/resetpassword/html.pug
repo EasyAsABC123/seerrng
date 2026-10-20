@@ -21,6 +21,7 @@ div(style='display: block; background-color: #111827; padding: 2.5rem 0;')
       td(style="text-align: center;")
         if logoUrl
           if applicationUrl
+            //- nosemgrep: javascript.express.security.audit.xss.pug.var-in-href.var-in-href -- the link target is the administrator-configured application URL
             a(href=applicationUrl style='margin: 0 1rem;')
               img(src=logoUrl style='width: 26rem; image-rendering: crisp-edges; image-rendering: -webkit-optimize-contrast;')
           else

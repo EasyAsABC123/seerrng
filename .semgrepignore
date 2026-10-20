@@ -1,0 +1,13 @@
+# Test code, fixtures and example docs are not shipped and intentionally contain
+# throwaway secrets (session secrets, hashes, a sample PGP header). Production
+# code and release tooling are still scanned; reviewed false positives there
+# carry an inline `nosemgrep` comment with the reason.
+*.test.ts
+*.test.tsx
+*.test.mjs
+*.vitest.test.ts
+*.vitest.test.tsx
+cypress/
+android/app/src/androidTest/
+server/utils/seedTestDb.ts
+docs/using-seerr/notifications/email.md

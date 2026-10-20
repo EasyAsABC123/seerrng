@@ -63,6 +63,7 @@ const sharedStyleReferencePattern =
 
 const stylesheetDefines = (stylesheet, className) => {
   const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- the pattern is built from repository files, never from user input
   return new RegExp(`\\.${escaped}(?=[\\s,{:.>]|\\[)`).test(stylesheet);
 };
 

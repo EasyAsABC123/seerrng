@@ -11,6 +11,7 @@ const migrationsDir = path.join(__dirname, 'migrations');
 
 export const getSettingsBackupPath = (settingsPath: string): string => {
   const parsed = path.parse(settingsPath);
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- the path comes from a fixed allow-list or is containment-checked here, not from user input
   return path.join(parsed.dir, `${parsed.name}.old${parsed.ext || '.json'}`);
 };
 

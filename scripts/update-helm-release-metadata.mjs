@@ -11,6 +11,7 @@ function replaceExactlyOnce(content, expression, replacement, description) {
   const flags = expression.flags.includes('g')
     ? expression.flags
     : `${expression.flags}g`;
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- the pattern is built from repository files, never from user input
   const matches = [...content.matchAll(new RegExp(expression.source, flags))];
   if (matches.length !== 1) {
     throw new Error(
@@ -79,6 +80,7 @@ export async function updateHelmReleaseMetadata(
 
   let updatedReadme = replaceExactlyOnce(
     readme,
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- the pattern is built from repository files, never from user input
     new RegExp(
       `Version-${escapeRegExp(chartVersion)}-informational\\?style=flat-square`,
       'gu'

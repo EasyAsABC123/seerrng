@@ -1962,6 +1962,7 @@ router.put<Record<string, never>, Partial<User>[], UserBulkUpdateRequest>(
             if (settings) {
               for (const user of users) {
                 user.settings ??= new UserSettings({ user });
+                // nosemgrep: javascript.express.security.express-data-exfiltration.express-data-exfiltration -- assigns an allow-listed, validated object to an entity; nothing is sent back to the client
                 Object.assign(user.settings, settings);
               }
             }

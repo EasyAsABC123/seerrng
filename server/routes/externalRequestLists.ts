@@ -141,6 +141,7 @@ externalRequestListRoutes.post('/hardcover', async (req, res, next) => {
       }
     }
     const list = await repository.save(
+      // nosemgrep: javascript.express.security.express-data-exfiltration.express-data-exfiltration -- assigns an allow-listed, validated object to an entity; nothing is sent back to the client
       Object.assign(existing ?? new ExternalRequestList(), {
         user: req.user!,
         provider: 'hardcover' as const,

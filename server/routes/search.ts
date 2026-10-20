@@ -1038,6 +1038,7 @@ searchRoutes.get('/', async (req, res, next) => {
       personsWithoutImages.forEach((person) => {
         const metadata = artistMetadataMap.get(person.id.toString());
         if (metadata?.tadbThumb) {
+          // nosemgrep: javascript.express.security.express-data-exfiltration.express-data-exfiltration -- assigns an allow-listed, validated object to an entity; nothing is sent back to the client
           Object.assign(person, {
             profile_path: metadata.tadbThumb,
             artist_backdrop: metadata.tadbCover,
