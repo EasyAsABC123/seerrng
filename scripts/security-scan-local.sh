@@ -200,4 +200,4 @@ trivy_run() {
 if [[ "$mode" != trivy ]]; then
   semgrep_run
 fi
-if [[ "$mode" != semgrep && ! $staged ]]; then trivy_run; fi
+if [[ "$mode" != semgrep ]] && (( ! staged )); then trivy_run; fi
