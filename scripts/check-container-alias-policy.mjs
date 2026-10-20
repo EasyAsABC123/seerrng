@@ -58,6 +58,17 @@ const publishReleaseIndex = releaseWorkflow.indexOf('\n  publish-release:\n');
 const promoteIndex = releaseWorkflow.indexOf(
   '\n  promote-stable-container-aliases:\n'
 );
+const releaseAliasResolutionStart = releaseWorkflow.indexOf(
+  '\n      - name: Resolve latest published stable release\n'
+);
+const releaseAliasPromotionStart = releaseWorkflow.indexOf(
+  '\n      - name: Promote and verify stable aliases\n',
+  releaseAliasResolutionStart
+);
+const releaseAliasResolution = releaseWorkflow.slice(
+  releaseAliasResolutionStart,
+  releaseAliasPromotionStart
+);
 
 for (const alias of requiredAliases) {
   if (!promotionScript.includes(alias)) {
@@ -99,12 +110,20 @@ if (
 if (
   publishReleaseIndex < 0 ||
   promoteIndex < 0 ||
+  releaseAliasResolutionStart < 0 ||
+  releaseAliasPromotionStart < releaseAliasResolutionStart ||
   promoteIndex < publishReleaseIndex ||
   !releaseWorkflow.includes('needs: [publish-release]') ||
   !releaseWorkflow.includes(
     'bash scripts/promote-container-aliases.sh "$VERSION" "$GHCR_IMAGE" "$DOCKER_HUB"'
   ) ||
-  !releaseWorkflow.includes('scripts/latest-published-release-tag.sh') ||
+  !releaseAliasResolution.includes('set -euo pipefail') ||
+  !releaseAliasResolution.includes(
+    'version="$(scripts/latest-published-release-tag.sh)"'
+  ) ||
+  !releaseAliasResolution.includes(
+    'printf \'version=%s\\n\' "$version" >> "$GITHUB_OUTPUT"'
+  ) ||
   !releaseWorkflow.includes('fetch-depth: 0') ||
   !releaseWorkflow.includes('group: seerrng-stable-container-aliases')
 ) {

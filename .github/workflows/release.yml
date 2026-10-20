@@ -834,7 +834,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: echo "version=$(scripts/latest-published-release-tag.sh)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          version="$(scripts/latest-published-release-tag.sh)"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Promote and verify stable aliases
         env:
