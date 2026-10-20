@@ -1,7 +1,7 @@
 ---
 category: fixed
 audience: users
-area: ui
+area: display
 action: none
 breaking: false
 ---

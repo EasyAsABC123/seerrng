@@ -10,6 +10,18 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.71.3](https://github.com/snapetech-org/seerrng/compare/v3.71.2..v3.71.3) - 2026-10-20
+
+### User-facing changes
+
+#### Fixed
+
+- **Display:** Cross-media pages now render their intended heading sizes and colors in production builds.
+
+### 🐛 Bug Fixes
+- *(ui)* Load cross-media styles after globals - ([de6d537](https://github.com/snapetech-org/seerrng/commit/de6d537ed))
+- *(ui)* Restore cross-media heading styles - ([055e74d](https://github.com/snapetech-org/seerrng/commit/055e74d29))
+
 ## [3.71.2](https://github.com/snapetech-org/seerrng/compare/v3.71.1..v3.71.2) - 2026-10-20
 
 ### User-facing changes
