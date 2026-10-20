@@ -6,19 +6,20 @@ import { styleContract } from './cssContract.mjs';
 const read = (file) => readFileSync(new URL(file, import.meta.url), 'utf8');
 const css = read('./globals.css');
 
-test('menu hover, selected and selected-hover use diagonal blue gradients', () => {
+test('menu hover, selected and selected-hover use flat theme surfaces', () => {
   assert.match(
     css,
-    /\.sidebar-link-idle:hover,[\s\S]*?linear-gradient\(40deg, #09182f 0%, #1c4b80 100%\)/
+    /\.sidebar-link-idle:hover,[\s\S]*?background-color: rgb\(var\(--theme-sidebar-hover\)\)/
   );
   assert.match(
     css,
-    /\.sidebar-link-selected\s*\{[^}]*linear-gradient\(40deg, #102d61 0%, #387ebe 100%\)/
+    /\.sidebar-link-selected\s*\{[^}]*background-color: rgb\(var\(--theme-control-border\)\)/
   );
   assert.match(
     css,
-    /\.sidebar-link-selected:hover,[\s\S]*?linear-gradient\(40deg, #19457f 0%, #4c98d3 100%\)/
+    /\.sidebar-link-selected:hover,[\s\S]*?background-color: rgb\(var\(--theme-control-border\)\)/
   );
+  assert.doesNotMatch(css, /\.sidebar-link-selected[^}]*linear-gradient/);
   assert.match(
     css,
     /\.main-menu-link:focus-visible\s*\{[^}]*outline: 2px solid/

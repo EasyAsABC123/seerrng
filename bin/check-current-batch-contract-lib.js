@@ -2659,8 +2659,8 @@ const validateCurrentBatchContract = (files) => {
   );
   requireText(
     globals,
-    '--theme-control-surface: 49 46 129;\n    --theme-control-surface-hover: 55 48 163;\n    --theme-control-border: 99 102 241;\n    --theme-control-text: 199 210 254;',
-    'shared controls must retain the approved dark-indigo palette'
+    '--theme-control-surface: 31 41 55;\n    --theme-control-surface-hover: 55 65 81;\n    --theme-control-border: 40 68 120;\n    --theme-control-text: 219 234 254;',
+    'shared controls must retain the approved slate and blue palette'
   );
   requireCssRule(
     '.selection-circle',
@@ -3022,13 +3022,8 @@ const validateCurrentBatchContract = (files) => {
   );
   requireText(
     globals,
-    'linear-gradient(\n        40deg,',
-    'page gradient must use 40 degrees'
-  );
-  requireText(
-    globals,
-    'rgb(var(--theme-page-gradient-black)) 0%',
-    'page gradient must end in black'
+    'background-color: rgb(var(--theme-page-bg));',
+    'the page canvas must use the shared flat theme background token'
   );
   requireText(
     globals,
@@ -6121,7 +6116,7 @@ const validateCurrentBatchContract = (files) => {
   );
   for (const token of [
     ':is(.app-card-sub, .app-card-inset),',
-    '--app-card-frame-background: var(--palette-blue, #0051d4);',
+    '--app-card-frame-background: rgb(var(--theme-sidebar-border));',
     '--app-card-frame-width: 1px;',
     'border-radius: 0.5rem;',
     'background: var(--app-card-frame-background);',
@@ -6130,7 +6125,7 @@ const validateCurrentBatchContract = (files) => {
     requireText(
       globals,
       token,
-      'card borders must preserve the shared rounded silhouette and solid blue ring'
+      'card borders must preserve the shared rounded silhouette and solid theme ring'
     );
   }
   for (const token of ["label: 'HD'", "label: '4K'"]) {

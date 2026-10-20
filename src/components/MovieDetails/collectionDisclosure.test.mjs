@@ -149,27 +149,25 @@ test('Movie Details inherits its divider treatment without an inline override', 
   assert.doesNotMatch(source, /--theme-detail-divider-shadow|CSSProperties/);
 });
 
-test('black glowing divider overrides are limited to Blackout', () => {
+test('detail dividers are flat theme lines with no glowing override', () => {
   const css = readFileSync(
     new URL('../../styles/globals.css', import.meta.url),
     'utf8'
   );
   const contract = styleContract(css);
+  assert.doesNotMatch(css, /--theme-detail-divider-shadow/);
   const palette = "[data-theme-palette='seerr']";
   assert.equal(
-    contract.declaration(palette, '--theme-detail-divider-shadow'),
-    '0 0 4px 0 rgb(255 255 255 / 0.8)'
+    contract.declaration(
+      `${palette} .media-detail-column-divider::before`,
+      'background-color'
+    ),
+    'rgb(var(--theme-sidebar-border))'
   );
-  const glowing = [];
-  postcss.parse(css).walkDecls('box-shadow', (decl) => {
-    if (decl.value === 'var(--theme-detail-divider-shadow)')
-      glowing.push(decl.parent);
+  postcss.parse(css).walkRules((rule) => {
+    if (!rule.selector.includes('.media-detail-column-divider')) return;
+    rule.walkDecls('box-shadow', () =>
+      assert.fail(`${rule.selector} must not add a glow`)
+    );
   });
-  assert.equal(glowing.length, 2);
-  for (const rule of glowing) {
-    for (const selector of rule.selectors) {
-      assert.ok(selector.trim().startsWith(palette + ' '));
-      assert.equal(contract.declaration(selector, 'background-color'), 'black');
-    }
-  }
 });

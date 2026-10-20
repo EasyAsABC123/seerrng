@@ -16,7 +16,7 @@ const login = readFileSync(
   'utf8'
 );
 
-test('title cards use the two-pixel solid blue frame', () => {
+test('title cards use the two-pixel solid theme frame', () => {
   const block = css.match(/\.app-card-poster\s*\{([\s\S]*?)\n\s*\}/)?.[1];
 
   assert.ok(block);
@@ -25,7 +25,7 @@ test('title cards use the two-pixel solid blue frame', () => {
   assert.match(css, /\.app-card-poster,[\s\S]*?\.app-card-inset/);
   assert.match(
     css,
-    /--app-card-frame-background:\s*var\(--palette-blue,\s*#0051d4\)/
+    /--app-card-frame-background:\s*rgb\(var\(--theme-sidebar-border\)\)/
   );
   assert.doesNotMatch(
     css,
