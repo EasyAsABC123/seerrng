@@ -137,6 +137,11 @@ describe('Discover Back navigation geometry', () => {
           pageProps: { [mediaType]: details },
           __N_SSP: true,
         });
+      } else {
+        cy.intercept('GET', `/api/v1${detailPath}/series`, {
+          status: 'disabled',
+          series: [],
+        });
       }
 
       cy.visit(`/discover/${tab}`);

@@ -1,10 +1,13 @@
 describe('Books and Music discover parity', () => {
   const openFilterSection = (label: string) => {
-    cy.contains('button', new RegExp(`^${label}$`)).then(($button) => {
-      if ($button.attr('aria-expanded') === 'false') {
-        cy.wrap($button).click();
-      }
-    });
+    cy.get('button')
+      .filter((_, button) => button.textContent?.trim() === label)
+      .should('have.length', 1)
+      .then(($button) => {
+        if ($button.attr('aria-expanded') === 'false') {
+          cy.wrap($button).click();
+        }
+      });
   };
 
   const themePalettes = [
@@ -633,9 +636,10 @@ describe('Books and Music discover parity', () => {
     cy.wait('@getBulkAuthor');
     cy.contains('h1', 'Bulk Author').should('be.visible');
     cy.contains('button', 'Request Bibliography').click();
-    cy.contains('[data-testid=modal-title]', 'Request Bibliography').should(
-      'be.visible'
-    );
+    cy.contains(
+      '[data-testid=modal-title]',
+      'Request Book Bibliography'
+    ).should('be.visible');
     cy.contains('Requestable Work').should('be.visible');
     cy.contains('Already Requested Work').should('be.visible');
     cy.contains('button', 'Load More').should('not.exist');

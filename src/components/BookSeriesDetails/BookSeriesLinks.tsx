@@ -31,7 +31,8 @@ export default function BookSeriesLinks({ bookId }: { bookId: string }) {
         {intl.formatMessage(messages.unavailable)}
       </p>
     );
-  if (!data?.series.length) return null;
+  const series = Array.isArray(data?.series) ? data.series : [];
+  if (series.length === 0) return null;
   return (
     <div
       className="mt-3 flex flex-wrap gap-2 text-sm"
@@ -41,27 +42,27 @@ export default function BookSeriesLinks({ bookId }: { bookId: string }) {
       {data.status === 'partial' && (
         <span>{intl.formatMessage(messages.partial)}</span>
       )}
-      {data.series.map((series) => (
+      {series.map((entry) => (
         <Link
-          key={series.id}
-          href={`/book-series/${series.id}`}
+          key={entry.id}
+          href={`/book-series/${entry.id}`}
           title={intl.formatMessage(messages.source, {
-            server: series.serverName,
+            server: entry.serverName,
             format: intl.formatMessage(
-              series.format === 'ebook' ? messages.ebook : messages.audiobook
+              entry.format === 'ebook' ? messages.ebook : messages.audiobook
             ),
           })}
           className="rounded bg-gray-700 px-2 py-1 text-indigo-200 hover:bg-gray-600"
         >
-          {series.position === undefined
-            ? series.title
+          {entry.position === undefined
+            ? entry.title
             : intl.formatMessage(messages.position, {
-                title: series.title,
-                position: series.position,
+                title: entry.title,
+                position: entry.position,
               })}
           {' · '}
           {intl.formatMessage(
-            series.format === 'ebook' ? messages.ebook : messages.audiobook
+            entry.format === 'ebook' ? messages.ebook : messages.audiobook
           )}
         </Link>
       ))}
