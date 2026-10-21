@@ -65,7 +65,14 @@ const messages = defineMessages('components.Setup', {
   configuremediaserver: 'Configure Media Server',
   configuredefaults: 'Set Defaults',
   configureservices: 'Connect Services',
+  backToMediaServerStep: 'Back to media server',
   backToDefaults: 'Back to defaults',
+  skipGuidedSetup: 'Skip the guide (advanced)',
+  useGuidedSetup: 'Use guided setup',
+  advancedSetupDescription:
+    'Skip the guided defaults and service choices. You’ll still connect your media server before setup can finish.',
+  advancedSetupSelected:
+    'Manual setup selected. After connecting your media server, you’ll get the full service settings.',
   backToChoices: 'Back to choices',
   skipForNow: 'Skip for now',
   saveDownloadChanges:
@@ -114,6 +121,7 @@ const Setup = () => {
   const intl = useIntl();
   const [isUpdating, setIsUpdating] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [isAdvancedSetup, setIsAdvancedSetup] = useState(false);
   const [setupConnectionsView, setSetupConnectionsView] = useState<
     'overview' | 'downloads' | 'category' | 'downloadClients'
   >('overview');
@@ -430,6 +438,35 @@ const Setup = () => {
                   isLastStep
                 />
               </>
+            ) : isAdvancedSetup ? (
+              <>
+                <SetupSteps
+                  stepNumber={1}
+                  description={intl.formatMessage(messages.servertype)}
+                  active={currentStep === 1}
+                  completed={currentStep > 1}
+                />
+                <SetupSteps
+                  stepNumber={2}
+                  description={intl.formatMessage(messages.signin)}
+                  active={currentStep === 2}
+                  completed={currentStep > 2}
+                />
+                <SetupSteps
+                  stepNumber={3}
+                  description={intl.formatMessage(
+                    messages.configuremediaserver
+                  )}
+                  active={currentStep === 3}
+                  completed={currentStep > 3}
+                />
+                <SetupSteps
+                  stepNumber={4}
+                  description={intl.formatMessage(messages.configureservices)}
+                  active={currentStep === 5}
+                  isLastStep
+                />
+              </>
             ) : (
               <>
                 <SetupSteps
@@ -531,6 +568,28 @@ const Setup = () => {
                   </div>
                 </div>
               </div>
+              <div className="mt-6 w-full max-w-xl rounded-md border border-gray-600 bg-gray-900/40 p-4 text-center">
+                <p className="text-sm leading-5 text-gray-300">
+                  {intl.formatMessage(messages.advancedSetupDescription)}
+                </p>
+                {isAdvancedSetup && (
+                  <p className="mt-2 text-sm text-indigo-200" role="status">
+                    {intl.formatMessage(messages.advancedSetupSelected)}
+                  </p>
+                )}
+                <Button
+                  buttonType="default"
+                  buttonSize="sm"
+                  className="mt-3"
+                  onClick={() => setIsAdvancedSetup((current) => !current)}
+                >
+                  {intl.formatMessage(
+                    isAdvancedSetup
+                      ? messages.useGuidedSetup
+                      : messages.skipGuidedSetup
+                  )}
+                </Button>
+              </div>
             </div>
           )}
           {currentStep === 2 &&
@@ -602,7 +661,7 @@ const Setup = () => {
                       <Button
                         buttonType="primary"
                         disabled={!mediaServerSettingsComplete}
-                        onClick={() => setCurrentStep(4)}
+                        onClick={() => setCurrentStep(isAdvancedSetup ? 5 : 4)}
                       >
                         {intl.formatMessage(messages.continue)}
                       </Button>
@@ -612,6 +671,7 @@ const Setup = () => {
               </div>
             ))}
           {currentStep === 4 &&
+            !isAdvancedSetup &&
             (!isGuidedSetup && !transportReady ? (
               <div className="p-4 text-center text-sm text-gray-300">
                 {intl.formatMessage(messages.transportRequired)}
@@ -674,7 +734,10 @@ const Setup = () => {
                   </section>
                 )}
 
-                {setupConnectionsView === 'overview' && (
+                {isAdvancedSetup && (
+                  <SettingsServices showProwlarr hideGuidedSetupPrompt />
+                )}
+                {!isAdvancedSetup && setupConnectionsView === 'overview' && (
                   <SetupConnectionsGuide
                     view="overview"
                     enabledMediaCategories={enabledMediaCategories}
@@ -789,13 +852,17 @@ const Setup = () => {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <Button
                       buttonType="default"
-                      onClick={() => setCurrentStep(4)}
+                      onClick={() => setCurrentStep(isAdvancedSetup ? 3 : 4)}
                       disabled={
                         setupConnectionsView === 'downloadClients' &&
                         setupDownloadDirty
                       }
                     >
-                      {intl.formatMessage(messages.backToDefaults)}
+                      {intl.formatMessage(
+                        isAdvancedSetup
+                          ? messages.backToMediaServerStep
+                          : messages.backToDefaults
+                      )}
                     </Button>
                     <Button
                       buttonType="primary"

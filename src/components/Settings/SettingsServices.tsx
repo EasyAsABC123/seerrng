@@ -522,11 +522,13 @@ const ServerInstance = ({
 
 const SettingsServices = ({
   showProwlarr = false,
+  hideGuidedSetupPrompt = false,
   setupEnabledMediaCategories,
   setupActiveCategory,
   onSetupCategoryChange,
 }: {
   showProwlarr?: boolean;
+  hideGuidedSetupPrompt?: boolean;
   setupEnabledMediaCategories?: EnabledMediaCategories;
   setupActiveCategory?: SetupServiceCategory;
   onSetupCategoryChange?: (category: SetupServiceCategory) => void;
@@ -972,7 +974,7 @@ const SettingsServices = ({
           intl.formatMessage(globalMessages.settings),
         ]}
       />
-      {!setupEnabledMediaCategories && (
+      {!setupEnabledMediaCategories && !hideGuidedSetupPrompt && (
         <section className="app-card-sub section mb-5">
           <h2 className="heading">
             {intl.formatMessage(messages.guidedSetupTitle)}
