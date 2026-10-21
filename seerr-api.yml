@@ -6695,6 +6695,42 @@ components:
               type: string
             enableMentions:
               type: boolean
+    AppriseSettings:
+      type: object
+      required: [enabled, embedPoster, options]
+      properties:
+        enabled:
+          type: boolean
+        embedPoster:
+          type: boolean
+        types:
+          type: integer
+          minimum: 0
+        options:
+          type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+              maxLength: 4096
+            configKey:
+              type: string
+              maxLength: 64
+            tag:
+              type: string
+              maxLength: 4096
+            authMethodUsernamePassword:
+              type: boolean
+            username:
+              type: string
+              maxLength: 4096
+            password:
+              type: string
+              maxLength: 4096
+              description: Stored password is redacted in responses.
+            locale:
+              type: string
+              maxLength: 4096
     SlackSettings:
       type: object
       properties:
@@ -13037,6 +13073,58 @@ paths:
       responses:
         '204':
           description: Test notification attempted
+  /settings/notifications/apprise:
+    get:
+      summary: Get Apprise notification settings
+      description: Returns current Apprise API settings with saved secrets redacted.
+      tags:
+        - settings
+      responses:
+        '200':
+          description: Returned Apprise settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppriseSettings'
+    post:
+      summary: Update Apprise notification settings
+      description: Saves the Apprise API connection and configuration key. Destination URLs remain on the Apprise server.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppriseSettings'
+      responses:
+        '200':
+          description: Values were successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppriseSettings'
+        '400':
+          description: Invalid Apprise settings
+  /settings/notifications/apprise/test:
+    post:
+      summary: Test Apprise notification settings
+      description: Sends a test notification using the submitted Apprise API settings.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppriseSettings'
+      responses:
+        '204':
+          description: Test notification attempted
+        '400':
+          description: Invalid Apprise settings
+        '500':
+          description: The test notification failed
   /settings/notifications/discord:
     get:
       summary: Get Discord notification settings

@@ -57,6 +57,33 @@ before(() => {
 });
 
 describe('external media-service settings behind the OpenAPI validator', () => {
+  it('serves Apprise settings and test routes through the OpenAPI validator', async () => {
+    const app = createOpenApiValidatedApp();
+    await request(app)
+      .get('/api/v1/settings/notifications/apprise')
+      .expect(200);
+
+    const invalidKeySettings = {
+      enabled: true,
+      embedPoster: false,
+      types: 0,
+      options: {
+        url: 'https://apprise.example.test',
+        configKey: 'bad/key',
+        locale: 'en',
+      },
+    };
+
+    for (const path of [
+      '/api/v1/settings/notifications/apprise',
+      '/api/v1/settings/notifications/apprise/test',
+    ]) {
+      const response = await request(app).post(path).send(invalidKeySettings);
+      assert.equal(response.status, 400, path);
+      assert.match(response.body.message, /configuration key/i, path);
+    }
+  });
+
   it('lets Whisparr, Navidrome, and Jellystat settings reads reach their handlers', async () => {
     const app = createOpenApiValidatedApp();
 
