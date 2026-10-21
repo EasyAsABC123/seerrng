@@ -9,8 +9,8 @@ import {
   processOidcCallback,
 } from '@app/utils/oidc';
 import { hasOidcCallbackParameters } from '@app/utils/oidcQuery';
-import type { PublicOidcProvider } from '@server/lib/settings';
 import versionedAsset from '@app/utils/versionedAsset';
+import type { PublicOidcProvider } from '@server/lib/settings';
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
@@ -18,21 +18,80 @@ import { useIntl } from 'react-intl';
 const getQueryValue = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 
-const PROVIDER_BRANDS: Record<string, { icon: string; setupUrl: string }> = {
-  google: { icon: 'google', setupUrl: 'https://developers.google.com/identity/openid-connect/openid-connect' },
-  'microsoft-entra': { icon: 'microsoft', setupUrl: 'https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc' },
-  okta: { icon: 'okta', setupUrl: 'https://developer.okta.com/docs/guides/implement-grant-type/-/main/' },
-  auth0: { icon: 'auth0', setupUrl: 'https://auth0.com/docs/get-started/authentication-and-authorization-flow/authorization-code-flow' },
-  keycloak: { icon: 'keycloak', setupUrl: 'https://www.keycloak.org/docs/latest/server_admin/' },
-  authentik: { icon: 'authentik', setupUrl: 'https://docs.goauthentik.io/add-secure-apps/providers/oauth2/create-oauth2-provider/' },
-  zitadel: { icon: 'zitadel', setupUrl: 'https://zitadel.com/docs/guides/integrate/login/oidc/oauth-recommended-flows' },
-  'amazon-cognito': { icon: 'amazon-cognito', setupUrl: 'https://docs.aws.amazon.com/cognito/latest/developerguide/federation-endpoints.html' },
-  'apple-sign-in': { icon: 'apple', setupUrl: 'https://developer.apple.com/documentation/signinwithapple/configuring-your-environment-for-sign-in-with-apple' },
-  gitlab: { icon: 'gitlab', setupUrl: 'https://docs.gitlab.com/integration/openid_connect_provider/' },
-  fusionauth: { label: 'FusionAuth', icon: 'fusionauth', setupUrl: 'https://fusionauth.io/docs/lifecycle/authenticate-users/oauth/' },
-  onelogin: { label: 'OneLogin', icon: 'onelogin', setupUrl: 'https://developers.onelogin.com/docs/openid-connect/connect-to-onelogin/' },
-  pingone: { label: 'PingOne', icon: 'pingone', setupUrl: 'https://docs.pingidentity.com/pingone/applications/p1_edit_application_oidc.html' },
-  jumpcloud: { label: 'JumpCloud', icon: 'jumpcloud', setupUrl: 'https://jumpcloud.com/support/sso-with-oidc' },
+const PROVIDER_BRANDS: Record<
+  string,
+  { icon: string; label?: string; setupUrl: string }
+> = {
+  google: {
+    icon: 'google',
+    setupUrl:
+      'https://developers.google.com/identity/openid-connect/openid-connect',
+  },
+  'microsoft-entra': {
+    icon: 'microsoft',
+    setupUrl:
+      'https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc',
+  },
+  okta: {
+    icon: 'okta',
+    setupUrl:
+      'https://developer.okta.com/docs/guides/implement-grant-type/-/main/',
+  },
+  auth0: {
+    icon: 'auth0',
+    setupUrl:
+      'https://auth0.com/docs/get-started/authentication-and-authorization-flow/authorization-code-flow',
+  },
+  keycloak: {
+    icon: 'keycloak',
+    setupUrl: 'https://www.keycloak.org/docs/latest/server_admin/',
+  },
+  authentik: {
+    icon: 'authentik',
+    setupUrl:
+      'https://docs.goauthentik.io/add-secure-apps/providers/oauth2/create-oauth2-provider/',
+  },
+  zitadel: {
+    icon: 'zitadel',
+    setupUrl:
+      'https://zitadel.com/docs/guides/integrate/login/oidc/oauth-recommended-flows',
+  },
+  'amazon-cognito': {
+    icon: 'amazon-cognito',
+    setupUrl:
+      'https://docs.aws.amazon.com/cognito/latest/developerguide/federation-endpoints.html',
+  },
+  'apple-sign-in': {
+    icon: 'apple',
+    setupUrl:
+      'https://developer.apple.com/documentation/signinwithapple/configuring-your-environment-for-sign-in-with-apple',
+  },
+  gitlab: {
+    icon: 'gitlab',
+    setupUrl: 'https://docs.gitlab.com/integration/openid_connect_provider/',
+  },
+  fusionauth: {
+    label: 'FusionAuth',
+    icon: 'fusionauth',
+    setupUrl: 'https://fusionauth.io/docs/lifecycle/authenticate-users/oauth/',
+  },
+  onelogin: {
+    label: 'OneLogin',
+    icon: 'onelogin',
+    setupUrl:
+      'https://developers.onelogin.com/docs/openid-connect/connect-to-onelogin/',
+  },
+  pingone: {
+    label: 'PingOne',
+    icon: 'pingone',
+    setupUrl:
+      'https://docs.pingidentity.com/pingone/applications/p1_edit_application_oidc.html',
+  },
+  jumpcloud: {
+    label: 'JumpCloud',
+    icon: 'jumpcloud',
+    setupUrl: 'https://jumpcloud.com/support/sso-with-oidc',
+  },
 };
 
 type OidcLoginButtonProps = {
@@ -123,7 +182,10 @@ export default function OidcLoginButton({
   );
 
   const providerSlug = provider.slug.trim().toLowerCase();
-  const brand = Object.prototype.hasOwnProperty.call(PROVIDER_BRANDS, providerSlug)
+  const brand = Object.prototype.hasOwnProperty.call(
+    PROVIDER_BRANDS,
+    providerSlug
+  )
     ? PROVIDER_BRANDS[providerSlug]
     : undefined;
   return (
@@ -131,24 +193,41 @@ export default function OidcLoginButton({
       <ButtonWithLoader
         loading={loading}
         onClick={() => void redirectToLogin()}
-        className="min-w-0 w-full"
+        className="w-full min-w-0"
       >
         {provider.logo ? (
           // oxlint-disable-next-line nextjs/no-img-element
-          <img src={provider.logo} alt="" aria-hidden="true" className="mr-2 max-h-5 w-5" />
+          <img
+            src={provider.logo}
+            alt=""
+            aria-hidden="true"
+            className="mr-2 max-h-5 w-5"
+          />
         ) : brand ? (
           <svg aria-hidden="true" className="mr-2 h-5 w-5" viewBox="0 0 24 24">
-            <use href={`${versionedAsset('/images/oidc-provider-icons.svg')}#oidc-${brand.icon}`} />
+            <use
+              href={`${versionedAsset('/images/oidc-provider-icons.svg')}#oidc-${brand.icon}`}
+            />
           </svg>
         ) : (
           // oxlint-disable-next-line nextjs/no-img-element
-          <img src={versionedAsset('/images/openid.svg')} alt="" aria-hidden="true" className="mr-2 max-h-5 w-5" />
+          <img
+            src={versionedAsset('/images/openid.svg')}
+            alt=""
+            aria-hidden="true"
+            className="mr-2 max-h-5 w-5"
+          />
         )}
         <span className="min-w-0 truncate">{provider.name}</span>
       </ButtonWithLoader>
-      <a className="mt-1 block text-center text-xs text-gray-400 underline underline-offset-2"
-        href={brand?.setupUrl ?? 'https://openid.net/developers/how-connect-works/'}
-        target="_blank" rel="noopener noreferrer">
+      <a
+        className="mt-1 block text-center text-xs text-gray-400 underline underline-offset-2"
+        href={
+          brand?.setupUrl ?? 'https://openid.net/developers/how-connect-works/'
+        }
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         Provider setup guide
       </a>
     </div>
