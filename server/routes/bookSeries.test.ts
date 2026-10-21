@@ -27,7 +27,7 @@ import express from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
 import type { OpenAPIV3 } from 'express-openapi-validator/dist/framework/types';
 import session from 'express-session';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
