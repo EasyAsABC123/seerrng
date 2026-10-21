@@ -213,4 +213,5 @@ it('selects and saves the quality profile returned by the connection test', asyn
     '/api/v1/settings/sportarr',
     expect.objectContaining({ activeProfileId: 12, activeProfileName: 'HD' })
   );
+  expect(state.post.mock.calls[0]?.[1]).not.toHaveProperty('externalUrl');
 });

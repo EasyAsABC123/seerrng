@@ -96,8 +96,13 @@ const SportarrModal = ({ settings, onClose, onSave }: SportarrModalProps) => {
         const profile = profiles.find(
           (candidate) => candidate.id === Number(values.activeProfileId)
         );
+        const { externalUrl, ...connectionValues } = values;
+        const normalizedExternalUrl = externalUrl.trim();
         const payload = {
-          ...values,
+          ...connectionValues,
+          ...(normalizedExternalUrl
+            ? { externalUrl: normalizedExternalUrl }
+            : {}),
           activeProfileId: Number(values.activeProfileId),
           activeProfileName: profile?.name ?? values.activeProfileName,
         };

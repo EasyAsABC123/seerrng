@@ -97,9 +97,29 @@ describe('external media-service settings behind the OpenAPI validator', () => {
       .get('/api/v1/settings/jellystat')
       .expect(200);
 
-    assert.ok(Array.isArray(whisparr.body));
+    assert.deepEqual(whisparr.body, []);
     assert.ok(navidrome.body === null || typeof navidrome.body === 'object');
     assert.ok(jellystat.body === null || typeof jellystat.body === 'object');
+  });
+
+  it('accepts a Sportarr connection without an optional external URL', async () => {
+    const app = createOpenApiValidatedApp();
+
+    const response = await request(app).post('/api/v1/settings/sportarr').send({
+      name: 'Sportarr',
+      hostname: 'sportarr.example.test',
+      port: 1867,
+      apiKey: 'test-api-key',
+      useSsl: false,
+      baseUrl: '',
+      activeProfileId: 12,
+      activeProfileName: 'HD',
+      isDefault: true,
+    });
+
+    assert.equal(response.status, 201, JSON.stringify(response.body));
+    assert.equal(response.body.name, 'Sportarr');
+    assert.equal(response.body.externalUrl, undefined);
   });
 
   it('recognizes the connection-test and Whisparr profile routes', async () => {
