@@ -5,4 +5,4 @@ area: navigation
 action: none
 breaking: false
 ---
-Game discovery, translations and hacks, and the games library now stay hidden until an administrator configures the matching service and enables its media category.
+Unconfigured game discovery and patch catalogs no longer clutter navigation, while the personal games library remains available regardless of request-service configuration.

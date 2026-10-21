@@ -53,7 +53,6 @@ describe('isOptionalCatalogPathEnabled', () => {
       isOptionalCatalogPathEnabled('/discover/patches', unavailable),
       false
     );
-    strictEqual(isOptionalCatalogPathEnabled('/games', unavailable), false);
 
     const configured = {
       ...unavailable,
@@ -68,7 +67,6 @@ describe('isOptionalCatalogPathEnabled', () => {
       isOptionalCatalogPathEnabled('/discover/patches', configured),
       true
     );
-    strictEqual(isOptionalCatalogPathEnabled('/games', configured), true);
 
     const categoriesDisabled = {
       ...configured,
@@ -86,9 +84,19 @@ describe('isOptionalCatalogPathEnabled', () => {
       isOptionalCatalogPathEnabled('/discover/patches', categoriesDisabled),
       false
     );
+  });
+
+  it('keeps the personal game library visible when request integrations are disabled', () => {
     strictEqual(
-      isOptionalCatalogPathEnabled('/games', categoriesDisabled),
-      false
+      isOptionalCatalogPathEnabled('/games', {
+        musicEnabled: false,
+        booksEnabled: false,
+        comicsEnabled: false,
+        softwareEnabled: false,
+        romarrEnabled: false,
+        enabledMediaCategories: { game: false },
+      }),
+      true
     );
   });
 

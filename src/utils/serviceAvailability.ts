@@ -208,12 +208,7 @@ export const isOptionalCatalogPathEnabled = (
     );
   }
 
-  if (
-    path === '/discover/games' ||
-    path.startsWith('/discover/games/') ||
-    path === '/games' ||
-    path.startsWith('/games/')
-  ) {
+  if (path === '/discover/games' || path.startsWith('/discover/games/')) {
     return (
       Boolean(availability.softwareEnabled) &&
       isConfiguredMediaCategoryEnabled('game', availability)
