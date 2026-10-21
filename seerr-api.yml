@@ -3241,6 +3241,217 @@ components:
         - activeDirectory
         - is4k
         - isDefault
+    WhisparrSettings:
+      type: object
+      description: Whisparr scene-server settings. The API key is redacted in responses.
+      properties:
+        id:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          readOnly: true
+        name:
+          type: string
+          maxLength: 512
+        hostname:
+          type: string
+          maxLength: 512
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        apiKey:
+          type: string
+          maxLength: 512
+        useSsl:
+          type: boolean
+        baseUrl:
+          type: string
+          maxLength: 512
+        activeProfileId:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        activeProfileName:
+          type: string
+          maxLength: 512
+        activeDirectory:
+          type: string
+          maxLength: 2048
+        tags:
+          type: array
+          items:
+            type: integer
+        is4k:
+          type: boolean
+          enum: [false]
+        isDefault:
+          type: boolean
+        externalUrl:
+          type: string
+          maxLength: 512
+          format: uri
+          nullable: true
+        syncEnabled:
+          type: boolean
+        preventSearch:
+          type: boolean
+        tagRequests:
+          type: boolean
+        overrideRule:
+          type: array
+          items:
+            type: integer
+      required:
+        - name
+        - hostname
+        - port
+        - apiKey
+        - useSsl
+        - activeProfileId
+        - activeProfileName
+        - activeDirectory
+        - tags
+        - is4k
+        - isDefault
+        - syncEnabled
+        - preventSearch
+        - tagRequests
+        - overrideRule
+    NavidromeSettings:
+      type: object
+      description: Navidrome connection used to mark music as available. Passwords are redacted in responses.
+      properties:
+        url:
+          type: string
+          maxLength: 512
+          format: uri
+        username:
+          type: string
+          maxLength: 256
+        password:
+          type: string
+          maxLength: 512
+        syncEnabled:
+          type: boolean
+      required: [url, username, password, syncEnabled]
+    NavidromeSettingsResponse:
+      type: object
+      nullable: true
+      description: Configured Navidrome connection, or null when none is configured. Passwords are redacted.
+      properties:
+        url:
+          type: string
+          maxLength: 512
+          format: uri
+        username:
+          type: string
+          maxLength: 256
+        password:
+          type: string
+          maxLength: 512
+        syncEnabled:
+          type: boolean
+      required: [url, username, password, syncEnabled]
+    JellystatSettings:
+      type: object
+      description: Read-only Jellystat play-count connection. API keys are redacted in responses.
+      properties:
+        url:
+          type: string
+          maxLength: 512
+          format: uri
+        apiKey:
+          type: string
+          maxLength: 512
+      required: [url, apiKey]
+    JellystatSettingsResponse:
+      type: object
+      nullable: true
+      description: Configured Jellystat connection, or null when none is configured. API keys are redacted.
+      properties:
+        url:
+          type: string
+          maxLength: 512
+          format: uri
+        apiKey:
+          type: string
+          maxLength: 512
+      required: [url, apiKey]
+    WhisparrServiceOption:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        isDefault:
+          type: boolean
+      required: [id, name, isDefault]
+    AdultSceneResult:
+      type: object
+      properties:
+        id:
+          type: string
+          description: StashDB scene identifier.
+        provider:
+          type: string
+          enum: [whisparr]
+        mediaType:
+          type: string
+          enum: [adult]
+        title:
+          type: string
+        year:
+          type: integer
+        overview:
+          type: string
+        studio:
+          type: string
+        performers:
+          type: array
+          items:
+            type: string
+        posterPath:
+          type: string
+        serviceId:
+          type: integer
+        serviceName:
+          type: string
+        mediaInfo:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: integer
+            status:
+              type: integer
+              description: Availability using the MediaStatus values.
+            serviceId:
+              type: integer
+            requestStatus:
+              type: integer
+              description: Request status using the MediaRequestStatus values.
+            requestId:
+              type: integer
+          required: [id, status, serviceId]
+      required: [id, provider, mediaType, title, serviceId, serviceName]
+    AdultSceneSearchResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+        totalPages:
+          type: integer
+        totalResults:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdultSceneResult'
+        partial:
+          type: boolean
+      required: [page, totalPages, totalResults, results, partial]
     MylarSettings:
       type: object
       properties:
@@ -5639,7 +5850,7 @@ components:
           type: integer
         mediaType:
           type: string
-          enum: [movie, tv, music, book, comic, magazine, sports]
+          enum: [movie, tv, music, book, comic, magazine, adult, sports]
         stage:
           type: string
         attempt:
@@ -9298,6 +9509,314 @@ paths:
           description: Sportarr service not found
         '409':
           description: Existing request data depends on this service
+  /settings/whisparr:
+    get:
+      summary: Get Whisparr settings
+      description: Returns configured Whisparr scene servers with API keys redacted.
+      tags:
+        - settings
+      responses:
+        '200':
+          description: Whisparr settings returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WhisparrSettings'
+    post:
+      summary: Add a Whisparr server
+      description: Adds a Whisparr Eros v3 server. Requires administrator permission.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhisparrSettings'
+      responses:
+        '201':
+          description: Whisparr server added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhisparrSettings'
+        '400':
+          description: Invalid Whisparr settings
+        '403':
+          description: Administrator permission required
+        '409':
+          description: Maximum configured Whisparr servers reached
+  /settings/whisparr/test:
+    post:
+      summary: Test a Whisparr connection
+      description: Validates the scene-focused Whisparr Eros v3 API and returns its profiles, folders, and tags. Requires administrator permission.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServarrConnectionSettings'
+      responses:
+        '200':
+          description: Whisparr connection verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles, rootFolders, tags, apiVersion]
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceProfile'
+                  rootFolders:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, path]
+                      properties:
+                        id:
+                          type: integer
+                        path:
+                          type: string
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  urlBase:
+                    type: string
+                    nullable: true
+                  apiVersion:
+                    type: integer
+        '400':
+          description: Invalid connection settings or unsupported Whisparr API
+        '403':
+          description: Administrator permission required
+  /settings/whisparr/{id}:
+    put:
+      summary: Update a Whisparr server
+      description: Updates a configured Whisparr server. Requires administrator permission.
+      tags:
+        - settings
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhisparrSettings'
+      responses:
+        '200':
+          description: Whisparr settings updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhisparrSettings'
+        '400':
+          description: Invalid Whisparr settings
+        '403':
+          description: Administrator permission required
+        '404':
+          description: Whisparr server not found
+        '409':
+          description: The Whisparr service configuration is busy or at capacity
+    delete:
+      summary: Remove a Whisparr server
+      description: Removes a configured Whisparr server when no saved requests depend on it. Requires administrator permission.
+      tags:
+        - settings
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000000
+      responses:
+        '200':
+          description: Whisparr server removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhisparrSettings'
+        '403':
+          description: Administrator permission required
+        '404':
+          description: Whisparr server not found
+        '409':
+          description: Existing request data depends on this service
+  /settings/whisparr/{id}/profiles:
+    get:
+      summary: Get Whisparr quality profiles
+      description: Returns profiles for a configured Whisparr server. Requires administrator permission.
+      tags:
+        - settings
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000000
+      responses:
+        '200':
+          description: Whisparr profiles returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceProfile'
+        '403':
+          description: Administrator permission required
+        '404':
+          description: Whisparr server not found
+  /settings/navidrome:
+    get:
+      summary: Get Navidrome settings
+      description: Returns the optional Navidrome connection used to mark music as available. Passwords are redacted.
+      tags:
+        - settings
+      responses:
+        '200':
+          description: Navidrome settings returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NavidromeSettingsResponse'
+    put:
+      summary: Save Navidrome settings
+      description: Adds or updates the Navidrome connection. Requires administrator permission.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NavidromeSettings'
+      responses:
+        '200':
+          description: Navidrome settings saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NavidromeSettings'
+        '400':
+          description: Invalid Navidrome settings
+        '403':
+          description: Administrator permission required
+    delete:
+      summary: Remove Navidrome settings
+      description: Disconnects Navidrome and stops future library scans. Requires administrator permission.
+      tags:
+        - settings
+      responses:
+        '204':
+          description: Navidrome settings removed
+        '403':
+          description: Administrator permission required
+  /settings/navidrome/test:
+    post:
+      summary: Test a Navidrome connection
+      description: Checks the supplied Navidrome URL and credentials. Requires administrator permission.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NavidromeSettings'
+      responses:
+        '204':
+          description: Navidrome connection verified
+        '400':
+          description: Invalid Navidrome settings
+        '403':
+          description: Administrator permission required
+        '502':
+          description: Navidrome connection failed
+  /settings/jellystat:
+    get:
+      summary: Get Jellystat settings
+      description: Returns the optional read-only Jellystat play-count connection with its API key redacted.
+      tags:
+        - settings
+      responses:
+        '200':
+          description: Jellystat settings returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JellystatSettingsResponse'
+    put:
+      summary: Save Jellystat settings
+      description: Adds or updates the read-only Jellystat connection. Requires administrator permission.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JellystatSettings'
+      responses:
+        '200':
+          description: Jellystat settings saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JellystatSettings'
+        '400':
+          description: Invalid Jellystat settings
+        '403':
+          description: Administrator permission required
+    delete:
+      summary: Remove Jellystat settings
+      description: Disconnects Jellystat. Requires administrator permission.
+      tags:
+        - settings
+      responses:
+        '204':
+          description: Jellystat settings removed
+        '403':
+          description: Administrator permission required
+  /settings/jellystat/test:
+    post:
+      summary: Test a Jellystat connection
+      description: Checks the supplied Jellystat URL and API key. Requires administrator permission.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JellystatSettings'
+      responses:
+        '204':
+          description: Jellystat connection verified
+        '400':
+          description: Invalid Jellystat settings
+        '403':
+          description: Administrator permission required
+        '502':
+          description: Jellystat connection failed
   /settings/public:
     get:
       summary: Get public settings
@@ -18317,6 +18836,115 @@ paths:
                 format: binary
         '404':
           description: Book cover not found
+  /adult/search:
+    get:
+      summary: Search or browse adult scenes
+      description: Searches configured Whisparr scene libraries, or returns recently added scenes when query is omitted. Requires an adult-media permission.
+      tags:
+        - search
+      parameters:
+        - in: query
+          name: query
+          schema:
+            type: string
+            maxLength: 200
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 1
+        - in: query
+          name: serverId
+          schema:
+            type: string
+            maxLength: 10
+            pattern: '^[0-9]+$'
+      responses:
+        '200':
+          description: Adult scenes returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdultSceneSearchResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /adult/{id}:
+    get:
+      summary: Get an adult scene
+      description: Looks up an adult scene across configured Whisparr servers. Requires an adult-media permission.
+      tags:
+        - search
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+        - in: query
+          name: serverId
+          schema:
+            type: string
+            maxLength: 10
+            pattern: '^[0-9]+$'
+      responses:
+        '200':
+          description: Adult scene details returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdultSceneResult'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+  /adult/{id}/cover:
+    get:
+      summary: Get an adult scene cover image
+      description: Streams a cover image from the selected Whisparr server. Requires an adult-media permission.
+      tags:
+        - search
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+        - in: query
+          name: serverId
+          schema:
+            type: string
+            maxLength: 10
+            pattern: '^[0-9]+$'
+      responses:
+        '200':
+          description: Adult scene cover image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid Whisparr server ID
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          description: Adult scene cover not found
+        '503':
+          description: No Whisparr server is available
   /author/{authorId}:
     get:
       summary: Get author details
@@ -18510,6 +19138,21 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/SportarrServiceOption'
+  /service/whisparr:
+    get:
+      summary: Get Whisparr service summaries
+      description: Returns configured scene-server destinations for adult requests.
+      tags:
+        - service
+      responses:
+        '200':
+          description: Whisparr services returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WhisparrServiceOption'
   /service/readarr:
     get:
       summary: Get Bookshelf service summaries
