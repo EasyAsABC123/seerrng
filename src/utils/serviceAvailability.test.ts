@@ -36,6 +36,62 @@ describe('isOptionalCatalogPathEnabled', () => {
     );
   });
 
+  it('hides game and patch catalogs until their services are configured', () => {
+    const unavailable = {
+      musicEnabled: false,
+      booksEnabled: false,
+      comicsEnabled: false,
+      softwareEnabled: false,
+      romarrEnabled: false,
+    };
+
+    strictEqual(
+      isOptionalCatalogPathEnabled('/discover/games', unavailable),
+      false
+    );
+    strictEqual(
+      isOptionalCatalogPathEnabled('/discover/patches', unavailable),
+      false
+    );
+    strictEqual(isOptionalCatalogPathEnabled('/games', unavailable), false);
+
+    const configured = {
+      ...unavailable,
+      softwareEnabled: true,
+      romarrEnabled: true,
+    };
+    strictEqual(
+      isOptionalCatalogPathEnabled('/discover/games', configured),
+      true
+    );
+    strictEqual(
+      isOptionalCatalogPathEnabled('/discover/patches', configured),
+      true
+    );
+    strictEqual(isOptionalCatalogPathEnabled('/games', configured), true);
+
+    const categoriesDisabled = {
+      ...configured,
+      enabledMediaCategories: {
+        game: false,
+        retro: false,
+        modern: false,
+      },
+    };
+    strictEqual(
+      isOptionalCatalogPathEnabled('/discover/games', categoriesDisabled),
+      false
+    );
+    strictEqual(
+      isOptionalCatalogPathEnabled('/discover/patches', categoriesDisabled),
+      false
+    );
+    strictEqual(
+      isOptionalCatalogPathEnabled('/games', categoriesDisabled),
+      false
+    );
+  });
+
   it('shows each optional catalog when its backend is configured', () => {
     strictEqual(
       isOptionalCatalogPathEnabled('/discover/music', {

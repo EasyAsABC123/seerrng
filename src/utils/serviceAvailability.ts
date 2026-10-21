@@ -208,6 +208,27 @@ export const isOptionalCatalogPathEnabled = (
     );
   }
 
+  if (
+    path === '/discover/games' ||
+    path.startsWith('/discover/games/') ||
+    path === '/games' ||
+    path.startsWith('/games/')
+  ) {
+    return (
+      Boolean(availability.softwareEnabled) &&
+      isConfiguredMediaCategoryEnabled('game', availability)
+    );
+  }
+
+  if (path === '/discover/patches' || path.startsWith('/discover/patches/')) {
+    return (
+      Boolean(availability.softwareEnabled) &&
+      Boolean(availability.romarrEnabled) &&
+      (isConfiguredMediaCategoryEnabled('retro', availability) ||
+        isConfiguredMediaCategoryEnabled('modern', availability))
+    );
+  }
+
   if (path === '/software') {
     return isAnySoftwareCategoryEnabled(availability);
   }
