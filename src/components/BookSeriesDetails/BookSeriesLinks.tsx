@@ -31,7 +31,8 @@ export default function BookSeriesLinks({ bookId }: { bookId: string }) {
         {intl.formatMessage(messages.unavailable)}
       </p>
     );
-  const series = Array.isArray(data?.series) ? data.series : [];
+  if (!data) return null;
+  const series = Array.isArray(data.series) ? data.series : [];
   if (series.length === 0) return null;
   return (
     <div
