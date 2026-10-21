@@ -7,12 +7,16 @@ import ImageFader from '@app/components/Common/ImageFader';
 import PageTitle from '@app/components/Common/PageTitle';
 import LanguagePicker from '@app/components/Layout/LanguagePicker';
 import type { LoginBackdrop } from '@app/components/Login';
+import SetupConnectionsGuide from '@app/components/Setup/SetupConnectionsGuide';
+import SetupDefaults from '@app/components/Setup/SetupDefaults';
 import SetupSteps from '@app/components/Setup/SetupSteps';
+import type { SetupDownloadProfile } from '@app/components/Setup/setupDownloadClients';
+import type { SetupServiceCategory } from '@app/components/Setup/setupServiceCategories';
 import TransportSecurityNotice from '@app/components/TransportSecurityNotice';
 import useLocale from '@app/hooks/useLocale';
 import useSettings from '@app/hooks/useSettings';
 import useToasts from '@app/hooks/useToasts';
-import { useUser } from '@app/hooks/useUser';
+import { Permission, useUser } from '@app/hooks/useUser';
 import defineMessages from '@app/utils/defineMessages';
 import versionedAsset from '@app/utils/versionedAsset';
 import {
@@ -40,6 +44,9 @@ const SettingsPlex = dynamic(
 const SettingsServices = dynamic(
   () => import('@app/components/Settings/SettingsServices')
 );
+const SettingsDownloadClients = dynamic(
+  () => import('@app/components/Settings/SettingsDownloadClients')
+);
 const SetupLogin = dynamic(() => import('./SetupLogin'));
 
 const messages = defineMessages('components.Setup', {
@@ -50,12 +57,23 @@ const messages = defineMessages('components.Setup', {
   configemby: 'Configure Emby',
   setup: 'Setup',
   finish: 'Finish Setup',
+  finishGuide: 'Return to Services',
   finishing: 'Finishing…',
   continue: 'Continue',
   servertype: 'Choose Server Type',
   signin: 'Sign In',
   configuremediaserver: 'Configure Media Server',
-  configureservices: 'Configure Services',
+  configuredefaults: 'Set Defaults',
+  configureservices: 'Connect Services',
+  backToDefaults: 'Back to defaults',
+  backToChoices: 'Back to choices',
+  skipForNow: 'Skip for now',
+  saveDownloadChanges:
+    'Save or discard your download client changes before finishing setup.',
+  downloadProgressTitle: 'Live download progress',
+  categoryTvMovies: 'Movies & TV',
+  categoryBooks: 'Books, comics & magazines',
+  categoryTools: 'System tools',
   librarieserror:
     'Validation failed. Please toggle the libraries again to continue.',
   finisherror: 'Something went wrong while finishing setup.',
@@ -96,6 +114,14 @@ const Setup = () => {
   const intl = useIntl();
   const [isUpdating, setIsUpdating] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [setupConnectionsView, setSetupConnectionsView] = useState<
+    'overview' | 'downloads' | 'category' | 'downloadClients'
+  >('overview');
+  const [setupServiceCategory, setSetupServiceCategory] =
+    useState<SetupServiceCategory>('tv-movies');
+  const [setupDownloadProfile, setSetupDownloadProfile] =
+    useState<SetupDownloadProfile>('both');
+  const [setupDownloadDirty, setSetupDownloadDirty] = useState(false);
   const [mediaServerSettingsComplete, setMediaServerSettingsComplete] =
     useState(false);
   const [enabledLibraryCount, setEnabledLibraryCount] = useState(0);
@@ -104,6 +130,7 @@ const Setup = () => {
     MediaServerType.NOT_CONFIGURED
   );
   const router = useRouter();
+  const isGuidedSetup = router.query.guide === '1';
   const { locale } = useLocale();
   const settings = useSettings();
   const enabledMediaCategories =
@@ -129,7 +156,12 @@ const Setup = () => {
     intl.formatMessage(messages[categoryMessageKeys[category]])
   );
   const toasts = useToasts();
-  const { user, revalidate: revalidateUser } = useUser();
+  const {
+    user,
+    loading: userLoading,
+    revalidate: revalidateUser,
+    hasPermission: userHasPermission,
+  } = useUser();
   const [transportReady, setTransportReady] = useState(false);
   const userCheckStarted = useRef(false);
   const libraryValidationController = useRef<AbortController | undefined>(
@@ -149,6 +181,11 @@ const Setup = () => {
   }, [revalidateUser]);
 
   const finishSetup = async () => {
+    if (settings.currentSettings.initialized && isGuidedSetup) {
+      await router.push('/settings/services');
+      return;
+    }
+
     if (setupCompletionController.current) {
       return;
     }
@@ -259,8 +296,17 @@ const Setup = () => {
   });
 
   useEffect(() => {
+    if (!router.isReady) return;
+
     if (settings.currentSettings.initialized) {
-      router.push('/');
+      if (isGuidedSetup) {
+        if (currentStep < 4) {
+          setCurrentStep(4);
+        }
+        return;
+      }
+      void router.replace('/');
+      return;
     }
 
     if (
@@ -278,8 +324,33 @@ const Setup = () => {
     settings.currentSettings.mediaServerType,
     settings.currentSettings.initialized,
     router,
+    router.isReady,
+    isGuidedSetup,
     currentStep,
     user,
+  ]);
+
+  useEffect(() => {
+    if (
+      !router.isReady ||
+      !settings.currentSettings.initialized ||
+      !isGuidedSetup ||
+      userLoading
+    ) {
+      return;
+    }
+
+    if (!user || !userHasPermission(Permission.ADMIN)) {
+      void router.replace('/');
+    }
+  }, [
+    isGuidedSetup,
+    router,
+    router.isReady,
+    settings.currentSettings.initialized,
+    user,
+    userHasPermission,
+    userLoading,
   ]);
 
   useEffect(() => {
@@ -312,7 +383,12 @@ const Setup = () => {
     settings.currentSettings.mediaServerType !== MediaServerType.NOT_CONFIGURED;
   const needsTransportRecovery = mediaServerAlreadyConfigured && !user;
 
-  if (settings.currentSettings.initialized) return <></>;
+  if (
+    settings.currentSettings.initialized &&
+    !(isGuidedSetup && user && userHasPermission(Permission.ADMIN))
+  ) {
+    return <></>;
+  }
 
   return (
     <div className="relative flex min-h-screen flex-col justify-center bg-gray-900 py-12">
@@ -339,30 +415,57 @@ const Setup = () => {
         <AppDataWarning />
         <nav className="relative z-50">
           <ul className="auth-frosted-surface divide-y divide-gray-600 rounded-md border border-gray-600 bg-gray-800/50 md:flex md:divide-y-0">
-            <SetupSteps
-              stepNumber={1}
-              description={intl.formatMessage(messages.servertype)}
-              active={currentStep === 1}
-              completed={currentStep > 1}
-            />
-            <SetupSteps
-              stepNumber={2}
-              description={intl.formatMessage(messages.signin)}
-              active={currentStep === 2}
-              completed={currentStep > 2}
-            />
-            <SetupSteps
-              stepNumber={3}
-              description={intl.formatMessage(messages.configuremediaserver)}
-              active={currentStep === 3}
-              completed={currentStep > 3}
-            />
-            <SetupSteps
-              stepNumber={4}
-              description={intl.formatMessage(messages.configureservices)}
-              active={currentStep === 4}
-              isLastStep
-            />
+            {isGuidedSetup && settings.currentSettings.initialized ? (
+              <>
+                <SetupSteps
+                  stepNumber={1}
+                  description={intl.formatMessage(messages.configuredefaults)}
+                  active={currentStep === 4}
+                  completed={currentStep > 4}
+                />
+                <SetupSteps
+                  stepNumber={2}
+                  description={intl.formatMessage(messages.configureservices)}
+                  active={currentStep === 5}
+                  isLastStep
+                />
+              </>
+            ) : (
+              <>
+                <SetupSteps
+                  stepNumber={1}
+                  description={intl.formatMessage(messages.servertype)}
+                  active={currentStep === 1}
+                  completed={currentStep > 1}
+                />
+                <SetupSteps
+                  stepNumber={2}
+                  description={intl.formatMessage(messages.signin)}
+                  active={currentStep === 2}
+                  completed={currentStep > 2}
+                />
+                <SetupSteps
+                  stepNumber={3}
+                  description={intl.formatMessage(
+                    messages.configuremediaserver
+                  )}
+                  active={currentStep === 3}
+                  completed={currentStep > 3}
+                />
+                <SetupSteps
+                  stepNumber={4}
+                  description={intl.formatMessage(messages.configuredefaults)}
+                  active={currentStep === 4}
+                  completed={currentStep > 4}
+                />
+                <SetupSteps
+                  stepNumber={5}
+                  description={intl.formatMessage(messages.configureservices)}
+                  active={currentStep === 5}
+                  isLastStep
+                />
+              </>
+            )}
           </ul>
         </nav>
         <TransportSecurityNotice onReadinessChange={setTransportReady} />
@@ -509,70 +612,208 @@ const Setup = () => {
               </div>
             ))}
           {currentStep === 4 &&
-            (!transportReady ? (
+            (!isGuidedSetup && !transportReady ? (
+              <div className="p-4 text-center text-sm text-gray-300">
+                {intl.formatMessage(messages.transportRequired)}
+              </div>
+            ) : (
+              <SetupDefaults
+                onBack={isGuidedSetup ? undefined : () => setCurrentStep(3)}
+                onContinue={() => setCurrentStep(5)}
+                onSkip={() => setCurrentStep(5)}
+              />
+            ))}
+          {currentStep === 5 &&
+            (!isGuidedSetup && !transportReady ? (
               <div className="p-4 text-center text-sm text-gray-300">
                 {intl.formatMessage(messages.transportRequired)}
               </div>
             ) : (
               <div>
-                <section className="app-card-sub mb-6 rounded-md border border-gray-600 p-4">
-                  <h2 className="mb-3 text-lg font-semibold">
-                    {intl.formatMessage(messages.setupReview)}
-                  </h2>
-                  <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                    <div>
-                      <dt className="text-gray-300">
-                        {intl.formatMessage(messages.enabledRequestTypes)}
-                      </dt>
-                      <dd className="mt-1 font-medium">
-                        {enabledCategoryLabels.join(', ') ||
-                          intl.formatMessage(messages.noneEnabled)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-gray-300">
-                        {intl.formatMessage(messages.enabledMediaLibraries)}
-                      </dt>
-                      <dd className="mt-1 font-medium">
-                        {enabledLibraryNames.join(', ') ||
-                          intl.formatMessage(messages.noneEnabled)}{' '}
-                        <span className="font-normal text-gray-300">
-                          (
-                          {intl.formatMessage(messages.libraryCount, {
-                            count: enabledLibraryCount,
-                          })}
-                          )
-                        </span>
-                      </dd>
-                    </div>
-                  </dl>
-                  <p className="mt-3 text-sm text-gray-300">
-                    {intl.formatMessage(messages.optionalServices)}
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-white">
-                    {intl.formatMessage(messages.requiredSetupComplete)}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-400">
-                    {intl.formatMessage(messages.serviceTestNote)}
-                  </p>
-                </section>
-                <SettingsServices
-                  showProwlarr
-                  setupEnabledMediaCategories={enabledMediaCategories}
-                />
-                <div className="actions">
-                  <div className="flex justify-end">
-                    <span className="ms-3 inline-flex rounded-md shadow-sm">
+                {!isGuidedSetup && (
+                  <section className="app-card-sub mb-6 rounded-md border border-gray-600 p-4">
+                    <h2 className="mb-3 text-lg font-semibold">
+                      {intl.formatMessage(messages.setupReview)}
+                    </h2>
+                    <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="text-gray-300">
+                          {intl.formatMessage(messages.enabledRequestTypes)}
+                        </dt>
+                        <dd className="mt-1 font-medium">
+                          {enabledCategoryLabels.join(', ') ||
+                            intl.formatMessage(messages.noneEnabled)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-300">
+                          {intl.formatMessage(messages.enabledMediaLibraries)}
+                        </dt>
+                        <dd className="mt-1 font-medium">
+                          {enabledLibraryNames.join(', ') ||
+                            intl.formatMessage(messages.noneEnabled)}{' '}
+                          <span className="font-normal text-gray-300">
+                            (
+                            {intl.formatMessage(messages.libraryCount, {
+                              count: enabledLibraryCount,
+                            })}
+                            )
+                          </span>
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="mt-3 text-sm text-gray-300">
+                      {intl.formatMessage(messages.optionalServices)}
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-white">
+                      {intl.formatMessage(messages.requiredSetupComplete)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      {intl.formatMessage(messages.serviceTestNote)}
+                    </p>
+                  </section>
+                )}
+
+                {setupConnectionsView === 'overview' && (
+                  <SetupConnectionsGuide
+                    view="overview"
+                    enabledMediaCategories={enabledMediaCategories}
+                    mediaServerType={mediaServerType}
+                    showMediaServer={!isGuidedSetup}
+                    onOpenMediaServer={() => setCurrentStep(3)}
+                    onSelectCategory={(category) => {
+                      setSetupServiceCategory(category);
+                      setSetupConnectionsView('category');
+                    }}
+                    onOpenDownloads={() => setSetupConnectionsView('downloads')}
+                    onSelectDownloadProfile={setSetupDownloadProfile}
+                    onBack={() => setCurrentStep(4)}
+                  />
+                )}
+                {setupConnectionsView === 'downloads' && (
+                  <SetupConnectionsGuide
+                    view="downloads"
+                    enabledMediaCategories={enabledMediaCategories}
+                    mediaServerType={mediaServerType}
+                    showMediaServer={false}
+                    onOpenMediaServer={() => setCurrentStep(3)}
+                    onSelectCategory={setSetupServiceCategory}
+                    onOpenDownloads={() => setSetupConnectionsView('downloads')}
+                    onSelectDownloadProfile={(profile) => {
+                      setSetupDownloadProfile(profile);
+                      setSetupConnectionsView('downloadClients');
+                    }}
+                    onBack={() => setSetupConnectionsView('overview')}
+                  />
+                )}
+                {setupConnectionsView === 'category' && (
+                  <section>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="text-xl font-semibold text-white sm:text-2xl">
+                        {intl.formatMessage(
+                          messages[
+                            setupServiceCategory === 'tv-movies'
+                              ? 'categoryTvMovies'
+                              : setupServiceCategory === 'audiobooks-books'
+                                ? 'categoryBooks'
+                                : setupServiceCategory === 'music'
+                                  ? 'categoryMusic'
+                                  : 'categoryTools'
+                          ]
+                        )}
+                      </h2>
                       <Button
-                        buttonType="primary"
-                        onClick={() => void finishSetup()}
-                        disabled={isUpdating}
+                        buttonType="default"
+                        onClick={() => setSetupConnectionsView('overview')}
                       >
-                        {isUpdating
-                          ? intl.formatMessage(messages.finishing)
-                          : intl.formatMessage(messages.finish)}
+                        {intl.formatMessage(messages.backToChoices)}
                       </Button>
-                    </span>
+                    </div>
+                    <SettingsServices
+                      showProwlarr
+                      setupEnabledMediaCategories={enabledMediaCategories}
+                      setupActiveCategory={setupServiceCategory}
+                      onSetupCategoryChange={setSetupServiceCategory}
+                    />
+                    <div className="mt-4">
+                      <Button
+                        buttonType="default"
+                        onClick={() => setSetupConnectionsView('overview')}
+                      >
+                        {intl.formatMessage(messages.skipForNow)}
+                      </Button>
+                    </div>
+                  </section>
+                )}
+                {setupConnectionsView === 'downloadClients' && (
+                  <section>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl font-semibold text-white sm:text-2xl">
+                          {intl.formatMessage(messages.downloadProgressTitle)}
+                        </h2>
+                        <p className="mt-1 text-sm text-gray-300">
+                          {intl.formatMessage(messages.optionalServices)}
+                        </p>
+                      </div>
+                      <Button
+                        buttonType="default"
+                        onClick={() => setSetupConnectionsView('downloads')}
+                        disabled={setupDownloadDirty}
+                      >
+                        {intl.formatMessage(messages.backToChoices)}
+                      </Button>
+                    </div>
+                    <SettingsDownloadClients
+                      setupProfile={setupDownloadProfile}
+                      onSetupDirtyChange={setSetupDownloadDirty}
+                    />
+                    {setupDownloadDirty && (
+                      <p className="mt-3 text-sm text-amber-200" role="status">
+                        {intl.formatMessage(messages.saveDownloadChanges)}
+                      </p>
+                    )}
+                    <div className="mt-4">
+                      <Button
+                        buttonType="default"
+                        onClick={() => setSetupConnectionsView('overview')}
+                        disabled={setupDownloadDirty}
+                      >
+                        {intl.formatMessage(messages.skipForNow)}
+                      </Button>
+                    </div>
+                  </section>
+                )}
+
+                <div className="actions mt-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <Button
+                      buttonType="default"
+                      onClick={() => setCurrentStep(4)}
+                      disabled={
+                        setupConnectionsView === 'downloadClients' &&
+                        setupDownloadDirty
+                      }
+                    >
+                      {intl.formatMessage(messages.backToDefaults)}
+                    </Button>
+                    <Button
+                      buttonType="primary"
+                      onClick={() => void finishSetup()}
+                      disabled={
+                        isUpdating ||
+                        (setupConnectionsView === 'downloadClients' &&
+                          setupDownloadDirty)
+                      }
+                    >
+                      {isUpdating
+                        ? intl.formatMessage(messages.finishing)
+                        : intl.formatMessage(
+                            isGuidedSetup
+                              ? messages.finishGuide
+                              : messages.finish
+                          )}
+                    </Button>
                   </div>
                 </div>
               </div>

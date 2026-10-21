@@ -62,6 +62,7 @@ import type {
 import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import type { ReactNode } from 'react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
@@ -121,6 +122,10 @@ const messages = defineMessages('components.Settings', {
   setupServiceCategoryBooks: 'Books, Comics & Magazines',
   serviceCategoryMusic: 'Music',
   serviceCategoryTools: 'System',
+  guidedSetupTitle: 'New to SeerrNG?',
+  guidedSetupDescription:
+    'Use the short setup guide to review request defaults and connect the services you use.',
+  guidedSetupAction: 'Open guided setup',
   serviceCategories: 'Service categories',
   serviceGroupRequestDestinations: 'Request Destinations',
   serviceGroupViewing: 'Viewing and Live TV',
@@ -518,9 +523,13 @@ const ServerInstance = ({
 const SettingsServices = ({
   showProwlarr = false,
   setupEnabledMediaCategories,
+  setupActiveCategory,
+  onSetupCategoryChange,
 }: {
   showProwlarr?: boolean;
   setupEnabledMediaCategories?: EnabledMediaCategories;
+  setupActiveCategory?: SetupServiceCategory;
+  onSetupCategoryChange?: (category: SetupServiceCategory) => void;
 }) => {
   const intl = useIntl();
   const router = useRouter();
@@ -558,6 +567,7 @@ const SettingsServices = ({
     : undefined;
   const defaultServiceCategory = setupServiceCategories?.[0] ?? 'tv-movies';
   const requestedServiceCategory =
+    setupActiveCategory ??
     searchTargetCategory ??
     (isServiceCategory(router.query.serviceCategory)
       ? router.query.serviceCategory
@@ -571,6 +581,11 @@ const SettingsServices = ({
     currentSettings.romarrEnabled;
 
   const selectServiceCategory = (category: ServiceCategory) => {
+    if (setupEnabledMediaCategories && onSetupCategoryChange) {
+      onSetupCategoryChange(category);
+      return;
+    }
+
     const query = { ...router.query };
     delete query.settingsSearch;
     delete query.settingsSearchTarget;
@@ -957,6 +972,21 @@ const SettingsServices = ({
           intl.formatMessage(globalMessages.settings),
         ]}
       />
+      {!setupEnabledMediaCategories && (
+        <section className="app-card-sub section mb-5">
+          <h2 className="heading">
+            {intl.formatMessage(messages.guidedSetupTitle)}
+          </h2>
+          <p className="description mb-3">
+            {intl.formatMessage(messages.guidedSetupDescription)}
+          </p>
+          <Link href="/setup?guide=1" legacyBehavior passHref>
+            <Button as="a" buttonType="default" buttonSize="standard">
+              {intl.formatMessage(messages.guidedSetupAction)}
+            </Button>
+          </Link>
+        </section>
+      )}
       <div className={styles.categoryPicker}>
         {visibleServiceCategories.length > 0 ? (
           <p className="description mb-3">

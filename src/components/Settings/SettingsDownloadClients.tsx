@@ -3,6 +3,11 @@ import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import { SavedServiceHostPicker } from '@app/components/Settings/SavedServiceHostPicker';
 import SettingsField from '@app/components/Settings/SettingsField';
+import {
+  getSetupDefaultDownloadClientTypes,
+  getSetupDownloadClientTypes,
+  type SetupDownloadProfile,
+} from '@app/components/Setup/setupDownloadClients';
 import useToasts from '@app/hooks/useToasts';
 import defineMessages from '@app/utils/defineMessages';
 import type {
@@ -26,6 +31,8 @@ const messages = defineMessages('components.Settings.SettingsDownloadClients', {
   noClients:
     'No download clients are connected. Download progress updates when the scheduled Download Sync job runs.',
   addClient: 'Add Download Client',
+  addUsenetClient: 'Add Usenet client',
+  addTorrentClient: 'Add torrent client',
   removeClient: 'Remove',
   newClient: 'New Download Client',
   name: 'Name',
@@ -147,7 +154,13 @@ const errorMessage = (error: unknown): string | undefined => {
   return undefined;
 };
 
-const SettingsDownloadClients = () => {
+const SettingsDownloadClients = ({
+  setupProfile,
+  onSetupDirtyChange,
+}: {
+  setupProfile?: SetupDownloadProfile;
+  onSetupDirtyChange?: (dirty: boolean) => void;
+}) => {
   const intl = useIntl();
   const { addToast } = useToasts();
   const { data, error, mutate } = useSWR<LiveDownloadSettingsResponse>(
@@ -163,6 +176,15 @@ const SettingsDownloadClients = () => {
   const [saveError, setSaveError] = useState<string>();
   const [testing, setTesting] = useState<string>();
   const [testResult, setTestResult] = useState<TestState>();
+  const setupClientTypes = setupProfile
+    ? getSetupDownloadClientTypes(setupProfile)
+    : (Object.keys(CLIENT_LABELS) as DownloadClientType[]);
+
+  useEffect(() => {
+    onSetupDirtyChange?.(isDirty);
+
+    return () => onSetupDirtyChange?.(false);
+  }, [isDirty, onSetupDirtyChange]);
 
   useEffect(() => {
     if (data && !isDirty) {
@@ -185,7 +207,13 @@ const SettingsDownloadClients = () => {
     setTestResult(undefined);
   };
 
-  const addClient = () => {
+  const addClient = (type?: DownloadClientType) => {
+    const clientType =
+      type ??
+      (setupProfile
+        ? getSetupDefaultDownloadClientTypes(setupProfile)[0]
+        : undefined) ??
+      'qbittorrent';
     setDraft((current) =>
       current
         ? {
@@ -194,10 +222,10 @@ const SettingsDownloadClients = () => {
               ...current.clients,
               {
                 name: intl.formatMessage(messages.newClient),
-                type: 'qbittorrent',
+                type: clientType,
                 enabled: true,
                 hostname: '',
-                port: String(DEFAULT_PORTS.qbittorrent),
+                port: String(DEFAULT_PORTS[clientType]),
                 useSsl: false,
                 baseUrl: '',
                 username: '',
@@ -341,7 +369,7 @@ const SettingsDownloadClients = () => {
                 <div className="form-input-field">
                   <select
                     id={`${id}-type`}
-                    disabled={isSaving}
+                    disabled={isSaving || setupClientTypes.length === 1}
                     value={client.type}
                     onChange={(event) => {
                       const type = event.currentTarget
@@ -355,13 +383,13 @@ const SettingsDownloadClients = () => {
                       });
                     }}
                   >
-                    {(Object.keys(CLIENT_LABELS) as DownloadClientType[]).map(
-                      (type) => (
-                        <option key={type} value={type}>
-                          {CLIENT_LABELS[type]}
-                        </option>
-                      )
-                    )}
+                    {Array.from(
+                      new Set([...setupClientTypes, client.type])
+                    ).map((type) => (
+                      <option key={type} value={type}>
+                        {CLIENT_LABELS[type]}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -677,15 +705,38 @@ const SettingsDownloadClients = () => {
             )}
             <div className="actions">
               <div className="settings-card-actions settings-service-card-actions">
-                <Button
-                  type="button"
-                  buttonType="success"
-                  buttonSize="sm"
-                  disabled={isSaving || draft.clients.length >= MAX_CLIENTS}
-                  onClick={addClient}
-                >
-                  {intl.formatMessage(messages.addClient)}
-                </Button>
+                {setupProfile === 'both' ? (
+                  <>
+                    <Button
+                      type="button"
+                      buttonType="success"
+                      buttonSize="sm"
+                      disabled={isSaving || draft.clients.length >= MAX_CLIENTS}
+                      onClick={() => addClient('sabnzbd')}
+                    >
+                      {intl.formatMessage(messages.addUsenetClient)}
+                    </Button>
+                    <Button
+                      type="button"
+                      buttonType="success"
+                      buttonSize="sm"
+                      disabled={isSaving || draft.clients.length >= MAX_CLIENTS}
+                      onClick={() => addClient('qbittorrent')}
+                    >
+                      {intl.formatMessage(messages.addTorrentClient)}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    buttonType="success"
+                    buttonSize="sm"
+                    disabled={isSaving || draft.clients.length >= MAX_CLIENTS}
+                    onClick={() => addClient()}
+                  >
+                    {intl.formatMessage(messages.addClient)}
+                  </Button>
+                )}
                 {isDirty && (
                   <Button
                     type="button"
