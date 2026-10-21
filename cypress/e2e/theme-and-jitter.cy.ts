@@ -83,7 +83,7 @@ describe('Theme picker and seeded discovery refresh', () => {
     cy.get('meta[name="theme-color"]').should(
       'have.attr',
       'content',
-      '#1f2937'
+      '#1e293b'
     );
     cy.get('button[aria-label="Theme picker"]').click();
     cy.contains('button', 'Lagoon').click();

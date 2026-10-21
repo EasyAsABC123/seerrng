@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { afterEach, before, describe, it, mock } from 'node:test';
 
 import ComicVineAPI from '@server/api/comicvine';
@@ -61,7 +62,7 @@ function createApp() {
   app.use(express.json());
   app.use(
     session({
-      secret: 'test-secret',
+      secret: randomBytes(32).toString('hex'),
       cookie: { secure: 'auto' },
       resave: false,
       saveUninitialized: false,
@@ -4756,7 +4757,7 @@ describe('GET /discover/books', () => {
       }) => {
         assert.strictEqual(
           query,
-          '(title:"alpha" OR author:"alpha") AND (title:"beta" OR author:"beta") AND subject:science_fiction AND language:eng AND first_publish_year:2024'
+          '(title:"alpha" OR author:"alpha" OR subject:"alpha") AND (title:"beta" OR author:"beta" OR subject:"beta") AND subject:science_fiction AND language:eng AND first_publish_year:2024'
         );
         assert.strictEqual(page, 1);
         assert.strictEqual(limit, 50);
@@ -4921,7 +4922,7 @@ describe('GET /discover/books', () => {
       async ({ query, limit }: { query: string; limit?: number }) => {
         assert.strictEqual(
           query,
-          '(title:"microsoft" OR author:"microsoft") AND (title:"windows" OR author:"windows") AND (title:"11" OR author:"11")'
+          '(title:"microsoft" OR author:"microsoft" OR subject:"microsoft") AND (title:"windows" OR author:"windows" OR subject:"windows") AND (title:"11" OR author:"11" OR subject:"11")'
         );
         assert.strictEqual(limit, 50);
 
@@ -4962,7 +4963,7 @@ describe('GET /discover/books', () => {
     assert.strictEqual(searchBooksMock.mock.callCount(), 1);
     assert.deepStrictEqual(
       res.body.results.map((result: { title: string }) => result.title),
-      ['The Microsoft Windows 11 Reference']
+      ['Windows 11 Guide', 'The Microsoft Windows 11 Reference']
     );
   });
 

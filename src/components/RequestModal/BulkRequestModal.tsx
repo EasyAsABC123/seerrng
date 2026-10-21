@@ -78,6 +78,9 @@ const messages = defineMessages('components.RequestModal.BulkRequestModal', {
     'You selected {count} items. Confirm once more before submitting this batch.',
   quotaexceeded: 'Not enough request quota remaining.',
   summary: '{created} created, {skipped} skipped, {failed} failed.',
+  requestbibliographyFormat: 'Request {format} Bibliography',
+  requestseriesFormat: 'Request {format} Series',
+  requestLibraryFormat: 'Request Selected {format} Books',
   requestitemsFormat:
     'Request {count} {count, plural, one {Item} other {Items}} as {format}',
   faileditems: 'Failed Items',
@@ -191,10 +194,13 @@ export interface BulkRequestModalProps {
   show: boolean;
   mediaType: BulkMediaType;
   title: string;
+  bookSeries?: boolean;
+  librarySubset?: boolean;
+  unresolvedBookTitles?: string[];
+  initialBookFormat?: BulkBookFormat;
   artistId?: string;
   authorId?: string;
   seriesId?: string;
-  initialBookFormat?: BulkBookFormat;
   initialItems?: BulkItem[];
   initialTotalItems?: number;
   sourceUrl?: string;
@@ -242,7 +248,8 @@ const normalizeBulkItemId = (id: string, mediaType: BulkMediaType): string =>
 
 const dedupeBulkItems = (
   sourceItems: BulkItem[],
-  mediaType: BulkMediaType
+  mediaType: BulkMediaType,
+  identityOnly = false
 ): BulkItem[] => {
   const seenIds = new Set<string>();
   const seenTitles = new Set<string>();
@@ -256,7 +263,7 @@ const dedupeBulkItems = (
       const idKey = normalizeBulkItemId(item.id, mediaType);
       const titleKey = getBulkItemDedupeKey(item, mediaType);
 
-      if (seenIds.has(idKey) || seenTitles.has(titleKey)) {
+      if (seenIds.has(idKey) || (!identityOnly && seenTitles.has(titleKey))) {
         return false;
       }
 
@@ -384,6 +391,8 @@ const BulkRequestModal = ({
   show,
   mediaType,
   title,
+  bookSeries = false,
+  librarySubset = false,
   artistId,
   authorId,
   seriesId,
@@ -408,7 +417,7 @@ const BulkRequestModal = ({
   } = useAdvancedOptionsDisclosure(mediaType);
   const [releaseType, setReleaseType] = useState('Album');
   const [items, setItems] = useState<BulkItem[]>(
-    dedupeBulkItems(initialItems, mediaType)
+    dedupeBulkItems(initialItems, mediaType, bookSeries)
   );
   const [firstPublishedFilter, setFirstPublishedFilter] = useState('');
   const [genreFilter, setGenreFilter] = useState('');
@@ -485,10 +494,10 @@ const BulkRequestModal = ({
   }, [bookServices]);
 
   useEffect(() => {
-    setItems(dedupeBulkItems(initialItems, mediaType));
+    setItems(dedupeBulkItems(initialItems, mediaType, bookSeries));
     setAuthorOffset(initialItems.length);
     setAuthorTotal(initialTotalItems);
-  }, [initialItems, initialTotalItems, mediaType]);
+  }, [initialItems, initialTotalItems, mediaType, bookSeries]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -581,7 +590,7 @@ const BulkRequestModal = ({
         }
       } catch (error) {
         if (active && !axios.isCancel(error)) {
-          setItems(dedupeBulkItems(initialItems, mediaType));
+          setItems(dedupeBulkItems(initialItems, mediaType, bookSeries));
         }
       } finally {
         if (active) {
@@ -596,7 +605,15 @@ const BulkRequestModal = ({
       active = false;
       controller.abort();
     };
-  }, [artistId, authorId, initialItems, mediaType, releaseType, show]);
+  }, [
+    artistId,
+    authorId,
+    initialItems,
+    mediaType,
+    releaseType,
+    show,
+    bookSeries,
+  ]);
 
   useEffect(
     () => () => {
@@ -1357,12 +1374,19 @@ const BulkRequestModal = ({
         loading={!quota || (mediaType === 'book' && !bookServices)}
         title={
           mediaType === 'book'
-            ? seriesId
-              ? 'Request Collection'
-              : 'Request Bibliography'
+            ? intl.formatMessage(
+                bookSeries
+                  ? librarySubset
+                    ? messages.requestLibraryFormat
+                    : messages.requestseriesFormat
+                  : messages.requestbibliographyFormat,
+                { format: intl.formatMessage(getBookFormatMessage(format)) }
+              )
             : intl.formatMessage(messages.requestdiscography)
         }
-        subTitle={mediaType === 'book' ? undefined : title}
+        subTitle={
+          mediaType === 'book' ? (bookSeries ? title : undefined) : title
+        }
         onCancel={onCancel}
         onOk={summary ? onCancel : submit}
         okText={

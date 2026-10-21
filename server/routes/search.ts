@@ -126,6 +126,7 @@ export const SEARCH_RATE_LIMIT = {
 export const MAX_SEARCH_RESULTS_PER_PROVIDER = 20;
 export const MAX_COMBINED_SEARCH_RESULTS = 100;
 export const SEARCH_PROVIDER_TIMEOUT_MS = 5_000;
+export const BOOK_SEARCH_PROVIDER_TIMEOUT_MS = 15_000;
 export const SEARCH_CREDIT_LOOKUP_CONCURRENCY = parsePositiveInt(
   process.env.SEARCH_CREDIT_CONCURRENCY,
   10,
@@ -604,7 +605,11 @@ searchRoutes.get('/', async (req, res, next) => {
           : Promise.resolve({ results: [], totalResults: 0 }),
         shouldSearchBooks && ebookEnabled && bookFormat !== 'audiobook'
           ? openLibrary.searchBooks({
-              query: toFieldedBooleanAndQuery(queryString, ['title', 'author']),
+              query: toFieldedBooleanAndQuery(queryString, [
+                'title',
+                'author',
+                'subject',
+              ]),
               page,
               limit: 20,
             })
@@ -614,7 +619,7 @@ searchRoutes.get('/', async (req, res, next) => {
               getSettings().readarr,
               queryString,
               bookFormatForProviderSearch,
-              { failOnAllUnavailable: bookFormat === 'audiobook' }
+              { failOnAllUnavailable: typeFilter === 'book' }
             )
           : Promise.resolve([]),
         // Choosing a validated search type selects a provider; it does not
@@ -694,7 +699,9 @@ searchRoutes.get('/', async (req, res, next) => {
               })
             )
           ),
-          SEARCH_PROVIDER_TIMEOUT_MS
+          typeFilter === 'book'
+            ? BOOK_SEARCH_PROVIDER_TIMEOUT_MS
+            : SEARCH_PROVIDER_TIMEOUT_MS
         );
       const providerResults = new Map(
         providerResponses.results
@@ -760,17 +767,24 @@ searchRoutes.get('/', async (req, res, next) => {
         musicEnabled &&
         (!albumProviderResponse || albumProviderResponse.status === 'rejected')
       ) {
-        return next({
-          status: 503,
+        return res.status(503).json({
           message:
             'MusicBrainz, the service used for music searches, timed out or is unavailable. Please try again.',
         });
       }
       const openLibraryBookSearchFailed =
         !bookProviderResponse || bookProviderResponse.status === 'rejected';
+      const hasBookshelfBookCatalog = settings.readarr.some(
+        (server) =>
+          server.backend !== 'bindery' &&
+          Number.isSafeInteger(server.id) &&
+          server.id >= 0 &&
+          (!bookFormat || readarrServiceSupportsFormat(server, bookFormat))
+      );
       const bookshelfBookSearchFailed =
         !bookshelfProviderResponse ||
-        bookshelfProviderResponse.status === 'rejected';
+        bookshelfProviderResponse.status === 'rejected' ||
+        !hasBookshelfBookCatalog;
       const bookSearchFailed =
         bookFormat === 'audiobook'
           ? bookshelfBookSearchFailed
@@ -786,7 +800,7 @@ searchRoutes.get('/', async (req, res, next) => {
           message:
             bookFormat === 'audiobook'
               ? 'The configured audiobook catalog is unavailable. Please try again.'
-              : 'The book catalogs are unavailable. Please try again.',
+              : 'Open Library and configured book catalogs are unavailable. Please try again.',
         });
       }
       if (
@@ -941,7 +955,7 @@ searchRoutes.get('/', async (req, res, next) => {
       const dedupedBookDocs = dedupeBookSearchDocs(bookResults.docs).filter(
         (doc) =>
           matchesAllSearchTerms(
-            [doc.title, ...(doc.author_name ?? [])],
+            [doc.title, ...(doc.author_name ?? []), ...(doc.subject ?? [])],
             queryString
           )
       );

@@ -1,3 +1,4 @@
+import BookSeriesLinks from '@app/components/BookSeriesDetails/BookSeriesLinks';
 import BookSeriesSummaryCard from '@app/components/BookSeriesDetails/BookSeriesSummaryCard';
 import CachedImage from '@app/components/Common/CachedImage';
 import PlayOnDeviceButton from '@app/components/Common/PlayOnDeviceButton';
@@ -405,6 +406,8 @@ const BookDetailsLayout = ({
             {primaryActions}
             {secondaryActions}
           </div>
+
+          <BookSeriesLinks bookId={data.id} />
 
           <section className="app-card-inset refreshed-inset-surface card-spacing-before rounded-lg border border-gray-700 p-3">
             <h2 className="media-inset-heading">

@@ -1,3 +1,4 @@
+import InlineBookSeriesResults from '@app/components/BookSeriesSearch/InlineResults';
 import BookFormatBadge from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CardTextVisibilityToggle from '@app/components/Common/CardTextVisibilityToggle';
@@ -38,6 +39,7 @@ import type {
   SportarrResult,
   TvResult,
 } from '@server/models/Search';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef } from 'react';
 import { useIntl } from 'react-intl';
@@ -62,6 +64,7 @@ import {
 
 const messages = defineMessages('components.Search', {
   search: 'Search',
+  bookSeries: 'Book Series',
   searchresults: 'Search Results',
   all: 'All',
   movies: 'Movies',
@@ -90,6 +93,7 @@ const messages = defineMessages('components.Search', {
   descending: 'Descending',
   showingFormat: 'Showing',
   noResultsFound: 'No Results Found',
+  noTitleResults: 'No individual title results found.',
   searchUnavailable: 'Search is unavailable right now.',
   searchUnavailableHint: 'The catalog could not be reached. Try again.',
   retrySearch: 'Try again',
@@ -325,6 +329,11 @@ const Search = () => {
   const intl = useIntl();
   const router = useRouter();
   const { currentSettings } = useSettings();
+  const showBookSeries =
+    currentSettings.booksEnabled &&
+    ['all', 'book', 'audiobook'].includes(
+      getSearchCategory(router.query.type, router.query.format).key
+    );
   const query =
     typeof router.query.query === 'string' ? router.query.query.trim() : '';
   const hasRoutedSearchParams = Object.keys(router.query).length > 0;
@@ -732,6 +741,22 @@ const Search = () => {
           className="app-filter-row"
           aria-label={intl.formatMessage(messages.mediaFilters)}
         >
+          {router.isReady && currentSettings.booksEnabled && (
+            <Link
+              className={getFilterToggleButtonClass(false)}
+              href={{
+                pathname: '/book-series',
+                query: {
+                  query,
+                  ...(preferredBookFormat
+                    ? { format: preferredBookFormat }
+                    : {}),
+                },
+              }}
+            >
+              {intl.formatMessage(messages.bookSeries)}
+            </Link>
+          )}
           {visibleSearchCategories.map((searchCategory) => {
             const isSelected = category.key === searchCategory.key;
 
@@ -860,6 +885,9 @@ const Search = () => {
           </div>
         </PinnedFilterSection>
       )}
+      {router.isReady && showBookSeries && (
+        <InlineBookSeriesResults query={query} format={preferredBookFormat} />
+      )}
       {category.key === 'software' ? (
         <SoftwareCatalog externalQuery={query} embedded />
       ) : error && stableTitles.length === 0 ? (
@@ -873,7 +901,11 @@ const Search = () => {
           <ListView
             items={stableTitles}
             preferredBookFormat={preferredBookFormat}
-            emptyMessage={intl.formatMessage(messages.noResultsFound)}
+            emptyMessage={intl.formatMessage(
+              showBookSeries && query.length >= 2
+                ? messages.noTitleResults
+                : messages.noResultsFound
+            )}
             emptyClassName="mt-6"
             isEmpty={isShowingEmptyState || (isSearchReady && isEmpty)}
             isLoading={

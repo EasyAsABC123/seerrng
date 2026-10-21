@@ -35,6 +35,7 @@ import useSWR from 'swr';
 
 const messages = defineMessages('components.RequestList', {
   requests: 'Requests',
+  seriesMonitoring: 'Series Monitoring Requests',
   showallrequests: 'Show All Requests',
   sortAdded: 'Most Recent',
   sortModified: 'Last Modified',
