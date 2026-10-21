@@ -89,6 +89,12 @@ const DiscoverWatchlist = () => {
     id: userId,
   });
   const { user: currentUser } = useUser();
+  const isProfileWatchlist = router.pathname.startsWith('/profile');
+  const isUserWatchlist =
+    isProfileWatchlist || router.pathname.startsWith('/users/');
+  const targetUserId = isProfileWatchlist ? currentUser?.id : userId;
+  const watchlistPath = targetUserId ? `user/${targetUserId}` : 'discover';
+  const watchlistEnabled = !isUserWatchlist || targetUserId !== undefined;
   const { currentSettings } = useSettings();
   const updateQueryParams = useBatchUpdateQueryParams(router.query);
   const availableMediaTypes = useMemo(
@@ -143,16 +149,9 @@ const DiscoverWatchlist = () => {
     WatchlistItem,
     Pick<WatchlistResponse, 'filtersSupported'>,
     WatchlistFilters
-  >(
-    `/api/v1/${
-      router.pathname.startsWith('/profile')
-        ? `user/${currentUser?.id}`
-        : userId
-          ? `user/${userId}`
-          : 'discover'
-    }/watchlist`,
-    routeFilters
-  );
+  >(`/api/v1/${watchlistPath}/watchlist`, routeFilters, {
+    enabled: watchlistEnabled,
+  });
   const filtersSupported = firstResultData?.filtersSupported;
   const hasRouteFilters = Boolean(
     routeFilters.search || routeFilters.mediaType || routeFilters.sortBy

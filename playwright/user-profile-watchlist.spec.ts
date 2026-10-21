@@ -40,9 +40,15 @@ test('profile watchlist requests wait until a user ID is available', async ({
     }
   });
 
-  for (const route of ['/profile', '/users/1']) {
+  for (const route of ['/profile/watchlist', '/profile', '/users/1']) {
     await page.goto(route, { waitUntil: 'networkidle' });
-    await expect(page.getByText(/User ID:\s*1/)).toBeVisible();
+    if (route === '/profile/watchlist') {
+      await expect(
+        page.getByRole('heading', { name: 'Your Watchlist' })
+      ).toBeVisible();
+    } else {
+      await expect(page.getByText(/User ID:\s*1/)).toBeVisible();
+    }
     expect(watchlistRequests).not.toContain('/api/v1/user/undefined/watchlist');
   }
 
