@@ -1,3 +1,16 @@
+// Cypress drives this spec through repeated full-page visits. The app's
+// service worker is verified separately by Playwright; do not register it in
+// this UI-only spec because its navigation fetch can hold Cypress's load event
+// open between tests.
+Cypress.on('window:before:load', (win) => {
+  if ('serviceWorker' in win.navigator) {
+    Object.defineProperty(win.navigator.serviceWorker, 'register', {
+      configurable: true,
+      value: () => Promise.reject(new Error('Disabled in this Cypress spec')),
+    });
+  }
+});
+
 const categoryMappings = {
   movie: [2000],
   tv: [5000],
@@ -48,7 +61,6 @@ describe('Prowlarr settings on a short mobile screen', () => {
   beforeEach(() => {
     cy.viewport(390, 640);
     cy.loginAsAdmin();
-
     cy.intercept('GET', '**/api/v1/settings/**', (request) => {
       const pathname = new URL(request.url).pathname;
       if (pathname === '/api/v1/settings/public') {
