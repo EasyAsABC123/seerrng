@@ -20,7 +20,7 @@ overrides:
   copy-webpack-plugin: 14.0.0
   fast-uri: 3.1.8
   fast-uri@>=3.0.0 <3.1.8: '>=3.1.8'
-  follow-redirects: 1.16.0
+  follow-redirects: 1.16.1
   http-proxy-middleware: 2.0.10
   '@docusaurus/utils-validation>joi': 17.13.8
   image-size: file:./vendor/image-size
@@ -28,7 +28,7 @@ overrides:
   joi: 17.13.8
   joi@>=17.2.0 <17.13.7: '>=17.13.7'
   js-yaml: 4.3.2
-  launch-editor: 2.14.1
+  launch-editor: 2.14.2
   lodash: 4.18.1
   mdast-util-to-hast: 13.2.1
   nanoid@3: 3.3.18

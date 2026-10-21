@@ -18,7 +18,7 @@ do not require a second confirmation that the same work was reviewed.
 
 - HTML/Typescript/Javascript editor
 - [VSCode](https://code.visualstudio.com/) is recommended. Upon opening the project, a few extensions will be automatically recommended for install.
-- [Node.js](https://nodejs.org/en/download/) (Node 24.15.0 or newer in the 24.x line)
+- [Node.js](https://nodejs.org/en/download/) (Node 24.22.1 or newer in the 24.x line)
 - [Pnpm](https://pnpm.io/cli/install)
 - [Git](https://git-scm.com/downloads)
 

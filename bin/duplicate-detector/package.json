@@ -12,6 +12,6 @@
     "@huggingface/transformers": "^4.2.0"
   },
   "engines": {
-    "node": ">=22.0"
+    "node": ">=22.23.4"
   }
 }

@@ -183,8 +183,8 @@
     "@types/web-push": "3.6.4",
     "@types/wink-jaro-distance": "^2.0.2",
     "@types/xml2js": "0.4.14",
-    "@vitest/coverage-v8": "^4.1.11",
-    "@vitest/ui": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
+    "@vitest/ui": "^4.1.12",
     "autoprefixer": "^10.6.0",
     "baseline-browser-mapping": "^2.11.28",
     "commander": "^15.0.0",
@@ -218,10 +218,10 @@
     "typescript": "6.0.3",
     "typescript-eslint": "^8.71.2",
     "vite": "8.3.4",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "engines": {
-    "node": "^24.15.0",
+    "node": "^24.22.1",
     "pnpm": "^10.0.0"
   },
   "scarfSettings": {
