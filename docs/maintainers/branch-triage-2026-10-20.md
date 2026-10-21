@@ -2,7 +2,7 @@
 
 SeerrNG is a fork of Seerr maintained by snapetech; "upstream" below means the
 Seerr project, whose attribution is recorded in
-[NOTICE.md](../../NOTICE.md).
+[NOTICE.md](https://github.com/snapetech-org/seerrng/blob/main/NOTICE.md).
 
 This records what was merged, ported, archived or discarded when every open
 branch was reconciled with `main`. Re-run the method below before the next

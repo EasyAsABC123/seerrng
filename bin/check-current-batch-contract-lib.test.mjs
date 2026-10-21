@@ -134,6 +134,22 @@ test('upstream public commands preserve build-time translation and visual guards
     [],
     'the actual source passes all current contracts'
   );
+  const discoverParityFile = 'cypress/e2e/library-discover-parity.cy.ts';
+  assert.ok(
+    validateCurrentBatchContract(
+      repositoryFilesWith({
+        [discoverParityFile]: repositoryFilesWith()[discoverParityFile].replace(
+          'expect(bounds.height).to.eq(24)',
+          'expect(bounds.height).to.eq(16)'
+        ),
+      })
+    ).some((error) =>
+      error.includes(
+        'rendered Manage regression coverage must measure the canonical action geometry'
+      )
+    ),
+    'Manage action geometry must stay aligned with the shared 24px standard'
+  );
   const cases = [
     [
       'validate:development',
@@ -243,9 +259,9 @@ test('current shared owners pass their checks and functional mutations fail', ()
     ],
     [
       'src/styles/globals.css',
-      '--app-card-frame-background: var(--palette-blue, #0051d4);',
+      '--app-card-frame-background: rgb(var(--theme-sidebar-border));',
       '--app-card-frame-background: conic-gradient(#252a30, #f8fafb);',
-      'card borders must preserve the shared rounded silhouette and solid blue ring',
+      'card borders must preserve the shared rounded silhouette and solid theme ring',
     ],
     [
       'src/styles/globals.css',

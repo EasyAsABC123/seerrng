@@ -75,7 +75,7 @@ describe('Current batch layout standards', () => {
     });
 
     cy.get('.settings-page-actions .app-button').each(($button) =>
-      expectHeight($button, 16)
+      expectHeight($button, 24)
     );
 
     cy.get('.settings-page-actions').contains('button', 'Cancel').click();
@@ -117,10 +117,10 @@ describe('Current batch layout standards', () => {
     });
 
     cy.get('[data-testid="user-list-row"] .app-button').each(($button) =>
-      expectHeight($button, 16)
+      expectHeight($button, 24)
     );
     cy.get('.refreshed-card-surface > div:last-child .app-button').each(
-      ($button) => expectHeight($button, 16)
+      ($button) => expectHeight($button, 24)
     );
   });
 

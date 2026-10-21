@@ -6169,7 +6169,7 @@ const validateCurrentBatchContract = (files) => {
     'the shared standard-size token must resolve to the approved 24-pixel height'
   );
   for (const token of [
-    'expect(bounds.height).to.eq(16)',
+    'expect(bounds.height).to.eq(24)',
     "expect(styles.fontSize).to.eq('12px')",
     "expect($button).to.have.class('button-standard')",
   ]) {

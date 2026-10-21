@@ -68,7 +68,7 @@ describe('Books and Music discover parity', () => {
           const styles = window.getComputedStyle($button[0]);
 
           expect($button).to.have.class('button-standard');
-          expect(bounds.height).to.eq(16);
+          expect(bounds.height).to.eq(24);
           expect(styles.fontSize).to.eq('12px');
           expect(bounds.width).to.be.lessThan(dialogWidth - 32);
         });
