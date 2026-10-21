@@ -65,6 +65,7 @@ import authorRoutes from './author';
 import blocklistRoutes from './blocklist';
 import bookRoutes from './book';
 import bookRecommendationRoutes from './bookRecommendations';
+import bookSeriesRoutes from './bookSeries';
 import calendarRoutes from './calendar';
 import collectionRoutes from './collection';
 import collectionCatalogRoutes from './collectionCatalog';
@@ -579,6 +580,12 @@ router.use(
   isAuthenticated(),
   categoryAvailabilityGuard(['ebook', 'audiobook'], 'any'),
   bookRoutes
+);
+router.use(
+  '/book-series',
+  isAuthenticated(),
+  categoryAvailabilityGuard(['ebook', 'audiobook'], 'any'),
+  bookSeriesRoutes
 );
 router.use(
   '/comic',
