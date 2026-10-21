@@ -139,6 +139,21 @@ test('Share: an unreadable result is announced, not silent', async ({
 
 test('Game Finder: filter, search, and save', async ({ page, baseURL }) => {
   await loginAsAdmin(page, baseURL);
+  await page.route('**/api/v1/settings/public', async (route) => {
+    const response = await route.fetch();
+    const settings = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...settings,
+        softwareEnabled: true,
+        enabledMediaCategories: {
+          ...settings.enabledMediaCategories,
+          game: true,
+        },
+      },
+    });
+  });
   let saved: unknown;
   await page.route('**/api/v1/game-content/discover', async (route) => {
     await route.fulfill({

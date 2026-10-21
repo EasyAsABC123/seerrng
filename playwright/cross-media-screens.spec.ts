@@ -50,6 +50,26 @@ for (const [path, heading] of screens) {
     baseURL,
   }) => {
     await loginAsAdmin(page, baseURL);
+    if (path === '/discover/games' || path === '/discover/patches') {
+      await page.route('**/api/v1/settings/public', async (route) => {
+        const response = await route.fetch();
+        const settings = await response.json();
+        await route.fulfill({
+          response,
+          json: {
+            ...settings,
+            softwareEnabled: true,
+            romarrEnabled: path === '/discover/patches',
+            enabledMediaCategories: {
+              ...settings.enabledMediaCategories,
+              game: true,
+              retro: true,
+              modern: true,
+            },
+          },
+        });
+      });
+    }
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     page.on('console', (m) => {
