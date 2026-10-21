@@ -11272,6 +11272,53 @@ paths:
         '502':
           description: The catalogs could not be reached
   /swipe/decisions:
+    get:
+      summary: List the user's swipe decisions for one category
+      tags:
+        - swipe
+      parameters:
+        - in: query
+          name: mediaType
+          required: true
+          schema:
+            type: string
+            enum:
+              [
+                movie,
+                tv,
+                book,
+                audiobook,
+                comic,
+                magazine,
+                music,
+                sports,
+                adult,
+                software-retro,
+                software-modern,
+                software-game,
+              ]
+      responses:
+        '200':
+          description: Swipe decisions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decisions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        decision:
+                          type: string
+                          enum: [want, pass, seen]
+        '400':
+          description: Invalid media type
+        '404':
+          description: The category is unavailable to the user
     post:
       summary: Record a swipe
       description: >-
@@ -11291,13 +11338,31 @@ paths:
               properties:
                 mediaType:
                   type: string
-                  enum: [movie, tv, book]
+                  enum:
+                    [
+                      movie,
+                      tv,
+                      book,
+                      audiobook,
+                      comic,
+                      magazine,
+                      music,
+                      sports,
+                      adult,
+                      software-retro,
+                      software-modern,
+                      software-game,
+                    ]
                 id:
                   type: string
-                  maxLength: 64
+                  maxLength: 512
                 decision:
                   type: string
                   enum: [want, pass, seen]
+                card:
+                  type: object
+                  description: Required when recording decisions for catalog categories outside movies, series, and books.
+                  additionalProperties: true
       responses:
         '200':
           description: Recorded
@@ -11320,7 +11385,21 @@ paths:
               properties:
                 mediaType:
                   type: string
-                  enum: [movie, tv, book]
+                  enum:
+                    [
+                      movie,
+                      tv,
+                      book,
+                      audiobook,
+                      comic,
+                      magazine,
+                      music,
+                      sports,
+                      adult,
+                      software-retro,
+                      software-modern,
+                      software-game,
+                    ]
       responses:
         '200':
           description: The restored card
@@ -11335,6 +11414,139 @@ paths:
           description: Nothing to undo
         '409':
           description: The last swipe was a request; cancel it from Requests instead
+  /swipe/history:
+    get:
+      summary: List the user's swipe history
+      tags:
+        - swipe
+      parameters:
+        - in: query
+          name: mediaType
+          schema:
+            type: string
+            enum:
+              [
+                movie,
+                tv,
+                book,
+                audiobook,
+                comic,
+                magazine,
+                music,
+                sports,
+                adult,
+                software-retro,
+                software-modern,
+                software-game,
+              ]
+      responses:
+        '200':
+          description: Swipe history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decisions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        mediaType:
+                          type: string
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        decision:
+                          type: string
+                          enum: [want, pass, seen]
+                        createdAt:
+                          type: string
+                          format: date-time
+                        card:
+                          type: object
+                          additionalProperties: true
+                  hasMore:
+                    type: boolean
+        '400':
+          description: Invalid media type
+    delete:
+      summary: Clear pass and seen decisions from swipe history
+      tags:
+        - swipe
+      parameters:
+        - in: query
+          name: mediaType
+          schema:
+            type: string
+            enum:
+              [
+                movie,
+                tv,
+                book,
+                audiobook,
+                comic,
+                magazine,
+                music,
+                sports,
+                adult,
+                software-retro,
+                software-modern,
+                software-game,
+              ]
+      responses:
+        '200':
+          description: Number of cleared decisions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cleared:
+                    type: integer
+        '400':
+          description: Invalid media type
+  /swipe/history/restore:
+    post:
+      summary: Restore a passed or seen swipe
+      tags:
+        - swipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaType, id]
+              properties:
+                mediaType:
+                  type: string
+                  enum:
+                    [
+                      movie,
+                      tv,
+                      book,
+                      audiobook,
+                      comic,
+                      magazine,
+                      music,
+                      sports,
+                      adult,
+                      software-retro,
+                      software-modern,
+                      software-game,
+                    ]
+                id:
+                  type: string
+                  maxLength: 512
+      responses:
+        '200':
+          description: Decision removed
+        '404':
+          description: Decision was not found
+        '409':
+          description: Requests remain in the Requests list
   /swipe/profile:
     get:
       summary: Get the user's swipe preferences

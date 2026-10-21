@@ -5,11 +5,14 @@ import { after, before, describe, it } from 'node:test';
 import { User } from '@server/entity/User';
 import { Permission } from '@server/lib/permissions';
 import { getSettings, type SwipeSettings } from '@server/lib/settings';
+import { setupTestDb } from '@server/test/db';
 import type { Express } from 'express';
 import express from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
 import request from 'supertest';
 import swipeRoutes from './swipe';
+
+setupTestDb();
 
 describe('Swipe routes behind the OpenAPI validator', () => {
   let app: Express;
@@ -66,6 +69,43 @@ describe('Swipe routes behind the OpenAPI validator', () => {
       .post('/api/v1/swipe/decisions')
       .send({ mediaType: 'movie', id: '1', decision: 'pass' });
     assert.equal(response.status, 404);
+  });
+
+  it('serves the decisions and history routes through the OpenAPI validator', async () => {
+    const decisions = await request(app)
+      .get('/api/v1/swipe/decisions?mediaType=movie')
+      .expect(200);
+    assert.deepEqual(decisions.body, { decisions: [] });
+
+    const extendedCategory = await request(app).get(
+      '/api/v1/swipe/decisions?mediaType=music'
+    );
+    assert.ok(
+      extendedCategory.status === 200 || extendedCategory.status === 404,
+      JSON.stringify(extendedCategory.body)
+    );
+    if (extendedCategory.status === 404) {
+      assert.equal(
+        extendedCategory.body.message,
+        'This Swipe category is unavailable.'
+      );
+    }
+
+    const history = await request(app)
+      .get('/api/v1/swipe/history?mediaType=movie')
+      .expect(200);
+    assert.deepEqual(history.body, { decisions: [], hasMore: false });
+
+    const restore = await request(app)
+      .post('/api/v1/swipe/history/restore')
+      .send({ mediaType: 'movie', id: 'missing-decision' });
+    assert.equal(restore.status, 404);
+    assert.equal(restore.body.message, 'That decision was not found.');
+
+    const cleared = await request(app)
+      .delete('/api/v1/swipe/history?mediaType=movie')
+      .expect(200);
+    assert.deepEqual(cleared.body, { cleared: 0 });
   });
 
   it('serves status', async () => {
