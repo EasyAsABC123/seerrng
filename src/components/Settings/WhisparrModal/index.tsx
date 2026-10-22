@@ -6,6 +6,7 @@ import Field, {
 import type { DVRTestResponse } from '@app/components/Settings/SettingsServices';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
+import { getSafeApiErrorDetails } from '@app/utils/apiError';
 import defineMessages from '@app/utils/defineMessages';
 import { Transition } from '@headlessui/react';
 import type { WhisparrSettings } from '@server/lib/settings';
@@ -37,6 +38,11 @@ const messages = defineMessages('components.Settings.WhisparrModal', {
   testFirst: 'Test connection to load profiles and root folders',
   testSuccess: 'Whisparr scene API v3 connection established.',
   testFailure: 'Could not connect to Whisparr scene API v3.',
+  saveFailureReason: 'Could not save the Whisparr connection: {message}',
+  saveFailureStatus:
+    'Could not save the Whisparr connection (HTTP {status}). Check the SeerrNG server logs.',
+  saveFailureOffline:
+    'Could not reach SeerrNG to save the Whisparr connection. Check the server and try again.',
   apiKeyHelp: 'Find this in Whisparr: Settings > General > Security > API Key',
   baseUrlHelp: 'Enter the URL Base from Whisparr, if you configured one.',
   versionHelp:
@@ -187,8 +193,18 @@ const WhisparrModal = ({ whisparr, onClose, onSave }: WhisparrModalProps) => {
               await axios.post('/api/v1/settings/whisparr', submission);
             }
             onSave();
-          } catch {
-            addToast(intl.formatMessage(messages.testFailure), {
+          } catch (error) {
+            const details = getSafeApiErrorDetails(error);
+            const failureMessage = details.message
+              ? intl.formatMessage(messages.saveFailureReason, {
+                  message: details.message,
+                })
+              : details.status
+                ? intl.formatMessage(messages.saveFailureStatus, {
+                    status: details.status,
+                  })
+                : intl.formatMessage(messages.saveFailureOffline);
+            addToast(failureMessage, {
               appearance: 'error',
               autoDismiss: true,
             });

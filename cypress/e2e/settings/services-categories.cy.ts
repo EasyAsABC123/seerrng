@@ -128,6 +128,9 @@ describe('service setup categories', () => {
     cy.contains(
       'Retry to check saved connections before adding another server.'
     ).should('be.visible');
+    cy.contains(
+      'SeerrNG returned HTTP 503 while loading Whisparr settings.'
+    ).should('be.visible');
     cy.contains('button', 'Connect Whisparr Server')
       .scrollIntoView()
       .should('be.visible');
