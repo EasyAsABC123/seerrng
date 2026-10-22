@@ -97,6 +97,11 @@ export type OidcProvider = {
   requiredClaims?: string;
   scopes?: string;
   newUserLogin?: boolean;
+  allowedEmailDomains?: string[];
+  groupClaim?: string;
+  allowedGroups?: string[];
+  roleClaim?: string;
+  roleMappings?: { value: string; role: 'user' | 'admin' }[];
 };
 
 export type PublicOidcProvider = Pick<OidcProvider, 'slug' | 'name' | 'logo'>;
