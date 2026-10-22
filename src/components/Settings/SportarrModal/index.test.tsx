@@ -11,7 +11,16 @@ const state = vi.hoisted(() => ({
   toast: vi.fn(),
 }));
 
-vi.mock('axios', () => ({ default: { post: state.post } }));
+vi.mock('axios', () => ({
+  default: {
+    post: state.post,
+    isAxiosError: (error: unknown) =>
+      typeof error === 'object' &&
+      error !== null &&
+      'isAxiosError' in error &&
+      error.isAxiosError === true,
+  },
+}));
 vi.mock('@app/hooks/useToasts', () => ({
   default: () => ({ addToast: state.toast }),
 }));
@@ -214,4 +223,56 @@ it('selects and saves the quality profile returned by the connection test', asyn
     expect.objectContaining({ activeProfileId: 12, activeProfileName: 'HD' })
   );
   expect(state.post.mock.calls[0]?.[1]).not.toHaveProperty('externalUrl');
+});
+
+it('shows the server validation reason when saving a Sportarr connection fails', async () => {
+  await render();
+
+  await act(async () => {
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="fill-connection-details"]'
+      )
+      ?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  await act(async () => {
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="test-connection"]')
+      ?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  await act(async () => {
+    const profileSelect =
+      container.querySelector<HTMLSelectElement>('#activeProfileId');
+    if (!profileSelect) {
+      throw new Error('Sportarr quality profile selector was not rendered.');
+    }
+    profileSelect.value = '12';
+    profileSelect.dispatchEvent(
+      new dom.window.Event('change', { bubbles: true })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  state.post.mockRejectedValueOnce({
+    isAxiosError: true,
+    response: {
+      status: 400,
+      data: { message: 'activeProfileId is invalid.' },
+    },
+  });
+  await act(async () => {
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="submit-connection"]')
+      ?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  expect(state.toast).toHaveBeenCalledWith(
+    'Could not save the Sportarr connection: activeProfileId is invalid.',
+    expect.objectContaining({ appearance: 'error' })
+  );
 });

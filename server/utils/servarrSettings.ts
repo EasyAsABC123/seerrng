@@ -565,6 +565,9 @@ export const parseSportarrSettings = (
   const settings = body as Partial<SportarrSettings>;
   const connection = parseServarrConnectionSettings(body);
   if ('error' in connection) return connection;
+  const sportarrConnection = { ...connection.value };
+  delete sportarrConnection.backend;
+  delete sportarrConnection.serviceType;
 
   const name = parseRequiredServiceString(settings.name, 'name');
   if ('error' in name) return name;
@@ -589,7 +592,7 @@ export const parseSportarrSettings = (
     value: {
       id: current?.id ?? 0,
       name: name.value,
-      ...connection.value,
+      ...sportarrConnection,
       activeProfileId,
       activeProfileName: activeProfileName.value,
       isDefault: isDefault.value,

@@ -26,6 +26,7 @@ import {
 } from '@app/components/Setup/setupServiceCategories';
 import useSettings from '@app/hooks/useSettings';
 import globalMessages from '@app/i18n/globalMessages';
+import { getSafeApiErrorDetails } from '@app/utils/apiError';
 import defineMessages from '@app/utils/defineMessages';
 import { getSafeHref } from '@app/utils/safeUrl';
 import { Transition } from '@headlessui/react';
@@ -206,6 +207,10 @@ const messages = defineMessages('components.Settings', {
   whisparrLoadError: 'Whisparr server settings could not be loaded.',
   whisparrLoadErrorHelp:
     'Retry to check saved connections before adding another server.',
+  whisparrPermissionError:
+    'You need administrator access to view or change Whisparr connections.',
+  whisparrLoadErrorStatus:
+    'SeerrNG returned HTTP {status} while loading Whisparr settings. Retry, then check the server logs if the error continues.',
   retryWhisparr: 'Retry',
   addSportarr: 'Connect Sportarr Server',
   sportarrDescription:
@@ -617,6 +622,7 @@ const SettingsServices = ({
     isValidating: whisparrIsValidating,
     mutate: revalidateWhisparr,
   } = useSWR<WhisparrSettings[]>('/api/v1/settings/whisparr');
+  const whisparrErrorDetails = getSafeApiErrorDetails(whisparrError);
   const {
     data: sportarrData,
     error: sportarrError,
@@ -1572,6 +1578,22 @@ const SettingsServices = ({
                         <p className="mb-3">
                           {intl.formatMessage(messages.whisparrLoadErrorHelp)}
                         </p>
+                        {whisparrErrorDetails.status === 403 && (
+                          <p className="mb-3">
+                            {intl.formatMessage(
+                              messages.whisparrPermissionError
+                            )}
+                          </p>
+                        )}
+                        {whisparrErrorDetails.status !== undefined &&
+                          whisparrErrorDetails.status !== 403 && (
+                            <p className="mb-3">
+                              {intl.formatMessage(
+                                messages.whisparrLoadErrorStatus,
+                                { status: whisparrErrorDetails.status }
+                              )}
+                            </p>
+                          )}
                         <Button
                           buttonType="default"
                           buttonSize="sm"

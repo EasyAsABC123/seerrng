@@ -3,6 +3,7 @@ import SensitiveInput from '@app/components/Common/SensitiveInput';
 import Field from '@app/components/Settings/SettingsField';
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
+import { getSafeApiErrorDetails } from '@app/utils/apiError';
 import defineMessages from '@app/utils/defineMessages';
 import type { SportarrSettings } from '@server/lib/settings';
 import axios from 'axios';
@@ -39,7 +40,11 @@ const messages = defineMessages('components.Settings.SportarrModal', {
   testFirst: 'Test the connection to load quality profiles.',
   testSuccess: 'Connected to Sportarr.',
   testFailure: 'Could not connect to Sportarr. Check the address and API key.',
-  saveFailure: 'Could not save the Sportarr connection.',
+  saveFailureReason: 'Could not save the Sportarr connection: {message}',
+  saveFailureStatus:
+    'Could not save the Sportarr connection (HTTP {status}). Check the SeerrNG server logs.',
+  saveFailureOffline:
+    'Could not reach SeerrNG to save the Sportarr connection. Check the server and try again.',
 });
 
 interface SportarrModalProps {
@@ -116,8 +121,18 @@ const SportarrModal = ({ settings, onClose, onSave }: SportarrModalProps) => {
             await axios.post('/api/v1/settings/sportarr', payload);
           }
           onSave();
-        } catch {
-          addToast(intl.formatMessage(messages.saveFailure), {
+        } catch (error) {
+          const details = getSafeApiErrorDetails(error);
+          const failureMessage = details.message
+            ? intl.formatMessage(messages.saveFailureReason, {
+                message: details.message,
+              })
+            : details.status
+              ? intl.formatMessage(messages.saveFailureStatus, {
+                  status: details.status,
+                })
+              : intl.formatMessage(messages.saveFailureOffline);
+          addToast(failureMessage, {
             appearance: 'error',
             autoDismiss: true,
           });

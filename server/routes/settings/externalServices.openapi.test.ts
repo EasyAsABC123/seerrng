@@ -120,6 +120,8 @@ describe('external media-service settings behind the OpenAPI validator', () => {
     assert.equal(response.status, 201, JSON.stringify(response.body));
     assert.equal(response.body.name, 'Sportarr');
     assert.equal(response.body.externalUrl, undefined);
+    assert.equal(response.body.backend, undefined);
+    assert.equal(response.body.serviceType, undefined);
   });
 
   it('recognizes the connection-test and Whisparr profile routes', async () => {
