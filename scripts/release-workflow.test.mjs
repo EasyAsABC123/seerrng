@@ -107,6 +107,11 @@ test('release assets build while image verification runs, then package channels 
   );
   assert.match(
     dispatchScript,
+    /\$REUSE_PACKAGE_WORKFLOW_RUNS" != '\{\}'/u,
+    'package workflow reuse must not dispatch duplicate optional Snap builds'
+  );
+  assert.match(
+    dispatchScript,
     /node scripts\/watch-github-run\.mjs[\s\S]*\) &/u,
     'required package channels must be monitored concurrently'
   );

@@ -1008,7 +1008,7 @@ jobs:
           done
 
           for workflow in "${optional_workflows[@]}"; do
-            if [[ "$workflow" == 'release-snap.yml' && -n "$REUSE_FROM_RUN_ID" ]]; then
+            if [[ "$workflow" == 'release-snap.yml' && ( -n "$REUSE_FROM_RUN_ID" || "$REUSE_PACKAGE_WORKFLOW_RUNS" != '{}' ) ]]; then
               echo 'Skipping optional Snap workflow during release recovery.'
               continue
             fi
