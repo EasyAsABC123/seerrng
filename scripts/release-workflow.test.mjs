@@ -31,6 +31,10 @@ test('release assets build while image verification runs, then package channels 
     '{}'
   );
   assert.equal(
+    release.on.workflow_dispatch.inputs.skip_launchpad_dispatch.default,
+    false
+  );
+  assert.equal(
     packageDispatch.steps[0].uses,
     'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
   );
@@ -68,7 +72,12 @@ test('release assets build while image verification runs, then package channels 
   );
   assert.match(
     dispatchScript,
-    /optional_workflows=\([\s\S]*release-snap\.yml/u
+    /optional_workflows=\([\s\S]*release-ppa\.yml[\s\S]*release-snap\.yml/u
+  );
+  assert.doesNotMatch(
+    dispatchScript.match(/required_workflows=\(([\s\S]*?)\)/u)?.[1] ?? '',
+    /release-ppa\.yml/u,
+    'Launchpad publication must not gate the public release'
   );
   assert.match(dispatchScript, /watch-github-run\.mjs/u);
   assert.match(dispatchScript, /REUSE_PACKAGE_WORKFLOW_RUNS/u);
@@ -89,7 +98,11 @@ test('release assets build while image verification runs, then package channels 
   );
   assert.match(
     dispatchScript,
-    /Skipping optional Chocolatey and Snap workflows during release recovery/u
+    /Skipping optional Launchpad PPA dispatch for \$TAG; an existing run is already handling it/u
+  );
+  assert.match(
+    dispatchScript,
+    /Skipping optional Snap workflow during release recovery/u
   );
   assert.match(
     dispatchScript,
@@ -1074,7 +1087,6 @@ test('release notes flow into the draft release and Discord announcement', () =>
     'changelog',
     'publish',
     'publish-release',
-    'dispatch-package-channels',
   ]);
   assert.equal(
     discord.env.RELEASE_BODY,
