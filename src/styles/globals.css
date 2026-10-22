@@ -6677,7 +6677,7 @@
     column-gap: var(--button-content-gap);
   }
 
-  .book-request-advanced-options-control {
+  .detail-disclosure-control[data-control-variant='book-request-advanced-options'] {
     flex: none;
     min-width: 12rem;
     height: 2rem;
@@ -6687,7 +6687,8 @@
     line-height: 1.75rem;
   }
 
-  .book-request-advanced-options-control .detail-disclosure-button {
+  .detail-disclosure-control[data-control-variant='book-request-advanced-options']
+    .detail-disclosure-button {
     white-space: nowrap;
   }
 

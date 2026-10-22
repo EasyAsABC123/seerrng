@@ -2707,7 +2707,7 @@
       0 0 6px rgb(0 0 0 / 0.9);
   }
 
-  .book-request-advanced-options-control {
+  .detail-disclosure-control[data-control-variant='book-request-advanced-options'] {
     flex: none;
     min-width: 12rem;
     height: 2rem;
@@ -2717,7 +2717,8 @@
     line-height: 1.75rem;
   }
 
-  .book-request-advanced-options-control .detail-disclosure-button {
+  .detail-disclosure-control[data-control-variant='book-request-advanced-options']
+    .detail-disclosure-button {
     white-space: nowrap;
   }
 

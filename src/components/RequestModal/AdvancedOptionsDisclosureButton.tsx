@@ -7,21 +7,21 @@ const AdvancedOptionsDisclosureButton = ({
   pinned,
   onToggle,
   onPin,
-  className,
+  controlVariant,
 }: {
   label: string;
   open: boolean;
   pinned: boolean;
   onToggle: () => void;
   onPin: () => void;
-  className?: string;
+  controlVariant?: 'book-request-advanced-options';
 }) => (
   <DetailDisclosureButton
     label={label}
     icon={<AdjustmentsHorizontalIcon aria-hidden="true" />}
     open={open}
     onClick={onToggle}
-    className={className}
+    controlVariant={controlVariant}
     pinned={pinned}
     onPinClick={onPin}
   />

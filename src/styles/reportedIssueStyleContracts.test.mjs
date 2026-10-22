@@ -57,7 +57,8 @@ test('dropdown menus and every unselected option use readable theme colors', () 
 
 test('the Request Book Advanced Options control stays readable on narrow cards', () => {
   for (const { filename, contract } of stylesheets) {
-    const control = '.book-request-advanced-options-control';
+    const control =
+      ".detail-disclosure-control[data-control-variant='book-request-advanced-options']";
     assert.equal(contract.declaration(control, 'min-width'), '12rem');
     assert.equal(contract.declaration(control, 'height'), '2rem');
     assert.equal(
