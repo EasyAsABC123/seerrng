@@ -942,7 +942,6 @@ jobs:
           TAG: ${{ inputs.tag || github.ref_name }}
           REUSE_FROM_RUN_ID: ${{ inputs.reuse_from_run_id || '' }}
           REUSE_PACKAGE_WORKFLOW_RUNS: ${{ inputs.reuse_package_workflow_runs || '{}' }}
-          SKIP_LAUNCHPAD_DISPATCH: ${{ inputs.skip_launchpad_dispatch || false }}
         run: |
           set -euo pipefail
           if [[ "$TAG" == *-* ]]; then
@@ -956,9 +955,8 @@ jobs:
             release-copr.yml
           )
           # release-chocolatey.yml is dispatched after the public-release gate.
-          # Launchpad is dispatched here but intentionally does not delay publication.
+          # Launchpad is dispatched after publication and the Discord announcement below.
           optional_workflows=(
-            release-ppa.yml \
             release-snap.yml
           )
           declare -A dispatch_started=()
@@ -1010,10 +1008,6 @@ jobs:
           done
 
           for workflow in "${optional_workflows[@]}"; do
-            if [[ "$workflow" == 'release-ppa.yml' && "$SKIP_LAUNCHPAD_DISPATCH" == 'true' ]]; then
-              echo "Skipping optional Launchpad PPA dispatch for $TAG; an existing run is already handling it."
-              continue
-            fi
             if [[ "$workflow" == 'release-snap.yml' && -n "$REUSE_FROM_RUN_ID" ]]; then
               echo 'Skipping optional Snap workflow during release recovery.'
               continue
@@ -1222,6 +1216,34 @@ jobs:
               sleep 1
             fi
           done
+
+  dispatch-launchpad-ppa:
+    name: Dispatch Launchpad PPA after announcement
+    if: ${{ !cancelled() && !contains(inputs.tag || github.ref_name, '-') && needs.publish-release.result == 'success' }}
+    needs: [publish-release, announce-discord]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch Launchpad PPA
+        env:
+          GH_TOKEN: ${{ secrets.GH_WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          SKIP_LAUNCHPAD_DISPATCH: ${{ inputs.skip_launchpad_dispatch || false }}
+        run: |
+          set -euo pipefail
+          if [[ "$SKIP_LAUNCHPAD_DISPATCH" == 'true' ]]; then
+            echo "Skipping Launchpad PPA dispatch for $TAG; an existing run is already handling it."
+            exit 0
+          fi
+          if ! gh workflow run release-ppa.yml --repo "$REPO" --ref main -f "tag=$TAG"; then
+            echo "::warning::Launchpad PPA could not be dispatched for the already-published release $TAG."
+            exit 0
+          fi
+          echo "Dispatched Launchpad PPA for $TAG after the announcement attempt."
 
 
   announce-security-correction:

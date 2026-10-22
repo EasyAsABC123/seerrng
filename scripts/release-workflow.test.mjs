@@ -72,12 +72,17 @@ test('release assets build while image verification runs, then package channels 
   );
   assert.match(
     dispatchScript,
-    /optional_workflows=\([\s\S]*release-ppa\.yml[\s\S]*release-snap\.yml/u
+    /optional_workflows=\([\s\S]*release-snap\.yml/u
   );
   assert.doesNotMatch(
     dispatchScript.match(/required_workflows=\(([\s\S]*?)\)/u)?.[1] ?? '',
     /release-ppa\.yml/u,
     'Launchpad publication must not gate the public release'
+  );
+  assert.doesNotMatch(
+    dispatchScript,
+    /release-ppa\.yml/u,
+    'Launchpad must not start until after the announcement attempt'
   );
   assert.match(dispatchScript, /watch-github-run\.mjs/u);
   assert.match(dispatchScript, /REUSE_PACKAGE_WORKFLOW_RUNS/u);
@@ -95,10 +100,6 @@ test('release assets build while image verification runs, then package channels 
     dispatchScript,
     /RELEASE_TAG: \$TAG/u,
     'reused package runs must prove they built the requested release tag'
-  );
-  assert.match(
-    dispatchScript,
-    /Skipping optional Launchpad PPA dispatch for \$TAG; an existing run is already handling it/u
   );
   assert.match(
     dispatchScript,
@@ -131,6 +132,19 @@ test('release assets build while image verification runs, then package channels 
     'build-release-assets',
     'dispatch-package-channels',
   ]);
+  const launchpadDispatch = release.jobs['dispatch-launchpad-ppa'];
+  assert.deepEqual(launchpadDispatch.needs, [
+    'publish-release',
+    'announce-discord',
+  ]);
+  assert.match(launchpadDispatch.if, /!cancelled\(\)/u);
+  assert.match(launchpadDispatch.if, /needs\.publish-release\.result == 'success'/u);
+  assert.match(launchpadDispatch.steps[0].run, /release-ppa\.yml/u);
+  assert.match(launchpadDispatch.steps[0].run, /SKIP_LAUNCHPAD_DISPATCH/u);
+  assert.match(
+    launchpadDispatch.steps[0].run,
+    /could not be dispatched for the already-published release/u
+  );
   assert.equal(
     release.jobs['announce-discord'].needs.includes('publish-release'),
     true
