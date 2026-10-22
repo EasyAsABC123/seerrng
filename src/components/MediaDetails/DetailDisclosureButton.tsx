@@ -35,6 +35,7 @@ export interface DetailDisclosureButtonProps {
   onPinClick?: () => void;
   controls?: string;
   title?: string;
+  className?: string;
   reorder?: {
     role: string;
     state?: 'ready' | 'dragging';
@@ -62,6 +63,7 @@ const DetailDisclosureButton = ({
   onPinClick,
   controls,
   title,
+  className,
   reorder,
 }: DetailDisclosureButtonProps) => {
   const intl = useIntl();
@@ -71,7 +73,7 @@ const DetailDisclosureButton = ({
 
   return (
     <span
-      className="detail-disclosure-control"
+      className={`detail-disclosure-control ${className ?? ''}`.trim()}
       data-disclosure-role={reorder?.role}
       data-reorder-state={reorder?.state}
       data-reorder-insertion={reorder?.insertion}

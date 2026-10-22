@@ -1085,6 +1085,7 @@ const BookRequestModal = ({
             {canUseAdvancedOptions && (
               <AdvancedOptionsDisclosureButton
                 label={intl.formatMessage(messages.advancedOptions)}
+                className="book-request-advanced-options-control"
                 open={advancedOptionsOpen}
                 pinned={advancedOptionsPinned}
                 onToggle={toggleAdvancedOptions}
