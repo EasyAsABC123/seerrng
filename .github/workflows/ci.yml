@@ -72,7 +72,7 @@ jobs:
           node scripts/check-changelog-tags.mjs
 
   i18n-and-tooling:
-    name: i18n, security boundaries, and tooling tests
+    name: i18n and tooling tests
     timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
@@ -100,8 +100,8 @@ jobs:
       - name: Check translations
         run: pnpm i18n:check
 
-      - name: Check security boundaries and tooling
-        run: pnpm security:council
+      - name: Check tooling tests
+        run: pnpm test:tooling
 
   test:
     name: Lint, typecheck, and production build

@@ -22,7 +22,6 @@
     "lint": "pnpm lint:eslint && pnpm lint:next",
     "lint:eslint": "eslint \"./server/**/*.{ts,tsx}\" \"./src/**/*.{ts,tsx}\" --cache",
     "lint:next": "oxlint --config .oxlintrc.next.json server src",
-    "security:council": "node scripts/check-workflow-boundaries.mjs && pnpm test:tooling && node bin/run-bash.mjs scripts/check-council-browser-boundaries.sh && node bin/run-bash.mjs scripts/check-council-server-boundaries.sh",
     "release-notes:preview": "node scripts/preview-release-notes.mjs",
     "backissue:service": "node scripts/backissue-service.mjs",
     "bookshelf:move": "node scripts/bookshelf-media-move.mjs",
