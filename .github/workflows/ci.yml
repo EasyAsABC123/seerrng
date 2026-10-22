@@ -6,6 +6,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -42,9 +45,9 @@ jobs:
 
       - name: Validate release-note fragment or explicit opt-out
         env:
-          BASE_SHA: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-          PR_BODY: ${{ github.event.head_commit.message || '' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_BODY: ${{ github.event.pull_request.body || github.event.head_commit.message || '' }}
         run: |
           set -euo pipefail
           base_sha="$BASE_SHA"
@@ -310,7 +313,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/cypress.yml
     secrets:
-      CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+      CYPRESS_RECORD_KEY: ${{ github.event_name == 'push' && secrets.CYPRESS_RECORD_KEY || '' }}
 
   test-docs:
     name: Build docs website
