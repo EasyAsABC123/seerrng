@@ -45,7 +45,7 @@ describe('discovery integration OpenAPI contracts', () => {
       (
         await request(app)
           .put('/api/v1/integrations/discovery/configuration')
-          .send({ trakt: { clientId: 'id', clientSecret: 'secret' } })
+          .send({ trakt: { clientId: 'id' } })
       ).status,
       200
     );

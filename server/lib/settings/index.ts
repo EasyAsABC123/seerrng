@@ -868,7 +868,7 @@ export type JobId =
   | 'process-blocklisted-tags';
 
 export interface DiscoveryIntegrationsSettings {
-  trakt: { clientId: string; clientSecret: string };
+  trakt: { clientId: string };
   anilist: { clientId: string; clientSecret: string };
   simkl: { clientId: string };
   mdblist: { apiKey: string };
@@ -876,7 +876,7 @@ export interface DiscoveryIntegrationsSettings {
 
 export const defaultDiscoveryIntegrations =
   (): DiscoveryIntegrationsSettings => ({
-    trakt: { clientId: '', clientSecret: '' },
+    trakt: { clientId: '' },
     anilist: { clientId: '', clientSecret: '' },
     simkl: { clientId: '' },
     mdblist: { apiKey: '' },

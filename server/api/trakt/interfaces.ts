@@ -82,14 +82,6 @@ export interface TraktLikedList {
   list?: TraktUserList;
 }
 
-export interface TraktDeviceCodeResponse {
-  device_code: string;
-  user_code: string;
-  verification_url: string;
-  expires_in: number;
-  interval: number;
-}
-
 export interface TraktTokenResponse {
   access_token: string;
   refresh_token: string;
@@ -133,12 +125,3 @@ export interface TraktSearchListEntry {
   type?: string;
   list?: TraktUserList;
 }
-
-export type TraktDevicePollResult =
-  | { status: 'authorized'; tokens: TraktTokenResponse & { expiresAt: number } }
-  | { status: 'pending' }
-  | { status: 'slow_down' }
-  | { status: 'already_used' }
-  | { status: 'invalid' }
-  | { status: 'expired' }
-  | { status: 'denied' };

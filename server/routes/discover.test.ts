@@ -5559,6 +5559,62 @@ describe('GET /discover/comics', () => {
     assert.strictEqual(firstPage.body.results[0].title, 'Batman 01');
   });
 
+  it('uses the completed index to browse a blank query by issue count', async () => {
+    getSettings().main.comicVineApiKey = 'test-key';
+    await getRepository(ComicCatalogScan).save({
+      id: 'global',
+      scanGeneration: 9000,
+      completeGeneration: 9000,
+      nextPage: 2,
+      totalResults: 4,
+      indexedResults: 4,
+      lastVolumeId: 9004,
+      lastAttemptAt: Math.floor(Date.now() / 1000),
+      lastCompletedAt: Math.floor(Date.now() / 1000),
+    });
+    const volumes = [
+      { id: 9001, name: 'No count', issueCount: null },
+      { id: 9002, name: 'Long run', issueCount: 100 },
+      { id: 9003, name: 'Short run', issueCount: 4 },
+      { id: 9004, name: 'Middle run', issueCount: 12 },
+    ];
+    await getRepository(ComicCatalogVolume).save(
+      volumes.map((volume) => ({
+        generation: 9000,
+        id: volume.id,
+        title: volume.name,
+        searchText: volume.name.toLowerCase(),
+        issueCount: volume.issueCount,
+        payload: JSON.stringify({
+          id: volume.id,
+          name: volume.name,
+          resource_type: 'volume' as const,
+          count_of_issues: volume.issueCount,
+        }),
+      }))
+    );
+    const upstreamSearch = mock.method(
+      ComicVineAPI.prototype,
+      'searchVolumes',
+      async () => {
+        throw new Error('Blank-query browse should use the completed index');
+      }
+    );
+
+    const response = await (
+      await login()
+    )
+      .get('/discover/comics')
+      .query({ query: '   ' });
+
+    assert.strictEqual(response.status, 200, JSON.stringify(response.body));
+    assert.deepStrictEqual(
+      response.body.results.map((volume: { title: string }) => volume.title),
+      ['Long run', 'Middle run', 'Short run', 'No count']
+    );
+    assert.strictEqual(upstreamSearch.mock.callCount(), 0);
+  });
+
   it('reports first-scan progress without presenting partial filtered results', async () => {
     getSettings().main.comicVineApiKey = 'test-key';
     await getRepository(ComicCatalogScan).save({

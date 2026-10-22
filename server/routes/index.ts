@@ -534,11 +534,7 @@ router.use(
   isAuthenticated(),
   queueInterventionRoutes
 );
-router.use(
-  '/integrations/discovery',
-  isAuthenticated(),
-  discoveryIntegrationRoutes
-);
+router.use('/integrations/discovery', discoveryIntegrationRoutes);
 router.use('/playlist', isAuthenticated(), playlistRoutes);
 router.use('/playback', isAuthenticated(), playbackRoutes);
 router.use('/desktop', desktopRoutes);

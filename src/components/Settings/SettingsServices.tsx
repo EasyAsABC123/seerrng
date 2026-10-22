@@ -1,6 +1,14 @@
+import AudiobookshelfLogo from '@app/assets/services/audiobookshelf.svg';
+import backissueLogo from '@app/assets/services/backissue.png';
+import issuarrLogo from '@app/assets/services/issuarr.png';
+import JellystatLogo from '@app/assets/services/jellystat.svg';
+import kapowarrLogo from '@app/assets/services/kapowarr.png';
 import LidarrLogo from '@app/assets/services/lidarr.svg';
+import NavidromeLogo from '@app/assets/services/navidrome.svg';
 import RadarrLogo from '@app/assets/services/radarr.svg';
 import SonarrLogo from '@app/assets/services/sonarr.svg';
+import sportarrLogo from '@app/assets/services/sportarr.png';
+import WhisparrLogo from '@app/assets/services/whisparr.svg';
 import Alert from '@app/components/Common/Alert';
 import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
@@ -38,7 +46,6 @@ import {
   PlusIcon,
   Square3Stack3DIcon,
   TrashIcon,
-  TrophyIcon,
 } from '@heroicons/react/24/solid';
 import type { EnabledMediaCategories } from '@server/constants/mediaCategories';
 import type OverrideRule from '@server/entity/OverrideRule';
@@ -325,6 +332,11 @@ interface ServerInstanceProps {
   isLidarr?: boolean;
   isReadarr?: boolean;
   isAudiobookshelf?: boolean;
+  isNavidrome?: boolean;
+  isJellystat?: boolean;
+  isKapowarr?: boolean;
+  isBackissue?: boolean;
+  isMylar?: boolean;
   isComics?: boolean;
   isMagazines?: boolean;
   isAdult?: boolean;
@@ -375,6 +387,11 @@ const ServerInstance = ({
   isReadarr = false,
   isBindery = false,
   isAudiobookshelf = false,
+  isNavidrome = false,
+  isJellystat = false,
+  isKapowarr = false,
+  isBackissue = false,
+  isMylar = false,
   isComics = false,
   isMagazines = false,
   isAdult = false,
@@ -403,15 +420,41 @@ const ServerInstance = ({
           {isSonarr ? (
             <SonarrLogo className="h-10 w-10 flex-shrink-0" />
           ) : isSportarr ? (
-            <TrophyIcon className="settings-service-sportarr-icon" />
+            <img
+              src={sportarrLogo.src}
+              className="h-10 w-10 flex-shrink-0 object-contain"
+              alt=""
+            />
           ) : isLidarr ? (
             <LidarrLogo className="h-10 w-10 flex-shrink-0" />
           ) : isReadarr ? (
             <BookOpenIcon className="h-10 w-10 flex-shrink-0 text-gray-300" />
           ) : isAudiobookshelf ? (
-            <MusicalNoteIcon className="h-10 w-10 flex-shrink-0 text-gray-300" />
+            <AudiobookshelfLogo className="h-10 w-10 flex-shrink-0" />
           ) : isAdult ? (
-            <FilmIcon className="h-10 w-10 flex-shrink-0 text-fuchsia-300" />
+            <WhisparrLogo className="h-10 w-10 flex-shrink-0" />
+          ) : isNavidrome ? (
+            <NavidromeLogo className="h-10 w-10 flex-shrink-0" />
+          ) : isJellystat ? (
+            <JellystatLogo className="h-10 w-10 flex-shrink-0" />
+          ) : isKapowarr ? (
+            <img
+              src={kapowarrLogo.src}
+              className="h-10 w-10 flex-shrink-0 object-contain"
+              alt=""
+            />
+          ) : isBackissue ? (
+            <img
+              src={backissueLogo.src}
+              className="h-10 w-10 flex-shrink-0 object-contain"
+              alt=""
+            />
+          ) : isMylar ? (
+            <img
+              src={issuarrLogo.src}
+              className="h-10 w-10 flex-shrink-0 object-contain"
+              alt=""
+            />
           ) : isComics ? (
             <Square3Stack3DIcon className="h-10 w-10 flex-shrink-0 text-gray-300" />
           ) : isMagazines ? (
@@ -1779,6 +1822,7 @@ const SettingsServices = ({
                               : 80
                         }
                         isSSL={url.protocol === 'https:'}
+                        isJellystat
                         onEdit={() => setEditJellystatModal(true)}
                         onDelete={() =>
                           setDeleteServerModal({
@@ -2144,6 +2188,7 @@ const SettingsServices = ({
                           profileName={mylar.rootFolder ?? ''}
                           isSSL={mylar.useSsl}
                           isComics={true}
+                          isMylar
                           isDefault={mylar.isDefault}
                           externalUrl={mylar.externalUrl}
                           onEdit={() =>
@@ -2209,6 +2254,7 @@ const SettingsServices = ({
                           profileName={kapowarr.rootFolder ?? ''}
                           isSSL={kapowarr.useSsl}
                           isComics={true}
+                          isKapowarr
                           isDefault={kapowarr.isDefault}
                           externalUrl={kapowarr.externalUrl}
                           onEdit={() =>
@@ -2277,6 +2323,7 @@ const SettingsServices = ({
                         port={backissue.port}
                         isSSL={backissue.useSsl}
                         isComics={true}
+                        isBackissue
                         isDefault={backissue.isDefault}
                         externalUrl={backissue.externalUrl}
                         onEdit={() =>
@@ -2571,6 +2618,7 @@ const SettingsServices = ({
                             : 80
                       }
                       isSSL={url.protocol === 'https:'}
+                      isNavidrome
                       onEdit={() => setEditNavidromeModal(true)}
                       onDelete={() =>
                         setDeleteServerModal({

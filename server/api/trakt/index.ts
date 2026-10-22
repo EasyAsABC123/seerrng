@@ -2,8 +2,6 @@
 // See NOTICE.md for attribution and license terms.
 import ExternalAPI from '@server/api/externalapi';
 import type {
-  TraktDeviceCodeResponse,
-  TraktDevicePollResult,
   TraktFetchMediaType,
   TraktLikedList,
   TraktListEntry,
@@ -28,9 +26,18 @@ import logger from '@server/logger';
 import { BoundedTaskQueue } from '@server/utils/concurrency';
 import { proxyRequestInterceptor } from '@server/utils/customProxyAgent';
 import axios, { type AxiosInstance } from 'axios';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 const TRAKT_BASE_URL = 'https://api.trakt.tv';
+const TRAKT_AUTHORIZE_URL = 'https://auth.trakt.tv/oauth/authorize';
+
+/** Generate a PKCE code verifier: 43 chars of base64url, within 43–128. */
+export const generatePkceVerifier = (): string =>
+  randomBytes(32).toString('base64url');
+
+/** Derive the S256 PKCE code challenge (base64url, no padding). */
+export const derivePkceChallenge = (verifier: string): string =>
+  createHash('sha256').update(verifier).digest('base64url');
 
 export const normalizeTraktApiPath = (endpoint: string): string => {
   if (
@@ -191,7 +198,6 @@ const openTraktCircuit = (
 
 interface TraktAPIOptions {
   clientId: string;
-  clientSecret: string;
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number;
@@ -200,7 +206,6 @@ interface TraktAPIOptions {
 
 class TraktAPI extends ExternalAPI {
   private clientId: string;
-  private clientSecret: string;
   private accessToken?: string;
   private refreshToken?: string;
   private expiresAt: number;
@@ -229,7 +234,6 @@ class TraktAPI extends ExternalAPI {
     );
 
     this.clientId = options.clientId.trim();
-    this.clientSecret = options.clientSecret.trim();
     this.accessToken = options.accessToken;
     this.refreshToken = options.refreshToken;
     this.expiresAt = options.expiresAt ?? 0;
@@ -339,100 +343,56 @@ class TraktAPI extends ExternalAPI {
     return { username: null, listRef: text };
   }
 
-  public async requestDeviceCode(): Promise<TraktDeviceCodeResponse> {
-    // Client credentials are intentionally sent to Trakt's fixed OAuth endpoint.
-    // codeql[js/file-access-to-http]
-    const response = await this.rawAxios.post<TraktDeviceCodeResponse>(
-      '/oauth/device/code',
-      { client_id: this.clientId }
-    );
-    return response.data;
+  public buildAuthorizeUrl(
+    redirectUri: string,
+    codeChallenge: string,
+    state: string
+  ): string {
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: this.clientId,
+      redirect_uri: redirectUri,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+      state,
+    });
+    return `${TRAKT_AUTHORIZE_URL}?${params.toString()}`;
   }
 
-  public async pollForToken(
-    deviceCode: string
-  ): Promise<TraktDevicePollResult> {
-    try {
-      // Device credentials are intentionally sent to Trakt's fixed OAuth endpoint.
-      // codeql[js/file-access-to-http]
-      const response = await this.rawAxios.post<TraktTokenResponse>(
-        '/oauth/device/token',
-        {
-          code: deviceCode,
-          client_id: this.clientId,
-          client_secret: this.clientSecret,
-        },
-        { validateStatus: () => true }
-      );
-
-      if (response.status >= 200 && response.status < 300) {
-        const tokens = this.applyTokens(response.data);
-        return { status: 'authorized', tokens };
-      }
-      if (response.status === 400) {
-        return { status: 'pending' };
-      }
-      if (response.status === 429) {
-        return { status: 'slow_down' };
-      }
-      if (response.status === 409) {
-        return { status: 'already_used' };
-      }
-      if (response.status === 404) {
-        return { status: 'invalid' };
-      }
-      if (response.status === 410) {
-        return { status: 'expired' };
-      }
-      if (response.status === 418) {
-        return { status: 'denied' };
-      }
-
-      throw new Error(
-        `Trakt device authorization failed (status ${response.status})`
-      );
-    } catch (e) {
-      if (
-        e instanceof Error &&
-        e.message.startsWith('Trakt device authorization failed')
-      ) {
-        throw e;
-      }
-      throw new Error(
-        `Trakt API request failed: POST /oauth/device/token: ${
-          e instanceof Error ? e.message : 'unknown error'
-        }`,
-        { cause: e }
-      );
-    }
-  }
-
-  /**
-   * Verify application credentials against Trakt without user interaction.
-   * A valid client ID can request a device code; an invalid client secret is
-   * rejected when exercising the refresh-token grant with a dummy token.
-   */
-  public async validateApplicationCredentials(): Promise<void> {
-    try {
-      await this.requestDeviceCode();
-    } catch {
-      throw new Error('Invalid Trakt Client ID');
-    }
-
-    const response = await this.rawAxios.post(
+  public async exchangeCodeForTokens(
+    code: string,
+    codeVerifier: string,
+    redirectUri: string
+  ): Promise<TraktTokenResponse & { expiresAt: number }> {
+    const response = await this.rawAxios.post<TraktTokenResponse>(
       '/oauth/token',
       {
-        refresh_token: 'seerrng-credential-validation',
+        code,
         client_id: this.clientId,
-        client_secret: this.clientSecret,
-        redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
-        grant_type: 'refresh_token',
+        code_verifier: codeVerifier,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
       },
       { validateStatus: () => true }
     );
 
-    if (response.status === 401 || response.status === 403) {
-      throw new Error('Invalid Trakt Client Secret');
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(
+        `Trakt token exchange failed (status ${response.status})`
+      );
+    }
+
+    return this.applyTokens(response.data);
+  }
+
+  /**
+   * Verify the application client ID is present. Trakt recommends PKCE for
+   * user sign-in and deprecates client secrets for that flow, so there is
+   * nothing else to validate without starting a user flow.
+   */
+  public async validateApplicationCredentials(): Promise<void> {
+    if (!this.clientId) {
+      throw new Error('Invalid Trakt Client ID');
     }
   }
 
@@ -458,8 +418,6 @@ class TraktAPI extends ExternalAPI {
       {
         refresh_token: this.refreshToken,
         client_id: this.clientId,
-        client_secret: this.clientSecret,
-        redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
         grant_type: 'refresh_token',
       },
       { validateStatus: () => true }

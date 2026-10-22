@@ -83,9 +83,24 @@ describe('Discovery provider integrations', () => {
     cy.contains('button', 'Mark episode watched').should('be.visible');
   });
   it('shows application credentials without exposing saved secrets', () => {
+    let traktClientId = 'application-id';
+    const configuration = () => ({
+      trakt: { clientId: traktClientId, configured: true },
+      anilist: { clientId: 'anilist-id', configured: true },
+      simkl: { clientId: 'simkl-id', configured: false },
+      mdblist: { configured: true },
+    });
+    cy.intercept(
+      'GET',
+      '/api/v1/integrations/discovery/configuration',
+      (request) => request.reply(configuration())
+    ).as('loadIntegrationSettings');
     cy.visit('/settings/discovery');
+    cy.wait('@loadIntegrationSettings');
     cy.get('#trakt-clientId').should('have.value', 'application-id');
-    cy.get('#trakt-clientSecret')
+    // Trakt authenticates via PKCE and no longer stores a client secret.
+    cy.get('#trakt-clientSecret').should('not.exist');
+    cy.get('#anilist-clientSecret')
       .should('have.value', '')
       .and('have.attr', 'type', 'password');
     cy.intercept(
@@ -93,21 +108,17 @@ describe('Discovery provider integrations', () => {
       '/api/v1/integrations/discovery/configuration',
       (request) => {
         expect(request.body).to.deep.equal({
-          trakt: { clientSecret: 'replacement-secret' },
+          trakt: { clientId: 'updated-id' },
         });
-        request.reply({
-          trakt: { clientId: 'application-id', configured: true },
-          anilist: { clientId: 'anilist-id', configured: true },
-          simkl: { clientId: 'simkl-id', configured: false },
-          mdblist: { configured: true },
-        });
+        traktClientId = request.body.trakt.clientId;
+        request.reply(configuration());
       }
     ).as('saveIntegrations');
-    cy.get('#trakt-clientSecret').type('replacement-secret');
+    cy.get('#trakt-clientId').clear().type('updated-id');
     cy.contains('button', 'Save integration settings').click();
     cy.wait('@saveIntegrations');
     cy.contains('Integration settings saved.').should('be.visible');
-    cy.get('#trakt-clientSecret').should('have.value', '');
+    cy.get('#trakt-clientId').should('have.value', 'updated-id');
     cy.screenshot('discovery-integrations-settings');
   });
   it('publishes and removes shared packs with an instance-wide confirmation', () => {

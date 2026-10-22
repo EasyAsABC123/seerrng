@@ -4452,7 +4452,7 @@ discoverRoutes.get('/comics', async (req, res) => {
       .status(400)
       .json({ status: 400, message: parsedSearchQuery.error });
   }
-  const query = parsedSearchQuery.value || '*';
+  const query = parsedSearchQuery.value?.trim() ?? '';
   const parsedPublisher = parseOptionalDiscoverString(
     req.query.publisher,
     'Publisher',
@@ -4522,9 +4522,10 @@ discoverRoutes.get('/comics', async (req, res) => {
     maxIssues.value !== undefined;
 
   try {
-    // User-selected filters choose the indexed catalog query; this does not
-    // gate authorization or change which catalog data the route can expose.
-    if (hasMetadataFilters) {
+    // User-selected filters (or a bare browse with no query) use the indexed
+    // catalog; this does not gate authorization or change which catalog data
+    // the route can expose.
+    if (hasMetadataFilters || !query) {
       const scan = await getComicCatalogIndexStatus();
       if (scan.completeGeneration === 0) {
         return res.status(200).json({
@@ -4540,7 +4541,7 @@ discoverRoutes.get('/comics', async (req, res) => {
         });
       }
       const indexed = await searchComicCatalogIndex(scan.completeGeneration, {
-        query,
+        query: query || '*',
         publisher,
         startYear: startYear.value,
         minIssues: minIssues.value,

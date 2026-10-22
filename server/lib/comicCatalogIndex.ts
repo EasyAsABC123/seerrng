@@ -287,8 +287,8 @@ export const searchComicCatalogIndex = async (
     });
   }
   const [rows, totalResults] = await query
-    .orderBy('volume.title', 'ASC')
-    .addOrderBy('volume.id', 'ASC')
+    .orderBy('volume.issueCount', 'DESC', 'NULLS LAST')
+    .addOrderBy('volume.title', 'ASC')
     .skip((filters.page - 1) * filters.limit)
     .take(filters.limit)
     .getManyAndCount();

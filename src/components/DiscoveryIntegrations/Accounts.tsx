@@ -1,7 +1,8 @@
 import Button from '@app/components/Common/Button';
 import discoveryMessages from '@app/components/DiscoveryIntegrations/messages';
 import axios from 'axios';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
 import useSWR from 'swr';
 import { providerNames, type ProviderConfiguration } from './Configuration';
@@ -17,6 +18,7 @@ type Pending = {
 };
 const base = '/api/v1/integrations/discovery';
 export default function DiscoveryAccounts() {
+  const router = useRouter();
   const { data: config } = useSWR<ProviderConfiguration>(
     `${base}/configuration`
   );
@@ -28,21 +30,25 @@ export default function DiscoveryAccounts() {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [expired, setExpired] = useState(false);
-  const finish = async (provider: Provider, authorizationCode?: string) => {
-    const response = await axios.post(
-      `${base}/accounts/${provider}/complete`,
-      authorizationCode ? { code: authorizationCode } : {}
-    );
-    if (response.data.status === 'authorized') {
-      setPending(null);
-      setCode('');
-      await mutate();
-    } else if (!['pending', 'slow_down'].includes(response.data.status)) {
-      setPending(null);
-      setExpired(true);
-    }
-    return response.data.interval as number | undefined;
-  };
+  const traktCallbackHandled = useRef(false);
+  const finish = useCallback(
+    async (provider: Provider, authorizationCode?: string) => {
+      const response = await axios.post(
+        `${base}/accounts/${provider}/complete`,
+        authorizationCode ? { code: authorizationCode } : {}
+      );
+      if (response.data.status === 'authorized') {
+        setPending(null);
+        setCode('');
+        await mutate();
+      } else if (!['pending', 'slow_down'].includes(response.data.status)) {
+        setPending(null);
+        setExpired(true);
+      }
+      return response.data.interval as number | undefined;
+    },
+    [mutate]
+  );
   useEffect(() => {
     if (!pending || pending.provider === 'anilist') return;
     let active = true;
@@ -78,7 +84,7 @@ export default function DiscoveryAccounts() {
     // The authorization attempt owns its polling loop; account revalidation does not restart it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending]);
-  const act = async (callback: () => Promise<unknown>) => {
+  const act = useCallback(async (callback: () => Promise<unknown>) => {
     setBusy(true);
     setFailed(false);
     setExpired(false);
@@ -89,7 +95,26 @@ export default function DiscoveryAccounts() {
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
+  useEffect(() => {
+    if (!router.isReady || traktCallbackHandled.current) return;
+    const completed = router.query.traktComplete === '1';
+    const callbackFailed = typeof router.query.traktError === 'string';
+    if (!completed && !callbackFailed) return;
+
+    traktCallbackHandled.current = true;
+    const query = { ...router.query };
+    delete query.traktComplete;
+    delete query.traktError;
+    void router.replace({ pathname: router.pathname, query }, undefined, {
+      shallow: true,
+    });
+    if (callbackFailed) {
+      setFailed(true);
+      return;
+    }
+    void act(() => finish('trakt'));
+  }, [router, act, finish]);
   return (
     <section className="mt-8" aria-labelledby="discovery-accounts-title">
       <h3 className="heading" id="discovery-accounts-title">
@@ -187,6 +212,10 @@ export default function DiscoveryAccounts() {
                       const response = await axios.post(
                         `${base}/accounts/${provider}/connect`
                       );
+                      if (provider === 'trakt' && response.data.authorizeUrl) {
+                        window.location.href = response.data.authorizeUrl;
+                        return;
+                      }
                       setPending({
                         provider,
                         ...response.data,

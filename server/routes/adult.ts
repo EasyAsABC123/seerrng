@@ -73,19 +73,21 @@ const parseRequestedServiceId = (value: unknown): number | undefined | null => {
 };
 
 const getCoverPath = (scene: WhisparrSceneLookup, serverId: number) => {
-  const hasCover = Boolean(
+  // Whisparr's scene inventory only reports coverType "screenshot" for its
+  // image list, but the real poster is resolvable via the per-scene lookup
+  // the /cover endpoint performs. Any image URL means a cover may exist, so
+  // always offer the path and let the cover endpoint (and the client's
+  // fallback) handle scenes that have no poster.
+  const hasImage = Boolean(
     scene.posterUrl ||
-    scene.images.some((image) => {
-      const coverType = image.coverType?.toLowerCase();
-      return (
-        (!coverType || coverType === 'poster' || coverType === 'cover') &&
-        Boolean(image.url || image.remoteUrl)
-      );
-    })
+    scene.images.some((image) => Boolean(image.url || image.remoteUrl))
   );
-  return hasCover
-    ? `/api/v1/adult/${scene.foreignId}/cover?serverId=${serverId}`
-    : undefined;
+  if (!hasImage) return undefined;
+  // The default Whisparr server has id 0, which the cover endpoint's
+  // parseRequestedServiceId rejects (it requires id > 0). Omit the param for
+  // non-positive ids so the endpoint falls back to the default server.
+  const query = serverId > 0 ? `?serverId=${serverId}` : '';
+  return `/api/v1/adult/${scene.foreignId}/cover${query}`;
 };
 
 const toResult = (

@@ -14,21 +14,25 @@ import { User } from '@server/entity/User';
 import { getSettings } from '@server/lib/settings';
 import { checkUser } from '@server/middleware/auth';
 import { setupTestDb } from '@server/test/db';
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import session from 'express-session';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { afterEach, before, describe, it, mock } from 'node:test';
 import request from 'supertest';
 import authRoutes from './auth';
 import discoveryRoutes from './discoveryIntegrations';
 
 const app = express();
+const testSessionSecret = randomBytes(32).toString('base64url');
 app.use(express.json());
+app.use(cookieParser(testSessionSecret));
 app.use(
   // This Supertest-only session never listens on a network socket.
   // codeql[js/clear-text-cookie]
   session({
-    secret: 'discovery-tests',
+    secret: testSessionSecret,
     resave: false,
     saveUninitialized: false,
   })
@@ -38,6 +42,7 @@ app.use(
 // codeql[js/missing-rate-limiting]
 app.use(checkUser);
 app.use('/auth', authRoutes);
+app.use('/seerr/api/v1/integrations/discovery', discoveryRoutes);
 app.use('/integrations/discovery', discoveryRoutes);
 setupTestDb();
 let savedConfiguration: typeof getSettings extends () => infer S
@@ -45,8 +50,10 @@ let savedConfiguration: typeof getSettings extends () => infer S
     ? C
     : never
   : never;
+let savedApplicationUrl: string;
 before(() => {
   savedConfiguration = structuredClone(getSettings().discoveryIntegrations);
+  savedApplicationUrl = getSettings().main.applicationUrl;
 });
 afterEach(() => {
   mock.restoreAll();
@@ -54,16 +61,39 @@ afterEach(() => {
     getSettings().discoveryIntegrations,
     structuredClone(savedConfiguration)
   );
+  getSettings().main.applicationUrl = savedApplicationUrl;
 });
 async function login() {
   const agent = request.agent(app);
   getSettings().main.localLogin = true;
+  getSettings().main.applicationUrl = 'https://seerr.example';
   const result = await agent
     .post('/auth/local')
     .send({ email: 'admin@seerr.dev', password: 'test1234' });
   assert.equal(result.status, 200);
+  loginSessionCookies.set(
+    agent,
+    cookieHeader(result.headers['set-cookie'], ['connect.sid'])
+  );
   return agent;
 }
+const loginSessionCookies = new WeakMap<object, string>();
+const cookieHeader = (
+  headers: string | string[] | undefined,
+  names: string[]
+): string =>
+  names
+    .map((name) => {
+      const values = Array.isArray(headers)
+        ? headers
+        : headers
+          ? [headers]
+          : [];
+      const cookie = values.find((value) => value.startsWith(`${name}=`));
+      assert.ok(cookie, `Expected the ${name} cookie.`);
+      return cookie.split(';', 1)[0];
+    })
+    .join('; ');
 
 describe('personal discovery account boundaries', () => {
   it('saves and removes a TMDB-confirmed match for a linked personal library', async () => {
@@ -356,6 +386,27 @@ describe('personal discovery account boundaries', () => {
       assert.equal('apiKey' in provider, false);
     }
   });
+  it('removes a legacy Trakt client secret when integration settings are saved', async () => {
+    const agent = await login();
+    const trakt = getSettings().discoveryIntegrations.trakt as {
+      clientId: string;
+      clientSecret?: string;
+    };
+    trakt.clientSecret = 'obsolete-trakt-secret';
+
+    try {
+      const result = await agent
+        .put('/integrations/discovery/configuration')
+        .send({ trakt: { clientId: 'replacement-trakt-app' } });
+
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      assert.deepEqual(getSettings().discoveryIntegrations.trakt, {
+        clientId: 'replacement-trakt-app',
+      });
+    } finally {
+      delete trakt.clientSecret;
+    }
+  });
   it('rejects personal mutations originating at another site', async () => {
     const agent = await login();
     const result = await agent
@@ -430,16 +481,13 @@ describe('personal discovery account boundaries', () => {
     assert.equal(result.status, 404);
     assert.equal(result.body.code, 'PROVIDER_LIST_NOT_FOUND');
   });
-  it('does not accept a browser-supplied Trakt device code', async () => {
+  it('rejects a Trakt callback with a mismatched state', async () => {
     const agent = await login();
-    const poll = mock.method(TraktAPI.prototype, 'pollForToken', async () => ({
-      status: 'pending' as const,
-    }));
-    const result = await agent
-      .post('/integrations/discovery/accounts/trakt/complete')
-      .send({ deviceCode: 'attacker-code' });
-    assert.equal(result.status, 409);
-    assert.equal(poll.mock.callCount(), 0);
+    const result = await agent.get(
+      '/integrations/discovery/trakt/callback?code=auth-code&state=bogus'
+    );
+    assert.equal(result.status, 303);
+    assert.ok(result.headers.location.includes('traktError=expired'));
   });
   it('rejects missing AniList PINs before contacting the provider', async () => {
     const agent = await login();
@@ -459,39 +507,30 @@ describe('personal discovery account boundaries', () => {
   });
 });
 
-it('retains device credentials server-side, resumes an attempt, and stores authorized tokens correctly', async () => {
+it('exchanges a Trakt authorization code via PKCE and stores tokens server-side', async () => {
   const agent = await login();
+  getSettings().main.applicationUrl = 'https://seerr.example/seerr';
   Object.assign(getSettings().discoveryIntegrations.trakt, {
     clientId: 'test-app',
-    clientSecret: 'app-secret',
   });
-  const start = mock.method(
+  const exchange = mock.method(
     TraktAPI.prototype,
-    'requestDeviceCode',
-    async () => ({
-      device_code: 'private-device',
-      user_code: 'PUBLIC-CODE',
-      verification_url: 'https://trakt.tv/activate',
-      expires_in: 600,
-      interval: 5,
-    })
-  );
-  const poll = mock.method(
-    TraktAPI.prototype,
-    'pollForToken',
-    async (code: string) => {
-      assert.equal(code, 'private-device');
+    'exchangeCodeForTokens',
+    async (code: string, verifier: string, redirectUri: string) => {
+      assert.equal(code, 'auth-code');
+      assert.ok(verifier.length >= 43);
+      assert.equal(
+        redirectUri,
+        'https://seerr.example/seerr/api/v1/integrations/discovery/trakt/callback'
+      );
       return {
-        status: 'authorized' as const,
-        tokens: {
-          access_token: 'linked-access',
-          refresh_token: 'linked-refresh',
-          token_type: 'bearer',
-          expires_in: 3600,
-          created_at: Math.floor(Date.now() / 1000),
-          scope: 'public',
-          expiresAt: Math.floor(Date.now() / 1000) + 3600,
-        },
+        access_token: 'linked-access',
+        refresh_token: 'linked-refresh',
+        token_type: 'bearer',
+        expires_in: 3600,
+        created_at: Math.floor(Date.now() / 1000),
+        scope: 'public',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
       };
     }
   );
@@ -499,35 +538,85 @@ it('retains device credentials server-side, resumes an attempt, and stores autho
     username: 'connected-viewer',
     traktUserId: 'viewer-id',
   }));
-  const begin = await agent.post(
-    '/integrations/discovery/accounts/trakt/connect'
-  );
+  const begin = await agent
+    .post('/integrations/discovery/accounts/trakt/connect')
+    .set('X-Forwarded-Host', 'attacker.example')
+    .set('X-Forwarded-Proto', 'http');
   assert.equal(begin.status, 200);
-  assert.equal(begin.body.userCode, 'PUBLIC-CODE');
-  assert.equal(JSON.stringify(begin.body).includes('private-device'), false);
+  assert.equal(typeof begin.body.authorizeUrl, 'string');
+  assert.ok(
+    begin.body.authorizeUrl.startsWith('https://auth.trakt.tv/oauth/authorize')
+  );
+  assert.ok(begin.body.authorizeUrl.includes('code_challenge_method=S256'));
   assert.equal(
-    (await agent.post('/integrations/discovery/accounts/trakt/connect')).status,
+    new URL(begin.body.authorizeUrl).searchParams.get('redirect_uri'),
+    'https://seerr.example/seerr/api/v1/integrations/discovery/trakt/callback'
+  );
+  assert.equal(JSON.stringify(begin.body).includes('code_verifier'), false);
+  assert.equal(exchange.mock.callCount(), 0);
+  // A Trakt session cannot be completed until the provider callback returns.
+  const legacyAgent = await login();
+  getSettings().main.applicationUrl = 'https://seerr.example/seerr';
+  assert.equal(
+    (await legacyAgent.post('/integrations/discovery/accounts/trakt/connect'))
+      .status,
     200
   );
-  assert.equal(start.mock.callCount(), 1);
   assert.equal(
     (
-      await agent
+      await legacyAgent
         .post('/integrations/discovery/accounts/trakt/complete')
         .send({})
     ).status,
-    202
+    409
   );
-  assert.equal(poll.mock.callCount(), 0);
-  const now = Date.now();
-  mock.method(Date, 'now', () => now + 6000);
-  const completed = await agent
-    .post('/integrations/discovery/accounts/trakt/complete')
+  const state = new URL(begin.body.authorizeUrl).searchParams.get('state');
+  assert.ok(state);
+  const callbackUrl = `/seerr/api/v1/integrations/discovery/trakt/callback?code=auth-code&state=${encodeURIComponent(
+    state!
+  )}`;
+  const callback = await agent
+    .get(callbackUrl)
+    .set('Sec-Fetch-Site', 'cross-site')
+    .set('X-Forwarded-Host', 'attacker.example');
+  assert.equal(callback.status, 303);
+  const callbackSetCookieHeaders = callback.headers['set-cookie'];
+  const callbackSetCookieValues = Array.isArray(callbackSetCookieHeaders)
+    ? callbackSetCookieHeaders
+    : callbackSetCookieHeaders
+      ? [callbackSetCookieHeaders]
+      : [];
+  const callbackSetCookie = callbackSetCookieValues.find((value) =>
+    value.startsWith(`trakt-discovery-oauth-callback-${state}=`)
+  );
+  assert.ok(callbackSetCookie);
+  assert.match(
+    callbackSetCookie,
+    /; Path=\/seerr\/api\/v1\/integrations\/discovery/iu
+  );
+  assert.match(callbackSetCookie, /; HttpOnly/iu);
+  assert.match(callbackSetCookie, /; Secure/iu);
+  assert.match(callbackSetCookie, /; SameSite=Lax/iu);
+  assert.equal(callback.headers['referrer-policy'], 'no-referrer');
+  assert.equal(
+    callback.headers.location,
+    'https://seerr.example/seerr/settings/discovery?traktComplete=1'
+  );
+  assert.equal(callback.headers.location.includes('auth-code'), false);
+  assert.equal(exchange.mock.callCount(), 0);
+  const sessionCookie = loginSessionCookies.get(agent);
+  assert.ok(sessionCookie);
+  const callbackCookie = cookieHeader(callback.headers['set-cookie'], [
+    `trakt-discovery-oauth-callback-${state}`,
+  ]);
+  assert.match(callbackCookie, /trakt-discovery-oauth-callback/u);
+  const done = await request(app)
+    .post('/seerr/api/v1/integrations/discovery/accounts/trakt/complete')
+    .set('Cookie', `${sessionCookie}; ${callbackCookie}`)
     .send({});
-  assert.equal(completed.status, 200);
-  assert.equal(completed.body.status, 'authorized');
-  assert.equal(completed.body.account.username, 'connected-viewer');
-  assert.equal(JSON.stringify(completed.body).includes('linked-access'), false);
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+  assert.equal(done.body.status, 'authorized');
+  assert.equal(exchange.mock.callCount(), 1);
   const account = await getRepository(DiscoveryAccount)
     .createQueryBuilder('account')
     .addSelect(['account.accessToken', 'account.refreshToken'])
@@ -536,4 +625,99 @@ it('retains device credentials server-side, resumes an attempt, and stores autho
   assert.equal(account.accessToken, 'linked-access');
   assert.equal(account.refreshToken, 'linked-refresh');
   assert.equal(account.allowWrites, false);
+});
+
+it('requires a public HTTPS application URL before starting Trakt authorization', async () => {
+  const agent = await login();
+  getSettings().discoveryIntegrations.trakt.clientId = 'test-app';
+  getSettings().main.applicationUrl = 'http://seerr.example';
+  const result = await agent.post(
+    '/integrations/discovery/accounts/trakt/connect'
+  );
+  assert.equal(result.status, 409);
+  assert.match(result.body.message, /public HTTPS application URL/i);
+});
+
+it('rejects a Trakt callback when the configured application client changes', async () => {
+  const agent = await login();
+  getSettings().main.applicationUrl = 'https://seerr.example/seerr';
+  getSettings().discoveryIntegrations.trakt.clientId = 'original-app';
+  const begin = await agent.post(
+    '/integrations/discovery/accounts/trakt/connect'
+  );
+  assert.equal(begin.status, 200);
+  const state = new URL(begin.body.authorizeUrl).searchParams.get('state');
+  assert.ok(state);
+
+  getSettings().discoveryIntegrations.trakt.clientId = 'replacement-app';
+  const exchange = mock.method(
+    TraktAPI.prototype,
+    'exchangeCodeForTokens',
+    async () => {
+      throw new Error('Should not exchange with changed app credentials');
+    }
+  );
+  const done = await agent
+    .get(
+      `/seerr/api/v1/integrations/discovery/trakt/callback?code=auth-code&state=${encodeURIComponent(
+        state!
+      )}`
+    )
+    .set('Sec-Fetch-Site', 'cross-site');
+  assert.equal(done.status, 303);
+  const sessionCookie = loginSessionCookies.get(agent);
+  assert.ok(sessionCookie);
+  const callbackCookie = cookieHeader(done.headers['set-cookie'], [
+    `trakt-discovery-oauth-callback-${state}`,
+  ]);
+  const completed = await request(app)
+    .post('/seerr/api/v1/integrations/discovery/accounts/trakt/complete')
+    .set('Cookie', `${sessionCookie}; ${callbackCookie}`)
+    .send({});
+  assert.equal(completed.status, 409);
+  assert.match(completed.body.message, /Connection expired/u);
+  assert.equal(exchange.mock.callCount(), 0);
+});
+
+it('rejects a Trakt callback when the configured application URL changes', async () => {
+  const agent = await login();
+  getSettings().main.applicationUrl = 'https://seerr.example/seerr';
+  getSettings().discoveryIntegrations.trakt.clientId = 'test-app';
+  const begin = await agent.post(
+    '/integrations/discovery/accounts/trakt/connect'
+  );
+  assert.equal(begin.status, 200);
+  const state = new URL(begin.body.authorizeUrl).searchParams.get('state');
+  assert.ok(state);
+
+  getSettings().main.applicationUrl = 'https://new-seerr.example/seerr';
+  const exchange = mock.method(
+    TraktAPI.prototype,
+    'exchangeCodeForTokens',
+    async () => {
+      throw new Error('Should not exchange with a changed application URL');
+    }
+  );
+  const callback = await agent.get(
+    `/seerr/api/v1/integrations/discovery/trakt/callback?code=auth-code&state=${encodeURIComponent(
+      state!
+    )}`
+  );
+  assert.equal(callback.status, 303);
+  assert.equal(
+    callback.headers.location,
+    'https://new-seerr.example/seerr/settings/discovery?traktComplete=1'
+  );
+  const sessionCookie = loginSessionCookies.get(agent);
+  assert.ok(sessionCookie);
+  const callbackCookie = cookieHeader(callback.headers['set-cookie'], [
+    `trakt-discovery-oauth-callback-${state}`,
+  ]);
+  const completed = await request(app)
+    .post('/seerr/api/v1/integrations/discovery/accounts/trakt/complete')
+    .set('Cookie', `${sessionCookie}; ${callbackCookie}`)
+    .send({});
+  assert.equal(completed.status, 409);
+  assert.match(completed.body.message, /Connection expired/u);
+  assert.equal(exchange.mock.callCount(), 0);
 });

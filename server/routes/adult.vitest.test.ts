@@ -16,7 +16,15 @@ vi.mock('@server/api/servarr/whisparr', () => {
     year: 2025,
     overview: 'A scene for route coverage.',
     studio: 'Orchard House',
-    images: [],
+    images:
+      serverId === 0 || serverId === 3
+        ? [
+            {
+              coverType: 'screenshot',
+              url: 'https://whisparr.example/screenshot.jpg',
+            },
+          ]
+        : [],
     performerNames: ['Maya Star'],
     added: `2026-10-0${serverId - 2}T12:00:00.000Z`,
     monitored: true,
@@ -140,6 +148,39 @@ describe('Adult discovery route', () => {
         (scene: { serviceId: number }) => scene.serviceId
       )
     ).toEqual([4, 3]);
+    expect(
+      response.body.results.find(
+        (scene: { serviceId: number }) => scene.serviceId === 3
+      )?.posterPath
+    ).toBe(
+      '/api/v1/adult/8a3c0000-0000-4000-8000-000000000003/cover?serverId=3'
+    );
+  });
+
+  it('uses screenshot images for cover lookup and omits the default server ID', async () => {
+    const services = [
+      { ...configuredServices[0], id: 0, port: 9_000 },
+      configuredServices[1],
+    ];
+    getSettings().whisparr = structuredClone(services);
+    vi.spyOn(runtimeConfig, 'getExternalRuntimeConfig').mockReturnValue({
+      whisparr: structuredClone(services),
+      network: { apiRequestTimeout: 5_000 },
+    } as ReturnType<typeof runtimeConfig.getExternalRuntimeConfig>);
+
+    const response = await request(app()).get('/adult/search');
+
+    expect(response.status).toBe(200);
+    const defaultScene = response.body.results.find(
+      (scene: { serviceId: number }) => scene.serviceId === 0
+    );
+    expect(defaultScene?.posterPath).toBe(
+      '/api/v1/adult/8a3c0000-0000-4000-8000-000000000000/cover'
+    );
+    const namedServerScene = response.body.results.find(
+      (scene: { serviceId: number }) => scene.serviceId === 4
+    );
+    expect(namedServerScene.posterPath).toBeUndefined();
   });
 
   it('rejects malformed and unknown Whisparr server scopes before searching', async () => {

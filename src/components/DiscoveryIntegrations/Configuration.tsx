@@ -7,7 +7,7 @@ import { FormattedMessage } from 'react-intl';
 import useSWR from 'swr';
 
 const providers = {
-  trakt: ['clientId', 'clientSecret'],
+  trakt: ['clientId'],
   anilist: ['clientId', 'clientSecret'],
   simkl: ['clientId'],
   mdblist: ['apiKey'],

@@ -9,7 +9,6 @@ import { afterEach, describe, it } from 'node:test';
 const makeApi = () =>
   new TraktAPI({
     clientId: 'client-id',
-    clientSecret: 'client-secret',
     accessToken: 'access-token',
     refreshToken: 'refresh-token',
     expiresAt: Math.floor(Date.now() / 1000) + 3600,

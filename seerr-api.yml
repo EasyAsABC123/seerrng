@@ -654,7 +654,8 @@ components:
           maxLength: 80
         type:
           type: string
-          enum: [qbittorrent, transmission, deluge, torrentng]
+          enum:
+            [qbittorrent, transmission, deluge, torrentng, rtorrent, sabnzbd]
         enabled:
           type: boolean
         hostname:
@@ -25595,9 +25596,6 @@ paths:
                     clientId:
                       type: string
                       maxLength: 4096
-                    clientSecret:
-                      type: string
-                      maxLength: 4096
                 anilist:
                   type: object
                   additionalProperties: false
@@ -25824,6 +25822,34 @@ paths:
           description: Provider quota reached; retry later
         '502':
           description: Provider unavailable
+  /integrations/discovery/trakt/callback:
+    get:
+      summary: Complete a Trakt OAuth authorization-code redirect
+      tags:
+        - user
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+            maxLength: 4096
+        - name: state
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+        - name: error
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        '303':
+          description: Redirects back to the discovery integrations page
+        '400':
+          description: Invalid request
+        '401':
+          description: Authentication required
   /integrations/discovery/feeds/{provider}/{feed}:
     get:
       summary: Browse provider discovery feeds

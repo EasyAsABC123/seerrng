@@ -10,19 +10,24 @@ declare module 'express-session' {
       jellyfinUserId: string;
       authorityKey: string;
     };
-    discoveryAuth?: Partial<
-      Record<
-        'trakt' | 'simkl',
-        {
-          code: string;
-          userCode: string;
-          clientId: string;
-          expiresAt: number;
-          interval: number;
-          nextPollAt: number;
-        }
-      >
-    >;
+    discoveryAuth?: {
+      trakt?: {
+        codeVerifier: string;
+        state: string;
+        clientId: string;
+        userId: number;
+        applicationUrl: string;
+        redirectUri: string;
+        expiresAt: number;
+      };
+      simkl?: {
+        userCode: string;
+        clientId: string;
+        interval: number;
+        expiresAt: number;
+        nextPollAt: number;
+      };
+    };
     spotifyOAuthState?: string;
     spotifyOAuthStateCreatedAt?: number;
     steamOpenIdState?: string;
