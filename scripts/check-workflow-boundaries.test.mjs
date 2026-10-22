@@ -334,12 +334,12 @@ test('unit-test shards use the shared pool only for trusted main runs', () => {
   assert.equal(ciWorkflow.jobs['deploy-main'], undefined);
 });
 
-test('main release, image scan, CodeQL, and Semgrep use the shared pool on trusted runs', () => {
+test('main validation and image scanning use the shared pool on trusted runs', () => {
   const workflowsDirectory = path.join(rootDirectory, '.github', 'workflows');
   const ciWorkflow = yaml.load(
     fs.readFileSync(path.join(workflowsDirectory, 'ci.yml'), 'utf8')
   );
-  for (const jobName of ['release-notes', 'publish', 'scan-main-image']) {
+  for (const jobName of ['release-notes', 'scan-main-image']) {
     const runner = ciWorkflow.jobs[jobName]?.['runs-on'];
     assert.match(runner, /ng-shared-main-jit/u, jobName);
     assert.match(runner, /github.event_name == 'push'/u, jobName);
@@ -368,4 +368,43 @@ test('main release, image scan, CodeQL, and Semgrep use the shared pool on trust
   );
   assert.match(semgrep, /docker info/u);
   assert.match(semgrep, /docker run/u);
+});
+
+test('shared runner jobs use SeerrNG and exact-run labels', () => {
+  const workflowsDirectory = path.join(rootDirectory, '.github', 'workflows');
+  let sharedRunnerCount = 0;
+  for (const filename of fs.readdirSync(workflowsDirectory).filter((name) =>
+    /\.ya?ml$/u.test(name)
+  )) {
+    const workflow = yaml.load(
+      fs.readFileSync(path.join(workflowsDirectory, filename), 'utf8')
+    );
+    for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+      const runner = job?.['runs-on'];
+      if (typeof runner !== 'string' || !runner.includes('ng-shared-main-jit')) {
+        continue;
+      }
+      sharedRunnerCount += 1;
+      assert.match(runner, /ng-shared-main-seerrng/u, `${filename}/${jobName}`);
+      assert.match(runner, /ng-main-run-\{0\}/u, `${filename}/${jobName}`);
+      assert.match(runner, /github\.run_id/u, `${filename}/${jobName}`);
+      assert.match(
+        runner,
+        /github\.ref == 'refs\/heads\/main'/u,
+        `${filename}/${jobName}`
+      );
+      assert.match(runner, /github\.event_name == 'push'/u, `${filename}/${jobName}`);
+    }
+  }
+  assert.ok(sharedRunnerCount > 0);
+});
+
+test('credentialed chart publication stays on a hosted runner', () => {
+  const helmWorkflow = yaml.load(
+    fs.readFileSync(
+      path.join(rootDirectory, '.github', 'workflows', 'helm.yml'),
+      'utf8'
+    )
+  );
+  assert.equal(helmWorkflow.jobs.publish?.['runs-on'], 'ubuntu-latest');
 });
