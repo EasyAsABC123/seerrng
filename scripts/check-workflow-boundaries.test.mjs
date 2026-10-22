@@ -316,15 +316,56 @@ test('CodeQL models the awaited image cache validation barrier', () => {
   );
 });
 
-test('unit-test shards always use GitHub-hosted runners', () => {
+test('unit-test shards use the shared pool only for trusted main runs', () => {
   const ciWorkflow = yaml.load(
     fs.readFileSync(
       path.join(rootDirectory, '.github', 'workflows', 'ci.yml'),
       'utf8'
     )
   );
-  assert.equal(ciWorkflow.jobs['unit-test']?.['runs-on'], 'ubuntu-latest');
+  const runner = ciWorkflow.jobs['unit-test']?.['runs-on'];
+  assert.match(runner, /ng-shared-main-jit/u);
+  assert.match(runner, /github.event_name == 'push'/u);
+  assert.match(runner, /github.event_name == 'workflow_dispatch'/u);
+  assert.match(runner, /github.ref == 'refs\/heads\/main'/u);
+  assert.match(runner, /\|\| 'ubuntu-latest'/u);
   assert.equal(ciWorkflow.jobs['unit-test']?.strategy?.['max-parallel'], 4);
   assert.equal(ciWorkflow.jobs['preflight-deploy'], undefined);
   assert.equal(ciWorkflow.jobs['deploy-main'], undefined);
+});
+
+test('main release, image scan, CodeQL, and Semgrep use the shared pool on trusted runs', () => {
+  const workflowsDirectory = path.join(rootDirectory, '.github', 'workflows');
+  const ciWorkflow = yaml.load(
+    fs.readFileSync(path.join(workflowsDirectory, 'ci.yml'), 'utf8')
+  );
+  for (const jobName of ['release-notes', 'publish', 'scan-main-image']) {
+    const runner = ciWorkflow.jobs[jobName]?.['runs-on'];
+    assert.match(runner, /ng-shared-main-jit/u, jobName);
+    assert.match(runner, /github.event_name == 'push'/u, jobName);
+    assert.match(runner, /github.event_name == 'workflow_dispatch'/u, jobName);
+    assert.match(runner, /github.ref == 'refs\/heads\/main'/u, jobName);
+    assert.match(runner, /\|\| 'ubuntu-latest'/u, jobName);
+  }
+  for (const [workflowName, jobName] of [
+    ['codeql.yml', 'analyze'],
+    ['semgrep-community.yml', 'semgrep'],
+  ]) {
+    const scanWorkflow = yaml.load(
+      fs.readFileSync(path.join(workflowsDirectory, workflowName), 'utf8')
+    );
+    const runner = scanWorkflow.jobs[jobName]?.['runs-on'];
+    assert.match(runner, /ng-shared-main-jit/u, workflowName);
+    assert.match(runner, /github.event_name == 'push'/u, workflowName);
+    assert.match(runner, /github.event_name == 'workflow_dispatch'/u, workflowName);
+    assert.match(runner, /github.event_name == 'schedule'/u, workflowName);
+    assert.match(runner, /github.ref == 'refs\/heads\/main'/u, workflowName);
+    assert.match(runner, /\|\| 'ubuntu-latest'/u, workflowName);
+  }
+  const semgrep = fs.readFileSync(
+    path.join(workflowsDirectory, 'semgrep-community.yml'),
+    'utf8'
+  );
+  assert.match(semgrep, /docker info/u);
+  assert.match(semgrep, /docker run/u);
 });
