@@ -274,6 +274,46 @@ If an HTTP request has a Host header that is not in `SEERR_TLS_HOSTS`, SeerrNG
 returns `421` instead of creating an open redirect. Add every browser-visible
 hostname and IP to the environment variable before starting the server.
 
+## Cloudflare Tunnel and other tunnels
+
+A tunnel such as Cloudflare Tunnel can sit in front of built-in HTTPS, so the
+same instance is reachable on the LAN and through a public hostname. The
+browser-visible names go in **Settings > Network > Certificate hostnames and IP
+addresses** (or `SEERR_TLS_HOSTS`):
+
+```text
+192.168.1.20,request.example.com,localhost,127.0.0.1
+```
+
+Enter bare hostnames and IP addresses only: no `https://` and no port. The
+list is used for the certificate subject alternative names and as the allowed
+`Host` list for the HTTP listener. The tunnel's public hostname must be in it
+too. Restart SeerrNG after changing it.
+
+Point the tunnel at the **HTTPS port**, not the HTTP `PORT`. For Cloudflare
+Tunnel the origin service is `https://localhost:5056` (use the SeerrNG host's
+address if `cloudflared` runs elsewhere), with **No TLS Verify** enabled on the
+origin. Cloudflare cannot verify a certificate issued by the local CA in
+`self-signed` mode.
+
+To let Cloudflare terminate TLS instead, set the mode to **Disabled**, restart,
+and point the tunnel at `http://localhost:5055`. Enable **Enable Proxy Support**
+so SeerrNG trusts `X-Forwarded-Proto`. LAN access then uses plain HTTP; see
+[Direct HTTP authentication](#direct-http-authentication).
+
+## `SSL_ERROR_RX_RECORD_TOO_LONG` or `ERR_SSL_PROTOCOL_ERROR`
+
+These errors mean the browser started a TLS handshake against a port that
+answered with plain HTTP. With built-in HTTPS enabled, the HTTP `PORT` (5055 by
+default) is never the HTTPS port. It only redirects or returns the upgrade
+response, so `https://host:5055` always fails this way.
+
+- Use the HTTPS port, `https://host:5056` by default, or whatever **HTTPS Port**
+  is set to on the Network page. Opening `http://host:5055` also works, and
+  redirects to HTTPS only when **Redirect HTTP to HTTPS** is enabled.
+- If neither port speaks TLS, built-in HTTPS is not active yet. Save the mode
+  and restart SeerrNG; the Network page shows whether a restart is pending.
+
 ## Troubleshooting sign-in
 
 If Jellyfin setup appears to save, does not advance, and a retry reports that
