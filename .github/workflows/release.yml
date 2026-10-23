@@ -1,4 +1,5 @@
 ---
+# ng-runner-policy: hosted-first-v1
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: SeerrNG Release
 
@@ -55,7 +56,7 @@ jobs:
   validate-main-tag:
     name: Validate main release tag
     if: github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.announce_security_correction != true)
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     timeout-minutes: 10
     permissions:
       actions: read
@@ -293,7 +294,7 @@ jobs:
     name: Generate changelog
     needs: validate-main-tag
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
     outputs:
@@ -369,7 +370,7 @@ jobs:
   create-draft-release:
     name: Create draft release
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: write
     needs: changelog
@@ -418,7 +419,7 @@ jobs:
     name: Publish multi-arch manifests
     needs: [validate-main-tag, create-draft-release]
     timeout-minutes: 90
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
@@ -588,7 +589,7 @@ jobs:
   scan-release-image:
     name: Scan release image (${{ matrix.platform }})
     needs: publish
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -655,7 +656,7 @@ jobs:
     name: Sign images and create SBOM attestations
     needs: [publish, scan-release-image]
     timeout-minutes: 20
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
       id-token: write
@@ -811,7 +812,7 @@ jobs:
     name: Verify signatures and attestations
     needs: [publish, sign]
     timeout-minutes: 15
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: read
@@ -911,7 +912,7 @@ jobs:
     needs:
       [create-draft-release, verify, build-release-assets, dispatch-package-channels]
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: write
     env:
@@ -941,9 +942,10 @@ jobs:
     needs: [publish-release]
     concurrency:
       group: seerrng-stable-container-aliases
+      queue: max
       cancel-in-progress: false
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
@@ -1005,7 +1007,7 @@ jobs:
     name: Dispatch Chocolatey after publication
     needs: [publish-release]
     timeout-minutes: 5
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       actions: write
       contents: read
@@ -1063,7 +1065,7 @@ jobs:
     name: Dispatch package channels
     needs: [verify, build-release-assets]
     timeout-minutes: 360
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       actions: write
       contents: write
@@ -1286,7 +1288,7 @@ jobs:
     needs:
       [changelog, publish, publish-release]
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
     env:
@@ -1370,7 +1372,7 @@ jobs:
     if: ${{ !cancelled() && !contains(inputs.tag || github.ref_name, '-') && needs.publish-release.result == 'success' }}
     needs: [publish-release, announce-discord]
     timeout-minutes: 5
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       actions: write
       contents: read
@@ -1411,7 +1413,7 @@ jobs:
     name: Correct published Discord security notes
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.announce_security_correction == true
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
     env:
@@ -1507,3 +1509,4 @@ jobs:
               sleep 1
             fi
           done
+

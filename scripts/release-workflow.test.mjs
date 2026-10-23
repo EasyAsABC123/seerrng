@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 import * as yaml from 'js-yaml';
@@ -1211,6 +1212,44 @@ test('trusted main release retries use the private runner pools', () => {
   );
 });
 
+test('hosted-first Linux releases preserve Apple and non-main runner boundaries', () => {
+  const expression = readWorkflow('release-assets.yml').jobs.build['runs-on'];
+  const route = ({
+    os = 'linux',
+    arch = 'x64',
+    attempt = 1,
+    event = 'workflow_dispatch',
+    ref = 'refs/heads/main',
+    enabled = 'true',
+    force = '',
+  } = {}) =>
+    runInNewContext(
+      expression.slice(3, -2),
+      {
+        github: { event_name: event, ref, run_attempt: attempt, run_id: 123 },
+        matrix: { os, arch, runner: 'hosted-platform' },
+        vars: { NG_HOSTED_FIRST: enabled, NG_FORCE_JIT: force },
+        fromJSON: JSON.parse,
+        format: (template, id) =>
+          template
+            .replaceAll('{{', '{')
+            .replaceAll('}}', '}')
+            .replaceAll('{0}', String(id)),
+      },
+      { timeout: 100 }
+    );
+
+  assert.equal(route(), 'hosted-platform');
+  assert.equal(route({ attempt: 2 }).group, 'ng-shared-main-jit');
+  assert.equal(route({ enabled: '' }).group, 'ng-shared-main-jit');
+  assert.equal(route({ force: 'true' }).group, 'ng-shared-main-jit');
+  assert.equal(route({ os: 'macos' }).group, 'private-apple-builds');
+  assert.equal(route({ os: 'macos', attempt: 2 }).group, 'private-apple-builds');
+  assert.equal(route({ arch: 'arm64', attempt: 2 }), 'hosted-platform');
+  assert.equal(route({ event: 'pull_request', attempt: 2 }), 'hosted-platform');
+  assert.equal(route({ ref: 'refs/tags/v1.0.0', attempt: 2 }), 'hosted-platform');
+});
+
 test('trusted main iOS validation uses the private Apple runner', () => {
   const ios = readWorkflow('ios.yml');
   assert.match(
@@ -1451,3 +1490,4 @@ test('git-cliff uses stable semantic-version tags as release boundaries', () => 
   assert.equal(matchesTag.test('mobile-v3.63.0-ci.36'), false);
   assert.equal(matchesTag.test('v3.63.0-rc.1'), false);
 });
+
