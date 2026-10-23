@@ -1041,6 +1041,18 @@ test('release assets build supported native archive platforms', () => {
     iosClientWorkflow.jobs.ios['runs-on'],
     /private-apple-builds[\s\S]*\|\| 'macos-26'/u
   );
+  const iosSetupNode = iosClientWorkflow.jobs.ios.steps.findIndex((step) =>
+    step.uses?.startsWith('actions/setup-node@')
+  );
+  const iosBuildStep = iosClientWorkflow.jobs.ios.steps.findIndex(
+    (step) =>
+      step.name === 'Run iOS unit and UI tests, then package Simulator app'
+  );
+  assert.ok(iosSetupNode >= 0 && iosSetupNode < iosBuildStep);
+  assert.equal(
+    iosClientWorkflow.jobs.ios.steps[iosSetupNode].with['node-version-file'],
+    'package.json'
+  );
   const iosClientToolchainCheck = iosClientWorkflow.jobs.ios.steps.find(
     (step) => step.name === 'Verify Xcode release toolchain'
   ).run;
