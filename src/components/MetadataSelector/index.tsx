@@ -21,6 +21,7 @@ const messages = defineMessages('components.MetadataSelector', {
 
 interface MetadataSelectorProps {
   testId: string;
+  inputId: string;
   value: MetadataProviderType;
   onChange: (value: MetadataProviderType) => void;
   isDisabled?: boolean;
@@ -28,6 +29,7 @@ interface MetadataSelectorProps {
 
 const MetadataSelector = ({
   testId = 'metadata-provider-selector',
+  inputId,
   value,
   onChange,
   isDisabled = false,
@@ -69,6 +71,7 @@ const MetadataSelector = ({
   return (
     <div data-testid={testId}>
       <Select
+        inputId={inputId}
         options={metadataProviderOptions}
         isDisabled={isDisabled}
         className="react-select-container"

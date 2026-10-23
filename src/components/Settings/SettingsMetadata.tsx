@@ -13,6 +13,7 @@ import defineMessages from '@app/utils/defineMessages';
 import { ArrowDownOnSquareIcon, BeakerIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import { Field, Form, Formik } from 'formik';
+import Link from 'next/link';
 import { type ChangeEvent, useState } from 'react';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
@@ -428,12 +429,12 @@ const SettingsMetadata = () => {
             {intl.formatMessage(messages.hardcoverTokenLink)}
           </a>
         </Alert>
-        <a
+        <Link
           href="/settings/services"
           className="mt-3 inline-flex text-sm text-indigo-400 hover:text-indigo-300 hover:underline"
         >
           {intl.formatMessage(messages.bookshelfServicesLink)}
-        </a>
+        </Link>
       </section>
 
       <section className="app-card-sub settings-group-card">
@@ -524,6 +525,7 @@ const SettingsMetadata = () => {
                       <div className="form-input-area">
                         <MetadataSelector
                           testId="tv-metadata-provider-selector"
+                          inputId="tv-metadata-provider"
                           value={values.metadata.tv}
                           onChange={(value) => {
                             void setFieldValue('metadata.tv', value);
@@ -546,6 +548,7 @@ const SettingsMetadata = () => {
                       <div className="form-input-area">
                         <MetadataSelector
                           testId="anime-metadata-provider-selector"
+                          inputId="anime-metadata-provider"
                           value={values.metadata.anime}
                           onChange={(value) => {
                             void setFieldValue('metadata.anime', value);
