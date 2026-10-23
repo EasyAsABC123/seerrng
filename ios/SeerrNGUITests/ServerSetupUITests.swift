@@ -59,7 +59,13 @@ final class ServerSetupUITests: XCTestCase {
         app.buttons["saveServerButton"].tap()
         waitForSavedServer("Home", in: app)
 
-        app.buttons["addServerToolbarButton"].tap()
+        let addAnotherServerButton = app.buttons["addServerToolbarButton"]
+        XCTAssertTrue(addAnotherServerButton.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            addAnotherServerButton.isHittable,
+            "The add-server toolbar button should be available after saving a server."
+        )
+        addAnotherServerButton.tap()
         let nameField = app.textFields["serverNameField"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 20))
         nameField.tap()

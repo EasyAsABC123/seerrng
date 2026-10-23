@@ -791,6 +791,22 @@ test('release recovery validates reusable artifacts and repairs the failed relea
   );
   assert.match(
     recoveryValidation.run,
+    /\["Build release assets \/ Build iOS Simulator release package"\]/u,
+    'an iOS-only failure must allow successful platform artifacts to be reused'
+  );
+  assert.match(
+    recoveryValidation.run,
+    /reuse_windows_x64_artifact=true[\s\S]*reuse_windows_arm64_artifact=true/u,
+    'iOS-only recovery must reuse both successful Windows artifacts'
+  );
+  const windowsX64RecoveryArtifacts = recoveryValidation.run.match(
+    /else\s+expected_artifacts='([\s\S]*?)'/u
+  )?.[1];
+  assert.ok(windowsX64RecoveryArtifacts);
+  assert.match(windowsX64RecoveryArtifacts, /"seerrng-windows-arm64"/u);
+  assert.doesNotMatch(windowsX64RecoveryArtifacts, /"seerrng-windows-x64"/u);
+  assert.match(
+    recoveryValidation.run,
     /Build release assets \/ Build Android APK/u,
     'recovery must validate that the signed Android artifact was built'
   );
@@ -1021,7 +1037,10 @@ test('release assets build supported native archive platforms', () => {
     'bash scripts/build-ios-release.sh "$TAG" dist-release'
   );
   const iosClientWorkflow = readWorkflow('ios.yml');
-  assert.equal(iosClientWorkflow.jobs.ios['runs-on'], 'macos-26');
+  assert.match(
+    iosClientWorkflow.jobs.ios['runs-on'],
+    /private-apple-builds[\s\S]*\|\| 'macos-26'/u
+  );
   const iosClientToolchainCheck = iosClientWorkflow.jobs.ios.steps.find(
     (step) => step.name === 'Verify Xcode release toolchain'
   ).run;
@@ -1178,6 +1197,15 @@ test('trusted main release retries use the private runner pools', () => {
         os === 'linux' && arch === 'arm64' && runner === 'ubuntu-24.04-arm'
     )
   );
+});
+
+test('trusted main iOS validation uses the private Apple runner', () => {
+  const ios = readWorkflow('ios.yml');
+  assert.match(
+    ios.jobs.ios['runs-on'],
+    /github\.event_name == 'push'[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*private-apple-builds/u
+  );
+  assert.match(ios.jobs.ios['runs-on'], /\|\| 'macos-26'/u);
 });
 
 test('tag preparation keeps Helm metadata aligned with the application release', () => {
