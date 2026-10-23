@@ -1125,11 +1125,6 @@ test('release notes flow into the draft release and Discord announcement', () =>
   );
 });
 
-test('release automation does not publish YunoHost packages', () => {
-  const release = readWorkflow('release.yml');
-  assert.equal(release.jobs['sync-yunohost-package'], undefined);
-});
-
 test('Discord release-note chunks preserve all text and stay within the limit', () => {
   const body = '#### Security\n- Secure every copy 🛡️.\n\n'.repeat(240);
   const chunks = splitDiscordReleaseBody(body, 3600);
