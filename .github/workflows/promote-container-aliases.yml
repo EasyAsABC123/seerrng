@@ -85,3 +85,21 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.tag }}
         run: bash scripts/promote-container-aliases.sh "$VERSION" "$GHCR_IMAGE" "$DOCKER_HUB"
+
+      - name: Mirror stable aliases to the legacy GHCR path
+        # Installs created from the retired template still pull this path and
+        # never see a template change, so it keeps following the latest stable
+        # image. Needs GHCR_LEGACY_TOKEN, or Actions write access on the legacy
+        # package; a push failure warns without failing the release.
+        env:
+          LEGACY_GHCR_IMAGE: ghcr.io/snapetech/seerrng
+          LEGACY_GHCR_TOKEN: ${{ secrets.GHCR_LEGACY_TOKEN || secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.tag }}
+        run: |
+          set -uo pipefail
+          export DOCKER_CONFIG="$(mktemp -d)"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$LEGACY_GHCR_TOKEN" | docker login ghcr.io -u snapetech --password-stdin >/dev/null
+          if ! bash scripts/mirror-legacy-ghcr-aliases.sh "$VERSION" "$GHCR_IMAGE" "$LEGACY_GHCR_IMAGE"; then
+            echo "::warning::Legacy ghcr.io/snapetech/seerrng aliases were not updated; installs on the retired path stay on an older image."
+          fi

@@ -157,6 +157,16 @@ if (
   process.exitCode = 1;
 }
 
+if (
+  !releaseWorkflow.includes('scripts/mirror-legacy-ghcr-aliases.sh') ||
+  !manualPromotionWorkflow.includes('scripts/mirror-legacy-ghcr-aliases.sh')
+) {
+  console.error(
+    'Promotion must keep the retired GHCR path on the latest stable image.'
+  );
+  process.exitCode = 1;
+}
+
 if (!ciWorkflow.includes('node scripts/check-container-alias-policy.mjs')) {
   console.error('Main CI must run the stable container alias policy check.');
   process.exitCode = 1;
