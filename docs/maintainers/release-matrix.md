@@ -33,9 +33,16 @@ Linux armv7 archives are unsupported while SeerrNG requires Node.js 24.15 or
 newer: Node.js 24 no longer provides armv7 binaries, and no release workflow
 can validate an archive against the required runtime on that architecture.
 
-The inherited Nix, Unraid, and Synology documentation describes upstream or
+The inherited Nix and Synology documentation describes upstream or
 third-party installation paths; this repository has no corresponding package
 publisher or release artifact for those channels.
+
+Unraid is the exception: the Community Apps template and Compose stack pull
+`ghcr.io/snapetech-org/seerrng:latest`, and Unraid reports an update when that
+tag's digest changes. Stable promotion also mirrors `latest`, `stable`, `main`,
+`master` and the version tags to the retired `ghcr.io/snapetech/seerrng` path,
+because Unraid keeps an installed container's Repository field and old installs
+never see a template change. Do not pin Unraid to a version tag.
 
 GitHub Actions is the sole authoritative publisher and live deployer. GitLab CI
 may build and scan an internal test image, but it must not deploy `seerr.home`
