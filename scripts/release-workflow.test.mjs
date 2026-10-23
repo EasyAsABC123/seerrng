@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import test from 'node:test';
-import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 import * as yaml from 'js-yaml';
 import { splitDiscordReleaseBody } from './discord-release-notes.mjs';
@@ -1244,10 +1244,16 @@ test('hosted-first Linux releases preserve Apple and non-main runner boundaries'
   assert.equal(route({ enabled: '' }).group, 'ng-shared-main-jit');
   assert.equal(route({ force: 'true' }).group, 'ng-shared-main-jit');
   assert.equal(route({ os: 'macos' }).group, 'private-apple-builds');
-  assert.equal(route({ os: 'macos', attempt: 2 }).group, 'private-apple-builds');
+  assert.equal(
+    route({ os: 'macos', attempt: 2 }).group,
+    'private-apple-builds'
+  );
   assert.equal(route({ arch: 'arm64', attempt: 2 }), 'hosted-platform');
   assert.equal(route({ event: 'pull_request', attempt: 2 }), 'hosted-platform');
-  assert.equal(route({ ref: 'refs/tags/v1.0.0', attempt: 2 }), 'hosted-platform');
+  assert.equal(
+    route({ ref: 'refs/tags/v1.0.0', attempt: 2 }),
+    'hosted-platform'
+  );
 });
 
 test('trusted main iOS validation uses the private Apple runner', () => {
@@ -1490,4 +1496,3 @@ test('git-cliff uses stable semantic-version tags as release boundaries', () => 
   assert.equal(matchesTag.test('mobile-v3.63.0-ci.36'), false);
   assert.equal(matchesTag.test('v3.63.0-rc.1'), false);
 });
-
