@@ -1212,7 +1212,41 @@ test('trusted main release retries use the private runner pools', () => {
   );
 });
 
-test('hosted-first Linux releases preserve Apple and non-main runner boundaries', () => {
+test('main CI image publishing uses private runners without cancelling queued scans', () => {
+  const ci = readWorkflow('ci.yml');
+  const imagePublish = ci.jobs.publish;
+
+  assert.match(imagePublish['runs-on'], /ng-shared-main-seerrng/u);
+  assert.equal(imagePublish.concurrency['cancel-in-progress'], false);
+
+  for (const name of [
+    'codeql.yml',
+    'semgrep-community.yml',
+    'trivy-filesystem.yml',
+  ]) {
+    const workflow = readWorkflow(name);
+
+    assert.equal(
+      workflow.concurrency['cancel-in-progress'],
+      false,
+      `${name} must leave existing scans running`
+    );
+    assert.match(
+      workflow.concurrency.group,
+      /github\.run_id/u,
+      `${name} must not replace a queued scan with a newer run`
+    );
+    assert.match(
+      Object.values(workflow.jobs)
+        .map((job) => job['runs-on'])
+        .join('\n'),
+      /ng-shared-main-seerrng/u,
+      `${name} main scan must use the private runner pool`
+    );
+  }
+});
+
+test('trusted main Linux releases use private runners and preserve platform boundaries', () => {
   const expression = readWorkflow('release-assets.yml').jobs.build['runs-on'];
   const route = ({
     os = 'linux',
@@ -1220,15 +1254,12 @@ test('hosted-first Linux releases preserve Apple and non-main runner boundaries'
     attempt = 1,
     event = 'workflow_dispatch',
     ref = 'refs/heads/main',
-    enabled = 'true',
-    force = '',
   } = {}) =>
     runInNewContext(
       expression.slice(3, -2),
       {
         github: { event_name: event, ref, run_attempt: attempt, run_id: 123 },
         matrix: { os, arch, runner: 'hosted-platform' },
-        vars: { NG_HOSTED_FIRST: enabled, NG_FORCE_JIT: force },
         fromJSON: JSON.parse,
         format: (template, id) =>
           template
@@ -1239,15 +1270,13 @@ test('hosted-first Linux releases preserve Apple and non-main runner boundaries'
       { timeout: 100 }
     );
 
-  assert.equal(route(), 'hosted-platform');
+  assert.equal(route().group, 'ng-shared-main-jit');
   assert.equal(route({ attempt: 2 }).group, 'ng-shared-main-jit');
-  assert.equal(route({ enabled: '' }).group, 'ng-shared-main-jit');
-  assert.equal(route({ force: 'true' }).group, 'ng-shared-main-jit');
   assert.equal(route({ os: 'macos' }).group, 'private-apple-builds');
   assert.equal(route({ os: 'macos', attempt: 2 }).group, 'private-apple-builds');
-  assert.equal(route({ arch: 'arm64', attempt: 2 }), 'hosted-platform');
+  assert.equal(route({ arch: 'arm64' }), 'hosted-platform');
   assert.equal(route({ event: 'pull_request', attempt: 2 }), 'hosted-platform');
-  assert.equal(route({ ref: 'refs/tags/v1.0.0', attempt: 2 }), 'hosted-platform');
+  assert.equal(route({ ref: 'refs/tags/v1.0.0' }), 'hosted-platform');
 });
 
 test('trusted main iOS validation uses the private Apple runner', () => {
