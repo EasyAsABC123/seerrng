@@ -1254,12 +1254,18 @@ test('trusted main Linux releases use private runners and preserve platform boun
     attempt = 1,
     event = 'workflow_dispatch',
     ref = 'refs/heads/main',
+    hostedFirst = false,
+    forceJit = false,
   } = {}) =>
     runInNewContext(
       expression.slice(3, -2),
       {
         github: { event_name: event, ref, run_attempt: attempt, run_id: 123 },
         matrix: { os, arch, runner: 'hosted-platform' },
+        vars: {
+          NG_HOSTED_FIRST: hostedFirst ? 'true' : 'false',
+          NG_FORCE_JIT: forceJit ? 'true' : 'false',
+        },
         fromJSON: JSON.parse,
         format: (template, id) =>
           template
@@ -1272,8 +1278,22 @@ test('trusted main Linux releases use private runners and preserve platform boun
 
   assert.equal(route().group, 'ng-shared-main-jit');
   assert.equal(route({ attempt: 2 }).group, 'ng-shared-main-jit');
+  assert.equal(route({ hostedFirst: true }), 'hosted-platform');
+  assert.equal(
+    route({ hostedFirst: true, forceJit: true }).group,
+    'ng-shared-main-jit'
+  );
+  assert.equal(
+    route({ hostedFirst: true, attempt: 2 }).group,
+    'ng-shared-main-jit'
+  );
   assert.equal(route({ os: 'macos' }).group, 'private-apple-builds');
   assert.equal(route({ os: 'macos', attempt: 2 }).group, 'private-apple-builds');
+  assert.equal(route({ os: 'macos', hostedFirst: true }), 'hosted-platform');
+  assert.equal(
+    route({ os: 'macos', hostedFirst: true, forceJit: true }).group,
+    'private-apple-builds'
+  );
   assert.equal(route({ arch: 'arm64' }), 'hosted-platform');
   assert.equal(route({ event: 'pull_request', attempt: 2 }), 'hosted-platform');
   assert.equal(route({ ref: 'refs/tags/v1.0.0' }), 'hosted-platform');
@@ -1286,77 +1306,6 @@ test('trusted main iOS validation uses the private Apple runner', () => {
     /github\.event_name == 'push'[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*private-apple-builds/u
   );
   assert.match(ios.jobs.ios['runs-on'], /\|\| 'macos-26'/u);
-});
-
-test('tag preparation keeps Helm metadata aligned with the application release', () => {
-  const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
-  const syncStep = createTag.steps.find(
-    (step) => step.name === 'Sync Helm chart release metadata'
-  );
-
-  assert.ok(syncStep);
-  assert.match(
-    syncStep.run,
-    /node scripts\/update-helm-release-metadata\.mjs "\$TAG_VERSION"/u
-  );
-  const metadataScript = fs.readFileSync(
-    path.join(rootDirectory, 'scripts', 'update-helm-release-metadata.mjs'),
-    'utf8'
-  );
-  assert.match(metadataScript, /'charts', 'seerr-chart'/u);
-  assert.match(metadataScript, /appVersion:/u);
-  assert.match(metadataScript, /README\.md/u);
-  assert.match(metadataScript, /Version-\$\{escapeRegExp\(chartVersion\)\}/u);
-  assert.match(metadataScript, /informational\?style=flat-square/u);
-  const commitStep = createTag.steps.find(
-    (step) => step.name === 'Commit updated files'
-  );
-  assert.match(
-    commitStep.run,
-    /git add CHANGELOG\.md package\.json charts\/seerr-chart\/Chart\.yaml charts\/seerr-chart\/README\.md/u
-  );
-  assert.match(commitStep.run, /release-note: none/u);
-});
-
-test('automatic stable releases follow successful main CI with new release notes', () => {
-  const workflow = readWorkflow('create-tag.yml');
-  const trigger = workflow.on.workflow_run;
-  const determine = workflow.jobs['determine-tag-version'];
-  const checkout = determine.steps.find((step) => step.name === 'Checkout');
-  const version = determine.steps.find(
-    (step) => step.name === 'Get tag version'
-  );
-  const createTag = workflow.jobs['create-tag'];
-
-  assert.deepEqual(trigger, {
-    workflows: ['SeerrNG CI'],
-    types: ['completed'],
-    branches: ['main'],
-  });
-  assert.equal(Object.hasOwn(workflow.on, 'workflow_dispatch'), true);
-  assert.match(
-    workflow.concurrency.group,
-    /workflow_run\.head_sha \|\| github\.sha/u
-  );
-  assert.match(determine.if, /workflow_run\.conclusion == 'success'/u);
-  assert.match(determine.if, /workflow_run\.event == 'push'/u);
-  assert.match(determine.if, /workflow_run\.head_branch == 'main'/u);
-  assert.match(
-    determine.if,
-    /workflow_run\.head_repository\.full_name == github\.repository/u
-  );
-  assert.match(checkout.with.ref, /workflow_run\.head_sha/u);
-  assert.match(version.run, /git ls-remote origin refs\/heads\/main/u);
-  assert.match(version.run, /git diff --name-status .*release-notes/u);
-  assert.match(version.run, /release_required=false/u);
-  assert.equal(
-    createTag.if,
-    "needs.determine-tag-version.outputs.release_required == 'true'"
-  );
-  assert.match(
-    createTag.steps.find((step) => step.name === 'Prepare release branch').run,
-    /"\$BASE_SHA"/u
-  );
 });
 
 test('release notes flow into the draft release and Discord announcement', () => {
@@ -1522,26 +1471,6 @@ test('Cypress uses Cloud-only grouping metadata only when recording', () => {
   assert.equal(Object.hasOwn(localRun?.with ?? {}, 'ci-build-id'), false);
 });
 
-test('tag preparation prepends the current changelog without replacing history', () => {
-  const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
-  const changelogStep = createTag.steps.find(
-    (step) => step.name === 'Generate checked-in changelog'
-  );
-  const commitStep = createTag.steps.find(
-    (step) => step.name === 'Commit updated files'
-  );
-
-  assert.ok(changelogStep);
-  assert.match(
-    changelogStep.run,
-    /git-cliff[\s\S]*--unreleased[\s\S]*--output "\$current_changelog"/u
-  );
-  assert.match(changelogStep.run, /assemble-release-notes\.mjs/u);
-  assert.match(changelogStep.run, /prepend-changelog-section\.mjs/u);
-  assert.match(changelogStep.run, /--existing CHANGELOG\.md/u);
-  assert.match(commitStep.run, /git add CHANGELOG\.md/u);
-});
-
 test('git-cliff skips all release-preparation commits', () => {
   const cliff = fs.readFileSync(
     path.join(rootDirectory, '.github', 'cliff.toml'),
@@ -1549,6 +1478,31 @@ test('git-cliff skips all release-preparation commits', () => {
   );
 
   assert.match(cliff, /message = '\^chore\\\(release\\\):'/u);
+});
+
+test('git-cliff omits the removed automatic tag kickoff by commit SHA', () => {
+  const cliff = fs.readFileSync(
+    path.join(rootDirectory, '.github', 'cliff.toml'),
+    'utf8'
+  );
+
+  assert.ok(
+    cliff.includes(
+      '{ sha = "3872d8dd53e76ad373d8ac9b871118765e03e241", skip = true }'
+    )
+  );
+});
+
+test('git-cliff includes build commits in the miscellaneous release history', () => {
+  const cliff = fs.readFileSync(
+    path.join(rootDirectory, '.github', 'cliff.toml'),
+    'utf8'
+  );
+
+  assert.match(
+    cliff,
+    /message = "\^build\|\^chore\|\^ci", group = "<!-- 8 -->⚙️ Miscellaneous Tasks"/u
+  );
 });
 
 test('git-cliff uses stable semantic-version tags as release boundaries', () => {

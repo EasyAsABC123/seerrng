@@ -10,6 +10,46 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.72.4](https://github.com/snapetech-org/seerrng/compare/v3.72.3..v3.72.4) - 2026-10-23
+
+### User-facing changes
+
+#### Changed
+
+- **Settings:** First-run transport setup clears an old success message when a later save is rejected.
+
+#### Fixed
+
+- **Settings:** Settings search, filters, quota selectors, provider selectors, language and region controls, and notification webhook fields now expose accessible names and correctly linked labels. This makes the controls easier to identify with assistive technology and fixes the Discord and Slack webhook labels. The Bookshelf services shortcut now uses in-app navigation.
+- **Ci:** Trusted main-branch Linux validation now routes directly to the shared private JIT runners. Public-fork jobs stay isolated, and Apple and architecture-specific release jobs keep their designated runners. Existing queued and active jobs are left untouched.
+- **Ios:** Adding another saved server now opens the editor reliably, and editing existing server details continues to work as expected.
+
+### 🐛 Bug Fixes
+- *(a11y)* Label settings controls - ([edfc432](https://github.com/snapetech-org/seerrng/commit/edfc432290c3c564752f0ec5bb8449e88ac1c9bb))
+- *(ci)* Route SeerrNG main work to private runners - ([ef72010](https://github.com/snapetech-org/seerrng/commit/ef72010ef0ab7dc9982db3e3253cda907ac069b8))
+- *(ci)* Bound scan queues and stage hosted-to-JIT routing - ([0828f6a](https://github.com/snapetech-org/seerrng/commit/0828f6ada60ddf1a2b4cc7906895db939cbf54b1))
+- *(ci)* Use prebuilt Debian toolchain for tests - ([7b6bd5e](https://github.com/snapetech-org/seerrng/commit/7b6bd5e0945193311809cd0f9d6ef0ee08dc824c))
+- *(ci)* Install Node on private iOS runner - ([8ec09d5](https://github.com/snapetech-org/seerrng/commit/8ec09d54f745fe80b3917f8f48e2a56fdbe88524))
+- *(ios)* Reopen server editor for additional servers - ([329426c](https://github.com/snapetech-org/seerrng/commit/329426c370ebdcf035b0b27907a80aeb86bf34ff))
+- *(release)* Restore private runner routing - ([16258e0](https://github.com/snapetech-org/seerrng/commit/16258e03365686bd8ca4ea6d17623252277d6f05))
+- *(release)* Bypass queued runners and repair CLI bootstrap - ([40519fe](https://github.com/snapetech-org/seerrng/commit/40519fe285928e6e3bf78bca7e3cc7ab819914e1))
+- *(release)* Pin corrected private runner CLI setup - ([e2e1212](https://github.com/snapetech-org/seerrng/commit/e2e12128e37046a630923933a9723ed596e3204b))
+- *(release)* Load CLI setup from pinned local checkout - ([13e61ef](https://github.com/snapetech-org/seerrng/commit/13e61efe5141b496da70e5c313e558e4ee1b9ea0))
+- *(release)* Install GitHub CLI on private runners - ([a1c69bd](https://github.com/snapetech-org/seerrng/commit/a1c69bd570487a1ffc5637d1261eccb52a891723))
+- *(release)* Install Node in private validation - ([f936b5f](https://github.com/snapetech-org/seerrng/commit/f936b5f47a1c87bd33bb5b22b6661ef6e81b6405))
+- *(release)* Isolate retries from stale concurrency locks - ([a598077](https://github.com/snapetech-org/seerrng/commit/a5980775faab72d2bcdf1cbbaab57a3f26d0bd0a))
+- *(release)* Move Apple builds to private runner - ([4278c6b](https://github.com/snapetech-org/seerrng/commit/4278c6ba27e96449952a59897277dcca4f96389a))
+- *(release)* Route trusted retries through private runners - ([1b37e0d](https://github.com/snapetech-org/seerrng/commit/1b37e0dee903e17b7efd67183883deda1f41c26d))
+- *(runners)* Compare GitHub CLI digest directly - ([a7df518](https://github.com/snapetech-org/seerrng/commit/a7df518305b4850d22db9eec664e5bd1299e7f17))
+- *(setup)* Clear stale transport save status - ([c56adaa](https://github.com/snapetech-org/seerrng/commit/c56adaab6079c09678371b7dae839d31b84985cf))
+
+### 🧪 Testing
+- *(ci)* Align publisher contract with private main routing - ([f88f1fe](https://github.com/snapetech-org/seerrng/commit/f88f1fe378bd356a3aadb34908dd57df8eac51d1))
+
+### ⚙️ Miscellaneous Tasks
+- *(runners)* Add checksum-pinned GitHub CLI setup - ([e06aebc](https://github.com/snapetech-org/seerrng/commit/e06aebcabafecde9837f1634f5a5bf8018029b63))
+- Keep public PRs hosted and add private fallback - ([1a05ca0](https://github.com/snapetech-org/seerrng/commit/1a05ca0b79bd5aab1ae9f3e0554f50b113dc41b9))
+
 ## [3.72.3](https://github.com/snapetech-org/seerrng/compare/v3.72.2..v3.72.3) - 2026-10-23
 
 ### User-facing changes

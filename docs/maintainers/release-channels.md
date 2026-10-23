@@ -23,29 +23,35 @@ Each curated fragment also records its audience, product area, required action,
 and breaking-change status. The fragment body is the release-ready summary;
 implementation details stay in the technical history.
 
-CI validates the fragment contract. The tag workflow builds only the current
-release section and prepends it to the checked-in `CHANGELOG.md`, preserving all
+CI validates the fragment contract. Before tagging a stable release, prepare
+the versioned section in `CHANGELOG.md` and prepend it without replacing the
 audited historical sections. The release workflow assembles the current
-fragments into the GitHub release body, and the Discord announcement uses the
-same content. This prevents a generated changelog from being silently replaced
-by generic release text or from erasing older curated history.
+fragments into the GitHub release body; the Discord announcement uses the same
+content.
 
 The checked-in changelog is audited against every `v3.*` tag. The coverage check
-runs in pull-request CI and during tag preparation, so deleting or forgetting a
+runs in pull-request CI and release tag validation, so deleting or forgetting a
 historical release section fails before publication. A missing version is not
 inferred: `v3.2.6` was never tagged and is intentionally absent.
 
-## Automatic Stable Release Kickoff
+## Publishing a Stable Release
 
-After **SeerrNG CI** succeeds on `main`, the `Create tag` workflow automatically
-prepares a stable release when `main` is still the exact revision CI tested and
-there is at least one new curated release-note fragment since the latest
-published stable tag. Internal-only changes and stale CI runs do not create a
-release. The workflow updates the version, Helm metadata, and changelog, then
-creates the tag and starts the release publisher. A manual `Create tag`
-dispatch remains available for an intentional release without a new fragment;
-the separate `SeerrNG Release` dispatch remains available to retry publishing
-an existing tag.
+All release changes must be on `main` before tagging. Update `package.json` and
+the Helm chart metadata with the release version, add the assembled version
+section to `CHANGELOG.md`, and verify the section against the curated fragments.
+Commit that preparation to `main`, then push the matching `v*` tag from that
+commit. The tag push starts the existing **SeerrNG Release** workflow, which
+checks that the tag points into `main`, generates the release notes, builds the
+release assets, and publishes the release. There is no separate tag-creation
+workflow.
+
+`npm version X.Y.Z --ignore-scripts --no-git-tag-version` updates the
+application version. `node scripts/update-helm-release-metadata.mjs vX.Y.Z`
+keeps the chart version, application version, and chart README aligned. Use
+`git-cliff` with `scripts/assemble-release-notes.mjs` and
+`scripts/prepend-changelog-section.mjs` to prepare the checked-in changelog.
+Run `node scripts/preview-release-notes.mjs --base <previous-tag> --head HEAD`
+and `node scripts/check-changelog-tags.mjs` before committing.
 
 See the [release history audit](./release-history-audit.md) for the scope and
 method used to backfill the historical sections.
