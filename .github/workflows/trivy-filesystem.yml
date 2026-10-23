@@ -1,4 +1,3 @@
-# ng-runner-policy: hosted-first-v1
 name: Trivy filesystem scan
 
 on:
@@ -14,8 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ng-scan-trivy-filesystem-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ng-scan-trivy-filesystem-${{ github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: false
 
 jobs:
   trivy:

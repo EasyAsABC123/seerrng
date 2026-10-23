@@ -139,14 +139,20 @@ test('the production build does not require development-only contracts', () => {
   assert.doesNotMatch(dockerfile, /RUN pnpm build(?:\s|$)/u);
 });
 
-test('the CI workflow keeps only hosted build and publish jobs', () => {
+test('the CI image publisher uses the private pool only for trusted main jobs', () => {
   const workflow = yaml.load(
     fs.readFileSync(
       path.join(rootDirectory, '.github', 'workflows', 'ci.yml'),
       'utf8'
     )
   );
+  const publisher = workflow.jobs.publish;
+
   assert.equal(workflow.jobs['preflight-deploy'], undefined);
   assert.equal(workflow.jobs['deploy-main'], undefined);
-  assert.equal(workflow.jobs.publish['runs-on'], 'ubuntu-latest');
+  assert.equal(publisher.if, "github.ref == 'refs/heads/main'");
+  assert.match(publisher['runs-on'], /ng-shared-main-jit/u);
+  assert.match(publisher['runs-on'], /github.event_name == 'push'/u);
+  assert.match(publisher['runs-on'], /github.ref == 'refs\/heads\/main'/u);
+  assert.equal(publisher.permissions.packages, 'write');
 });
