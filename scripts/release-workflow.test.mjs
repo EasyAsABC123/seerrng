@@ -628,6 +628,31 @@ test('multi-architecture publishers perform the real build once and verify the i
   );
 });
 
+test('release validation installs Node before running its alias-policy check', () => {
+  const validation = readWorkflow('release.yml').jobs['validate-main-tag'];
+  const nodeSetupIndex = validation.steps.findIndex((step) =>
+    step.uses?.startsWith('actions/setup-node@')
+  );
+  const aliasPolicyIndex = validation.steps.findIndex(
+    (step) => step.name === 'Verify stable container alias policy'
+  );
+
+  assert.ok(nodeSetupIndex >= 0);
+  assert.equal(
+    validation.steps[nodeSetupIndex].uses,
+    'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1'
+  );
+  assert.equal(
+    validation.steps[nodeSetupIndex].with['node-version-file'],
+    'package.json'
+  );
+  assert.equal(
+    validation.steps[nodeSetupIndex].with['package-manager-cache'],
+    false
+  );
+  assert.ok(nodeSetupIndex < aliasPolicyIndex);
+});
+
 test('release publishing admits only tag pushes and main-branch retries', () => {
   const release = readWorkflow('release.yml');
   const validation = release.jobs['validate-main-tag'];
