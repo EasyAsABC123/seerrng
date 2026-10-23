@@ -54,7 +54,7 @@ jobs:
   validate-main-tag:
     name: Validate main release tag
     if: github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.announce_security_correction != true)
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: read
