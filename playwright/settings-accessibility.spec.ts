@@ -63,7 +63,7 @@ test('settings controls have accessible names linked to their purpose', async ({
 
   await page.goto('/settings');
   await expect(
-    page.getByRole('combobox', { name: 'Original Language' })
+    page.getByRole('combobox', { name: 'Discover Language' })
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Discover Region' })
@@ -79,7 +79,7 @@ test('settings controls have accessible names linked to their purpose', async ({
 
   await page.goto('/profile/settings/main');
   await expect(
-    page.getByRole('combobox', { name: 'Original Language' })
+    page.getByRole('combobox', { name: 'Discover Language' })
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Discover Region' })
