@@ -21,12 +21,13 @@ runs:
           --retry 3 --retry-delay 2 --retry-connrefused \
           "https://github.com/cli/cli/releases/download/v${version}/${archive_name}" \
           --output "$archive"
-        printf '%s  %s\n' \
-          '77b9e297e94c50336823d0f84de7ef1be60cba704601fa0d98f129f47a94987' \
-          "$archive" | sha256sum --check --status || {
+        expected_checksum='77b9e297e94c50336823d0f84de7ef1be60cba704601fa0d98f129f47a94987'
+        checksum_output="$(sha256sum "$archive")"
+        actual_checksum="${checksum_output%% *}"
+        if [[ "$actual_checksum" != "$expected_checksum" ]]; then
           echo 'The downloaded GitHub CLI archive failed SHA-256 verification.' >&2
           exit 1
-        }
+        fi
         tar --extract --gzip --file "$archive" --directory "$install_root" --no-same-owner
         bin_directory="${install_root}/gh_${version}_linux_amd64/bin"
         test -x "${bin_directory}/gh"
