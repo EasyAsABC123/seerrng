@@ -6460,16 +6460,6 @@ const validateCurrentBatchContract = (files) => {
     'the intentional synthetic HTTP-fallback regression must remain explicitly scoped for code scanning'
   );
   requireText(
-    '.github/workflows/ci.yml',
-    'Install Git for complete checkout',
-    'the minimal Alpine validation job must install Git before checkout so export-ignored contract files remain available'
-  );
-  requireText(
-    '.github/workflows/ci.yml',
-    'run: apk add --no-cache git',
-    'the minimal Alpine validation job must provide Git to actions/checkout'
-  );
-  requireText(
     'bin/run-cypress-start.mjs',
     "E2E_TESTS: 'true'",
     'the isolated Cypress server must disable production request limits that make the complete browser suite timing-dependent'

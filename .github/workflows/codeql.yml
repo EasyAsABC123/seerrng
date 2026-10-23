@@ -1,5 +1,4 @@
 ---
-# ng-runner-policy: hosted-first-v1
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: CodeQL
 
@@ -12,8 +11,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ng-scan-codeql-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ng-scan-codeql-${{ github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: false
 
 jobs:
   analyze:

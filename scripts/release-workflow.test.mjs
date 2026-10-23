@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import test from 'node:test';
-import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 import * as yaml from 'js-yaml';
 import { splitDiscordReleaseBody } from './discord-release-notes.mjs';
@@ -104,7 +104,11 @@ test('release assets build while image verification runs, then package channels 
     IOS_APPSTORE_PROVISIONING_PROFILE_BASE64:
       '${{ secrets.IOS_APPSTORE_PROVISIONING_PROFILE_BASE64 }}',
   });
-  assert.deepEqual(packageDispatch.needs, ['verify', 'build-release-assets']);
+  assert.deepEqual(packageDispatch.needs, [
+    'validate-main-tag',
+    'verify',
+    'build-release-assets',
+  ]);
   assert.equal(packageDispatch['timeout-minutes'], 360);
   assert.match(dispatchScript, /--ref main/u);
   assert.match(dispatchScript, /release-chocolatey\.yml/u);
@@ -175,6 +179,7 @@ test('release assets build while image verification runs, then package channels 
     'package inventory must inspect draft releases through the GitHub CLI'
   );
   assert.deepEqual(publishRelease.needs, [
+    'validate-main-tag',
     'create-draft-release',
     'verify',
     'build-release-assets',
@@ -215,6 +220,37 @@ test('release assets build while image verification runs, then package channels 
     discordStep.run,
     /curl --fail --silent --show-error/u,
     'Discord delivery must fail the release when the webhook returns HTTP error'
+  );
+});
+
+test('manual release recovery cannot rebuild product outputs', () => {
+  const release = readWorkflow('release.yml');
+  const assets = readWorkflow('release-assets.yml');
+  for (const jobName of [
+    'changelog',
+    'create-draft-release',
+    'publish',
+    'scan-release-image',
+    'sign',
+    'verify',
+    'build-release-assets',
+    'dispatch-chocolatey',
+    'announce-discord',
+  ]) {
+    assert.match(
+      release.jobs[jobName].if,
+      /github\.event_name == 'push'/u,
+      `${jobName} must only run for the pushed-tag release`
+    );
+  }
+  assert.equal(assets.on.workflow_dispatch, undefined);
+  assert.match(
+    release.jobs['dispatch-package-channels'].if,
+    /inputs\.reuse_from_run_id != ''/u
+  );
+  assert.match(
+    release.jobs['publish-release'].if,
+    /inputs\.reuse_from_run_id != ''/u
   );
 });
 
@@ -1174,7 +1210,7 @@ test('trusted main release retries use the private runner pools', () => {
   const release = readWorkflow('release.yml');
   const assets = readWorkflow('release-assets.yml');
   const trustedReleaseRunnerPattern =
-    /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*ng-shared-main-jit[\s\S]*ng-shared-main-seerrng[\s\S]*github\.run_id[\s\S]*\|\| 'ubuntu-latest'/u;
+    /contains\(fromJSON\('[\s\S]*?'\), github\.event_name\)[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*github\.ref_type == 'tag'[\s\S]*startsWith\(github\.ref_name, 'v'\)[\s\S]*ng-shared-main-jit[\s\S]*ng-shared-main-seerrng[\s\S]*github\.run_id[\s\S]*\|\| 'ubuntu-latest'/u;
   const releaseJobs = Object.values(release.jobs).filter(
     (job) => typeof job['runs-on'] === 'string'
   );
@@ -1217,7 +1253,41 @@ test('trusted main release retries use the private runner pools', () => {
   );
 });
 
-test('hosted-first Linux releases preserve Apple and non-main runner boundaries', () => {
+test('main CI image publishing uses private runners without cancelling queued scans', () => {
+  const ci = readWorkflow('ci.yml');
+  const imagePublish = ci.jobs.publish;
+
+  assert.match(imagePublish['runs-on'], /ng-shared-main-seerrng/u);
+  assert.equal(imagePublish.concurrency['cancel-in-progress'], false);
+
+  for (const name of [
+    'codeql.yml',
+    'semgrep-community.yml',
+    'trivy-filesystem.yml',
+  ]) {
+    const workflow = readWorkflow(name);
+
+    assert.equal(
+      workflow.concurrency['cancel-in-progress'],
+      false,
+      `${name} must leave existing scans running`
+    );
+    assert.match(
+      workflow.concurrency.group,
+      /github\.run_id/u,
+      `${name} must not replace a queued scan with a newer run`
+    );
+    assert.match(
+      Object.values(workflow.jobs)
+        .map((job) => job['runs-on'])
+        .join('\n'),
+      /ng-shared-main-seerrng/u,
+      `${name} main scan must use the private runner pool`
+    );
+  }
+});
+
+test('trusted main Linux releases use private runners and preserve platform boundaries', () => {
   const expression = readWorkflow('release-assets.yml').jobs.build['runs-on'];
   const route = ({
     os = 'linux',
@@ -1225,16 +1295,28 @@ test('hosted-first Linux releases preserve Apple and non-main runner boundaries'
     attempt = 1,
     event = 'workflow_dispatch',
     ref = 'refs/heads/main',
-    enabled = 'true',
-    force = '',
+    hostedFirst = false,
+    forceJit = false,
   } = {}) =>
     runInNewContext(
       expression.slice(3, -2),
       {
-        github: { event_name: event, ref, run_attempt: attempt, run_id: 123 },
+        github: {
+          event_name: event,
+          ref,
+          ref_type: ref.startsWith('refs/tags/') ? 'tag' : 'branch',
+          ref_name: ref.replace(/^refs\/(?:heads|tags)\//u, ''),
+          run_attempt: attempt,
+          run_id: 123,
+        },
         matrix: { os, arch, runner: 'hosted-platform' },
-        vars: { NG_HOSTED_FIRST: enabled, NG_FORCE_JIT: force },
+        vars: {
+          NG_HOSTED_FIRST: hostedFirst ? 'true' : 'false',
+          NG_FORCE_JIT: forceJit ? 'true' : 'false',
+        },
         fromJSON: JSON.parse,
+        contains: (values, value) => values.includes(value),
+        startsWith: (value, prefix) => value.startsWith(prefix),
         format: (template, id) =>
           template
             .replaceAll('{{', '{')
@@ -1244,15 +1326,37 @@ test('hosted-first Linux releases preserve Apple and non-main runner boundaries'
       { timeout: 100 }
     );
 
-  assert.equal(route(), 'hosted-platform');
+  assert.equal(route().group, 'ng-shared-main-jit');
   assert.equal(route({ attempt: 2 }).group, 'ng-shared-main-jit');
-  assert.equal(route({ enabled: '' }).group, 'ng-shared-main-jit');
-  assert.equal(route({ force: 'true' }).group, 'ng-shared-main-jit');
+  assert.equal(route({ hostedFirst: true }), 'hosted-platform');
+  assert.equal(
+    route({ hostedFirst: true, forceJit: true }).group,
+    'ng-shared-main-jit'
+  );
+  assert.equal(
+    route({ hostedFirst: true, attempt: 2 }).group,
+    'ng-shared-main-jit'
+  );
   assert.equal(route({ os: 'macos' }).group, 'private-apple-builds');
-  assert.equal(route({ os: 'macos', attempt: 2 }).group, 'private-apple-builds');
-  assert.equal(route({ arch: 'arm64', attempt: 2 }), 'hosted-platform');
+  assert.equal(
+    route({ os: 'macos', attempt: 2 }).group,
+    'private-apple-builds'
+  );
+  assert.equal(route({ os: 'macos', hostedFirst: true }), 'hosted-platform');
+  assert.equal(
+    route({ os: 'macos', hostedFirst: true, forceJit: true }).group,
+    'private-apple-builds'
+  );
+  assert.equal(route({ arch: 'arm64' }), 'hosted-platform');
   assert.equal(route({ event: 'pull_request', attempt: 2 }), 'hosted-platform');
-  assert.equal(route({ ref: 'refs/tags/v1.0.0', attempt: 2 }), 'hosted-platform');
+  assert.equal(
+    route({ event: 'push', ref: 'refs/tags/v1.0.0' }).group,
+    'ng-shared-main-jit'
+  );
+  assert.equal(
+    route({ event: 'push', ref: 'refs/tags/release-1.0.0' }),
+    'hosted-platform'
+  );
 });
 
 test('trusted main iOS validation uses the private Apple runner', () => {
@@ -1262,36 +1366,6 @@ test('trusted main iOS validation uses the private Apple runner', () => {
     /github\.event_name == 'push'[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*private-apple-builds/u
   );
   assert.match(ios.jobs.ios['runs-on'], /\|\| 'macos-26'/u);
-});
-
-test('tag preparation keeps Helm metadata aligned with the application release', () => {
-  const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
-  const syncStep = createTag.steps.find(
-    (step) => step.name === 'Sync Helm chart release metadata'
-  );
-
-  assert.ok(syncStep);
-  assert.match(
-    syncStep.run,
-    /node scripts\/update-helm-release-metadata\.mjs "\$TAG_VERSION"/u
-  );
-  const metadataScript = fs.readFileSync(
-    path.join(rootDirectory, 'scripts', 'update-helm-release-metadata.mjs'),
-    'utf8'
-  );
-  assert.match(metadataScript, /'charts', 'seerr-chart'/u);
-  assert.match(metadataScript, /appVersion:/u);
-  assert.match(metadataScript, /README\.md/u);
-  assert.match(metadataScript, /Version-\$\{escapeRegExp\(chartVersion\)\}/u);
-  assert.match(metadataScript, /informational\?style=flat-square/u);
-  const commitStep = createTag.steps.find(
-    (step) => step.name === 'Commit updated files'
-  );
-  assert.match(
-    commitStep.run,
-    /git add CHANGELOG\.md package\.json charts\/seerr-chart\/Chart\.yaml charts\/seerr-chart\/README\.md/u
-  );
-  assert.match(commitStep.run, /release-note: none/u);
 });
 
 test('release notes flow into the draft release and Discord announcement', () => {
@@ -1431,6 +1505,14 @@ test('main CI tooling checks fetch tags for changelog validation', () => {
   assert.equal(checkout?.with?.['fetch-depth'], 0);
 });
 
+test('containerized CI test jobs use pinned Debian images with Git available', () => {
+  const ci = readWorkflow('ci.yml');
+  const imagePattern = /^node:24\.22\.1-bookworm@sha256:[0-9a-f]{64}$/u;
+
+  assert.match(ci.jobs['unit-test'].container.image, imagePattern);
+  assert.match(ci.jobs['node-test'].container.image, imagePattern);
+});
+
 test('Cypress uses Cloud-only grouping metadata only when recording', () => {
   const workflow = readWorkflow('cypress.yml');
   const steps = workflow.jobs['cypress-run'].steps;
@@ -1449,26 +1531,6 @@ test('Cypress uses Cloud-only grouping metadata only when recording', () => {
   assert.equal(Object.hasOwn(localRun?.with ?? {}, 'ci-build-id'), false);
 });
 
-test('tag preparation prepends the current changelog without replacing history', () => {
-  const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];
-  const changelogStep = createTag.steps.find(
-    (step) => step.name === 'Generate checked-in changelog'
-  );
-  const commitStep = createTag.steps.find(
-    (step) => step.name === 'Commit updated files'
-  );
-
-  assert.ok(changelogStep);
-  assert.match(
-    changelogStep.run,
-    /git-cliff[\s\S]*--unreleased[\s\S]*--output "\$current_changelog"/u
-  );
-  assert.match(changelogStep.run, /assemble-release-notes\.mjs/u);
-  assert.match(changelogStep.run, /prepend-changelog-section\.mjs/u);
-  assert.match(changelogStep.run, /--existing CHANGELOG\.md/u);
-  assert.match(commitStep.run, /git add CHANGELOG\.md/u);
-});
-
 test('git-cliff skips all release-preparation commits', () => {
   const cliff = fs.readFileSync(
     path.join(rootDirectory, '.github', 'cliff.toml'),
@@ -1476,6 +1538,31 @@ test('git-cliff skips all release-preparation commits', () => {
   );
 
   assert.match(cliff, /message = '\^chore\\\(release\\\):'/u);
+});
+
+test('git-cliff omits the removed automatic tag kickoff by commit SHA', () => {
+  const cliff = fs.readFileSync(
+    path.join(rootDirectory, '.github', 'cliff.toml'),
+    'utf8'
+  );
+
+  assert.ok(
+    cliff.includes(
+      '{ sha = "3872d8dd53e76ad373d8ac9b871118765e03e241", skip = true }'
+    )
+  );
+});
+
+test('git-cliff includes build commits in the miscellaneous release history', () => {
+  const cliff = fs.readFileSync(
+    path.join(rootDirectory, '.github', 'cliff.toml'),
+    'utf8'
+  );
+
+  assert.match(
+    cliff,
+    /message = "\^build\|\^chore\|\^ci", group = "<!-- 8 -->⚙️ Miscellaneous Tasks"/u
+  );
 });
 
 test('git-cliff uses stable semantic-version tags as release boundaries', () => {
@@ -1495,4 +1582,3 @@ test('git-cliff uses stable semantic-version tags as release boundaries', () => 
   assert.equal(matchesTag.test('mobile-v3.63.0-ci.36'), false);
   assert.equal(matchesTag.test('v3.63.0-rc.1'), false);
 });
-

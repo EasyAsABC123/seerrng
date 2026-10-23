@@ -79,6 +79,7 @@ metadata regression test, migration test, and release-note fragment.
 
 ## Release
 
-Before publication, the latest published tag was `v3.52.1`. The repository's
-`Create tag` workflow determines the next version from unreleased conventional
-commits on `main`.
+Before publication, the latest published tag was `v3.52.1`. At that time, the
+inherited `Create tag` workflow selected a version from unreleased conventional
+commits on `main`. That workflow has since been removed; stable publishing now
+starts when a versioned tag on `main` triggers `SeerrNG Release`.
