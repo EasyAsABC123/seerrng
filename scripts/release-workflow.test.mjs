@@ -299,6 +299,11 @@ test('AppImage pins its builder, uses the current launcher, and loads its bundle
   assert.match(build.run, /@next\/swc-wasm-nodejs/u);
   assert.match(
     build.run,
+    /16\.4\.2\)[\s\S]*swc_wasm_integrity='sha512-GW89XFIz6Bmm064REK4DT6oCQH5RjJ4Erm\/MWEranFCsdIvqSoRIaT0xstiaFYk8g5z8YVdMOjpi4UcArYcF7g=='/u,
+    'AppImage must verify the official Next.js 16.4.2 WASM compiler tarball'
+  );
+  assert.match(
+    build.run,
     /require\(require\('node:path'\)\.resolve\(process\.argv\[1\]\)\)/u,
     'AppImage must resolve the extracted Next.js package.json as a filesystem path'
   );
@@ -1004,7 +1009,10 @@ test('release assets build supported native archive platforms', () => {
   const iosBuild = assets.jobs['build-ios'];
   assert.equal(iosBuild.needs, 'resolve');
   assert.match(iosBuild['runs-on'], /private-apple-builds/u);
-  assert.match(iosBuild['runs-on'], /github\.event_name == 'workflow_dispatch'/u);
+  assert.match(
+    iosBuild['runs-on'],
+    /github\.event_name == 'workflow_dispatch'/u
+  );
   assert.match(iosBuild['runs-on'], /github\.ref == 'refs\/heads\/main'/u);
   const iosToolchainCheck = iosBuild.steps.find(
     (step) => step.name === 'Verify Xcode release toolchain'
