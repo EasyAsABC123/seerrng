@@ -24,6 +24,7 @@ const messages = defineMessages('components.RegionSelector', {
 interface RegionSelectorProps {
   value: string;
   name: string;
+  ariaLabel?: string;
   isUserSetting?: boolean;
   disableAll?: boolean;
   watchProviders?: boolean;
@@ -35,6 +36,7 @@ interface RegionSelectorProps {
 const RegionSelector = ({
   name,
   value,
+  ariaLabel,
   isUserSetting = false,
   disableAll = false,
   watchProviders = false,
@@ -129,6 +131,8 @@ const RegionSelector = ({
               }
             >
               <ListboxButton
+                id={name}
+                aria-label={ariaLabel}
                 className={
                   compact
                     ? 'app-filter-select-trigger'

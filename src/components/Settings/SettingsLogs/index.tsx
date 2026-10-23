@@ -52,6 +52,8 @@ const messages = defineMessages('components.Settings.SettingsLogs', {
   filterInfo: 'Info',
   filterWarn: 'Warning',
   filterError: 'Error',
+  searchLogs: 'Search logs',
+  filterLogsBySeverity: 'Filter logs by severity',
   showall: 'Show All Logs',
   pauseLogs: 'Pause',
   resumeLogs: 'Resume',
@@ -274,6 +276,8 @@ const SettingsLogs = () => {
             <input
               type="text"
               className="settings-log-search-input"
+              aria-label={intl.formatMessage(messages.searchLogs)}
+              placeholder={intl.formatMessage(messages.searchLogs)}
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value as string)}
             />
@@ -297,6 +301,7 @@ const SettingsLogs = () => {
             <select
               id="filter"
               name="filter"
+              aria-label={intl.formatMessage(messages.filterLogsBySeverity)}
               onChange={(e) => {
                 setCurrentFilter(e.target.value as Filter);
                 router.push(router.pathname);
