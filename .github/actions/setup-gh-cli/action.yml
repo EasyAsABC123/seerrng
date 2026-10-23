@@ -1,5 +1,5 @@
 name: Set up pinned GitHub CLI
-description: Install the verified GitHub CLI binary for private release runners.
+description: Install the verified GitHub CLI binary for release runners.
 runs:
   using: composite
   steps:
@@ -21,7 +21,7 @@ runs:
           --retry 3 --retry-delay 2 --retry-connrefused \
           "https://github.com/cli/cli/releases/download/v${version}/${archive_name}" \
           --output "$archive"
-        expected_checksum='77b9e297e94c50336823d0f84de7ef1be60cba704601fa0d98f129f47a94987'
+        expected_checksum='77b9e297e94c50336823d0f84de7ef1be60cba704601fa0d98f129f47a94987b'
         checksum_output="$(sha256sum "$archive")"
         actual_checksum="${checksum_output%% *}"
         if [[ "$actual_checksum" != "$expected_checksum" ]]; then

@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 const workflowDirectory = path.join(rootDirectory, '.github', 'workflows');
 const readWorkflow = (name) =>
   yaml.load(fs.readFileSync(path.join(workflowDirectory, name), 'utf8'));
-const ghCliSetupCommit = 'a7df518305b4850d22db9eec664e5bd1299e7f17';
+const ghCliSetupRef = '${{ github.sha }}';
 const ghCliSetupPath = './.github-actions/.github/actions/setup-gh-cli';
 
 test('every release job that calls GitHub CLI installs the pinned CLI first', () => {
@@ -39,8 +39,10 @@ test('every release job that calls GitHub CLI installs the pinned CLI first', ()
         step.uses ===
           'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' &&
         step.with?.repository === 'snapetech-org/seerrng' &&
-        step.with?.ref === ghCliSetupCommit &&
-        step.with?.path === '.github-actions'
+        step.with?.ref === ghCliSetupRef &&
+        step.with?.path === '.github-actions' &&
+        step.with?.['sparse-checkout'] === '.github/actions/setup-gh-cli' &&
+        step.with?.['sparse-checkout-cone-mode'] === false
     );
     const commandIndex = job.steps.findIndex((step) =>
       /\bgh\s+(?:api|attestation|release|workflow)\b|latest-published-release-tag\.sh/u.test(
@@ -1003,9 +1005,8 @@ test('release assets build supported native archive platforms', () => {
   );
   const iosBuild = assets.jobs['build-ios'];
   assert.equal(iosBuild.needs, 'resolve');
-  assert.match(iosBuild['runs-on'], /private-apple-builds/u);
-  assert.match(iosBuild['runs-on'], /github\.event_name == 'workflow_dispatch'/u);
-  assert.match(iosBuild['runs-on'], /github\.ref == 'refs\/heads\/main'/u);
+  assert.equal(iosBuild['runs-on'], 'macos-26');
+  assert.doesNotMatch(iosBuild['runs-on'], /self-hosted|private-apple-builds/u);
   const iosToolchainCheck = iosBuild.steps.find(
     (step) => step.name === 'Verify Xcode release toolchain'
   ).run;
@@ -1130,46 +1131,42 @@ test('release assets build supported native archive platforms', () => {
   assert.match(requiredAssets, /seerrng-\$\{TAG\}-android-aab\.sha256/u);
 });
 
-test('trusted main release retries use the private runner pools', () => {
-  const trustedReleaseRunnerPattern =
-    /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*ng-shared-main-jit[\s\S]*ng-shared-main-seerrng[\s\S]*github\.run_id[\s\S]*\|\| 'ubuntu-latest'/u;
+test('release workflows use GitHub-hosted runners only', () => {
   const release = readWorkflow('release.yml');
   const assets = readWorkflow('release-assets.yml');
-
-  const releaseJobs = Object.values(release.jobs).filter(
-    (job) => typeof job['runs-on'] === 'string'
+  const releaseJobs = Object.entries(release.jobs).filter(
+    ([, job]) => typeof job['runs-on'] === 'string'
   );
   assert.equal(releaseJobs.length, 14);
-  for (const job of releaseJobs) {
-    assert.match(job['runs-on'], trustedReleaseRunnerPattern);
+  for (const [jobName, job] of releaseJobs) {
+    assert.equal(job['runs-on'], 'ubuntu-latest', jobName);
   }
 
-  for (const jobName of [
-    'resolve',
-    'build-android',
-    'build-jellyfin-plugin',
-    'publish',
-  ]) {
-    assert.match(
-      assets.jobs[jobName]['runs-on'],
-      trustedReleaseRunnerPattern,
-      jobName
-    );
+  const expectedAssetRunners = {
+    resolve: 'ubuntu-latest',
+    build: '${{ matrix.runner }}',
+    'build-android': 'ubuntu-latest',
+    'build-ios': 'macos-26',
+    'build-jellyfin-plugin': 'ubuntu-latest',
+    publish: 'ubuntu-latest',
+  };
+  assert.deepEqual(
+    Object.keys(assets.jobs).sort(),
+    Object.keys(expectedAssetRunners).sort()
+  );
+  for (const [jobName, runner] of Object.entries(expectedAssetRunners)) {
+    assert.equal(assets.jobs[jobName]['runs-on'], runner, jobName);
   }
-  assert.match(
-    assets.jobs.build['runs-on'],
-    /matrix\.os == 'macos'[\s\S]*private-apple-builds[\s\S]*matrix\.os == 'linux'[\s\S]*matrix\.arch == 'x64'[\s\S]*ng-shared-main-jit[\s\S]*\|\| matrix\.runner/u
+
+  const matrixRunners = assets.jobs.build.strategy.matrix.include.map(
+    ({ runner }) => runner
   );
-  assert.match(
-    assets.jobs['build-ios']['runs-on'],
-    /github\.event_name == 'workflow_dispatch'[\s\S]*private-apple-builds[\s\S]*\|\| 'macos-26'/u
+  assert.ok(matrixRunners.every((runner) => typeof runner === 'string'));
+  assert.ok(matrixRunners.every((runner) => !runner.includes('self-hosted')));
+  const setupNode = assets.jobs.build.steps.find((step) =>
+    step.uses?.startsWith('actions/setup-node@')
   );
-  assert.equal(
-    assets.jobs.build.steps.find((step) =>
-      step.uses?.startsWith('actions/setup-node@')
-    ).with.architecture,
-    '${{ matrix.arch }}'
-  );
+  assert.equal(setupNode.with.architecture, '${{ matrix.arch }}');
   assert.ok(
     assets.jobs.build.strategy.matrix.include.some(
       ({ os, arch, runner }) =>
@@ -1177,6 +1174,7 @@ test('trusted main release retries use the private runner pools', () => {
     )
   );
 });
+
 
 test('tag preparation keeps Helm metadata aligned with the application release', () => {
   const createTag = readWorkflow('create-tag.yml').jobs['create-tag'];

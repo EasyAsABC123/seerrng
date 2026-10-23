@@ -1,4 +1,4 @@
-> Status update (2026-10-16): the private GitHub Actions runner pool described below has been retired. All SeerrNG Actions jobs use GitHub-hosted runners. The earlier migration and trust-boundary details are historical context; they no longer describe the active workflow configuration.
+> Status update (2026-10-23): trusted-main CI and read-only security checks in designated repositories use the shared JIT pool. SeerrNG pull-request workflows and credentialed release workflows stay on GitHub-hosted runners. The earlier organization-migration details below are historical context.
 
 <!-- Copyright (c) 2026 snapetech and SeerrNG contributors. -->
 
