@@ -26,6 +26,7 @@ interface LanguageSelectorProps {
   isDisabled?: boolean;
   fieldName?: string;
   compact?: boolean;
+  ariaLabel?: string;
 }
 
 const LanguageSelector = ({
@@ -36,6 +37,7 @@ const LanguageSelector = ({
   isDisabled,
   fieldName = 'originalLanguage',
   compact = false,
+  ariaLabel,
 }: LanguageSelectorProps) => {
   const intl = useIntl();
   const { data: languages } = useSWR<Language[]>('/api/v1/languages');
@@ -92,6 +94,8 @@ const LanguageSelector = ({
 
   return (
     <Select<OptionType, true>
+      inputId={fieldName}
+      aria-label={ariaLabel}
       options={options}
       isMulti
       isDisabled={isDisabled}

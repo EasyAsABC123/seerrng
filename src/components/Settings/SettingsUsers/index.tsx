@@ -211,7 +211,7 @@ const SettingsUsers = () => {
             return (
               <Form className="settings-group-content">
                 <div className="form-row">
-                  <label htmlFor="magazineRequestLimit" className="text-label">
+                  <label htmlFor="magazineQuotaLimit" className="text-label">
                     {intl.formatMessage(messages.magazineRequestLimitLabel)}
                   </label>
                   <div className="form-input-area">
@@ -219,6 +219,9 @@ const SettingsUsers = () => {
                       onChange={setFieldValue}
                       dayFieldName="magazineQuotaDays"
                       limitFieldName="magazineQuotaLimit"
+                      label={intl.formatMessage(
+                        messages.magazineRequestLimitLabel
+                      )}
                       mediaType="magazine"
                       defaultDays={values.magazineQuotaDays}
                       defaultLimit={values.magazineQuotaLimit}
@@ -226,7 +229,7 @@ const SettingsUsers = () => {
                   </div>
                 </div>
                 <div className="form-row">
-                  <label htmlFor="adultRequestLimit" className="text-label">
+                  <label htmlFor="adultQuotaLimit" className="text-label">
                     {intl.formatMessage(messages.adultRequestLimitLabel)}
                   </label>
                   <div className="form-input-area">
@@ -234,6 +237,9 @@ const SettingsUsers = () => {
                       onChange={setFieldValue}
                       dayFieldName="adultQuotaDays"
                       limitFieldName="adultQuotaLimit"
+                      label={intl.formatMessage(
+                        messages.adultRequestLimitLabel
+                      )}
                       mediaType="adult"
                       defaultDays={values.adultQuotaDays}
                       defaultLimit={values.adultQuotaLimit}
@@ -241,7 +247,7 @@ const SettingsUsers = () => {
                   </div>
                 </div>
                 <div className="form-row">
-                  <label htmlFor="softwareRequestLimit" className="text-label">
+                  <label htmlFor="softwareQuotaLimit" className="text-label">
                     {intl.formatMessage(messages.softwareRequestLimitLabel)}
                   </label>
                   <div className="form-input-area">
@@ -249,6 +255,9 @@ const SettingsUsers = () => {
                       onChange={setFieldValue}
                       dayFieldName="softwareQuotaDays"
                       limitFieldName="softwareQuotaLimit"
+                      label={intl.formatMessage(
+                        messages.softwareRequestLimitLabel
+                      )}
                       mediaType="software"
                       defaultDays={values.softwareQuotaDays}
                       defaultLimit={values.softwareQuotaLimit}
@@ -369,7 +378,7 @@ const SettingsUsers = () => {
                   </span>
                 </div>
                 <div className="form-row">
-                  <label htmlFor="applicationTitle" className="text-label">
+                  <label htmlFor="movieQuotaLimit" className="text-label">
                     {intl.formatMessage(messages.movieRequestLimitLabel)}
                   </label>
                   <div className="form-input-area">
@@ -377,6 +386,9 @@ const SettingsUsers = () => {
                       onChange={setFieldValue}
                       dayFieldName="movieQuotaDays"
                       limitFieldName="movieQuotaLimit"
+                      label={intl.formatMessage(
+                        messages.movieRequestLimitLabel
+                      )}
                       mediaType="movie"
                       defaultDays={values.movieQuotaDays}
                       defaultLimit={values.movieQuotaLimit}
@@ -384,7 +396,7 @@ const SettingsUsers = () => {
                   </div>
                 </div>
                 <div className="form-row">
-                  <label htmlFor="applicationTitle" className="text-label">
+                  <label htmlFor="tvQuotaLimit" className="text-label">
                     {intl.formatMessage(messages.tvRequestLimitLabel)}
                   </label>
                   <div className="form-input-area">
@@ -392,6 +404,7 @@ const SettingsUsers = () => {
                       onChange={setFieldValue}
                       dayFieldName="tvQuotaDays"
                       limitFieldName="tvQuotaLimit"
+                      label={intl.formatMessage(messages.tvRequestLimitLabel)}
                       mediaType="tv"
                       defaultDays={values.tvQuotaDays}
                       defaultLimit={values.tvQuotaLimit}
@@ -399,7 +412,7 @@ const SettingsUsers = () => {
                   </div>
                 </div>
                 <div className="form-row">
-                  <label htmlFor="applicationTitle" className="text-label">
+                  <label htmlFor="musicQuotaLimit" className="text-label">
                     {intl.formatMessage(messages.musicRequestLimitLabel)}
                   </label>
                   <div className="form-input-area">
@@ -407,6 +420,9 @@ const SettingsUsers = () => {
                       onChange={setFieldValue}
                       dayFieldName="musicQuotaDays"
                       limitFieldName="musicQuotaLimit"
+                      label={intl.formatMessage(
+                        messages.musicRequestLimitLabel
+                      )}
                       mediaType="music"
                       defaultDays={values.musicQuotaDays}
                       defaultLimit={values.musicQuotaLimit}
@@ -414,7 +430,7 @@ const SettingsUsers = () => {
                   </div>
                 </div>
                 <div className="form-row">
-                  <label htmlFor="applicationTitle" className="text-label">
+                  <label htmlFor="bookQuotaLimit" className="text-label">
                     {intl.formatMessage(messages.bookRequestLimitLabel)}
                   </label>
                   <div className="form-input-area">
@@ -422,6 +438,7 @@ const SettingsUsers = () => {
                       onChange={setFieldValue}
                       dayFieldName="bookQuotaDays"
                       limitFieldName="bookQuotaLimit"
+                      label={intl.formatMessage(messages.bookRequestLimitLabel)}
                       mediaType="book"
                       defaultDays={values.bookQuotaDays}
                       defaultLimit={values.bookQuotaLimit}
@@ -429,7 +446,7 @@ const SettingsUsers = () => {
                   </div>
                 </div>
                 <div className="form-row">
-                  <label htmlFor="applicationTitle" className="text-label">
+                  <label htmlFor="comicQuotaLimit" className="text-label">
                     {intl.formatMessage(messages.comicRequestLimitLabel)}
                   </label>
                   <div className="form-input-area">
@@ -437,6 +454,9 @@ const SettingsUsers = () => {
                       onChange={setFieldValue}
                       dayFieldName="comicQuotaDays"
                       limitFieldName="comicQuotaLimit"
+                      label={intl.formatMessage(
+                        messages.comicRequestLimitLabel
+                      )}
                       mediaType="comic"
                       defaultDays={values.comicQuotaDays}
                       defaultLimit={values.comicQuotaLimit}

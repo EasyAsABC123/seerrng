@@ -1,0 +1,1 @@
+Settings search, filters, quota selectors, provider selectors, language and region controls, and notification webhook fields now expose accessible names and correctly linked labels. This makes the controls easier to identify with assistive technology and fixes the Discord and Slack webhook labels. The Bookshelf services shortcut now uses in-app navigation.

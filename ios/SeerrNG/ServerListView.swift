@@ -7,8 +7,7 @@ struct ServerListView: View {
     let onConnect: (ServerEndpoint) -> Void
     let onUnlock: () -> Void
 
-    @State private var showingEditor = false
-    @State private var editingServer: ServerEndpoint?
+    @State private var editorPresentation: ServerEditorPresentation?
     @State private var serverPendingDeletion: ServerEndpoint?
 
     var body: some View {
@@ -35,8 +34,7 @@ struct ServerListView: View {
                                 }
                                 .accessibilityLabel("Delete \(server.name)")
                                 Button {
-                                    editingServer = server
-                                    showingEditor = true
+                                    editServer(server)
                                 } label: {
                                     Label("Edit", systemImage: "pencil")
                                 }
@@ -68,8 +66,8 @@ struct ServerListView: View {
                 .accessibilityIdentifier("addServerToolbarButton")
             }
         }
-        .sheet(isPresented: $showingEditor, onDismiss: { editingServer = nil }) {
-            ServerEditorView(server: editingServer) { serverStore.save($0) }
+        .sheet(item: $editorPresentation) { presentation in
+            ServerEditorView(server: presentation.server) { serverStore.save($0) }
         }
         .alert(
             "Delete server?",
@@ -118,8 +116,7 @@ struct ServerListView: View {
 
             Menu {
                 Button {
-                    editingServer = server
-                    showingEditor = true
+                    editServer(server)
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
@@ -141,7 +138,15 @@ struct ServerListView: View {
     }
 
     private func addServer() {
-        editingServer = nil
-        showingEditor = true
+        editorPresentation = ServerEditorPresentation(server: nil)
     }
+
+    private func editServer(_ server: ServerEndpoint) {
+        editorPresentation = ServerEditorPresentation(server: server)
+    }
+}
+
+private struct ServerEditorPresentation: Identifiable {
+    let id = UUID()
+    let server: ServerEndpoint?
 }

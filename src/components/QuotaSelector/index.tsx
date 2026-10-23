@@ -30,6 +30,7 @@ const messages = defineMessages('components.QuotaSelector', {
   software: '{count, plural, one {software request} other {software requests}}',
   days: '{count, plural, one {day} other {days}}',
   unlimited: 'Unlimited',
+  daysLabel: 'Number of days for {label}',
 });
 
 interface QuotaSelectorProps {
@@ -48,6 +49,7 @@ interface QuotaSelectorProps {
   limitOverride?: number;
   dayFieldName: string;
   limitFieldName: string;
+  label: string;
   isDisabled?: boolean;
   onChange: (fieldName: string, value: number) => void;
 }
@@ -56,6 +58,7 @@ const QuotaSelector = ({
   mediaType,
   dayFieldName,
   limitFieldName,
+  label,
   defaultDays = 7,
   defaultLimit = 0,
   dayOverride,
@@ -98,6 +101,8 @@ const QuotaSelector = ({
         {
           quotaLimit: (
             <select
+              id={limitFieldName}
+              aria-label={label}
               className="short inline"
               value={limitOverride ?? quotaLimit}
               onChange={(e) => setQuotaLimit(Number(e.target.value))}
@@ -115,6 +120,8 @@ const QuotaSelector = ({
           ),
           quotaDays: (
             <select
+              id={dayFieldName}
+              aria-label={intl.formatMessage(messages.daysLabel, { label })}
               className="short inline"
               value={dayOverride ?? quotaDays}
               onChange={(e) => setQuotaDays(Number(e.target.value))}

@@ -1,4 +1,5 @@
 ---
+# ng-runner-policy: hosted-first-v1
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: SeerrNG Release
 
@@ -55,7 +56,7 @@ jobs:
   validate-main-tag:
     name: Validate main release tag
     if: github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.announce_security_correction != true)
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     timeout-minutes: 10
     permissions:
       actions: read
@@ -88,8 +89,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -180,6 +183,31 @@ jobs:
             reuse_windows_arm64_artifact=true
           elif jq -e '
             ([.jobs[] | select(.conclusion == "failure") | .name] ==
+              ["Build release assets / Build iOS Simulator release package"]) and
+            (([
+              "Validate main release tag",
+              "Generate changelog",
+              "Create draft release",
+              "Publish multi-arch manifests",
+              "Scan release image (linux/amd64)",
+              "Scan release image (linux/arm64)",
+              "Sign images and create SBOM attestations",
+              "Verify signatures and attestations",
+              "Build release assets / Validate release tag",
+              "Build release assets / Build linux x64",
+              "Build release assets / Build linux arm64",
+              "Build release assets / Build macos arm64",
+              "Build release assets / Build macos x64",
+              "Build release assets / Build windows x64",
+              "Build release assets / Build windows arm64",
+              "Build release assets / Build Android APK",
+              "Build release assets / Build optional Jellyfin plugin"
+            ] - [.jobs[] | select(.conclusion == "success") | .name]) | length == 0)
+          ' <<<"$jobs" >/dev/null; then
+            reuse_windows_x64_artifact=true
+            reuse_windows_arm64_artifact=true
+          elif jq -e '
+            ([.jobs[] | select(.conclusion == "failure") | .name] ==
               ["Build release assets / Upload release assets"]) and
             (([
               "Validate main release tag",
@@ -266,7 +294,7 @@ jobs:
     name: Generate changelog
     needs: validate-main-tag
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
     outputs:
@@ -289,8 +317,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -340,7 +370,7 @@ jobs:
   create-draft-release:
     name: Create draft release
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: write
     needs: changelog
@@ -355,8 +385,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -387,7 +419,7 @@ jobs:
     name: Publish multi-arch manifests
     needs: [validate-main-tag, create-draft-release]
     timeout-minutes: 90
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
@@ -557,7 +589,7 @@ jobs:
   scan-release-image:
     name: Scan release image (${{ matrix.platform }})
     needs: publish
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -624,7 +656,7 @@ jobs:
     name: Sign images and create SBOM attestations
     needs: [publish, scan-release-image]
     timeout-minutes: 20
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
       id-token: write
@@ -644,8 +676,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -778,7 +812,7 @@ jobs:
     name: Verify signatures and attestations
     needs: [publish, sign]
     timeout-minutes: 15
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: read
@@ -790,8 +824,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -876,7 +912,7 @@ jobs:
     needs:
       [create-draft-release, verify, build-release-assets, dispatch-package-channels]
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: write
     env:
@@ -886,8 +922,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -904,9 +942,10 @@ jobs:
     needs: [publish-release]
     concurrency:
       group: seerrng-stable-container-aliases
+      queue: max
       cancel-in-progress: false
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
@@ -922,8 +961,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -966,7 +1007,7 @@ jobs:
     name: Dispatch Chocolatey after publication
     needs: [publish-release]
     timeout-minutes: 5
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       actions: write
       contents: read
@@ -975,8 +1016,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -1022,7 +1065,7 @@ jobs:
     name: Dispatch package channels
     needs: [verify, build-release-assets]
     timeout-minutes: 360
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       actions: write
       contents: write
@@ -1034,8 +1077,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -1243,7 +1288,7 @@ jobs:
     needs:
       [changelog, publish, publish-release]
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
     env:
@@ -1327,7 +1372,7 @@ jobs:
     if: ${{ !cancelled() && !contains(inputs.tag || github.ref_name, '-') && needs.publish-release.result == 'success' }}
     needs: [publish-release, announce-discord]
     timeout-minutes: 5
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       actions: write
       contents: read
@@ -1336,8 +1381,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -1366,7 +1413,7 @@ jobs:
     name: Correct published Discord security notes
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.announce_security_correction == true
     timeout-minutes: 10
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
       contents: read
     env:
@@ -1384,8 +1431,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
+          ref: ${{ github.sha }}
           path: .github-actions
+          sparse-checkout: .github/actions/setup-gh-cli
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Set up GitHub CLI
@@ -1460,3 +1509,4 @@ jobs:
               sleep 1
             fi
           done
+

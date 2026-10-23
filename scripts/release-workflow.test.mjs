@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 import * as yaml from 'js-yaml';
@@ -16,7 +17,7 @@ const require = createRequire(import.meta.url);
 const workflowDirectory = path.join(rootDirectory, '.github', 'workflows');
 const readWorkflow = (name) =>
   yaml.load(fs.readFileSync(path.join(workflowDirectory, name), 'utf8'));
-const ghCliSetupCommit = 'a7df518305b4850d22db9eec664e5bd1299e7f17';
+const ghCliSetupRef = '${{ github.sha }}';
 const ghCliSetupPath = './.github-actions/.github/actions/setup-gh-cli';
 
 test('every release job that calls GitHub CLI installs the pinned CLI first', () => {
@@ -39,8 +40,10 @@ test('every release job that calls GitHub CLI installs the pinned CLI first', ()
         step.uses ===
           'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' &&
         step.with?.repository === 'snapetech-org/seerrng' &&
-        step.with?.ref === ghCliSetupCommit &&
-        step.with?.path === '.github-actions'
+        step.with?.ref === ghCliSetupRef &&
+        step.with?.path === '.github-actions' &&
+        step.with?.['sparse-checkout'] === '.github/actions/setup-gh-cli' &&
+        step.with?.['sparse-checkout-cone-mode'] === false
     );
     const commandIndex = job.steps.findIndex((step) =>
       /\bgh\s+(?:api|attestation|release|workflow)\b|latest-published-release-tag\.sh/u.test(
@@ -794,6 +797,22 @@ test('release recovery validates reusable artifacts and repairs the failed relea
   );
   assert.match(
     recoveryValidation.run,
+    /\["Build release assets \/ Build iOS Simulator release package"\]/u,
+    'an iOS-only failure must allow successful platform artifacts to be reused'
+  );
+  assert.match(
+    recoveryValidation.run,
+    /reuse_windows_x64_artifact=true[\s\S]*reuse_windows_arm64_artifact=true/u,
+    'iOS-only recovery must reuse both successful Windows artifacts'
+  );
+  const windowsX64RecoveryArtifacts = recoveryValidation.run.match(
+    /else\s+expected_artifacts='([\s\S]*?)'/u
+  )?.[1];
+  assert.ok(windowsX64RecoveryArtifacts);
+  assert.match(windowsX64RecoveryArtifacts, /"seerrng-windows-arm64"/u);
+  assert.doesNotMatch(windowsX64RecoveryArtifacts, /"seerrng-windows-x64"/u);
+  assert.match(
+    recoveryValidation.run,
     /Build release assets \/ Build Android APK/u,
     'recovery must validate that the signed Android artifact was built'
   );
@@ -1008,12 +1027,10 @@ test('release assets build supported native archive platforms', () => {
   );
   const iosBuild = assets.jobs['build-ios'];
   assert.equal(iosBuild.needs, 'resolve');
-  assert.match(iosBuild['runs-on'], /private-apple-builds/u);
   assert.match(
     iosBuild['runs-on'],
-    /github\.event_name == 'workflow_dispatch'/u
+    /github\.event_name == 'workflow_dispatch'[\s\S]*private-apple-builds[\s\S]*\|\| 'macos-26'/u
   );
-  assert.match(iosBuild['runs-on'], /github\.ref == 'refs\/heads\/main'/u);
   const iosToolchainCheck = iosBuild.steps.find(
     (step) => step.name === 'Verify Xcode release toolchain'
   ).run;
@@ -1026,7 +1043,22 @@ test('release assets build supported native archive platforms', () => {
     'bash scripts/build-ios-release.sh "$TAG" dist-release'
   );
   const iosClientWorkflow = readWorkflow('ios.yml');
-  assert.equal(iosClientWorkflow.jobs.ios['runs-on'], 'macos-26');
+  assert.match(
+    iosClientWorkflow.jobs.ios['runs-on'],
+    /private-apple-builds[\s\S]*\|\| 'macos-26'/u
+  );
+  const iosSetupNode = iosClientWorkflow.jobs.ios.steps.findIndex((step) =>
+    step.uses?.startsWith('actions/setup-node@')
+  );
+  const iosBuildStep = iosClientWorkflow.jobs.ios.steps.findIndex(
+    (step) =>
+      step.name === 'Run iOS unit and UI tests, then package Simulator app'
+  );
+  assert.ok(iosSetupNode >= 0 && iosSetupNode < iosBuildStep);
+  assert.equal(
+    iosClientWorkflow.jobs.ios.steps[iosSetupNode].with['node-version-file'],
+    'package.json'
+  );
   const iosClientToolchainCheck = iosClientWorkflow.jobs.ios.steps.find(
     (step) => step.name === 'Verify Xcode release toolchain'
   ).run;
@@ -1139,11 +1171,10 @@ test('release assets build supported native archive platforms', () => {
 });
 
 test('trusted main release retries use the private runner pools', () => {
-  const trustedReleaseRunnerPattern =
-    /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*ng-shared-main-jit[\s\S]*ng-shared-main-seerrng[\s\S]*github\.run_id[\s\S]*\|\| 'ubuntu-latest'/u;
   const release = readWorkflow('release.yml');
   const assets = readWorkflow('release-assets.yml');
-
+  const trustedReleaseRunnerPattern =
+    /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*ng-shared-main-jit[\s\S]*ng-shared-main-seerrng[\s\S]*github\.run_id[\s\S]*\|\| 'ubuntu-latest'/u;
   const releaseJobs = Object.values(release.jobs).filter(
     (job) => typeof job['runs-on'] === 'string'
   );
@@ -1184,6 +1215,53 @@ test('trusted main release retries use the private runner pools', () => {
         os === 'linux' && arch === 'arm64' && runner === 'ubuntu-24.04-arm'
     )
   );
+});
+
+test('hosted-first Linux releases preserve Apple and non-main runner boundaries', () => {
+  const expression = readWorkflow('release-assets.yml').jobs.build['runs-on'];
+  const route = ({
+    os = 'linux',
+    arch = 'x64',
+    attempt = 1,
+    event = 'workflow_dispatch',
+    ref = 'refs/heads/main',
+    enabled = 'true',
+    force = '',
+  } = {}) =>
+    runInNewContext(
+      expression.slice(3, -2),
+      {
+        github: { event_name: event, ref, run_attempt: attempt, run_id: 123 },
+        matrix: { os, arch, runner: 'hosted-platform' },
+        vars: { NG_HOSTED_FIRST: enabled, NG_FORCE_JIT: force },
+        fromJSON: JSON.parse,
+        format: (template, id) =>
+          template
+            .replaceAll('{{', '{')
+            .replaceAll('}}', '}')
+            .replaceAll('{0}', String(id)),
+      },
+      { timeout: 100 }
+    );
+
+  assert.equal(route(), 'hosted-platform');
+  assert.equal(route({ attempt: 2 }).group, 'ng-shared-main-jit');
+  assert.equal(route({ enabled: '' }).group, 'ng-shared-main-jit');
+  assert.equal(route({ force: 'true' }).group, 'ng-shared-main-jit');
+  assert.equal(route({ os: 'macos' }).group, 'private-apple-builds');
+  assert.equal(route({ os: 'macos', attempt: 2 }).group, 'private-apple-builds');
+  assert.equal(route({ arch: 'arm64', attempt: 2 }), 'hosted-platform');
+  assert.equal(route({ event: 'pull_request', attempt: 2 }), 'hosted-platform');
+  assert.equal(route({ ref: 'refs/tags/v1.0.0', attempt: 2 }), 'hosted-platform');
+});
+
+test('trusted main iOS validation uses the private Apple runner', () => {
+  const ios = readWorkflow('ios.yml');
+  assert.match(
+    ios.jobs.ios['runs-on'],
+    /github\.event_name == 'push'[\s\S]*github\.ref == 'refs\/heads\/main'[\s\S]*private-apple-builds/u
+  );
+  assert.match(ios.jobs.ios['runs-on'], /\|\| 'macos-26'/u);
 });
 
 test('tag preparation keeps Helm metadata aligned with the application release', () => {
@@ -1417,3 +1495,4 @@ test('git-cliff uses stable semantic-version tags as release boundaries', () => 
   assert.equal(matchesTag.test('mobile-v3.63.0-ci.36'), false);
   assert.equal(matchesTag.test('v3.63.0-rc.1'), false);
 });
+

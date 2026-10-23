@@ -681,6 +681,7 @@ const UserGeneralSettings = () => {
                   <div className="form-input-field relative z-[22]">
                     <RegionSelector
                       name="discoverRegion"
+                      ariaLabel={intl.formatMessage(messages.discoverRegion)}
                       value={values.discoverRegion ?? ''}
                       isUserSetting
                       onChange={setFieldValue}
@@ -701,6 +702,7 @@ const UserGeneralSettings = () => {
                       setFieldValue={setFieldValue}
                       serverValue={currentSettings.originalLanguage}
                       value={values.originalLanguage}
+                      ariaLabel={intl.formatMessage(messages.originallanguage)}
                       isUserSettings
                     />
                   </div>
@@ -717,6 +719,7 @@ const UserGeneralSettings = () => {
                   <div className="form-input-field relative z-20">
                     <RegionSelector
                       name="streamingRegion"
+                      ariaLabel={intl.formatMessage(messages.streamingRegion)}
                       value={values.streamingRegion || ''}
                       isUserSetting
                       onChange={setFieldValue}
@@ -751,6 +754,9 @@ const UserGeneralSettings = () => {
                             isDisabled={!movieQuotaEnabled}
                             dayFieldName="movieQuotaDays"
                             limitFieldName="movieQuotaLimit"
+                            label={intl.formatMessage(
+                              messages.movierequestlimit
+                            )}
                             mediaType="movie"
                             onChange={setFieldValue}
                             defaultDays={values.movieQuotaDays}
@@ -791,6 +797,9 @@ const UserGeneralSettings = () => {
                             isDisabled={!tvQuotaEnabled}
                             dayFieldName="tvQuotaDays"
                             limitFieldName="tvQuotaLimit"
+                            label={intl.formatMessage(
+                              messages.seriesrequestlimit
+                            )}
                             mediaType="tv"
                             onChange={setFieldValue}
                             defaultDays={values.tvQuotaDays}
@@ -831,6 +840,9 @@ const UserGeneralSettings = () => {
                             isDisabled={!musicQuotaEnabled}
                             dayFieldName="musicQuotaDays"
                             limitFieldName="musicQuotaLimit"
+                            label={intl.formatMessage(
+                              messages.musicrequestlimit
+                            )}
                             mediaType="music"
                             onChange={setFieldValue}
                             defaultDays={values.musicQuotaDays}
@@ -871,6 +883,9 @@ const UserGeneralSettings = () => {
                             isDisabled={!bookQuotaEnabled}
                             dayFieldName="bookQuotaDays"
                             limitFieldName="bookQuotaLimit"
+                            label={intl.formatMessage(
+                              messages.bookrequestlimit
+                            )}
                             mediaType="book"
                             onChange={setFieldValue}
                             defaultDays={values.bookQuotaDays}
@@ -911,6 +926,9 @@ const UserGeneralSettings = () => {
                             isDisabled={!comicQuotaEnabled}
                             dayFieldName="comicQuotaDays"
                             limitFieldName="comicQuotaLimit"
+                            label={intl.formatMessage(
+                              messages.comicrequestlimit
+                            )}
                             mediaType="comic"
                             onChange={setFieldValue}
                             defaultDays={values.comicQuotaDays}
@@ -953,6 +971,9 @@ const UserGeneralSettings = () => {
                             isDisabled={!magazineQuotaEnabled}
                             dayFieldName="magazineQuotaDays"
                             limitFieldName="magazineQuotaLimit"
+                            label={intl.formatMessage(
+                              messages.magazinerequestlimit
+                            )}
                             mediaType="magazine"
                             onChange={setFieldValue}
                             defaultDays={values.magazineQuotaDays}
@@ -995,6 +1016,9 @@ const UserGeneralSettings = () => {
                             isDisabled={!softwareQuotaEnabled}
                             dayFieldName="softwareQuotaDays"
                             limitFieldName="softwareQuotaLimit"
+                            label={intl.formatMessage(
+                              messages.softwarerequestlimit
+                            )}
                             mediaType="software"
                             onChange={setFieldValue}
                             defaultDays={values.softwareQuotaDays}

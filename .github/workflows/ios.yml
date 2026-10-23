@@ -24,12 +24,17 @@ permissions:
 jobs:
   ios:
     name: Test and package iOS Simulator build
-    runs-on: macos-26
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && fromJSON('{"group":"private-apple-builds","labels":["self-hosted","macOS","ARM64","private-apple"]}') || 'macos-26' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
 
       - name: Verify Xcode release toolchain
         run: |

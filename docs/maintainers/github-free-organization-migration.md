@@ -1,4 +1,4 @@
-> Status update (2026-10-16): the private GitHub Actions runner pool described below has been retired. All SeerrNG Actions jobs use GitHub-hosted runners. The earlier migration and trust-boundary details are historical context; they no longer describe the active workflow configuration.
+> Status update (2026-10-23): trusted-main Linux x64 release jobs use the shared JIT pool, and macOS release jobs use the private Apple runner. Public hosted runners still handle pull requests and release targets without a matching private runner (Linux ARM64 and Windows). Standard hosted runners are free for this public repository. The earlier organization-migration details below are historical context.
 
 <!-- Copyright (c) 2026 snapetech and SeerrNG contributors. -->
 
