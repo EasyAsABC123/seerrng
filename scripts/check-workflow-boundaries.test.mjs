@@ -373,7 +373,11 @@ test('main validation and image scanning use the shared pool on trusted runs', (
     const runner = scanWorkflow.jobs[jobName]?.['runs-on'];
     assert.match(runner, /ng-shared-main-jit/u, workflowName);
     assert.match(runner, /github.event_name == 'push'/u, workflowName);
-    assert.match(runner, /github.event_name == 'workflow_dispatch'/u, workflowName);
+    assert.match(
+      runner,
+      /github.event_name == 'workflow_dispatch'/u,
+      workflowName
+    );
     assert.match(runner, /github.event_name == 'schedule'/u, workflowName);
     assert.match(runner, /github.ref == 'refs\/heads\/main'/u, workflowName);
     assert.match(runner, /\|\| 'ubuntu-latest'/u, workflowName);
@@ -389,15 +393,18 @@ test('main validation and image scanning use the shared pool on trusted runs', (
 test('shared runner jobs use SeerrNG and exact-run labels', () => {
   const workflowsDirectory = path.join(rootDirectory, '.github', 'workflows');
   let sharedRunnerCount = 0;
-  for (const filename of fs.readdirSync(workflowsDirectory).filter((name) =>
-    /\.ya?ml$/u.test(name)
-  )) {
+  for (const filename of fs
+    .readdirSync(workflowsDirectory)
+    .filter((name) => /\.ya?ml$/u.test(name))) {
     const workflow = yaml.load(
       fs.readFileSync(path.join(workflowsDirectory, filename), 'utf8')
     );
     for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
       const runner = job?.['runs-on'];
-      if (typeof runner !== 'string' || !runner.includes('ng-shared-main-jit')) {
+      if (
+        typeof runner !== 'string' ||
+        !runner.includes('ng-shared-main-jit')
+      ) {
         continue;
       }
       sharedRunnerCount += 1;
@@ -409,7 +416,11 @@ test('shared runner jobs use SeerrNG and exact-run labels', () => {
         /github\.ref == 'refs\/heads\/main'/u,
         `${filename}/${jobName}`
       );
-      assert.match(runner, /github\.event_name == 'push'/u, `${filename}/${jobName}`);
+      assert.match(
+        runner,
+        /github\.event_name == 'push'/u,
+        `${filename}/${jobName}`
+      );
     }
   }
   assert.ok(sharedRunnerCount > 0);
