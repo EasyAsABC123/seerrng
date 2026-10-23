@@ -84,6 +84,9 @@ jobs:
           node-version-file: package.json
           package-manager-cache: false
 
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
+
       - name: Verify stable container alias policy
         run: node scripts/check-container-alias-policy.mjs
         working-directory: .alias-policy
@@ -274,6 +277,9 @@ jobs:
           node-version-file: 'package.json'
           package-manager-cache: false
 
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
+
       - name: Generate changelog
         id: git-cliff
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
@@ -328,6 +334,9 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref_name }}
           persist-credentials: false
+
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
 
       - name: Draft Release
         shell: bash
@@ -607,6 +616,9 @@ jobs:
           ref: ${{ inputs.tag || github.ref_name }}
           persist-credentials: false
 
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
@@ -742,6 +754,9 @@ jobs:
     env:
       VERSION: ${{ inputs.tag || github.ref_name }}
     steps:
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
@@ -827,6 +842,9 @@ jobs:
     env:
       VERSION: ${{ inputs.tag || github.ref_name }}
     steps:
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
+
       - name: Publish release
         run: gh release edit "${{ env.VERSION }}" --draft=false --repo "${{ github.repository }}"
         env:
@@ -851,6 +869,9 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
@@ -894,6 +915,9 @@ jobs:
       actions: write
       contents: read
     steps:
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
+
       - name: Dispatch Chocolatey package workflow
         env:
           GH_TOKEN: ${{ secrets.GH_WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
@@ -942,6 +966,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
       - name: Dispatch package workflows
         env:
           GH_TOKEN: ${{ secrets.GH_WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
@@ -1234,6 +1260,9 @@ jobs:
       actions: write
       contents: read
     steps:
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
+
       - name: Dispatch Launchpad PPA
         env:
           GH_TOKEN: ${{ secrets.GH_WORKFLOW_TOKEN || secrets.GITHUB_TOKEN }}
@@ -1270,6 +1299,9 @@ jobs:
         with:
           ref: ${{ github.ref }}
           persist-credentials: false
+
+      - name: Set up GitHub CLI
+        uses: snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63
 
       - name: Post omitted security notes
         shell: bash

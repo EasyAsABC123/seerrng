@@ -16,6 +16,36 @@ const require = createRequire(import.meta.url);
 const workflowDirectory = path.join(rootDirectory, '.github', 'workflows');
 const readWorkflow = (name) =>
   yaml.load(fs.readFileSync(path.join(workflowDirectory, name), 'utf8'));
+const ghCliSetupRef =
+  'snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63';
+
+test('every release job that calls GitHub CLI installs the pinned CLI first', () => {
+  const release = readWorkflow('release.yml');
+  const ghJobs = Object.entries(release.jobs).filter(([, job]) =>
+    (job.steps ?? []).some((step) =>
+      /\bgh\s+(?:api|attestation|release|workflow)\b|latest-published-release-tag\.sh/u.test(
+        step.run ?? ''
+      )
+    )
+  );
+
+  assert.ok(ghJobs.length > 0, 'release workflow should exercise GitHub CLI');
+  for (const [jobName, job] of ghJobs) {
+    const setupIndex = job.steps.findIndex(
+      (step) => step.uses === ghCliSetupRef
+    );
+    const commandIndex = job.steps.findIndex((step) =>
+      /\bgh\s+(?:api|attestation|release|workflow)\b|latest-published-release-tag\.sh/u.test(
+        step.run ?? ''
+      )
+    );
+
+    assert.ok(
+      setupIndex >= 0 && setupIndex < commandIndex,
+      `${jobName} must install the pinned GitHub CLI before using it`
+    );
+  }
+});
 
 test('release assets build while image verification runs, then package channels wait for both', () => {
   const release = readWorkflow('release.yml');
@@ -147,10 +177,13 @@ test('release assets build while image verification runs, then package channels 
     launchpadDispatch.if,
     /needs\.publish-release\.result == 'success'/u
   );
-  assert.match(launchpadDispatch.steps[0].run, /release-ppa\.yml/u);
-  assert.match(launchpadDispatch.steps[0].run, /SKIP_LAUNCHPAD_DISPATCH/u);
+  const launchpadStep = launchpadDispatch.steps.find(
+    (step) => step.name === 'Dispatch Launchpad PPA'
+  );
+  assert.match(launchpadStep.run, /release-ppa\.yml/u);
+  assert.match(launchpadStep.run, /SKIP_LAUNCHPAD_DISPATCH/u);
   assert.match(
-    launchpadDispatch.steps[0].run,
+    launchpadStep.run,
     /could not be dispatched for the already-published release/u
   );
   assert.equal(
