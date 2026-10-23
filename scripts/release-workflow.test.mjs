@@ -16,8 +16,8 @@ const require = createRequire(import.meta.url);
 const workflowDirectory = path.join(rootDirectory, '.github', 'workflows');
 const readWorkflow = (name) =>
   yaml.load(fs.readFileSync(path.join(workflowDirectory, name), 'utf8'));
-const ghCliSetupRef =
-  'snapetech-org/seerrng/.github/actions/setup-gh-cli@e06aebcabafecde9837f1634f5a5bf8018029b63';
+const ghCliSetupCommit = 'e06aebcabafecde9837f1634f5a5bf8018029b63';
+const ghCliSetupPath = './.github-actions/.github/actions/setup-gh-cli';
 
 test('every release job that calls GitHub CLI installs the pinned CLI first', () => {
   const release = readWorkflow('release.yml');
@@ -32,7 +32,15 @@ test('every release job that calls GitHub CLI installs the pinned CLI first', ()
   assert.ok(ghJobs.length > 0, 'release workflow should exercise GitHub CLI');
   for (const [jobName, job] of ghJobs) {
     const setupIndex = job.steps.findIndex(
-      (step) => step.uses === ghCliSetupRef
+      (step) => step.uses === ghCliSetupPath
+    );
+    const checkoutIndex = job.steps.findIndex(
+      (step) =>
+        step.uses ===
+          'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' &&
+        step.with?.repository === 'snapetech-org/seerrng' &&
+        step.with?.ref === ghCliSetupCommit &&
+        step.with?.path === '.github-actions'
     );
     const commandIndex = job.steps.findIndex((step) =>
       /\bgh\s+(?:api|attestation|release|workflow)\b|latest-published-release-tag\.sh/u.test(
@@ -41,8 +49,10 @@ test('every release job that calls GitHub CLI installs the pinned CLI first', ()
     );
 
     assert.ok(
-      setupIndex >= 0 && setupIndex < commandIndex,
-      `${jobName} must install the pinned GitHub CLI before using it`
+      checkoutIndex >= 0 &&
+        checkoutIndex < setupIndex &&
+        setupIndex < commandIndex,
+      `${jobName} must check out and install the pinned GitHub CLI before using it`
     );
   }
 });
