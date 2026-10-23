@@ -639,7 +639,7 @@ test('release publishing admits only tag pushes and main-branch retries', () => 
   assert.match(validation.if, /github\.ref == 'refs\/heads\/main'/u);
   assert.equal(
     release.concurrency.group,
-    '${{ github.workflow }}-${{ github.event_name }}-${{ inputs.tag || github.ref_name }}'
+    '${{ github.workflow }}-${{ github.event_name }}-${{ inputs.tag || github.ref_name }}-${{ github.run_id }}'
   );
   assert.equal(release.concurrency['cancel-in-progress'], false);
   assert.match(validationScript, /\$GITHUB_EVENT_NAME" == 'push'/u);
