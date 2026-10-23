@@ -129,6 +129,7 @@ const TransportSecurityNotice = ({
           className="space-y-3 text-sm"
           onSubmit={async (event) => {
             event.preventDefault();
+            setSetupSaved(false);
             if (setupAllowHttp && !setupAcknowledgeHttp) {
               addToast(intl.formatMessage(messages.acknowledgeHttp), {
                 autoDismiss: true,
@@ -137,7 +138,6 @@ const TransportSecurityNotice = ({
               return;
             }
             setSetupSaving(true);
-            setSetupSaved(false);
             try {
               await axios.post('/api/v1/status/tls/bootstrap', {
                 mode: setupMode,
