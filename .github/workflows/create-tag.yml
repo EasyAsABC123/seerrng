@@ -4,28 +4,45 @@ name: Create tag
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - SeerrNG CI
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.run_id }}-${{ github.run_attempt }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
   determine-tag-version:
     name: Determine tag version
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.name == 'SeerrNG CI' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
       tag_version: ${{ steps.git-cliff.outputs.tag_version }}
+      base_sha: ${{ steps.git-cliff.outputs.base_sha }}
+      release_required: ${{ steps.git-cliff.outputs.release_required }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - name: Install git-cliff
@@ -38,19 +55,62 @@ jobs:
         env:
           # In order to avoid hitting the GitHub API rate limit
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           set -euo pipefail
+          base_sha="$(git rev-parse HEAD)"
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_run' ]]; then
+            [[ "$WORKFLOW_RUN_CONCLUSION" == 'success' &&
+              "$WORKFLOW_RUN_EVENT" == 'push' &&
+              "$WORKFLOW_RUN_HEAD_BRANCH" == 'main' &&
+              "$WORKFLOW_RUN_HEAD_REPOSITORY" == "$GITHUB_REPOSITORY" &&
+              "$WORKFLOW_RUN_HEAD_SHA" == "$base_sha" ]] || {
+              echo 'The automatic release must use successful main push CI from this repository.' >&2
+              exit 2
+            }
+
+            current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 { print $1 }')"
+            if [[ "$current_main_sha" != "$base_sha" ]]; then
+              echo "CI passed for stale main revision ${base_sha}; current main is ${current_main_sha}. Skipping release."
+              {
+                echo "base_sha=${base_sha}"
+                echo 'release_required=false'
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            previous_tag="$(scripts/latest-published-release-tag.sh)"
+            release_note_changes="$(git diff --name-status "$previous_tag" "$base_sha" -- release-notes)"
+            release_note_count="$(awk -F '\t' '$1 == "A" && $2 ~ /^release-notes\/[^/]+\.md$/ && $2 != "release-notes/README.md" { count++ } END { print count + 0 }' <<<"$release_note_changes")"
+            if [[ "$release_note_count" == '0' ]]; then
+              echo "No new curated release notes since ${previous_tag}; skipping automatic release."
+              {
+                echo "base_sha=${base_sha}"
+                echo 'release_required=false'
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
           tag_version=$(git-cliff -c .github/cliff.toml --bumped-version --unreleased)
           [[ "$tag_version" =~ ^v[0-9][0-9A-Za-z._+-]{0,127}$ ]] || {
             echo "Invalid generated tag version: $tag_version" >&2
             exit 2
           }
           echo "Next tag version is ${tag_version}"
-          echo "tag_version=${tag_version}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag_version=${tag_version}"
+            echo "base_sha=${base_sha}"
+            echo 'release_required=true'
+          } >> "$GITHUB_OUTPUT"
 
   create-tag:
     name: Create tag
-    if: github.ref == 'refs/heads/main'
+    if: needs.determine-tag-version.outputs.release_required == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,6 +121,7 @@ jobs:
       release_sha: ${{ steps.package-release.outputs.release_sha }}
     env:
       TAG_VERSION: ${{ needs.determine-tag-version.outputs.tag_version }}
+      BASE_SHA: ${{ needs.determine-tag-version.outputs.base_sha }}
     steps:
       - name: Install git-cliff
         uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
@@ -74,7 +135,7 @@ jobs:
           persist-credentials: false
 
       - name: Prepare release branch
-        run: git switch --force-create release-candidate "$GITHUB_SHA"
+        run: git switch --force-create release-candidate "$BASE_SHA"
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -170,7 +231,7 @@ jobs:
 
   publish-tag:
     name: Publish tag
-    if: github.ref == 'refs/heads/main'
+    if: needs.create-tag.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -238,7 +299,7 @@ jobs:
 
   dispatch-release:
     name: Dispatch release workflow
-    if: github.ref == 'refs/heads/main'
+    if: needs.publish-tag.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       actions: write

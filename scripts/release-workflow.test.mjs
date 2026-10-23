@@ -1289,6 +1289,47 @@ test('tag preparation keeps Helm metadata aligned with the application release',
   assert.match(commitStep.run, /release-note: none/u);
 });
 
+test('automatic stable releases follow successful main CI with new release notes', () => {
+  const workflow = readWorkflow('create-tag.yml');
+  const trigger = workflow.on.workflow_run;
+  const determine = workflow.jobs['determine-tag-version'];
+  const checkout = determine.steps.find((step) => step.name === 'Checkout');
+  const version = determine.steps.find(
+    (step) => step.name === 'Get tag version'
+  );
+  const createTag = workflow.jobs['create-tag'];
+
+  assert.deepEqual(trigger, {
+    workflows: ['SeerrNG CI'],
+    types: ['completed'],
+    branches: ['main'],
+  });
+  assert.equal(Object.hasOwn(workflow.on, 'workflow_dispatch'), true);
+  assert.match(
+    workflow.concurrency.group,
+    /workflow_run\.head_sha \|\| github\.sha/u
+  );
+  assert.match(determine.if, /workflow_run\.conclusion == 'success'/u);
+  assert.match(determine.if, /workflow_run\.event == 'push'/u);
+  assert.match(determine.if, /workflow_run\.head_branch == 'main'/u);
+  assert.match(
+    determine.if,
+    /workflow_run\.head_repository\.full_name == github\.repository/u
+  );
+  assert.match(checkout.with.ref, /workflow_run\.head_sha/u);
+  assert.match(version.run, /git ls-remote origin refs\/heads\/main/u);
+  assert.match(version.run, /git diff --name-status .*release-notes/u);
+  assert.match(version.run, /release_required=false/u);
+  assert.equal(
+    createTag.if,
+    "needs.determine-tag-version.outputs.release_required == 'true'"
+  );
+  assert.match(
+    createTag.steps.find((step) => step.name === 'Prepare release branch').run,
+    /"\$BASE_SHA"/u
+  );
+});
+
 test('release notes flow into the draft release and Discord announcement', () => {
   const release = readWorkflow('release.yml');
   const changelog = release.jobs.changelog;
@@ -1424,6 +1465,14 @@ test('main CI tooling checks fetch tags for changelog validation', () => {
   );
 
   assert.equal(checkout?.with?.['fetch-depth'], 0);
+});
+
+test('containerized CI test jobs use pinned Debian images with Git available', () => {
+  const ci = readWorkflow('ci.yml');
+  const imagePattern = /^node:24\.22\.1-bookworm@sha256:[0-9a-f]{64}$/u;
+
+  assert.match(ci.jobs['unit-test'].container.image, imagePattern);
+  assert.match(ci.jobs['node-test'].container.image, imagePattern);
 });
 
 test('Cypress uses Cloud-only grouping metadata only when recording', () => {

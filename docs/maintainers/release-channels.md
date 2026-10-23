@@ -35,6 +35,18 @@ runs in pull-request CI and during tag preparation, so deleting or forgetting a
 historical release section fails before publication. A missing version is not
 inferred: `v3.2.6` was never tagged and is intentionally absent.
 
+## Automatic Stable Release Kickoff
+
+After **SeerrNG CI** succeeds on `main`, the `Create tag` workflow automatically
+prepares a stable release when `main` is still the exact revision CI tested and
+there is at least one new curated release-note fragment since the latest
+published stable tag. Internal-only changes and stale CI runs do not create a
+release. The workflow updates the version, Helm metadata, and changelog, then
+creates the tag and starts the release publisher. A manual `Create tag`
+dispatch remains available for an intentional release without a new fragment;
+the separate `SeerrNG Release` dispatch remains available to retry publishing
+an existing tag.
+
 See the [release history audit](./release-history-audit.md) for the scope and
 method used to backfill the historical sections.
 
