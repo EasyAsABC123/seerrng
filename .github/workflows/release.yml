@@ -88,7 +88,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -289,7 +289,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -355,7 +355,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -644,7 +644,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -790,7 +790,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -886,7 +886,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -922,7 +922,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -975,7 +975,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -1034,7 +1034,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -1336,7 +1336,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 
@@ -1384,7 +1384,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: snapetech-org/seerrng
-          ref: e06aebcabafecde9837f1634f5a5bf8018029b63
+          ref: a7df518305b4850d22db9eec664e5bd1299e7f17
           path: .github-actions
           persist-credentials: false
 

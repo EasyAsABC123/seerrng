@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 const workflowDirectory = path.join(rootDirectory, '.github', 'workflows');
 const readWorkflow = (name) =>
   yaml.load(fs.readFileSync(path.join(workflowDirectory, name), 'utf8'));
-const ghCliSetupCommit = 'e06aebcabafecde9837f1634f5a5bf8018029b63';
+const ghCliSetupCommit = 'a7df518305b4850d22db9eec664e5bd1299e7f17';
 const ghCliSetupPath = './.github-actions/.github/actions/setup-gh-cli';
 
 test('every release job that calls GitHub CLI installs the pinned CLI first', () => {
