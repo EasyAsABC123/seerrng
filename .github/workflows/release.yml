@@ -1083,9 +1083,9 @@ jobs:
           set -uo pipefail
           export DOCKER_CONFIG="$(mktemp -d)"
           trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-          printf '%s' "$LEGACY_GHCR_TOKEN" | docker login ghcr.io -u snapetech --password-stdin >/dev/null
-          if ! bash scripts/mirror-legacy-ghcr-aliases.sh "$VERSION" "$GHCR_IMAGE" "$LEGACY_GHCR_IMAGE"; then
-            echo "::warning::Legacy ghcr.io/snapetech/seerrng aliases were not updated; installs on the retired path stay on an older image."
+          if ! printf '%s' "$LEGACY_GHCR_TOKEN" | docker login ghcr.io -u snapetech --password-stdin >/dev/null \
+            || ! bash scripts/mirror-legacy-ghcr-aliases.sh "$VERSION" "$GHCR_IMAGE" "$LEGACY_GHCR_IMAGE"; then
+            echo "::warning::Legacy ghcr.io/snapetech/seerrng aliases were not updated (login or push failed); installs on the retired path stay on an older image. GHCR_LEGACY_TOKEN must be a classic PAT with write:packages."
           fi
 
   dispatch-chocolatey:
