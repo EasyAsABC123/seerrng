@@ -10,6 +10,38 @@ and the following `v3.2.7` release includes the intervening changes. Commit-leve
 links in the generated history remain the technical source of truth for changes
 that are not called out here.
 
+## [3.72.5](https://github.com/snapetech-org/seerrng/compare/v3.72.4..v3.72.5) - 2026-10-24
+
+### User-facing changes
+
+#### Changed
+
+- **Settings:** First-run transport setup clears an old success message when a later save is rejected.
+
+#### Fixed
+
+- **Settings:** Settings search, filters, quota selectors, provider selectors, language and region controls, and notification webhook fields now expose accessible names and correctly linked labels. This makes the controls easier to identify with assistive technology and fixes the Discord and Slack webhook labels. The Bookshelf services shortcut now uses in-app navigation.
+- **Unraid:** Unraid and Docker installs still pointing at the retired ghcr.io/snapetech/seerrng path now receive the latest stable image again instead of staying on an old build.
+- **Ci:** Trusted main-branch Linux validation now routes directly to the shared private JIT runners. Public-fork jobs stay isolated, and Apple and architecture-specific release jobs keep their designated runners. Existing queued and active jobs are left untouched.
+- **Ios:** Adding another saved server now opens the editor reliably, and editing existing server details continues to work as expected.
+
+#### Security
+
+- **Dependencies:** Updates body-parser, multer, undici and zod to versions that fix newly disclosed high-severity vulnerabilities in request parsing, file uploads and HTTP handling.
+
+### 🐛 Bug Fixes
+- *(deps)* Update body-parser, multer, undici and zod for HIGH advisories - ([b40d462](https://github.com/snapetech-org/seerrng/commit/b40d462447f5d410f692096287345dcc5836b640))
+- *(release)* Trim whitespace from the legacy GHCR token - ([54ff308](https://github.com/snapetech-org/seerrng/commit/54ff308a0f739eaf78829307cb594eec98ff7629))
+- *(release)* Make legacy GHCR mirror login failure non-fatal - ([e38c096](https://github.com/snapetech-org/seerrng/commit/e38c096a39c371b48376a5d1392d18311b8364d6))
+- *(release)* Keep retired GHCR path on the latest stable image - ([02505bd](https://github.com/snapetech-org/seerrng/commit/02505bdc0bc65b6ee1a60ca94627500b996f500a))
+- *(release)* Keep retired GHCR path on the latest stable image - ([72259fc](https://github.com/snapetech-org/seerrng/commit/72259fc1f8eceb83dd0b2eee5e2998e666ea3c6f))
+
+### 📖 Documentation
+- *(tls)* Document tunnel setup and SSL_ERROR_RX_RECORD_TOO_LONG - ([818af75](https://github.com/snapetech-org/seerrng/commit/818af75d71b4da37a47728760724c7d1f2e81002))
+
+### ⚙️ Miscellaneous Tasks
+- Route trusted Linux jobs through JIT runners (#395) - ([fafb18c](https://github.com/snapetech-org/seerrng/commit/fafb18cee0ebc5943e388146f6f9cec8d3204342))
+
 ## [3.72.4](https://github.com/snapetech-org/seerrng/compare/v3.72.3..v3.72.4) - 2026-10-23
 
 ### User-facing changes
