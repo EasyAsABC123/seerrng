@@ -39,11 +39,19 @@ inferred: `v3.2.6` was never tagged and is intentionally absent.
 All release changes must be on `main` before tagging. Update `package.json` and
 the Helm chart metadata with the release version, add the assembled version
 section to `CHANGELOG.md`, and verify the section against the curated fragments.
-Commit that preparation to `main`, then push the matching `v*` tag from that
-commit. The tag push starts the existing **SeerrNG Release** workflow, which
-checks that the tag points into `main`, generates the release notes, builds the
-release assets, and publishes the release. There is no separate tag-creation
-workflow.
+Commit that preparation to `main`, push the matching `v*` tag from that commit,
+then start the release from `main`:
+
+```sh
+gh workflow run release.yml -R snapetech-org/seerrng --ref main -f tag=vX.Y.Z
+```
+
+The tag push alone starts nothing. Release runs are dispatched from `main`
+because the private JIT broker only serves runs on `main`; a tag-push run would
+queue on the private group forever, and the release must not fall back to paid
+or hosted runners. The workflow checks that the tag points into `main` and has
+not been published, generates the release notes, builds the release assets, and
+publishes the release. There is no separate tag-creation workflow.
 
 `npm version X.Y.Z --ignore-scripts --no-git-tag-version` updates the
 application version. `node scripts/update-helm-release-metadata.mjs vX.Y.Z`

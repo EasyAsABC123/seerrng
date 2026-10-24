@@ -735,7 +735,7 @@ test('release validation installs Node before running its alias-policy check', (
   assert.ok(nodeSetupIndex < aliasPolicyIndex);
 });
 
-test('release publishing admits only tag pushes and main-branch retries', () => {
+test('release publishing runs only from main dispatches so private runners serve it', () => {
   const release = readWorkflow('release.yml');
   const validation = release.jobs['validate-main-tag'];
   const validationScript = validation.steps.find(
@@ -749,8 +749,9 @@ test('release publishing admits only tag pushes and main-branch retries', () => 
     '${{ github.workflow }}-${{ github.event_name }}-${{ inputs.tag || github.ref_name }}-${{ github.run_id }}'
   );
   assert.equal(release.concurrency['cancel-in-progress'], false);
-  assert.match(validationScript, /\$GITHUB_EVENT_NAME" == 'push'/u);
-  assert.match(validationScript, /\$GITHUB_REF_TYPE" != 'tag'/u);
+  assert.equal(release.on.push, undefined);
+  assert.match(validationScript, /gh release view "\$RELEASE_TAG"/u);
+  assert.match(validationScript, /already published/u);
   assert.match(validationScript, /git merge-base --is-ancestor/u);
 });
 

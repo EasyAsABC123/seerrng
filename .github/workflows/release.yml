@@ -4,9 +4,6 @@
 name: SeerrNG Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
@@ -105,24 +102,26 @@ jobs:
       - name: Ensure tag is on main
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANNOUNCE_SECURITY_CORRECTION: ${{ inputs.announce_security_correction }}
           REUSE_FROM_RUN_ID: ${{ inputs.reuse_from_run_id }}
           REUSE_PUBLISHED_IMAGE: ${{ inputs.reuse_published_image }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' && "$ANNOUNCE_SECURITY_CORRECTION" != true ]]; then
-            [[ -n "$REUSE_FROM_RUN_ID" ]] || {
-              echo 'Manual release recovery must reuse artifacts from a failed run for this exact tag.' >&2
-              exit 1
-            }
-            [[ "$REUSE_PUBLISHED_IMAGE" == true ]] || {
-              echo 'Manual release recovery must reuse the image already published for this exact tag.' >&2
-              exit 1
-            }
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == 'push' && "$GITHUB_REF_TYPE" != 'tag' ]]; then
-            echo 'Release pushes must originate from a tag.' >&2
-            exit 1
+            if [[ -n "$REUSE_FROM_RUN_ID" ]]; then
+              [[ "$REUSE_PUBLISHED_IMAGE" == true ]] || {
+                echo 'Manual release recovery must reuse the image already published for this exact tag.' >&2
+                exit 1
+              }
+            else
+              # Fresh release started from main so it runs on the private runners.
+              published="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || echo missing)"
+              [[ "$published" != false ]] || {
+                echo "::error::$RELEASE_TAG is already published; use recovery inputs or announce_security_correction instead."
+                exit 1
+              }
+            fi
           fi
           if [[ ! "$RELEASE_TAG" =~ ^v[0-9][0-9A-Za-z._+-]{0,126}$ ]]; then
             echo 'Invalid release tag.' >&2
@@ -334,7 +333,7 @@ jobs:
 
   changelog:
     name: Generate changelog
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     needs: validate-main-tag
     timeout-minutes: 10
     runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (contains(fromJSON('["push","workflow_dispatch","schedule","release","repository_dispatch"]'), github.event_name) && (github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))) && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
@@ -412,7 +411,7 @@ jobs:
 
   create-draft-release:
     name: Create draft release
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     timeout-minutes: 10
     runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (contains(fromJSON('["push","workflow_dispatch","schedule","release","repository_dispatch"]'), github.event_name) && (github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))) && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     permissions:
@@ -461,7 +460,7 @@ jobs:
 
   publish:
     name: Publish multi-arch manifests
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     needs: [validate-main-tag, create-draft-release]
     timeout-minutes: 90
     runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (contains(fromJSON('["push","workflow_dispatch","schedule","release","repository_dispatch"]'), github.event_name) && (github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))) && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
@@ -633,7 +632,7 @@ jobs:
 
   scan-release-image:
     name: Scan release image (${{ matrix.platform }})
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     needs: publish
     runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (contains(fromJSON('["push","workflow_dispatch","schedule","release","repository_dispatch"]'), github.event_name) && (github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))) && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
     timeout-minutes: 30
@@ -700,7 +699,7 @@ jobs:
 
   sign:
     name: Sign images and create SBOM attestations
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     needs: [publish, scan-release-image]
     timeout-minutes: 20
     runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (contains(fromJSON('["push","workflow_dispatch","schedule","release","repository_dispatch"]'), github.event_name) && (github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))) && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
@@ -857,7 +856,7 @@ jobs:
 
   verify:
     name: Verify signatures and attestations
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     needs: [publish, sign]
     timeout-minutes: 15
     runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (contains(fromJSON('["push","workflow_dispatch","schedule","release","repository_dispatch"]'), github.event_name) && (github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))) && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
@@ -962,7 +961,7 @@ jobs:
       needs.validate-main-tag.result == 'success' &&
       needs.dispatch-package-channels.result == 'success' &&
       (
-        (github.event_name == 'push' &&
+        ((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true)) &&
           needs.create-draft-release.result == 'success' &&
           needs.verify.result == 'success' &&
           needs.build-release-assets.result == 'success') ||
@@ -1005,7 +1004,7 @@ jobs:
 
   promote-stable-container-aliases:
     name: Promote stable container aliases
-    if: ${{ github.event_name == 'push' && !contains(inputs.tag || github.ref_name, '-') }}
+    if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true)) && !contains(inputs.tag || github.ref_name, '-') }}
     needs: [publish-release]
     concurrency:
       group: seerrng-stable-container-aliases
@@ -1091,7 +1090,7 @@ jobs:
 
   dispatch-chocolatey:
     name: Dispatch Chocolatey after publication
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     needs: [publish-release]
     timeout-minutes: 5
     runs-on: ${{ (vars.NG_HOSTED_FIRST != 'true' || vars.NG_FORCE_JIT == 'true' || github.run_attempt > 1) && (contains(fromJSON('["push","workflow_dispatch","schedule","release","repository_dispatch"]'), github.event_name) && (github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))) && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) || 'ubuntu-latest' }}
@@ -1127,7 +1126,7 @@ jobs:
 
   build-release-assets:
     name: Build release assets
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     needs: [validate-main-tag, create-draft-release]
     uses: ./.github/workflows/release-assets.yml
     with:
@@ -1155,7 +1154,7 @@ jobs:
       always() &&
       needs.validate-main-tag.result == 'success' &&
       (
-        (github.event_name == 'push' &&
+        ((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true)) &&
           needs.verify.result == 'success' &&
           needs.build-release-assets.result == 'success') ||
         (github.event_name == 'workflow_dispatch' &&
@@ -1384,7 +1383,7 @@ jobs:
 
   announce-discord:
     name: Announce release to Discord
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true))
     needs:
       [changelog, publish, publish-release]
     timeout-minutes: 10
@@ -1475,7 +1474,7 @@ jobs:
       !contains(inputs.tag || github.ref_name, '-') &&
       needs.publish-release.result == 'success' &&
       (
-        github.event_name == 'push' ||
+        (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.reuse_from_run_id == '' && inputs.announce_security_correction != true)) ||
         (github.event_name == 'workflow_dispatch' &&
           inputs.reuse_from_run_id != '' &&
           inputs.announce_security_correction != true)
