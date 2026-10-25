@@ -1,10 +1,11 @@
 # Agent Instructions
 
-## UI and visual changes
+## UI changes
 
-This workflow is required for any change that can affect rendered UI, including component markup, styles, theme tokens, icons, dimensions, spacing, layout, interaction states, or responsive behavior.
+For any change affecting rendered UI, components, styles, themes, layout, states, or responsiveness:
 
-1. **Read the visual contract before editing.** Read [`docs/maintainers/ui-style-standard.md`](docs/maintainers/ui-style-standard.md) for the accepted visual system and [`docs/maintainers/ui-fix-it.md`](docs/maintainers/ui-fix-it.md) for the audit and repair workflow. Read task-specific visual decisions and evidence they point to. Treat these as the source of truth; do not infer new rules from nearby code, upstream styling, or an isolated screenshot.
-2. **Trace the existing owner and its reach.** Find the semantic CSS family or shared component that owns each affected property. Search its consumers and inspect imports, cascade/load order, responsive rules, and conditional states. A shared selector, component, token, or stylesheet can affect the whole site: account for its consumers before changing it, and inspect representative consumers after the change.
-3. **Preserve the established system.** Reuse existing semantic CSS families and components. Do not add Tailwind utilities, one-off page selectors, duplicate rules or variables, or local overrides for properties already owned by shared styles. Preserve the standard's approved dimensions, spacing, typography, colors, and responsive behavior. Keep changes narrowly scoped; avoid broad rewrites. Do not silently introduce new design values or reusable style families.
-4. **Render, compare, and self-accept.** Follow the rendered-comparison and acceptance requirements in `docs/maintainers/ui-fix-it.md`. A UI change is not complete until the changed UI has been rendered and visually reviewed against the approved contract, with before/after comparison at matching viewport sizes and equivalent states. Fix regressions and repeat the comparison. Record what was inspected and the available evidence. If rendering or comparison is blocked, mark visual acceptance unverified and report the blocker; do not claim the UI change is complete. This is the agent's acceptance check, not a request for separate human sign-off.
+1. Before editing, read the [UI Style Standard](docs/maintainers/ui-style-standard.md), [UI Fix-It](docs/maintainers/ui-fix-it.md), and task-specific visual evidence. Treat them as authoritative.
+2. Trace the semantic CSS/component owner. Search its consumers; inspect cascade, breakpoints, and states. Assume shared owners affect the whole site.
+3. Reuse existing owners. Add no Tailwind, page-only or duplicate CSS, or local overrides for shared properties. Preserve approved dimensions, spacing, typography, colors, and responsive behavior; make the smallest scoped change.
+4. Render baseline and candidate at matching viewports and states; compare against approved references. Inspect changed pages and representative shared consumers for button geometry, alignment, spacing, typography, surfaces, overflow, and interactions. Fix regressions; record routes, states, viewports, evidence, and exclusions.
+5. If rendering or comparison is blocked, mark acceptance unverified and UI work incomplete. This is agent acceptance, not separate human sign-off.
