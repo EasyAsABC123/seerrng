@@ -499,6 +499,9 @@ test('all container vulnerability scans use an available pinned Trivy release', 
 test('Jellyfin CI tests incomplete startup responses before the live smoke test', () => {
   const ci = readWorkflow('ci.yml');
   const plugin = ci.jobs['jellyfin-plugin'];
+  const dotnetSetup = plugin.steps.find(
+    (step) => step.name === 'Set up .NET SDK'
+  );
   const startupRetryTest = plugin.steps.find(
     (step) => step.name === 'Test Jellyfin smoke-test startup retries'
   );
@@ -506,6 +509,10 @@ test('Jellyfin CI tests incomplete startup responses before the live smoke test'
     (step) => step.name === 'Smoke test plugin in Jellyfin 10.11.11'
   );
 
+  assert.equal(
+    dotnetSetup?.env?.DOTNET_INSTALL_DIR,
+    '${{ runner.temp }}/dotnet'
+  );
   assert.ok(startupRetryTest);
   assert.ok(liveSmokeTest);
   assert.equal(startupRetryTest.if, undefined);
@@ -518,6 +525,21 @@ test('Jellyfin CI tests incomplete startup responses before the live smoke test'
       plugin.steps.indexOf(liveSmokeTest),
     'the startup-response regression test must run before the Jellyfin container smoke test'
   );
+});
+
+test('all .NET setup steps install to a runner-writable directory', () => {
+  const setupSteps = ['ci.yml', 'release-assets.yml'].flatMap((workflowName) =>
+    Object.values(readWorkflow(workflowName).jobs).flatMap((job) =>
+      (job.steps ?? []).filter((step) =>
+        step.uses?.startsWith('actions/setup-dotnet@')
+      )
+    )
+  );
+
+  assert.equal(setupSteps.length, 2);
+  for (const step of setupSteps) {
+    assert.equal(step.env?.DOTNET_INSTALL_DIR, '${{ runner.temp }}/dotnet');
+  }
 });
 
 test('multi-architecture publishers perform the real build once and verify the index', () => {
@@ -1518,13 +1540,18 @@ test('CI validates release notes with push and pull-request event context', () =
   assert.match(validation.run, /--summary-file "\$GITHUB_STEP_SUMMARY"/u);
 });
 
-test('main CI tooling checks fetch tags for changelog validation', () => {
+test('main CI release-note checks fetch tags with shallow history', () => {
   const ci = readWorkflow('ci.yml');
-  const checkout = ci.jobs['i18n-and-tooling'].steps.find(
+  const checkout = ci.jobs['release-notes'].steps.find(
     (step) => step.name === 'Checkout'
   );
+  const changelogCheck = ci.jobs['release-notes'].steps.find((step) =>
+    step.run?.includes('scripts/check-changelog-tags.mjs')
+  );
 
-  assert.equal(checkout?.with?.['fetch-depth'], 0);
+  assert.equal(checkout?.with?.['fetch-depth'], 2);
+  assert.equal(checkout?.with?.['fetch-tags'], true);
+  assert.ok(changelogCheck);
 });
 
 test('containerized CI test jobs use pinned Debian images with Git available', () => {
@@ -1538,13 +1565,24 @@ test('containerized CI test jobs use pinned Debian images with Git available', (
 test('Cypress uses Cloud-only grouping metadata only when recording', () => {
   const workflow = readWorkflow('cypress.yml');
   const steps = workflow.jobs['cypress-run'].steps;
+  const cache = steps.find((step) => step.name === 'Cache Cypress binary');
+  const install = steps.find((step) => step.name === 'Install Cypress binary');
   const recordedRun = steps.find(
     (step) => step.name === 'Run Cypress suite with Cypress Cloud'
   );
   const localRun = steps.find(
     (step) => step.name === 'Run Cypress suite without Cypress Cloud'
   );
+  const cacheDirectory = '${{ runner.temp }}/seerrng-cypress-cache';
 
+  assert.equal(cache?.with?.path, cacheDirectory);
+  assert.equal(install?.env?.CYPRESS_CACHE_FOLDER, cacheDirectory);
+  assert.match(
+    install?.run ?? '',
+    /pnpm exec cypress install[\s\S]*pnpm exec cypress verify/u
+  );
+  assert.equal(recordedRun?.env?.CYPRESS_CACHE_FOLDER, cacheDirectory);
+  assert.equal(localRun?.env?.CYPRESS_CACHE_FOLDER, cacheDirectory);
   assert.equal(recordedRun?.with?.record, true);
   assert.ok(recordedRun?.with?.group);
   assert.ok(recordedRun?.with?.['ci-build-id']);

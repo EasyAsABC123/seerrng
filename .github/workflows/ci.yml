@@ -31,6 +31,7 @@ jobs:
         with:
           # Release-note validation compares the workflow-dispatch commit to its parent.
           fetch-depth: 2
+          fetch-tags: true
           persist-credentials: false
 
       - name: Set up Node.js
@@ -218,6 +219,8 @@ jobs:
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           dotnet-version: 9.0.x
 

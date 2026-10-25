@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test.use({ serviceWorkers: 'block' });
+
 const loginAsAdmin = async (page: Page, baseURL: string | undefined) => {
   expect(baseURL).toBeTruthy();
   const loginResponse = await page
@@ -73,7 +75,30 @@ for (const media of [
         json: { page: 1, totalPages: 0, totalResults: 0, results: [] },
       })
     );
-    await page.route('**/api/v1/watchproviders/**', (route) =>
+    await page.route('**/api/v1/watchproviders/regions*', (route) =>
+      route.fulfill({
+        json: [
+          {
+            iso_3166_1: 'US',
+            english_name: 'United States',
+            native_name: 'United States',
+          },
+        ],
+      })
+    );
+    await page.route('**/api/v1/watchproviders/movies*', (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: 8,
+            name: 'Netflix',
+            logoPath: '/provider.png',
+            displayPriority: 1,
+          },
+        ],
+      })
+    );
+    await page.route('**/api/v1/watchproviders/tv*', (route) =>
       route.fulfill({
         json: [
           {

@@ -45,15 +45,17 @@ jobs:
       - name: Cache Cypress binary
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/Cypress
+          path: ${{ runner.temp }}/seerrng-cypress-cache
           key: ${{ runner.os }}-cypress-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-cypress-store-
 
       - name: Install Cypress binary
         env:
-          CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
-        run: pnpm exec cypress install
+          CYPRESS_CACHE_FOLDER: ${{ runner.temp }}/seerrng-cypress-cache
+        run: |
+          pnpm exec cypress install
+          pnpm exec cypress verify
 
       - name: Configure Cypress runtime directory
         run: printf 'CONFIG_DIRECTORY=%s\n' "$RUNNER_TEMP/seerrng-cypress-runtime-config" >> "$GITHUB_ENV"
@@ -99,6 +101,7 @@ jobs:
         env:
           SEERR_EXTERNAL_CONFIG: ${{ steps.export-config.outputs.external_config }}
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+          CYPRESS_CACHE_FOLDER: ${{ runner.temp }}/seerrng-cypress-cache
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WITH_MIGRATIONS: true
           E2E_TESTS: true
@@ -117,6 +120,7 @@ jobs:
           record: false
         env:
           SEERR_EXTERNAL_CONFIG: ${{ steps.export-config.outputs.external_config }}
+          CYPRESS_CACHE_FOLDER: ${{ runner.temp }}/seerrng-cypress-cache
           WITH_MIGRATIONS: true
           E2E_TESTS: true
           PORT: 5056

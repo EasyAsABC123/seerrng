@@ -61,20 +61,69 @@ test('poster grids keep full-size posters and two columns on phones', async ({
   baseURL,
 }) => {
   await loginAsAdmin(page, baseURL);
+  let discoveryFixtureApplied = false;
+  await page.route('**/api/v1/discover/movies*', async (route) => {
+    discoveryFixtureApplied = true;
+    await route.fulfill({
+      json: {
+        page: 1,
+        totalPages: 1,
+        totalResults: 4,
+        results: [
+          {
+            id: 550,
+            mediaType: 'movie',
+            title: 'Fight Club',
+            releaseDate: '1999-10-15',
+            posterPath: null,
+          },
+          {
+            id: 551,
+            mediaType: 'movie',
+            title: 'The Matrix',
+            releaseDate: '1999-03-31',
+            posterPath: null,
+          },
+          {
+            id: 552,
+            mediaType: 'movie',
+            title: 'The Mummy',
+            releaseDate: '1999-04-16',
+            posterPath: null,
+          },
+          {
+            id: 553,
+            mediaType: 'movie',
+            title: 'Notting Hill',
+            releaseDate: '1999-05-21',
+            posterPath: null,
+          },
+        ],
+      },
+    });
+  });
   for (const width of [320, 360, 375, 390, 412]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/discover/movies');
     await page.waitForLoadState('networkidle');
+    expect(discoveryFixtureApplied).toBe(true);
     const metrics = await page.evaluate(() => {
       const items = [
         ...document.querySelectorAll('ul.cards-vertical > li'),
       ].map((li) => li.getBoundingClientRect());
+      if (items.length === 0) {
+        return { count: 0, columns: 0, posterWidth: 0 };
+      }
       const firstRowTop = Math.round(items[0].top);
       return {
+        count: items.length,
         columns: items.filter((r) => Math.round(r.top) === firstRowTop).length,
         posterWidth: items[0].width,
       };
     });
+    expect(metrics.count, `poster count at ${width}px`).toBeGreaterThanOrEqual(
+      2
+    );
     expect(metrics.columns, `columns at ${width}px`).toBeGreaterThanOrEqual(2);
     expect(metrics.posterWidth, `poster width at ${width}px`).toBeGreaterThan(
       120
