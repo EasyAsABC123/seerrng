@@ -542,8 +542,9 @@ test('multi-architecture publishers perform the real build once and verify the i
     'docs-links',
     'helm',
   ]);
-  assert.equal(ci.on.workflow_dispatch, null);
-  assert.deepEqual(ci.on.pull_request.branches, ['main']);
+  assert.deepEqual(ci.on.push.tags, ['**']);
+  assert.equal(Object.hasOwn(ci.on, 'workflow_dispatch'), true);
+  assert.equal(Object.hasOwn(ci.on, 'pull_request'), false);
   assert.equal(Object.hasOwn(ci.on, 'pull_request_target'), false);
   assert.equal(ci.jobs['preflight-deploy'], undefined);
   assert.equal(ci.jobs['deploy-main'], undefined);
@@ -712,6 +713,31 @@ test('multi-architecture publishers perform the real build once and verify the i
 
 test('release validation installs Node before running its alias-policy check', () => {
   const validation = readWorkflow('release.yml').jobs['validate-main-tag'];
+  const nodeSetupIndex = validation.steps.findIndex((step) =>
+    step.uses?.startsWith('actions/setup-node@')
+  );
+  const aliasPolicyIndex = validation.steps.findIndex(
+    (step) => step.name === 'Verify stable container alias policy'
+  );
+
+  assert.ok(nodeSetupIndex >= 0);
+  assert.equal(
+    validation.steps[nodeSetupIndex].uses,
+    'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1'
+  );
+  assert.equal(
+    validation.steps[nodeSetupIndex].with['node-version-file'],
+    'package.json'
+  );
+  assert.equal(
+    validation.steps[nodeSetupIndex].with['package-manager-cache'],
+    false
+  );
+  assert.ok(nodeSetupIndex < aliasPolicyIndex);
+});
+
+test('main CI installs Node before running its alias-policy check', () => {
+  const validation = readWorkflow('ci.yml').jobs['release-notes'];
   const nodeSetupIndex = validation.steps.findIndex((step) =>
     step.uses?.startsWith('actions/setup-node@')
   );
