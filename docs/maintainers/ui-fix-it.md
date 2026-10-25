@@ -100,9 +100,19 @@ passes, failures, skips, and platform exclusions.
 2. Run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` for
    the integrated source. Run `pnpm test:playwright` and Cypress for browser
    changes; use the hosted CI browser jobs for the full suite.
-3. Review effective CSS and rendered behavior for interface changes. Test live
-   providers only when the task calls for it, and distinguish mocks from actual
-   service round trips.
+3. For every interface change, render the baseline and candidate at matching
+   viewport sizes and equivalent states. Compare against the approved visual
+   reference when one exists. Inspect every changed page and relevant responsive
+   or conditional state, plus representative consumers for each shared owner in
+   scope. Check button geometry, alignment, spacing, typography, surfaces,
+   overflow, neighboring content, and affected interaction states. Iterate until
+   the rendered result follows the standard. Record the routes, states,
+   viewports, reference/baseline, candidate evidence, and any exclusions. If a
+   rendered comparison is blocked, record why and leave visual acceptance
+   unverified; do not report the UI change complete. This is the agent's
+   acceptance check, not a separate human sign-off. Test live providers only
+   when the task calls for it, and distinguish mocks from actual service
+   round trips.
 4. Diagnose failures and repair the cause. Do not remove an existing behavior
    check just to get a passing count. Keep unrelated baseline failures explicit.
 
@@ -114,4 +124,4 @@ passes, failures, skips, and platform exclusions.
 4. Keep coverage honest. Count and list remaining active utilities/owners by role and branch, including dynamic/untraced cases. Never report the page or site Tailwind-free while deferred dependencies or active scoped `@apply` remain.
 5. When a new rule is accepted, add the reusable subject/asset rule to the standard and detection/repair method here. Keep exact examples and chronology in the journal, not in normative matching logic.
    For every repair, consider whether it exposes a reusable detection or ownership gap. Improve the relevant method rather than adding a class/text-specific exception or copying an isolated example's values into a new rule. Existing accepted components illustrate the standard; their CSS owners and variables remain the contract, and tests should enforce relationships and behavior rather than example labels.
-6. Before marking complete, verify the requested scope is implemented, source readback matches the authorized target, all required automated and functional gates passed, and records are current. Report any visual inspection or live provider evidence that remains unavailable; do not turn it into a human approval gate when the maintainer explicitly directs the work to proceed.
+6. Before marking complete, verify the requested scope is implemented, source readback matches the authorized target, all required automated and functional gates passed, and records are current. For UI work, the rendered comparison in section 6.3 must be complete and recorded; if it is unavailable, report visual acceptance as unverified and do not claim the UI work is complete. Visual inspection is the agent's acceptance evidence, not an extra human approval gate when the maintainer directs the work to proceed.
