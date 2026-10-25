@@ -1,12 +1,10 @@
 #!/usr/bin/env node
-import { execFile } from 'node:child_process';
+import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
 
-const execFileAsync = promisify(execFile);
 const MAX_DELAY_MS = 5 * 60 * 1000;
 const MAX_RATE_LIMIT_RETRIES = 20;
 export const MAX_MIGRATION_JSON_BYTES = 64 * 1024 * 1024;
@@ -1108,15 +1106,6 @@ const postJson = async ({ baseUrl, apiKey, endpoint, body }) => {
   return readJsonResponse(response);
 };
 
-const sqliteAvailable = async () => {
-  try {
-    await execFileAsync('sqlite3', ['--version']);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 const dedupeTargetCache = async (job) => {
   if (!getCacheDedupeEnabled() || !job.configDir) {
     return { ok: false, skipped: true };
@@ -1130,10 +1119,6 @@ const dedupeTargetCache = async (job) => {
     return { ok: false, skipped: true };
   }
 
-  if (!(await sqliteAvailable())) {
-    return { ok: false, skipped: true };
-  }
-
   const sql = `
     DELETE FROM HttpResponse
     WHERE Id NOT IN (
@@ -1144,8 +1129,10 @@ const dedupeTargetCache = async (job) => {
     VACUUM;
   `;
 
+  let database;
   try {
-    await execFileAsync('sqlite3', [cacheDb, sql], { timeout: 30000 });
+    database = new Database(cacheDb, { fileMustExist: true, timeout: 30000 });
+    database.exec(sql);
     return { ok: true, cacheDb };
   } catch (error) {
     return {
@@ -1153,6 +1140,8 @@ const dedupeTargetCache = async (job) => {
       cacheDb,
       error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    database?.close();
   }
 };
 
@@ -2828,17 +2817,13 @@ const directInsertLocalBook = async ({ item, job, targetIds, tags }) => {
     COMMIT;
   `;
 
-  await execFileAsync('sqlite3', [dbPath, sql], { timeout: 30000 });
-
-  const { stdout } = await execFileAsync(
-    'sqlite3',
-    [
+  await sqliteExec({ dbPath, sql });
+  const id = Number(
+    await sqliteScalar({
       dbPath,
-      `select Id from Books where ForeignBookId = ${sqliteQuote(bookForeignId)} limit 1;`,
-    ],
-    { timeout: 30000 }
+      sql: `select Id from Books where ForeignBookId = ${sqliteQuote(bookForeignId)} limit 1;`,
+    })
   );
-  const id = Number(stdout.trim());
 
   if (!Number.isInteger(id) || id <= 0) {
     throw new Error(`Local DB import did not create book: ${title}`);
@@ -2854,12 +2839,32 @@ const directInsertLocalBook = async ({ item, job, targetIds, tags }) => {
   };
 };
 
-const sqliteScalar = async ({ dbPath, sql }) => {
-  const { stdout } = await execFileAsync('sqlite3', [dbPath, sql], {
+const sqliteExec = async ({ dbPath, sql }) => {
+  const database = new Database(dbPath, {
+    fileMustExist: true,
     timeout: 30000,
   });
+  try {
+    database.exec(sql);
+  } finally {
+    database.close();
+  }
+};
 
-  return normalizeText(stdout.trim().split('\n')[0]);
+const sqliteScalar = async ({ dbPath, sql }) => {
+  const database = new Database(dbPath, {
+    fileMustExist: true,
+    readonly: true,
+    timeout: 30000,
+  });
+  try {
+    const value = database.prepare(sql).pluck().get();
+    return value === null || value === undefined
+      ? ''
+      : normalizeText(String(value));
+  } finally {
+    database.close();
+  }
 };
 
 const localBookForeignIdForSource = (source) =>
@@ -3006,7 +3011,7 @@ const reconcileLocalBookInDb = async ({ job, applied, hardcover }) => {
     COMMIT;
   `;
 
-  await execFileAsync('sqlite3', [dbPath, sql], { timeout: 30000 });
+  await sqliteExec({ dbPath, sql });
 
   return {
     ok: true,

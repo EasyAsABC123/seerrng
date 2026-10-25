@@ -1437,10 +1437,10 @@ describe('bookshelf-hardcover-migration CLI pipeline', () => {
       path.join(migrationDir, 'applied-books.json')
     );
 
+    assert.equal(reconciliation[0].ok, true, JSON.stringify(reconciliation[0]));
     assert.equal(foreignBookId, 'hardcover-native-book');
     assert.equal(foreignAuthorId, 'hardcover-native-author');
     assert.equal(foreignEditionId, 'hardcover-native-edition');
-    assert.equal(reconciliation[0].ok, true);
     assert.equal(applied[0].localDbImport, false);
     assert.equal(applied[0].reconciledFromLocal, true);
   });
