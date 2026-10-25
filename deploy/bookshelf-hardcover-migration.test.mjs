@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -25,29 +26,23 @@ const writeJson = async (filePath, value) => {
 const readJson = async (filePath) =>
   JSON.parse(await fs.readFile(filePath, 'utf8'));
 
-const runSqlite = async (dbPath, sql) =>
-  new Promise((resolve, reject) => {
-    const child = spawn('sqlite3', [dbPath, sql], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
+const runSqlite = async (dbPath, sql) => {
+  const database = new Database(dbPath);
+  try {
+    database.exec(sql);
+  } finally {
+    database.close();
+  }
+};
 
-    child.stdout.on('data', (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on('error', reject);
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(stderr || `sqlite3 exited ${code}`));
-      }
-    });
-  });
+const readSqliteValue = async (dbPath, sql) => {
+  const database = new Database(dbPath, { readonly: true });
+  try {
+    return database.prepare(sql).pluck().get();
+  } finally {
+    database.close();
+  }
+};
 
 const runCli = async (args, env = {}) =>
   new Promise((resolve, reject) => {
@@ -1423,21 +1418,18 @@ describe('bookshelf-hardcover-migration CLI pipeline', () => {
       assert.equal(result.code, 0, result.stderr);
     });
 
-    const foreignBookId = (
-      await runSqlite(dbPath, 'select ForeignBookId from Books where Id = 10;')
-    ).trim();
-    const foreignAuthorId = (
-      await runSqlite(
-        dbPath,
-        'select ForeignAuthorId from AuthorMetadata where Id = 1;'
-      )
-    ).trim();
-    const foreignEditionId = (
-      await runSqlite(
-        dbPath,
-        'select ForeignEditionId from Editions where BookId = 10;'
-      )
-    ).trim();
+    const foreignBookId = await readSqliteValue(
+      dbPath,
+      'select ForeignBookId from Books where Id = 10;'
+    );
+    const foreignAuthorId = await readSqliteValue(
+      dbPath,
+      'select ForeignAuthorId from AuthorMetadata where Id = 1;'
+    );
+    const foreignEditionId = await readSqliteValue(
+      dbPath,
+      'select ForeignEditionId from Editions where BookId = 10;'
+    );
     const reconciliation = await readJson(
       path.join(migrationDir, 'local-reconciliation-report.json')
     );

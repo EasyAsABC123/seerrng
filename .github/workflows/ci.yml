@@ -79,8 +79,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Translation and tooling checks only inspect the current source tree.
+          # Tooling tests validate release tags as well as the current tree.
           fetch-depth: 1
+          fetch-tags: true
           persist-credentials: false
 
       - name: Set up Node.js
@@ -91,6 +92,9 @@ jobs:
 
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Set up Helm for chart security tests
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Install dependencies
         env:

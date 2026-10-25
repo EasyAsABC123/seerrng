@@ -297,7 +297,7 @@ describe('release asset construction', () => {
     await fs.mkdir(distribution);
     await fs.writeFile(
       path.join(fixture.executableDirectory, '7z'),
-      '#!/bin/sh\nprintf \'%s\\n\' "$*" >"$ARCHIVER_LOG"\nprevious_argument=\'\'\nfor argument in "$@"; do\n  archive_path="$previous_argument"\n  stage_path="$argument"\n  previous_argument="$argument"\ndone\nzip -qr "$archive_path" "$stage_path"\n',
+      '#!/bin/sh\nprintf \'%s\\n\' "$*" >"$ARCHIVER_LOG"\nprevious_argument=\'\'\nfor argument in "$@"; do\n  archive_path="$previous_argument"\n  stage_path="$argument"\n  previous_argument="$argument"\ndone\nif [ ! -d "$stage_path" ] || [ ! -f "$stage_path/start.cmd" ]; then exit 1; fi\nprintf \'%s\\n\' start.cmd >"$archive_path"\n',
       { mode: 0o755 }
     );
 
@@ -327,20 +327,7 @@ describe('release asset construction', () => {
     assert.match(archiverArguments, /-bso0/);
     assert.match(archiverArguments, /-bse2/);
     assert.equal((await fs.stat(archive)).mode & 0o777, 0o644);
-    const listing = await new Promise((resolve, reject) => {
-      const child = spawn('unzip', ['-l', archive]);
-      let output = '';
-      child.stdout.setEncoding('utf8').on('data', (chunk) => {
-        output += chunk;
-      });
-      child.on('error', reject);
-      child.on('close', (code) =>
-        code === 0
-          ? resolve(output)
-          : reject(new Error(`unzip exited with ${code}`))
-      );
-    });
-    assert.match(listing, /start\.cmd/);
+    assert.match(await fs.readFile(archive, 'utf8'), /start\.cmd/);
   });
 
   it('rejects Linux ARMv7 without a supported Node.js 24 runtime', async () => {

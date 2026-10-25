@@ -24,7 +24,7 @@ const ciWorkflow = yaml.load(
 );
 const steps = workflow.jobs['lint-test'].steps;
 
-test('chart validation runs generated documentation and all charts directly', () => {
+test('chart and tooling validation use the current CI triggers and tools', () => {
   const docs = steps.find(
     (step) => step.name === 'Verify generated chart documentation'
   );
@@ -34,9 +34,21 @@ test('chart validation runs generated documentation and all charts directly', ()
   assert.match(docs.run, /find charts .*Chart\.yaml/u);
   assert.match(lint.run, /ct lint --all --validate-maintainers=false/iu);
   assert.ok(Object.hasOwn(workflow.on, 'workflow_call'));
-  assert.deepEqual(ciWorkflow.on.push.branches, ['main']);
-  assert.deepEqual(ciWorkflow.on.pull_request.branches, ['main']);
+  assert.deepEqual(ciWorkflow.on.push.tags, ['**']);
+  assert.equal(ciWorkflow.on.push.branches, undefined);
+  assert.equal(Object.hasOwn(ciWorkflow.on, 'pull_request'), false);
+  assert.ok(Object.hasOwn(ciWorkflow.on, 'workflow_dispatch'));
   assert.equal(Object.hasOwn(ciWorkflow.on, 'pull_request_target'), false);
+  const toolingSteps = ciWorkflow.jobs['i18n-and-tooling'].steps;
+  const checkout = toolingSteps.find((step) => step.name === 'Checkout');
+  const helmSetup = toolingSteps.find(
+    (step) => step.name === 'Set up Helm for chart security tests'
+  );
+  assert.equal(checkout.with['fetch-tags'], true);
+  assert.equal(
+    helmSetup.uses,
+    'azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310'
+  );
   assert.equal(
     ciWorkflow.jobs.helm.uses,
     './.github/workflows/lint-helm-charts.yml'
