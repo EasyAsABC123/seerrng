@@ -15,4 +15,4 @@ jobs:
       github.event.pull_request.base.ref == 'main'
     permissions:
       contents: read
-    uses: snapetech-org/seerrng/.github/workflows/test-docs.yml@265d4696ebe870ee28ab67790ff0fd56f2ee6670
+    uses: snapetech-org/seerrng/.github/workflows/test-docs.yml@6a5738419f8d064dc4315fc6f873ccd19d16965e
