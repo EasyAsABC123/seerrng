@@ -1690,6 +1690,10 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           profileId: qualityProfile,
           languageProfileId: languageProfile,
           metadataLanguageId: entity.metadataLanguageId ?? undefined,
+          defaults: {
+            defaultMetadataLanguageId: sonarrSettings.defaultMetadataLanguageId,
+            defaultSeasonType: sonarrSettings.defaultSeasonType ?? 'official',
+          },
           seasonType: entity.sonarrSeasonType ?? undefined,
           rootFolderPath: rootFolder,
           title: series.name,

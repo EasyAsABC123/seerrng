@@ -1007,6 +1007,112 @@ describe('SonarrAPI exact episode requests', () => {
     });
   }
 
+  for (const testCase of [
+    {
+      name: 'server defaults',
+      version: 'v5',
+      options: {},
+      defaults: { defaultMetadataLanguageId: 2, defaultSeasonType: 'official' },
+      language: 2,
+      order: 'official',
+    },
+    {
+      name: 'request overrides before server defaults',
+      version: 'v5',
+      options: { metadataLanguageId: 4, seasonType: 'dvd' },
+      defaults: { defaultMetadataLanguageId: 2, defaultSeasonType: 'official' },
+      language: 4,
+      order: 'dvd',
+    },
+    {
+      name: 'automatic server order from lookup',
+      version: 'v5',
+      options: {},
+      defaults: {
+        defaultMetadataLanguageId: 2,
+        defaultSeasonType: 'automatic',
+      },
+      language: 2,
+      order: 'dvd',
+    },
+    {
+      name: 'v3 compatibility despite saved v5 defaults',
+      version: 'v3',
+      options: {},
+      defaults: { defaultMetadataLanguageId: 2, defaultSeasonType: 'official' },
+      language: undefined,
+      order: undefined,
+    },
+  ] as const) {
+    it(`creates a series using ${testCase.name}`, async () => {
+      const api = buildSonarr(testCase.version);
+      mock.method(api, 'getSeriesByTvdbId', async () =>
+        series({
+          id: undefined,
+          language: { id: 1, name: 'English' },
+          seasonType: 'dvd',
+          seasonTypes: [
+            { name: 'Aired Order', type: 'official', seasonNumbers: [1] },
+            { name: 'DVD Order', type: 'dvd', seasonNumbers: [1] },
+          ],
+        })
+      );
+      mock.method(api, 'getMetadataLanguages', async () => {
+        assert.equal(testCase.version, 'v5');
+        return [
+          { id: 1, name: 'English' },
+          { id: 2, name: 'French' },
+          { id: 4, name: 'Japanese' },
+        ];
+      });
+      const post = mock.method(getAxios(api), 'post', async () => ({
+        data: { id: 99, title: 'Test Series', tvdbId: 100 },
+      }));
+      await api.addSeries({
+        tvdbid: 100,
+        title: 'Test Series',
+        profileId: 1,
+        seasons: [1],
+        seasonFolder: true,
+        rootFolderPath: '/tv',
+        seriesType: 'standard',
+        defaults: testCase.defaults,
+        ...testCase.options,
+      });
+      const payload = post.mock.calls[0].arguments[1] as {
+        language?: { id: number };
+        seasonType?: string;
+      };
+      assert.equal(payload.language?.id, testCase.language);
+      assert.equal(payload.seasonType, testCase.order);
+    });
+  }
+
+  it('does not change existing series metadata to match server defaults', async () => {
+    const api = buildSonarr('v5');
+    mock.method(api, 'getSeriesByTvdbId', async () =>
+      series({ language: { id: 4, name: 'Japanese' }, seasonType: 'dvd' })
+    );
+    mock.method(api, 'getMetadataLanguages', async () => {
+      throw new Error('Existing metadata must be preserved');
+    });
+    mock.method(getAxios(api), 'put', async () => {
+      throw new Error('Existing metadata must be preserved');
+    });
+    const result = await api.addSeries({
+      tvdbid: 100,
+      title: 'Test Series',
+      profileId: 1,
+      seasons: [],
+      seasonFolder: true,
+      rootFolderPath: '/tv',
+      seriesType: 'standard',
+      defaults: { defaultMetadataLanguageId: 2, defaultSeasonType: 'official' },
+    });
+    assert.equal(result.language?.id, 4);
+    assert.equal(result.seasonType, 'dvd');
+  });
+
   it('adds v5 metadata language and season order to a new series', async () => {
     const api = buildSonarr('v5');
     mock.method(api, 'getSeriesByTvdbId', async () =>

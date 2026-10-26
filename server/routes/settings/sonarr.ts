@@ -166,6 +166,8 @@ sonarrRoutes.post<
       const folders = await sonarr.getRootFolders();
       const languageProfiles =
         sonarrMajorVersion <= 3 ? await sonarr.getLanguageProfiles() : null;
+      const metadataLanguages =
+        sonarrMajorVersion >= 5 ? await sonarr.getMetadataLanguages() : null;
       const tags = await sonarr.getTags();
 
       return res.status(200).json({
@@ -175,6 +177,7 @@ sonarrRoutes.post<
           path: folder.path,
         })),
         languageProfiles,
+        metadataLanguages,
         tags,
         urlBase,
       });

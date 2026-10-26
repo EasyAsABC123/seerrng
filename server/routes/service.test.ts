@@ -1262,8 +1262,66 @@ describe('Sonarr settings routes', () => {
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.urlBase, '/sonarr');
+    assert.equal(res.body.metadataLanguages, null);
     assert.deepStrictEqual(res.body.profiles, [{ id: 1, name: 'HD-1080p' }]);
     assert.deepStrictEqual(res.body.rootFolders, [{ id: 3, path: '/tv' }]);
+  });
+
+  it('loads v5 metadata languages when testing a Sonarr connection', async () => {
+    mockSonarrApiVersion('v5');
+    mock.method(SonarrAPI.prototype, 'getSystemStatus', async () => ({
+      appName: 'Sonarr',
+      version: '5.0.0.2800',
+      urlBase: '',
+    }));
+    mock.method(SonarrAPI.prototype, 'getProfiles', async () => []);
+    mock.method(SonarrAPI.prototype, 'getRootFolders', async () => []);
+    mock.method(SonarrAPI.prototype, 'getMetadataLanguages', async () => [
+      { id: 1, name: 'English' },
+      { id: 2, name: 'French' },
+    ]);
+    mockServarrTagsEndpoint([]);
+    const response = await request(createOpenApiApp())
+      .post('/api/v1/settings/sonarr/test')
+      .send({
+        hostname: 'sonarr.local',
+        port: 8989,
+        apiKey: 'test-key',
+        useSsl: false,
+      });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.metadataLanguages, [
+      { id: 1, name: 'English' },
+      { id: 2, name: 'French' },
+    ]);
+  });
+
+  it('round-trips server metadata defaults through create and update', async () => {
+    const created = await request(app)
+      .post('/settings/sonarr')
+      .send(
+        makeSonarr({
+          defaultMetadataLanguageId: 2,
+          defaultSeasonType: 'automatic',
+        })
+      );
+    assert.equal(created.status, 201);
+    const id = created.body.id;
+    const read = await request(app).get('/settings/sonarr');
+    assert.equal(
+      read.body.find((server: SonarrSettings) => server.id === id)
+        .defaultMetadataLanguageId,
+      2
+    );
+    const updated = await request(app)
+      .put(`/settings/sonarr/${id}`)
+      .send({
+        ...makeSonarr({ defaultSeasonType: 'official' }),
+        defaultMetadataLanguageId: null,
+      });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.defaultMetadataLanguageId, undefined);
+    assert.equal(updated.body.defaultSeasonType, 'official');
   });
 
   it('uses the stored API key when testing an existing Sonarr', async () => {

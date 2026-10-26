@@ -370,6 +370,7 @@ export interface DVRTestResponse {
 export type RadarrTestResponse = DVRTestResponse;
 
 export type SonarrTestResponse = DVRTestResponse & {
+  metadataLanguages?: { id: number; name: string }[] | null;
   languageProfiles:
     | {
         id: number;

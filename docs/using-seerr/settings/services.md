@@ -111,6 +111,24 @@ selected anime profile again and falls back to that same Sonarr service's
 default profile if the anime profile is missing or cannot be verified. The
 Services list shows the configured anime profile beneath the standard profile.
 
+#### Default Metadata Language and Season Order (Sonarr v5)
+
+After testing a Sonarr v5 connection, choose **Default Metadata Language** and
+**Default Season Order** for newly added series. **Automatic (from Sonarr)**
+uses the lookup metadata language, falling back to original language and then
+English when necessary. You can instead select a specific metadata language;
+this does not select an audio language.
+
+The season order defaults to **Aired Order**. **Automatic (from Sonarr)** uses
+the lookup's selected order, falling back to Aired Order. Alternate orders such
+as DVD or absolute order remain available per request when the series supports
+them. A request's explicit language or order takes priority over these server
+defaults. Requests for series already in Sonarr preserve their language and
+order unless an explicit request override changes them.
+
+These controls are hidden for Sonarr v3/v4, which retain their existing language
+profile behavior. Existing settings need no migration.
+
 #### Monitor New Seasons (Sonarr)
 
 Choose how Sonarr should monitor future seasons when SeerrNG adds a series:
