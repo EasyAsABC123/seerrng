@@ -904,6 +904,9 @@ describe('SonarrAPI exact episode requests', () => {
     mock.method(api, 'getSeriesByTvdbId', async () =>
       series({ id: undefined, languageProfileId: 17 })
     );
+    mock.method(api, 'getMetadataLanguages', async () => [
+      { id: 1, name: 'English' },
+    ]);
     const post = mock.method(getAxios(api), 'post', async () => ({
       data: { id: 99, title: 'Test Series', tvdbId: 100 },
     }));
@@ -924,15 +927,95 @@ describe('SonarrAPI exact episode requests', () => {
       unknown
     >;
     assert.ok(!('languageProfileId' in createPayload));
+    assert.deepEqual(createPayload.language, { id: 1, name: 'English' });
+    assert.equal(createPayload.seasonType, 'official');
   });
+
+  for (const testCase of [
+    {
+      name: 'lookup language and aired order when the selected order is absent',
+      lookup: {
+        language: { id: 1, name: 'English' },
+        originalLanguage: { id: 4, name: 'Japanese' },
+      },
+      options: {},
+      expectedLanguage: { id: 1, name: 'English' },
+      expectedSeasonType: 'official',
+    },
+    {
+      name: 'original language when lookup has no selected language',
+      lookup: { originalLanguage: { id: 4, name: 'Japanese' } },
+      options: {},
+      expectedLanguage: { id: 4, name: 'Japanese' },
+      expectedSeasonType: 'official',
+    },
+    {
+      name: 'aired order for the default season-order option',
+      lookup: { language: { id: 1, name: 'English' } },
+      options: { seasonType: 'standard' },
+      expectedLanguage: { id: 1, name: 'English' },
+      expectedSeasonType: 'official',
+    },
+    {
+      name: 'the selected lookup order when no request order is chosen',
+      lookup: {
+        language: { id: 1, name: 'English' },
+        seasonType: 'dvd',
+      },
+      options: {},
+      expectedLanguage: { id: 1, name: 'English' },
+      expectedSeasonType: 'dvd',
+    },
+  ]) {
+    it(`adds v5 series with ${testCase.name}`, async () => {
+      const api = buildSonarr('v5');
+      mock.method(api, 'getSeriesByTvdbId', async () =>
+        series({
+          id: undefined,
+          seasonTypes: [
+            { name: 'Aired Order', type: 'official', seasonNumbers: [1] },
+            { name: 'DVD Order', type: 'dvd', seasonNumbers: [1] },
+          ],
+          ...testCase.lookup,
+        })
+      );
+      mock.method(api, 'getMetadataLanguages', async () => {
+        throw new Error('Lookup already supplied a metadata language');
+      });
+      const post = mock.method(getAxios(api), 'post', async () => ({
+        data: { id: 99, title: 'Test Series', tvdbId: 100 },
+      }));
+
+      await api.addSeries({
+        tvdbid: 100,
+        title: 'Test Series',
+        profileId: 1,
+        seasons: [1],
+        seasonFolder: true,
+        rootFolderPath: '/tv',
+        seriesType: 'standard',
+        ...testCase.options,
+      });
+
+      const createPayload = post.mock.calls[0].arguments[1] as Record<
+        string,
+        unknown
+      >;
+      assert.deepEqual(createPayload.language, testCase.expectedLanguage);
+      assert.equal(createPayload.seasonType, testCase.expectedSeasonType);
+      assert.ok(!('languageProfileId' in createPayload));
+    });
+  }
 
   it('adds v5 metadata language and season order to a new series', async () => {
     const api = buildSonarr('v5');
     mock.method(api, 'getSeriesByTvdbId', async () =>
       series({
         id: undefined,
+        language: { id: 1, name: 'English' },
+        seasonType: 'official',
         seasonTypes: [
-          { name: 'Standard', type: 'standard', seasonNumbers: [1] },
+          { name: 'Aired Order', type: 'official', seasonNumbers: [1] },
           { name: 'Absolute', type: 'absolute', seasonNumbers: [1] },
         ],
       })
@@ -1059,6 +1142,8 @@ describe('SonarrAPI exact episode requests', () => {
       unknown
     >;
     assert.equal(createPayload.languageProfileId, 17);
+    assert.ok(!('language' in createPayload));
+    assert.ok(!('seasonType' in createPayload));
   });
 
   it('monitors and searches only the selected episodes', async () => {

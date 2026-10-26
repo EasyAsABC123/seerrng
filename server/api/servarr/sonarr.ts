@@ -1214,11 +1214,18 @@ class SonarrAPI extends ServarrBase<{
         createSeriesPayload.languageProfileId = options.languageProfileId;
       }
       if (apiVersion === 'v5') {
-        if (metadataLanguage) createSeriesPayload.language = metadataLanguage;
+        // V5 requires both fields even when no request override is selected.
+        // Lookup can return a language and available orders without a seasonType.
+        createSeriesPayload.language =
+          metadataLanguage ??
+          series.language ??
+          series.originalLanguage ??
+          (await this.getMetadataLanguages()).find(
+            (language) => language.id === 1
+          );
         const seasonType = options.seasonType ?? series.seasonType;
-        if (seasonType) {
-          createSeriesPayload.seasonType = seasonType;
-        }
+        createSeriesPayload.seasonType =
+          !seasonType || seasonType === 'standard' ? 'official' : seasonType;
       }
 
       const createdSeriesResponse = await this.request<SonarrSeries>(
