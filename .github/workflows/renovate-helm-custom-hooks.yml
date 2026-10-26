@@ -1,3 +1,4 @@
+# ng-runner-policy: private-jit-only-v1
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Renovate Helm Hooks
@@ -13,7 +14,7 @@ concurrency:
 jobs:
   render:
     name: Render Renovate Chart Changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-render"]}}', github.run_id)) }}
     permissions:
       contents: read
     if: >-
@@ -247,7 +248,7 @@ jobs:
     name: Publish Renovate Chart Changes
     needs: render
     if: needs.render.outputs.has_changes == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-publish"]}}', github.run_id)) }}
     permissions:
       contents: read
     steps:

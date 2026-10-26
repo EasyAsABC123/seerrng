@@ -1,3 +1,4 @@
+# ng-runner-policy: private-jit-only-v1
 name: Publish Launchpad PPA
 
 on:
@@ -22,7 +23,7 @@ concurrency:
 jobs:
   publish-ppa:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-publish-ppa"]}}', github.run_id, strategy.job-index)) }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
