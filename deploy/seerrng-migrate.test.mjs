@@ -415,13 +415,13 @@ const seerrSchema = ({
   );
   CREATE TABLE watchlist (
     id INTEGER PRIMARY KEY,
-    mediaType TEXT NOT NULL CHECK (mediaType IN ('movie', 'tv')),
+    mediaType TEXT NOT NULL${ngExtras ? '' : " CHECK (mediaType IN ('movie', 'tv'))"},
     mediaId INTEGER NOT NULL REFERENCES media(id),
     requestedById INTEGER NOT NULL REFERENCES user(id)
   );
   CREATE TABLE blocklist (
     id INTEGER PRIMARY KEY,
-    mediaType TEXT NOT NULL CHECK (mediaType IN ('movie', 'tv')),
+    mediaType TEXT NOT NULL${ngExtras ? '' : " CHECK (mediaType IN ('movie', 'tv'))"},
     mediaId INTEGER NOT NULL REFERENCES media(id)
   );
   CREATE TABLE user_settings (
@@ -1039,7 +1039,8 @@ describe('Seerr to SeerrNG', () => {
       path.join(seerrNgDir, 'db', 'db.sqlite3')
     );
     trialDatabase.exec(`
-      INSERT INTO media VALUES (3, 'book', 300, 'Trial book', 'bookshelf');
+      INSERT INTO media (id, mediaType, tmdbId, title, ngOnlyIdentity)
+        VALUES (3, 'book', 300, 'Trial book', 'bookshelf');
       INSERT INTO media_request VALUES (3, 3, 1, 'book', 2, NULL, NULL);
       INSERT INTO season_request VALUES (2, 3, 1, 2);
       INSERT INTO watchlist VALUES (2, 'book', 3, 1);
