@@ -6,6 +6,8 @@ sidebar_position: 4
 
 # Which data does Seerr save and where?
 
+For moving between Seerr and SeerrNG, including a reduced SeerrNG-to-Seerr export, see [Moving between Seerr and SeerrNG](./migrating-between-seerr-and-seerrng.md).
+
 ## Settings  
 
 All configurations from the **Settings** panel in the Seerr web UI are saved, including integrations with Radarr, Sonarr, Jellyfin, Plex, and notification settings.  

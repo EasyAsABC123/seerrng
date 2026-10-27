@@ -27,6 +27,13 @@ The `RemapOverseerrDeletedStatus` migration files are imported from upstream
 Seerr to preserve compatibility with databases created there. Their migration
 names and source issue links are retained intentionally.
 
+## Seerr and SeerrNG migration utility
+
+The bidirectional migration utility, its tests, and its operating guide are
+SeerrNG-specific work attributed to snapetech and SeerrNG contributors. Its
+compatibility rules are based on the public Seerr settings and database shape;
+the utility itself is new SeerrNG work.
+
 ## Foreseerr provider integrations
 
 The Trakt, AniList, Simkl and MDBList clients and Trakt list pagination helpers

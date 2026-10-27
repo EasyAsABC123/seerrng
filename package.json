@@ -24,6 +24,7 @@
     "lint:next": "oxlint --config .oxlintrc.next.json server src",
     "release-notes:preview": "node scripts/preview-release-notes.mjs",
     "backissue:service": "node scripts/backissue-service.mjs",
+    "seerr:migrate": "node deploy/seerrng-migrate.mjs",
     "bookshelf:move": "node scripts/bookshelf-media-move.mjs",
     "setup:assistant": "node scripts/setup-assistant.mjs",
     "attribution:check": "node bin/run-bash.mjs scripts/check-attribution.sh",

@@ -54,6 +54,7 @@ const portableTests = [
 const posixOnlyTests = [
   'deploy/bookshelf-hardcover-migration.test.mjs',
   'deploy/bookshelf-migration-lab.test.mjs',
+  'deploy/seerrng-migrate.test.mjs',
   'deploy/install-bookshelf-backend.test.mjs',
   'deploy/migrate-bookshelf-to-chaptarrng.test.mjs',
   'packaging/scripts/aur-scripts.test.mjs',
