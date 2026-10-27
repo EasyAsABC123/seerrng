@@ -203,7 +203,8 @@ const createConfig = async (root, name, settings, schema, seed) => {
 };
 
 const postgresUrlForSchema = (schema) => {
-  if (!postgresTestUrl) throw new Error('PostgreSQL test URL is not configured');
+  if (!postgresTestUrl)
+    throw new Error('PostgreSQL test URL is not configured');
   const url = new URL(postgresTestUrl);
   url.searchParams.set('options', `-c search_path=${schema}`);
   return url.toString();
@@ -225,7 +226,10 @@ const postgresSchema = (schema) =>
     )
     .replaceAll(/CREATE TABLE user \(/gu, 'CREATE TABLE "user" (')
     .replaceAll(/REFERENCES user\(id\)/gu, 'REFERENCES "user"(id)')
-    .replaceAll(/\b[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*\b/gu, (name) => `"${name}"`);
+    .replaceAll(
+      /\b[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*\b/gu,
+      (name) => `"${name}"`
+    );
 
 const createPostgresConfig = async (root, name, settings, schema, seed) => {
   const directory = path.join(root, name);
@@ -1422,7 +1426,10 @@ describe('PostgreSQL and mixed-database migration integration', () => {
           })
       );
 
-      assert.equal(result.database.integrity, 'SQLite foreign_key_check passed');
+      assert.equal(
+        result.database.integrity,
+        'SQLite foreign_key_check passed'
+      );
       assert.equal(
         readDatabase(targetDir, 'SELECT COUNT(*) AS count FROM user')[0].count,
         1
