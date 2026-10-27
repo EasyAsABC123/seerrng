@@ -400,6 +400,8 @@ export interface SonarrSettings
   activeAnimeDirectory?: string;
   activeAnimeLanguageProfileId?: number;
   activeLanguageProfileId?: number;
+  defaultMetadataLanguageId?: number;
+  defaultSeasonType?: 'automatic' | 'official';
   animeTags?: number[];
   enableSeasonFolders: boolean;
   monitorNewItems: 'all' | 'none' | 'latest';

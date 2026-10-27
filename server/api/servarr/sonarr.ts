@@ -1,4 +1,5 @@
 import type { SeasonEpisodeSelection } from '@server/interfaces/api/seasonInterfaces';
+import type { SonarrSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import {
   fetchSafeRemoteImage,
@@ -483,6 +484,11 @@ export interface AddSeriesOptions {
   languageProfileId?: number;
   metadataLanguageId?: number;
   seasonType?: string;
+  /** Applied only when creating a series; request overrides take priority. */
+  defaults?: Pick<
+    SonarrSettings,
+    'defaultMetadataLanguageId' | 'defaultSeasonType'
+  >;
   seasons: number[];
   episodeSelections?: SeasonEpisodeSelection[];
   seasonFolder: boolean;
@@ -1029,13 +1035,18 @@ class SonarrAPI extends ServarrBase<{
         throw new Error('The requested Sonarr season order is not available.');
       }
 
+      const metadataLanguageId =
+        options.metadataLanguageId ??
+        (apiVersion === 'v5' && !series.id
+          ? options.defaults?.defaultMetadataLanguageId
+          : undefined);
       const metadataLanguage =
-        apiVersion === 'v5' && options.metadataLanguageId !== undefined
+        apiVersion === 'v5' && metadataLanguageId !== undefined
           ? (await this.getMetadataLanguages()).find(
-              (language) => language.id === options.metadataLanguageId
+              (language) => language.id === metadataLanguageId
             )
           : undefined;
-      if (options.metadataLanguageId !== undefined && !metadataLanguage) {
+      if (metadataLanguageId !== undefined && !metadataLanguage) {
         throw new Error(
           'The requested Sonarr metadata language is not available.'
         );
@@ -1214,11 +1225,22 @@ class SonarrAPI extends ServarrBase<{
         createSeriesPayload.languageProfileId = options.languageProfileId;
       }
       if (apiVersion === 'v5') {
-        if (metadataLanguage) createSeriesPayload.language = metadataLanguage;
-        const seasonType = options.seasonType ?? series.seasonType;
-        if (seasonType) {
-          createSeriesPayload.seasonType = seasonType;
-        }
+        // V5 requires both fields even when no request override is selected.
+        // Lookup can return a language and available orders without a seasonType.
+        createSeriesPayload.language =
+          metadataLanguage ??
+          series.language ??
+          series.originalLanguage ??
+          (await this.getMetadataLanguages()).find(
+            (language) => language.id === 1
+          );
+        const seasonType =
+          options.seasonType ??
+          (options.defaults?.defaultSeasonType === 'official'
+            ? 'official'
+            : series.seasonType);
+        createSeriesPayload.seasonType =
+          !seasonType || seasonType === 'standard' ? 'official' : seasonType;
       }
 
       const createdSeriesResponse = await this.request<SonarrSeries>(

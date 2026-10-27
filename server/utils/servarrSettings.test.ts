@@ -69,6 +69,45 @@ describe('preserveServarrConnectionSecret', () => {
 });
 
 describe('Servarr settings validation', () => {
+  it('persists and clears Sonarr metadata defaults, preserving omitted fields', () => {
+    const body = {
+      ...baseSettings,
+      seriesType: 'standard',
+      animeSeriesType: 'anime',
+      enableSeasonFolders: true,
+      monitorNewItems: 'all',
+    };
+    const legacy = parseSonarrSettings(body);
+    assert.ok('value' in legacy);
+    assert.equal(legacy.value.defaultSeasonType, 'official');
+    assert.equal(legacy.value.defaultMetadataLanguageId, undefined);
+    const saved = parseSonarrSettings({
+      ...body,
+      defaultMetadataLanguageId: 2,
+      defaultSeasonType: 'automatic',
+    });
+    assert.ok('value' in saved);
+    assert.equal(saved.value.defaultMetadataLanguageId, 2);
+    assert.equal(saved.value.defaultSeasonType, 'automatic');
+    const preserved = parseSonarrSettings(body, saved.value);
+    assert.ok('value' in preserved);
+    assert.equal(preserved.value.defaultMetadataLanguageId, 2);
+    assert.equal(preserved.value.defaultSeasonType, 'automatic');
+    const cleared = parseSonarrSettings(
+      { ...body, defaultMetadataLanguageId: null },
+      saved.value
+    );
+    assert.ok('value' in cleared);
+    assert.equal(cleared.value.defaultMetadataLanguageId, undefined);
+    for (const invalid of [
+      { defaultMetadataLanguageId: -1 },
+      { defaultMetadataLanguageId: true },
+      { defaultSeasonType: 'dvd' },
+    ]) {
+      assert.ok('error' in parseSonarrSettings({ ...body, ...invalid }));
+    }
+  });
+
   it('accepts the latest-season Sonarr monitoring mode', () => {
     const result = parseSonarrSettings({
       ...baseSettings,

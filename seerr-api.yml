@@ -3714,6 +3714,17 @@ components:
         activeLanguageProfileId:
           type: number
           example: 1
+        defaultMetadataLanguageId:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000000
+          description: Sonarr v5 metadata language for new series; null uses Sonarr lookup metadata. Request overrides take priority.
+        defaultSeasonType:
+          type: string
+          enum: [automatic, official]
+          default: official
+          description: Default order for new Sonarr v5 series. Alternate orders can be selected per request. Existing series keep their order.
         activeAnimeProfileId:
           type: number
           nullable: true
@@ -9405,6 +9416,17 @@ paths:
               schema:
                 type: object
                 properties:
+                  metadataLanguages:
+                    type: array
+                    nullable: true
+                    description: Available metadata languages on Sonarr v5; null on older versions.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
                   profiles:
                     type: array
                     items:

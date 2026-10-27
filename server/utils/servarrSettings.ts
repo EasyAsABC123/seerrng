@@ -496,6 +496,18 @@ export const parseSonarrSettings = (
     'activeLanguageProfileId'
   );
   if ('error' in activeLanguageProfileId) return activeLanguageProfileId;
+  const defaultMetadataLanguageId = parseOptionalServiceId(
+    settings.defaultMetadataLanguageId === undefined
+      ? current?.defaultMetadataLanguageId
+      : settings.defaultMetadataLanguageId,
+    'defaultMetadataLanguageId'
+  );
+  if ('error' in defaultMetadataLanguageId) return defaultMetadataLanguageId;
+  const defaultSeasonType =
+    settings.defaultSeasonType ?? current?.defaultSeasonType ?? 'official';
+  if (defaultSeasonType !== 'automatic' && defaultSeasonType !== 'official') {
+    return { error: 'defaultSeasonType is invalid.' };
+  }
   const enableSeasonFolders = parseServiceBoolean(
     settings.enableSeasonFolders,
     'enableSeasonFolders'
@@ -524,6 +536,8 @@ export const parseSonarrSettings = (
       activeAnimeDirectory: activeAnimeDirectory.value,
       activeAnimeLanguageProfileId: activeAnimeLanguageProfileId.value,
       activeLanguageProfileId: activeLanguageProfileId.value,
+      defaultMetadataLanguageId: defaultMetadataLanguageId.value,
+      defaultSeasonType,
       animeTags: animeTags.value,
       enableSeasonFolders: enableSeasonFolders.value,
       monitorNewItems,

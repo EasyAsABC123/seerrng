@@ -54,6 +54,15 @@ const messages = defineMessages('components.Settings.SonarrModal', {
   baseUrl: 'URL Base',
   qualityprofile: 'Quality Profile',
   languageprofile: 'Language Profile',
+  defaultMetadataLanguage: 'Default Metadata Language',
+  automaticMetadataLanguage: 'Automatic (from Sonarr)',
+  defaultMetadataLanguageHelp:
+    'Used for new series unless the request selects another language. Automatic uses Sonarr metadata. Existing series keep their language.',
+  defaultSeasonOrder: 'Default Season Order',
+  automaticSeasonOrder: 'Automatic (from Sonarr)',
+  airedSeasonOrder: 'Aired Order',
+  defaultSeasonOrderHelp:
+    'Used for new series. Alternate orders can be selected per request when available. Existing series keep their order.',
   rootfolder: 'Root Folder',
   seriesType: 'Series Type',
   standardSeriesType: 'Standard',
@@ -267,6 +276,9 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
           baseUrl: sonarr?.baseUrl,
           activeProfileId: sonarr?.activeProfileId,
           activeLanguageProfileId: sonarr?.activeLanguageProfileId,
+          defaultMetadataLanguageId:
+            sonarr?.defaultMetadataLanguageId?.toString() ?? '',
+          defaultSeasonType: sonarr?.defaultSeasonType ?? 'official',
           rootFolder: sonarr?.activeDirectory,
           seriesType: sonarr?.seriesType ?? 'standard',
           animeSeriesType: sonarr?.animeSeriesType ?? 'anime',
@@ -320,6 +332,11 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
               activeLanguageProfileId: values.activeLanguageProfileId
                 ? Number(values.activeLanguageProfileId)
                 : undefined,
+              defaultMetadataLanguageId:
+                values.defaultMetadataLanguageId === ''
+                  ? null
+                  : Number(values.defaultMetadataLanguageId),
+              defaultSeasonType: values.defaultSeasonType,
               activeProfileName: profileName,
               activeDirectory: values.rootFolder,
               seriesType: values.seriesType,
@@ -732,6 +749,79 @@ const SonarrModal = ({ onClose, sonarr, onSave }: SonarrModalProps) => {
                       )}
                   </div>
                 </div>
+                {testResponse.metadataLanguages && (
+                  <>
+                    <div className="form-row">
+                      <label
+                        htmlFor="defaultMetadataLanguageId"
+                        className="text-label"
+                      >
+                        {intl.formatMessage(messages.defaultMetadataLanguage)}
+                      </label>
+                      <div className="form-input-area">
+                        <div className="form-input-field">
+                          <Field
+                            as="select"
+                            id="defaultMetadataLanguageId"
+                            name="defaultMetadataLanguageId"
+                            disabled={!isValidated || isTesting}
+                            aria-describedby="defaultMetadataLanguageHelp"
+                          >
+                            <option value="">
+                              {intl.formatMessage(
+                                messages.automaticMetadataLanguage
+                              )}
+                            </option>
+                            {testResponse.metadataLanguages.map((language) => (
+                              <option key={language.id} value={language.id}>
+                                {language.name}
+                              </option>
+                            ))}
+                          </Field>
+                        </div>
+                        <p
+                          id="defaultMetadataLanguageHelp"
+                          className="settings-form-row-description"
+                        >
+                          {intl.formatMessage(
+                            messages.defaultMetadataLanguageHelp
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="form-row">
+                      <label htmlFor="defaultSeasonType" className="text-label">
+                        {intl.formatMessage(messages.defaultSeasonOrder)}
+                      </label>
+                      <div className="form-input-area">
+                        <div className="form-input-field">
+                          <Field
+                            as="select"
+                            id="defaultSeasonType"
+                            name="defaultSeasonType"
+                            disabled={!isValidated || isTesting}
+                            aria-describedby="defaultSeasonOrderHelp"
+                          >
+                            <option value="official">
+                              {intl.formatMessage(messages.airedSeasonOrder)}
+                            </option>
+                            <option value="automatic">
+                              {intl.formatMessage(
+                                messages.automaticSeasonOrder
+                              )}
+                            </option>
+                          </Field>
+                        </div>
+                        <p
+                          id="defaultSeasonOrderHelp"
+                          className="settings-form-row-description"
+                        >
+                          {intl.formatMessage(messages.defaultSeasonOrderHelp)}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
                 {testResponse.languageProfiles && (
                   <div className="form-row">
                     <label
