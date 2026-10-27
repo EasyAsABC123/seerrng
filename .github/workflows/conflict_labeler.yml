@@ -4,8 +4,20 @@
 name: Merge Conflict Labeler
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Action to run
+        type: choice
+        required: true
+        options:
+          - merge-conflict-labeler
+      runner_pool:
+        description: Private ephemeral JIT runner pool
+        type: choice
+        required: true
+        options:
+          - private
 
 permissions:
   contents: read
@@ -17,7 +29,7 @@ concurrency:
 jobs:
   label:
     name: Labeling
-    if: github.actor != 'renovate[bot]'
+    if: inputs.action == 'merge-conflict-labeler' && inputs.runner_pool == 'private'
     runs-on: ${{ fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) }}
     timeout-minutes: 10
     permissions:
