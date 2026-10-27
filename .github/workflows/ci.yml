@@ -86,8 +86,6 @@ jobs:
     name: i18n and tooling tests
     timeout-minutes: 45
     runs-on: ${{ fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}"]}}', github.run_id)) }}
-    env:
-      SEERR_MIGRATION_TEST_POSTGRES_URL: postgresql://postgres:ci-only-migration@127.0.0.1:${{ job.services.postgres.ports[5432] }}/seerrng_migration_test
     services:
       postgres:
         image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -133,6 +131,8 @@ jobs:
         run: pnpm i18n:check
 
       - name: Check tooling tests
+        env:
+          SEERR_MIGRATION_TEST_POSTGRES_URL: postgresql://postgres:ci-only-migration@127.0.0.1:${{ job.services.postgres.ports[5432] }}/seerrng_migration_test
         run: pnpm test:tooling
 
   test:
