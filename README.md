@@ -27,6 +27,7 @@ For local MCP access, see the [SnapeTech MCP integration guide](./docs/integrati
 - [Project Status](#project-status)
 - [Documentation and feature guides](#documentation)
   - [SeerrNG Android app](./docs/getting-started/android-app.md)
+  - [Move between Seerr and SeerrNG](./docs/using-seerr/migrating-between-seerr-and-seerrng.md)
   - [Choose available media categories](./docs/using-seerr/settings/media-categories.md)
   - [Software requests: ROMs and PC games](./docs/using-seerr/software-acquisition.md)
   - [Request Status and Download copy](./docs/using-seerr/request-status.md)
@@ -186,6 +187,7 @@ SeerrNG documentation is maintained in the [docs folder](https://github.com/snap
 
 - [Install SeerrNG](./docs/getting-started/index.mdx)
 - [Install on Unraid](./docs/getting-started/third-parties/unraid.mdx)
+- [Move between Seerr and SeerrNG](./docs/using-seerr/migrating-between-seerr-and-seerrng.md) — preview and carry compatible settings, users, and database records in either direction.
 - [Find books, authors, and series](./docs/using-seerr/books-and-series.md)
 - [Configure OIDC sign-in, account linking, and provider recovery](./docs/using-seerr/settings/users/oidc.md)
 - [Cross-project OIDC implementation contract](./docs/maintainers/oidc-cross-project-template.md) · [provider catalog and official setup links](./docs/maintainers/oidc-provider-catalog.md)

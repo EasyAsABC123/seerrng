@@ -209,6 +209,9 @@ const readDatabase = (directory, sql, ...parameters) => {
   }
 };
 
+const readDatabaseFile = (directory) =>
+  fs.readFile(path.join(directory, 'db', 'db.sqlite3'));
+
 const readSettings = async (directory) =>
   JSON.parse(await fs.readFile(path.join(directory, 'settings.json'), 'utf8'));
 
@@ -348,7 +351,9 @@ const seedNgSource = (database) => {
       (1, 1, 1, 'movie', 2, '[{"serviceType":"radarr","format":"standard"}]', NULL),
       (2, 2, 2, 'tv', 1, '[{"serviceType":"sonarr","format":"standard"}]', NULL),
       (3, 3, 1, 'book', 2, '[{"serviceType":"readarr","format":"ebook"}]', NULL);
-    INSERT INTO season_request VALUES (1, 2, 1, 2);
+    INSERT INTO season_request VALUES
+      (1, 2, 1, 2),
+      (2, 3, 1, 2);
     INSERT INTO watchlist VALUES
       (1, 'movie', 1, 1),
       (2, 'book', 3, 1);
@@ -480,10 +485,12 @@ describe('SeerrNG to Seerr', () => {
       path.join(sourceDir, 'settings.json'),
       'utf8'
     );
+    const beforeSourceDatabase = await readDatabaseFile(sourceDir);
     const beforeTargetSettings = await fs.readFile(
       path.join(targetDir, 'settings.json'),
       'utf8'
     );
+    const beforeTargetDatabase = await readDatabaseFile(targetDir);
 
     const plan = await migrate(
       migrationOptions('seerrng-to-seerr', sourceDir, targetDir)
@@ -507,6 +514,10 @@ describe('SeerrNG to Seerr', () => {
     assert.equal(plan.database.convertedUserTypes, 1);
     assert.equal(plan.database.sanitizedNotificationSettings, 1);
     assert.equal(
+      plan.database.skippedRows.missingReferencedRow.season_request,
+      1
+    );
+    assert.equal(
       plan.database.sourceOnlyTables.find(
         (table) => table.table === 'ng_feature'
       ).rows,
@@ -527,6 +538,7 @@ describe('SeerrNG to Seerr', () => {
       await fs.readFile(path.join(targetDir, 'settings.json'), 'utf8'),
       beforeTargetSettings
     );
+    assert.deepEqual(await readDatabaseFile(targetDir), beforeTargetDatabase);
 
     const result = await migrate(
       migrationOptions('seerrng-to-seerr', sourceDir, targetDir, true)
@@ -575,28 +587,84 @@ describe('SeerrNG to Seerr', () => {
       readDatabase(targetDir, 'SELECT COUNT(*) AS count FROM session')[0].count,
       1
     );
-    assert.equal(
-      readDatabase(targetDir, 'SELECT permissions FROM user WHERE id = 1')[0]
-        .permissions,
-      34
-    );
-    assert.equal(
-      readDatabase(targetDir, 'SELECT userType FROM user WHERE id = 1')[0]
-        .userType,
-      2
-    );
-    assert.equal(
-      JSON.parse(
-        readDatabase(
-          targetDir,
-          'SELECT notificationTypes FROM user_settings'
-        )[0].notificationTypes
-      ).discord,
-      8
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, mediaType, tmdbId, title FROM media ORDER BY id'
+      ),
+      [
+        { id: 1, mediaType: 'movie', tmdbId: 100, title: 'Movie' },
+        { id: 2, mediaType: 'tv', tmdbId: 200, title: 'Series' },
+      ]
     );
     assert.deepEqual(
-      readDatabase(targetDir, 'SELECT type FROM discover_slider'),
-      [{ type: 1 }]
+      readDatabase(
+        targetDir,
+        'SELECT id, mediaId, requestedById, type, status FROM media_request ORDER BY id'
+      ),
+      [
+        { id: 1, mediaId: 1, requestedById: 1, type: 'movie', status: 2 },
+        { id: 2, mediaId: 2, requestedById: 2, type: 'tv', status: 1 },
+      ]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, requestId, seasonNumber, status FROM season_request ORDER BY id'
+      ),
+      [{ id: 1, requestId: 2, seasonNumber: 1, status: 2 }]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT mediaType, mediaId, requestedById FROM watchlist'
+      ),
+      [{ mediaType: 'movie', mediaId: 1, requestedById: 1 }]
+    );
+    assert.deepEqual(
+      readDatabase(targetDir, 'SELECT mediaType, mediaId FROM blocklist'),
+      [{ mediaType: 'tv', mediaId: 2 }]
+    );
+    assert.deepEqual(readDatabase(targetDir, 'SELECT id, json FROM session'), [
+      { id: 'session-id', json: '{"userId":1}' },
+    ]);
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, email, userType, permissions, username, password FROM user ORDER BY id'
+      ),
+      [
+        {
+          id: 1,
+          email: 'admin@example.invalid',
+          userType: 2,
+          permissions: 34,
+          username: 'admin',
+          password: 'bcrypt-hash',
+        },
+        {
+          id: 2,
+          email: 'plex@example.invalid',
+          userType: 1,
+          permissions: 32,
+          username: 'plex-user',
+          password: null,
+        },
+      ]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, userId, notificationTypes FROM user_settings ORDER BY id'
+      ),
+      [{ id: 1, userId: 1, notificationTypes: '{"discord":8}' }]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, type, title FROM discover_slider ORDER BY id'
+      ),
+      [{ id: 1, type: 1, title: 'Recently added' }]
     );
     assert.equal(
       readDatabase(targetDir, 'SELECT name FROM migrations')[0].name,
@@ -615,6 +683,7 @@ describe('SeerrNG to Seerr', () => {
       await fs.readFile(path.join(sourceDir, 'settings.json'), 'utf8'),
       beforeSourceSettings
     );
+    assert.deepEqual(await readDatabaseFile(sourceDir), beforeSourceDatabase);
     assert.equal(
       readDatabase(sourceDir, 'SELECT COUNT(*) AS count FROM media')[0].count,
       3
@@ -661,10 +730,12 @@ describe('Seerr to SeerrNG', () => {
       path.join(sourceDir, 'settings.json'),
       'utf8'
     );
+    const sourceDatabaseBytes = await readDatabaseFile(sourceDir);
     const targetSettingsText = await fs.readFile(
       path.join(targetDir, 'settings.json'),
       'utf8'
     );
+    const targetDatabaseBytes = await readDatabaseFile(targetDir);
 
     const plan = await migrate(
       migrationOptions('seerr-to-seerrng', sourceDir, targetDir)
@@ -686,6 +757,7 @@ describe('Seerr to SeerrNG', () => {
       await fs.readFile(path.join(targetDir, 'settings.json'), 'utf8'),
       targetSettingsText
     );
+    assert.deepEqual(await readDatabaseFile(targetDir), targetDatabaseBytes);
 
     const result = await migrate(
       migrationOptions('seerr-to-seerrng', sourceDir, targetDir, true)
@@ -700,6 +772,77 @@ describe('Seerr to SeerrNG', () => {
       readDatabase(targetDir, 'SELECT COUNT(*) AS count FROM media_request')[0]
         .count,
       2
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, mediaType, tmdbId, title FROM media ORDER BY id'
+      ),
+      [
+        { id: 1, mediaType: 'movie', tmdbId: 100, title: 'Movie' },
+        { id: 2, mediaType: 'tv', tmdbId: 200, title: 'Series' },
+      ]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, mediaId, requestedById, type, status FROM media_request ORDER BY id'
+      ),
+      [
+        { id: 1, mediaId: 1, requestedById: 1, type: 'movie', status: 2 },
+        { id: 2, mediaId: 2, requestedById: 1, type: 'tv', status: 1 },
+      ]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, requestId, seasonNumber, status FROM season_request ORDER BY id'
+      ),
+      [{ id: 1, requestId: 2, seasonNumber: 1, status: 2 }]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT mediaType, mediaId, requestedById FROM watchlist'
+      ),
+      [{ mediaType: 'movie', mediaId: 1, requestedById: 1 }]
+    );
+    assert.deepEqual(
+      readDatabase(targetDir, 'SELECT mediaType, mediaId FROM blocklist'),
+      [{ mediaType: 'tv', mediaId: 2 }]
+    );
+    assert.deepEqual(readDatabase(targetDir, 'SELECT id, json FROM session'), [
+      { id: 'session-id', json: '{"userId":1}' },
+    ]);
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, email, userType, permissions, username, password FROM user ORDER BY id'
+      ),
+      [
+        {
+          id: 1,
+          email: 'admin@example.invalid',
+          userType: 2,
+          permissions: 34,
+          username: 'admin',
+          password: 'bcrypt-hash',
+        },
+      ]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, userId, notificationTypes FROM user_settings ORDER BY id'
+      ),
+      [{ id: 1, userId: 1, notificationTypes: '{"discord":8}' }]
+    );
+    assert.deepEqual(
+      readDatabase(
+        targetDir,
+        'SELECT id, type, title FROM discover_slider ORDER BY id'
+      ),
+      [{ id: 1, type: 1, title: 'Recently added' }]
     );
     assert.equal(
       readDatabase(targetDir, 'SELECT COUNT(*) AS count FROM season_request')[0]
@@ -732,6 +875,7 @@ describe('Seerr to SeerrNG', () => {
       await fs.readFile(path.join(sourceDir, 'settings.json'), 'utf8'),
       sourceSettingsText
     );
+    assert.deepEqual(await readDatabaseFile(sourceDir), sourceDatabaseBytes);
     assert.equal(
       readDatabase(sourceDir, 'SELECT COUNT(*) AS count FROM media')[0].count,
       2
@@ -783,6 +927,7 @@ describe('Seerr to SeerrNG', () => {
     trialDatabase.exec(`
       INSERT INTO media VALUES (3, 'book', 300, 'Trial book', 'bookshelf');
       INSERT INTO media_request VALUES (3, 3, 1, 'book', 2, NULL, NULL);
+      INSERT INTO season_request VALUES (2, 3, 1, 2);
       INSERT INTO watchlist VALUES (2, 'book', 3, 1);
       INSERT INTO blocklist VALUES (2, 'book', 3);
       INSERT INTO ng_feature VALUES (1, 'trial-only');
@@ -801,6 +946,11 @@ describe('Seerr to SeerrNG', () => {
         `);
       }
     );
+    const trialSettingsText = await fs.readFile(
+      path.join(seerrNgDir, 'settings.json'),
+      'utf8'
+    );
+    const trialDatabaseBytes = await readDatabaseFile(seerrNgDir);
     const result = await migrate(
       migrationOptions('seerrng-to-seerr', seerrNgDir, finalSeerrDir, true)
     );
@@ -814,6 +964,10 @@ describe('Seerr to SeerrNG', () => {
     assert.equal(result.database.skippedRows.unsupportedMediaType.watchlist, 1);
     assert.equal(result.database.skippedRows.unsupportedMediaType.blocklist, 1);
     assert.equal(
+      result.database.skippedRows.missingReferencedRow.season_request,
+      1
+    );
+    assert.equal(
       readDatabase(finalSeerrDir, 'SELECT COUNT(*) AS count FROM media')[0]
         .count,
       2
@@ -824,6 +978,23 @@ describe('Seerr to SeerrNG', () => {
         'SELECT COUNT(*) AS count FROM media_request'
       )[0].count,
       2
+    );
+    assert.equal(
+      readDatabase(
+        finalSeerrDir,
+        'SELECT COUNT(*) AS count FROM season_request'
+      )[0].count,
+      1
+    );
+    assert.equal(
+      readDatabase(finalSeerrDir, 'SELECT COUNT(*) AS count FROM watchlist')[0]
+        .count,
+      1
+    );
+    assert.equal(
+      readDatabase(finalSeerrDir, 'SELECT COUNT(*) AS count FROM blocklist')[0]
+        .count,
+      1
     );
     assert.equal(
       readDatabase(finalSeerrDir, 'SELECT COUNT(*) AS count FROM user')[0]
@@ -843,6 +1014,103 @@ describe('Seerr to SeerrNG', () => {
     assert.equal(finalSettings.main.applicationTitle, 'Seerr source');
     assert.equal(finalSettings.main.enableBooks, undefined);
     assert.equal(finalSettings.books, undefined);
+    assert.equal(finalSettings.clientId, 'seerr-client');
+    assert.deepEqual(
+      readDatabase(
+        finalSeerrDir,
+        'SELECT id, email, userType, permissions, username, password FROM user ORDER BY id'
+      ),
+      [
+        {
+          id: 1,
+          email: 'admin@example.invalid',
+          userType: 2,
+          permissions: 34,
+          username: 'admin',
+          password: 'bcrypt-hash',
+        },
+      ]
+    );
+    assert.deepEqual(
+      readDatabase(
+        finalSeerrDir,
+        'SELECT id, mediaId, requestedById, type, status FROM media_request ORDER BY id'
+      ),
+      [
+        { id: 1, mediaId: 1, requestedById: 1, type: 'movie', status: 2 },
+        { id: 2, mediaId: 2, requestedById: 1, type: 'tv', status: 1 },
+      ]
+    );
+    assert.deepEqual(
+      readDatabase(
+        finalSeerrDir,
+        'SELECT id, requestId, seasonNumber, status FROM season_request ORDER BY id'
+      ),
+      [{ id: 1, requestId: 2, seasonNumber: 1, status: 2 }]
+    );
+    assert.deepEqual(
+      readDatabase(
+        finalSeerrDir,
+        'SELECT id, userId, notificationTypes FROM user_settings ORDER BY id'
+      ),
+      [{ id: 1, userId: 1, notificationTypes: '{"discord":8}' }]
+    );
+    assert.deepEqual(
+      readDatabase(
+        finalSeerrDir,
+        'SELECT mediaType, mediaId, requestedById FROM watchlist'
+      ),
+      [{ mediaType: 'movie', mediaId: 1, requestedById: 1 }]
+    );
+    assert.deepEqual(
+      readDatabase(finalSeerrDir, 'SELECT mediaType, mediaId FROM blocklist'),
+      [{ mediaType: 'tv', mediaId: 2 }]
+    );
+    assert.deepEqual(
+      readDatabase(finalSeerrDir, 'SELECT id, json FROM session'),
+      [{ id: 'session-id', json: '{"userId":1}' }]
+    );
+    assert.equal(
+      await fs.readFile(path.join(seerrNgDir, 'settings.json'), 'utf8'),
+      trialSettingsText
+    );
+    assert.deepEqual(await readDatabaseFile(seerrNgDir), trialDatabaseBytes);
+  });
+
+  it('refuses source and target paths that alias the same SQLite database', async () => {
+    const root = await makeRoot();
+    const sourceDir = await createConfig(
+      root,
+      'source',
+      seerrSettings(),
+      seerrSchema(),
+      seedSeerrSource
+    );
+    const targetDir = await createConfig(
+      root,
+      'target',
+      seerrNgDefaults(),
+      seerrSchema({ ngExtras: true })
+    );
+    const sourceDatabasePath = path.join(sourceDir, 'db', 'db.sqlite3');
+    const targetDatabasePath = path.join(targetDir, 'db', 'db.sqlite3');
+    const sourceDatabaseBytes = await readDatabaseFile(sourceDir);
+    const targetSettingsText = await fs.readFile(
+      path.join(targetDir, 'settings.json'),
+      'utf8'
+    );
+    await fs.rm(targetDatabasePath);
+    await fs.link(sourceDatabasePath, targetDatabasePath);
+
+    await assert.rejects(
+      migrate(migrationOptions('seerr-to-seerrng', sourceDir, targetDir, true)),
+      /resolve to the same database/u
+    );
+    assert.deepEqual(await readDatabaseFile(sourceDir), sourceDatabaseBytes);
+    assert.equal(
+      await fs.readFile(path.join(targetDir, 'settings.json'), 'utf8'),
+      targetSettingsText
+    );
   });
 
   it('refuses to overwrite a target that already has user data', async () => {

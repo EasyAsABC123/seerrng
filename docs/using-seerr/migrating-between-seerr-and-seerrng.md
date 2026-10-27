@@ -10,6 +10,8 @@ sidebar_position: 5
 
 The tool reads the source without writing to it. It writes only to a separate, newly initialized target. This lets you keep the source installation intact while you try the other application.
 
+When returning to Seerr after a SeerrNG trial, migrate from the current SeerrNG installation into a newly initialized, empty Seerr target. This carries supported users, requests, and settings created during the trial; restoring the old Seerr snapshot would omit those changes. SeerrNG-only data remains in the untouched SeerrNG source and is listed in the report when it cannot be represented in Seerr.
+
 ## Before you start
 
 1. Back up both config directories and any PostgreSQL databases.
@@ -44,7 +46,7 @@ node deploy/seerrng-migrate.mjs \
   --apply
 ```
 
-The source remains unchanged. The target's database migration history and settings migration markers remain those created by the target application. The destination database import runs in one transaction; the target `settings.json` is replaced atomically after the rows pass integrity checks. If an ordinary database or file operation fails, the database transaction is rolled back and the previous target settings file is restored.
+The source remains unchanged. The target's database migration history and settings migration markers remain those created by the target application. The destination database import runs in one transaction; the target `settings.json` is replaced atomically after the rows pass integrity checks. If an ordinary database or file operation fails, the database transaction is rolled back and the previous target settings file is restored. PostgreSQL source reads use a repeatable, read-only transaction so every table comes from one database snapshot.
 
 ## PostgreSQL and mixed database types
 
@@ -81,4 +83,4 @@ The report lists these reductions by table, column, or settings path. Users whos
 
 The migration covers `settings.json` and database rows. It does not copy logs, caches, or media files managed by Plex, Jellyfin, Radarr, Sonarr, or other services. Cache content can be rebuilt by the destination application.
 
-The database transaction and settings file replacement are separate resources. If the host loses power or the process is forcibly killed during the final handoff, rebuild the target from the untouched source and run the migration again.
+The database transaction and settings file replacement are separate resources. If the host loses power or the process is forcibly killed during the final handoff, discard and reinitialize the target from the untouched source, then run the migration again. Do not point the destination app at a partially migrated target.

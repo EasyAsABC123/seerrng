@@ -579,7 +579,9 @@ function postgresAdapter(connectionString, { readOnly }) {
       if (connected) await client.end();
     },
     async begin({ read = false } = {}) {
-      await client.query(read ? 'BEGIN READ ONLY' : 'BEGIN');
+      await client.query(
+        read ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN'
+      );
     },
     async commit() {
       await client.query('COMMIT');
