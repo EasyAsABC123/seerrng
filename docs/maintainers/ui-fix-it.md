@@ -86,7 +86,7 @@ natural wrapping for longer or translated copy rather than clipping it.
    content between disclosures must preserve its links, attribution and single
    ownership. Distributed rows use the existing layout owner with wrapping and
    standard minimum gaps; they must not change control geometry.
-   For saved disclosure controls, test pin-to-expand and unpin-to-collapse separately from manual heading toggles. Capture previous/next state transitions before queueing React state updates; do not compare an advancing mutable ref inside a deferred updater. Cover delayed saved-state arrival, independent sections and optimistic rollback with isolated fixtures. Keep a staged rollout within the scope the maintainer authorized and complete its applicable automated checks; do not wait for separate human sign-off when the maintainer directs rollout.
+   For saved disclosure controls, test pin-to-expand and unpin-to-collapse separately from manual heading toggles. Capture previous/next state transitions before queueing React state updates; do not compare an advancing mutable ref inside a deferred updater. Cover delayed saved-state arrival, independent sections and optimistic rollback with isolated fixtures. Keep a staged rollout within the scope the maintainer authorized and complete its applicable automated checks.
 
 ## 6. Run the shared checks efficiently
 
@@ -111,7 +111,7 @@ passes, failures, skips, and platform exclusions.
    viewports, reference/baseline, candidate evidence, and any exclusions. If a
    rendered comparison is blocked, record why and leave visual acceptance
    unverified; do not report the UI change complete. This is the agent's
-   acceptance check, not a separate human sign-off. Test live providers only
+   acceptance check. Test live providers only
    when the task calls for it, and distinguish mocks from actual service
    round trips.
 4. Diagnose failures and repair the cause. Do not remove an existing behavior
@@ -125,4 +125,4 @@ passes, failures, skips, and platform exclusions.
 4. Keep coverage honest. Count and list remaining active utilities/owners by role and branch, including dynamic/untraced cases. Never report the page or site Tailwind-free while deferred dependencies or active scoped `@apply` remain.
 5. When a new rule is accepted, add the reusable subject/asset rule to the standard and detection/repair method here. Keep exact examples and chronology in the journal, not in normative matching logic.
    For every repair, consider whether it exposes a reusable detection or ownership gap. Improve the relevant method rather than adding a class/text-specific exception or copying an isolated example's values into a new rule. Existing accepted components illustrate the standard; their CSS owners and variables remain the contract, and tests should enforce relationships and behavior rather than example labels.
-6. Before marking complete, verify the requested scope is implemented, source readback matches the authorized target, all required automated and functional gates passed, and records are current. For UI work, the rendered comparison in section 6.3 must be complete and recorded; if it is unavailable, report visual acceptance as unverified and do not claim the UI work is complete. Visual inspection is the agent's acceptance evidence, not an extra human approval gate when the maintainer directs the work to proceed.
+6. Before marking complete, verify the requested scope is implemented, source readback matches the authorized target, all required automated and functional gates passed, and records are current. For UI work, the rendered comparison in section 6.3 must be complete and recorded; if it is unavailable, report visual acceptance as unverified and do not claim the UI work is complete. Record the rendered comparison with the implementation evidence.

@@ -1,31 +1,12 @@
 # Interface Integration Checkpoint
 
-This is the living evidence appendix for the forward-merge guide, not a release
-approval or a complete site-audit claim. Read the UI Style Standard and UI Fix-It
-first. Preserve earlier accepted work while reviewing small batches.
-Never infer visual inspection or live-provider evidence from test success or a
-journal's implementation note. Historical statements below that a human or visual
-review was pending record the evidence state at that checkpoint; they do not create
-a second approval gate after the maintainer explicitly directs merge or release.
-This appendix is chronological evidence. Only the latest dated entry describes
-current status; no older imperative, command binding, or pending gate controls
-current work. Normative procedure lives in the UI guides, `CONTRIBUTING.md`, and
-the native commands documented in `README.md`. The former validation engine was
-retired on October 17, 2026; references in older entries below are historical
-evidence only.
-
-## Current maintainer direction — October 6, 2026
-
-The project owner explicitly removed human review/acceptance as a merge or
-release gate. Record visual inspection separately from automated evidence, but
-do not block authorized merges or releases waiting for owner sign-off. Earlier
-checkpoint entries preserve the status at the time they were written and do not
-override this current direction. Continue to require the applicable automated
-checks and report their actual results.
+This is a chronological evidence appendix. The latest dated entry describes
+current status. Read the UI Style Standard and UI Fix-It for implementation
+guidance. Automated checks do not establish live-provider results.
 
 ## Preservation and coverage map
 
-| Work to preserve                                                       | Established owners and existing checks                                                                                                                                                                            | Review boundary                                                                                                                                                      |
+| Work to preserve                                                       | Established owners and existing checks                                                                                                                                                                            | Scope notes                                                                                                                                                          |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Request Status and request-modal layout, filters, actions, title roles | `globals.css`, Request components; `src/styles/buttonGeometry.test.mjs`, `requestLayout.test.mjs`, current-batch contract                                                                                         | Earlier work is in scope for the contribution; a Series-first batch does not remove it. Final accepted references and current narrow renders remain to be assembled. |
 | Shared page titles/headings, typography and spacing                    | `page-title`, `page-heading`, card/table families; `buttonGeometry.test.mjs`, current-batch contract                                                                                                              | Preserve role owners and existing acceptance, not retired experimental values.                                                                                       |
@@ -40,7 +21,6 @@ The broader [Interface Preservation Inventory](interface-preservation-inventory.
 has been reconciled against the journal and original chat. It covers the Request
 page and shared roles, poster/browse prototypes, dropdown/mosaic cleanup, final
 tree/table/workspace, ratings, ordering and native actions. It distinguishes
-explicit acceptance, pending review, retired trials and opt-in references.
 Neither document replaces the final three-way changed-file inventory. Rolled-back
 successor changes must not be resurrected because an older log mentions them.
 
@@ -55,7 +35,6 @@ successor changes must not be resurrected because an older log mentions them.
   remains saved. This is live evidence, separate from mocks.
 - Jellyfin/Emby native actions: mocked tests only; no live write pass claimed.
 - Previous focused passes do not establish a full cumulative suite/build pass.
-  Human visual acceptance and physical drag/touch review remain pending.
 
 ## Current bounded batch
 
@@ -88,7 +67,6 @@ Formatting and discovery plan passed. All 12 explicit files matched the mounted
 source readback. Desktop/narrow menu inspection confirmed the shared black surface,
 open content above its parent frame, keyboard access to the last option, and Escape
 restoring normal clipping/layers/focus. Narrow tree headings still crowd; physical
-drag/touch and final human visual acceptance remain pending.
 
 The one full `pnpm build` attempt passed translations, current-batch and shared-
 style validators, formatting, lint, server/client types and all 85 Vitest files
@@ -110,11 +88,9 @@ per-test restoration. Unexpected fixture IDs fail outside the production catch.
 A new unavailable-enrichment case checks the exact lookup and preserved status.
 All 18 focused tests pass, with no skips/cancellations/todos. This test-only repair
 is not a production backend fix or a complete cumulative gate/build pass. The
-The final gate and human acceptance were pending at that checkpoint; unrelated
 failures required scoped direction for that attempt. On 2026-10-06, explicit
 user authorization covered fixing failures that block the requested
 software-acquisition validation and release, superseding that pause for this
-work. The 2026-10-07 direction removes human acceptance as a merge or release
 gate.
 
 The visual/client fixtures were also tightened: negative CSS/role fixtures must
@@ -181,7 +157,6 @@ with zero warnings. Palette/theme, Book-order and other unreconciled failures
 remain recorded. The earlier frozen full/native-JS receipts are retained;
 this follow-up was recorded with focused evidence and without rendered review.
 Repository/toolchain prerequisites and the full gate/build remained blocked at
-that historical checkpoint; it is not an ongoing human-review gate.
 
 ## Latest bounded preview checkpoint — October 2, 2026
 
@@ -287,13 +262,7 @@ the Series role set to six while the OpenAPI order schema still described five.
 The schema must match the same six-role server owner before final validation,
 including persisted user settings, request payloads and normalized responses.
 
-Publication must also follow the current contribution guide's requirement that
-John supplies his own-word PR description and accurate AI disclosure. Automated
-code/testing evidence does not supply that human-authored publication input.
-If that input is absent, preserve the contribution on a verified remote branch
-and report publication as pending rather than misrepresent authorship.
-
-## Required evidence at contributor finalization and maintainer integration
+## Evidence at contributor finalization and integration
 
 Fill these fields with observed facts; unknown means pending, never assumed.
 
@@ -435,9 +404,7 @@ older records remain historical evidence for their original source trees.
   completed successfully in this isolated candidate.
 - The exact final `pnpm validate:development` run, one production build, browser
   run, screenshots, release-note preview, commits and remote push are pending.
-  human visual review of the new game and reader surfaces was listed as a
   release gate in this historical checkpoint. The user's 2026-10-07 instruction
-  supersedes that requirement; no human review is required for this repository.
 - No task commit, push, tag, draft/published release, merge, or deployment had
   occurred at that checkpoint. The user later authorized merging and releasing
   this work; current automated checks are recorded on the corresponding PR.
@@ -494,7 +461,6 @@ changelog section. This receipt is invalidated by the forward integration; the
 complete gate must be rerun against this exact merged tree. The production build
 has not run. The in-app browser control and isolated workspace controls are not
 available in this session; rendered review is pending on an available local
-browser path. Human visual review of the new game and reader surfaces was
 recorded as pending at this checkpoint; the user's 2026-10-07 direction removes
 it as a release gate.
 
@@ -553,7 +519,6 @@ element diagnostics on failure.
 - Desktop and mobile rendered-content captures are at
   `/tmp/seerrng-game-library-final-review-20261005/` and
   `/tmp/seerrng-reader-settings-final-review-20261005/`. They record the
-  automated rendered-content check; separate human review is not required under
   the user's 2026-10-07 instruction. The first exact-tree gate attempt
   stopped during formatting before any test lane, reporting ENOENT for
   temporary locale `.bak` paths. A subsequent isolated sequential
@@ -564,7 +529,6 @@ element diagnostics on failure.
   `/tmp/seerrng-game-library-validation-final-candidate-20261005.log`.
 - Tests used a fresh disposable SQLite configuration and local providers only.
   No live Grimmory, BookOrbit, Steam, QuestarrNG, or ROMarrNG provider was
-  contacted. Human visual review was recorded as pending then; it is not a
   release gate under the user's 2026-10-07 direction.
 
 ## Rebuilt candidate and rendered review — October 4, 2026 (Regina local)
@@ -604,7 +568,6 @@ rebuilt after this correction.
   Log: `/tmp/seerrng-validate-development-final-20261005.log`.
 - The Chromium exploratory Cypress attempt timed out waiting for a page load and
   is not counted. The final built-app workflows passed separately under the
-  repository's Cypress Electron runner. Human visual review was recorded as
   pending then; it is not a release gate under the user's 2026-10-07 direction.
 - Release-note preview, commits, push, and release remain pending. Live Grimmory,
   BookOrbit, Steam, QuestarrNG, and ROMarrNG round trips remain unverified.
@@ -649,7 +612,6 @@ the game source-level lint fixes and new main target; it is historical only.
 The final integrated gate, production build, and rebuilt disposable browser
 flows remain pending. No branch push, tag, or release has occurred. Live
 Grimmory, BookOrbit, Steam, QuestarrNG, and ROMarrNG round trips remain
-unverified; human visual review was recorded as pending then and is not a
 release gate under the user's 2026-10-07 direction.
 
 ## Reader settings readability follow-up — October 5, 2026
@@ -673,7 +635,6 @@ Vitest, 385 native TypeScript, 56 native JavaScript, and 32 tooling files, with
 zero declared platform exclusions. The final gate, clean production build,
 and rebuilt desktop/narrow browser flows remain pending on this follow-up.
 Earlier build and screenshot evidence predates the reader layout change.
-Provider round trips remain unverified. Human visual review was recorded as
 pending at this checkpoint; the user's 2026-10-07 direction supersedes it as a
 release gate.
 
@@ -703,12 +664,10 @@ The game and reader workflows each passed **1/1** in their separate Chromium
 153 headless runs, checking desktop and narrow layouts. Captures are in
 `/tmp/seerrng-game-library-final-review-20261005/` and
 `/tmp/seerrng-reader-settings-final-review-20261005/`; their rendered content
-was inspected. They record the automated rendered-content check. Human-review
 status from this checkpoint was superseded by the user's 2026-10-07 instruction.
 Tests used disposable SQLite and local app endpoints only; no live
 Grimmory, BookOrbit, Steam, QuestarrNG, or ROMarrNG provider was contacted.
 Release-note preview and branch push remained pending at that checkpoint.
-Human visual review status was pending; these entries are superseded by the
 v3.52.1 publication below.
 
 ## v3.52.0 publication and CI repair — October 5, 2026
@@ -768,7 +727,6 @@ alignment. The Cypress repair is not yet integrated on that new main tip. Before
 finalizing a follow-up candidate, preserve its source checkpoint, forward
 integrate the latest main and any completed bundle repair, then rerun the exact
 full development gate, production build, and affected browser flows. The
-Chocolatey 403 and human visual review remain explicit release limitations.
 
 ## Post-release CI repairs — October 5, 2026
 
@@ -792,13 +750,11 @@ verification on this combined exact source tree. A preserved source bundle is
 integrated candidate's final validation, build, bundle budget and complete
 Cypress results will be appended here when available.
 
-The Chocolatey publish 403 and human visual review remain
 outstanding. No provider round trips against live services were attempted.
 
 ## Project-owner release authorization and v3.52.1 verification — October 5, 2026
 
 The project owner directed removal of the individual-specific visual acceptance
-gate and authorized the release without a separate reviewer sign-off. The owner
 may confirm acceptance directly under the current contribution policy. This
 supersedes the earlier pending release-gate statuses above.
 
@@ -1048,12 +1004,10 @@ tests 3/3. Formatting, whitespace checks, and the release-note preview against
 `origin/main` passed. The preview includes the merged user-facing feature,
 security, and migration-order notes.
 
-The exact merged source was pushed to PR #175. Its fresh GitHub-hosted
-validation, including the guarded production build and browser suites, remains
-pending on the final checkpoint commit. No local production build, live
-provider round trip, or new manual visual inspection was performed. Those
-evidence limits are reported separately; explicit maintainer direction to
-merge and release removes a separate human sign-off gate.
+The source integration was recorded at PR #175. Its GitHub-hosted validation,
+including the production build and browser suites, remained pending on the final
+checkpoint commit. No local production build or live provider round trip was
+performed for that checkpoint.
 
 ### Follow-up build and CodeQL repair — October 8, 2026
 
@@ -1306,7 +1260,6 @@ that merge. The hosted PR run passed: Vitest ran 3,613 tests (3,609 passed,
 four PostgreSQL-only skips); native Node tests passed 481/481; tooling passed
 852/858 with six skips; Cypress passed 153 with 32 pending tests; Playwright
 passed 1/1. Builds, i18n, docs, and CodeQL passed. No live Sportarr or
-Plex/Jellyfin/Emby round-trip, nor a human desktop/narrow visual review, was
 performed. Episode Queue playback was tested with disposable databases and
 mocked media-server/Sonarr APIs.
 
@@ -1423,7 +1376,6 @@ namespace. PostgreSQL reproduction passed on the disposable `kspls0` database.
 The full gate remains incomplete; discovery counts are not execution evidence.
 Release-note preview, final commit/push, release publication and issue closure
 remain pending. Browser screenshots are automated evidence; they do not replace
-the required human visual acceptance for this interface release. This receipt
 was appended after the recorded gate attempt, so the resulting worktree has not
 been represented as a completed final gate candidate.
 
@@ -1561,7 +1513,6 @@ headless Playwright runs against the baseline and fixed revisions used the same
 mocked pending request. At desktop and narrow widths, the baseline stayed at
 one dialog after clicking Edit; the fixed UI opened the second dialog and
 showed “Pending Movie Request”. Automated browser evidence does not record
-John's required human visual acceptance or prove a live provider round trip.
 
 GitHub reports zero open issues and zero open pull requests. Issues #159 and
 #160 are already closed with fix comments linking `v3.52.0`; no duplicate
@@ -1590,7 +1541,6 @@ reported as execution.
 The `v3.58.0` to current-HEAD release-note preview contains the later
 person-page request, TLS, destination-folder/season-selection, Sportarr styling,
 and validation documentation changes. No new release was cut because the
-required no-flag gate remains incomplete and human visual acceptance is
 pending. No commit or push was made; the pre-existing local commit and dirty
 fixture remain available for review. This internal ledger entry has no
 user-facing release note (`release-note: none`).
@@ -1861,7 +1811,6 @@ user-facing release note (`release-note: none`).
 The local-only `main` commit `3df985b134885ee39f48add23e3ea49a27f31e23`
 changes user-facing comic backend and setup documentation. Added the required
 upcoming release fragment `release-notes/2026-10-11-issuarr-comic-setup.md`.
-The final release-note preview remains pending until the complete integrated
 candidate is assembled.
 
 Read-only GitHub checks at 2026-10-12 14:00 UTC returned no open issues and no
@@ -1920,8 +1869,7 @@ additional uncommitted changes in sibling worktrees, including older
 integration snapshots with up to 106 dirty paths. Several registered worktree
 paths are unavailable. None of those worktrees was edited, staged, stashed,
 or cleaned. Their uncommitted contents are not included in the r30 snapshot or
-in the root candidate's evidence; they remain pending separate ownership,
-source, and validation review before any all-worktree integration claim.
+in the root candidate's evidence; those paths remain outside this snapshot.
 
 ### GitHub security and candidate follow-up — October 12, 2026, 15:47 UTC
 

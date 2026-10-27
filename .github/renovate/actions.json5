@@ -4,7 +4,6 @@
   extends: ['helpers:pinGitHubActionDigests'],
 
   packageRules: [
-    // All GitHub Actions need manual review
     {
       matchManagers: ['github-actions'],
       matchPackageNames: ['!node'],

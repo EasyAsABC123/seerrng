@@ -7,7 +7,6 @@
 - Branch: `codex/bookshelf-format-statistics`
 - Base: `origin/main` at `a96fafa07c77a2d6d95badeb9f60c32a6b4a47c9`
 - Publication was pending in this historical entry. The project owner's
-  October 7, 2026 direction removes separate human acceptance as a merge or
   release gate. Keep the pull request description accurate and disclose AI use.
 
 ## Integration contract
@@ -75,5 +74,4 @@ The candidate can be rebuilt from the base commit above and the uncommitted
 branch changes. The original `/home/keith/Documents/code/seerrng` checkout
 contains unrelated dirty work and must remain untouched. Do not cherry-pick or
 overwrite that checkout. Publish only when the maintainer authorizes it and the
-applicable automated and functional checks pass; separate human review is not
 required.

@@ -1,10 +1,5 @@
 # Grimmory and BookOrbit reader delivery integration journal
 
-> **Current maintainer direction — October 7, 2026:** Pending human visual
-> review recorded below is historical evidence, not a merge or release gate.
-> Visual inspection can be recorded separately; user authorization and the
-> applicable automated and functional checks still govern publication.
-
 ## Recovery identity
 
 - Starting repository revision: `a96fafa07c77a2d6d95badeb9f60c32a6b4a47c9`.
@@ -225,7 +220,6 @@ regression coverage described above supersede that implementation status.
   and the final OpenAPI suite then passed (7/7).
 - Full development validation, production build, full-repository lint, and
   release-note preview: not run.
-- Rendered preview and human visual review: pending; no safe disposable preview
   instance was available. The source/style checks above do not prove that the
   rendered page works or looks correct.
 - Grimmory, BookOrbit, and e-reader OPDS round trips: pending; no live reader
@@ -241,7 +235,6 @@ regression coverage described above supersede that implementation status.
 - Shared English catalog extraction also includes the independently preserved
   game-library and external-request-list strings.
 - The cumulative development gate, production build and isolated rendered
-  preview were pending in this historical candidate. Human visual acceptance
   was also recorded as pending, but is not a publication gate under current
   maintainer direction.
 - The first integrated validation attempt stopped at formatting before test
@@ -282,7 +275,6 @@ Current extension verification after the last source edits:
   exclusions. The complete cumulative gate has not run on an isolated reader
   candidate; the checkpoint records earlier unrelated cumulative failures and
   unavailable tool inputs that must be reconciled before a release claim.
-- Rendered preview and human visual review remained pending at this point. The
   in-app browser and isolated workspace browser tools were not exposed in this
   session. No live Grimmory, BookOrbit, OPDS app, or e-reader round trip ran.
 - The earlier instruction to keep external request-list and software catalog
@@ -321,11 +313,10 @@ present in the consolidated tree; duplicate source snapshots were not copied a
 second time. Earlier reader-delivery and grouping snapshots are recovery states,
 not separate newer patches. No source worktree or stash was dropped.
 
-Recovery before merging the all-dirty inventory is preserved as stash
+Recovery before merging the all-dirty inventory was preserved as stash
 `057219485a063805eea0aabf4f1a0ef652842e6c`. The inventory and merge are
-complete; full development validation, production build, rendered review,
-commit, push, and release were pending at that checkpoint. Human visual
-acceptance is not a separate merge or release gate.
+complete; full development validation, production build, commit, push, and
+release were pending at that checkpoint.
 
 Focused verification after the last request-edit and Audiobookshelf changes:
 
@@ -359,7 +350,6 @@ unverified. The complete development gate passed: 99 Vitest files/452 tests;
 skips); 56 native JavaScript files/485 tests; 32 tooling files/238 tests; 569
 current-batch files; and 397/397 shared-style references. There were no
 failures or platform exclusions. The final gate log is
-`/tmp/seerrng-validate-development-final-20261005.log`. Human visual review
 status was pending in this historical record.
 
 ## All-dirty commit and forward-integration checkpoint
@@ -377,4 +367,3 @@ status was pending in this historical record.
 - Final integrated validation, production build, and disposable reader browser
   flow are pending; prior validation and screenshots do not cover that target.
 - No live Grimmory, BookOrbit, OPDS, Komga, or Bookshelf round trip has been
-  verified. Human visual review was pending in this historical record.

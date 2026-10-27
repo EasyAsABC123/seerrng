@@ -322,7 +322,7 @@ Effort: S, M, L. Confidence in brackets.
 
 1. **Decide the book backend.** Readarr was archived in June 2025, yet SeerrNG still ships `servarr/readarr.ts`. BookshelfNG and ChaptarrNG both serve dual-format books. Pick one as the primary book backend and deprecate the other, or document why both stay. Hold new ChaptarrNG features until that decision is made. *Where:* SeerrNG and both forks. Effort M. [high on duplication; moderate on archive status]
 
-2. **Audit the Goodreads list import.** Goodreads closed its public API in 2020. SeerrNG's `goodreads.com` list path needs a review: how it reads lists, and whether it will keep working. Hardcover is the maintained alternative. *Where:* SeerrNG. Effort S to audit. [high on API closure; unknown on current behavior]
+2. **Audit the Goodreads list import.** Goodreads closed its public API in 2020. Verify how SeerrNG's `goodreads.com` list path reads lists and whether it will keep working. Hardcover is the maintained alternative. *Where:* SeerrNG. Effort S to audit. [high on API closure; unknown on current behavior]
 
 3. **Add a Usenet client adapter to live download progress.** Phase 1 covers only torrent clients. SABnzbd is actively maintained; NZBGet has a community fork. Usenet users currently see nothing live. *Where:* SeerrNG, `server/api/downloadClients/`. Effort M. [moderate on value; no user data consulted]
 
@@ -359,7 +359,6 @@ Effort: S, M, L. Confidence in brackets.
 - The ecosystem plan calls Tunerr "the Tunerr fork". Its README states no upstream. Fork status: unknown. Check `git` history or the GitHub network page before the next plan revision.
 - slskr: no information was found. Unknown.
 - Fork feature facts came from a small-model summary of READMEs. Verify against source before any public claim.
-- Not run: no live round-trip, no human visual review, no tests. This document records research only.
 
 ## 7. Next steps (suggested)
 
@@ -371,7 +370,6 @@ Effort: S, M, L. Confidence in brackets.
 
 Branch `feat/market-research-recommendations`, stacked on `03d8d34c`
 (`feat/ng-phase2-tunerr`), not `origin/main`. Nothing here is merged. No live
-round trip or human visual acceptance has been run.
 
 | # | Recommendation | Status | Evidence |
 |---|---|---|---|

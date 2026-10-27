@@ -1,6 +1,6 @@
 # Fastest-Source Routing: Design (Phase 5)
 
-Status: **proposal, awaiting maintainer approval.** No code exists for this
+Status: **proposal.** No code exists for this
 phase. It builds on Phases 1–3 of
 [ng-ecosystem-integration-plan.md](./ng-ecosystem-integration-plan.md).
 

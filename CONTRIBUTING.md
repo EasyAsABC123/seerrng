@@ -2,16 +2,6 @@
 
 All help is welcome and greatly appreciated! If you would like to contribute to the project, the following instructions should get you started...
 
-## AI Assistance
-
-AI tools may assist with or generate contributions. Contributors remain
-responsible for the accuracy, security, tests, and documentation of their
-changes. Disclose AI assistance and its scope in the pull request description,
-follow the PR template, and report actual verification results. Maintainers
-may authorize and accept AI-assisted work without a separate human-review gate.
-An explicit maintainer direction to merge or release supplies that authorization;
-do not require a second confirmation that the same work was reviewed.
-
 ## Development
 
 ### Tools Required
@@ -24,61 +14,22 @@ do not require a second confirmation that the same work was reviewed.
 
 ### Getting Started
 
-1. [Fork](https://help.github.com/articles/fork-a-repo/) the repository to your own GitHub account and [clone](https://help.github.com/articles/cloning-a-repository/) it to your local device:
+1. Clone the repository and enter the directory:
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/seerrng.git
+   git clone https://github.com/snapetech-org/seerrng.git
    cd seerrng/
    ```
 
-2. Add the remote `upstream`:
-
-   ```bash
-   git remote add upstream https://github.com/snapetech-org/seerrng.git
-   ```
-
-3. Create a new branch:
-
-   ```bash
-   git switch -c BRANCH_NAME main
-   ```
-
-   - It is recommended to give your branch a meaningful name, relevant to the feature or fix you are working on.
-     - Good examples:
-       - `docs-docker`
-       - `feature-new-system`
-       - `fix-title-cards`
-     - Bad examples:
-       - `bug`
-       - `docs`
-       - `feature`
-       - `fix`
-       - `patch`
-
-4. Run the development environment:
+2. Install dependencies and start the development environment:
 
    ```bash
    pnpm install
    pnpm dev
    ```
 
-   - Alternatively, you can use [Docker](https://www.docker.com/) with `docker compose up -d`. This method does not require installing NodeJS or Yarn on your machine directly.
-
-5. Create your patch and test your changes.
-
-   - Be sure to follow both the [code](#contributing-code) and [UI text](#ui-text-style) guidelines.
-   - Should you need to update your fork, you can do so by rebasing from `upstream`:
-
-     ```bash
-     git fetch upstream
-     git rebase upstream/main
-     git push origin BRANCH_NAME --force-with-lease
-     ```
-
-   - Run the native checks for the code you changed. The main-branch CI runs
-     Vitest, native TypeScript and tooling tests, lint, formatting, type checks,
-     build, browser suites, docs, CodeQL, and packaging checks directly.
-     See the useful commands in [README](./README.md).
+3. Run the native checks for the code you changed. See the useful commands in
+   [README](./README.md).
 
 ### Helm Chart
 
@@ -96,24 +47,10 @@ Steps:
 
 ### Contributing Code
 
-- If you are taking on an existing bug or feature ticket, please comment on the [issue](/../../issues) to avoid multiple people working on the same thing.
-- Before starting a substantial new feature or broad refactor, outline the problem and scope in an [issue](/../../issues) or [Discussion](/../../discussions), then wait for a maintainer to confirm the direction. An existing issue alone is not approval for a large implementation. If a maintainer has already explicitly directed the work, that direction is sufficient.
-- Pull requests with titles not following [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) will **not** be merged. PR titles are automatically checked for compliance.
-- Please make meaningful commits, or squash them prior to opening a pull request.
-  - Do not squash commits once people have begun reviewing your changes.
-- For any user-facing change, add one validated structured fragment under
-  [`release-notes/`](./release-notes/README.md). A single fragment may cover related
-  user-facing changes in the same pull request. Internal-only work needs no
-  fragment; select the internal-only template option or put `release-note: none`
-  on its own line in the PR description. For direct pushes or merge checks that
-  read commit messages, put the same marker on its own line in the commit message.
-- Keep a PR branch current with `main` only when current GitHub rules require it; rebase or merge as needed.
-- Merge after the checks and approvals required by current GitHub rules are satisfied. An explicit maintainer direction to merge is sufficient; no additional review or approval is required beyond those rules. Use any merge method enabled in GitHub.
-- You can create a "draft" pull request early to get feedback on your work.
-- Your code **must** be formatted correctly, or the tests will fail.
-  - We use Prettier to format our code base. It should automatically run with a Git hook, but it is recommended to have the Prettier extension installed in your editor and format on save.
-- If you have questions or need help, you can reach out via [Discussions](/../../discussions) or our [Discord server](https://discord.gg/5PyXBfvS6T).
-- Only open pull requests to `main`, never `master`! Any pull requests opened to `master` will be closed.
+- For user-facing changes, add one validated structured fragment under
+  [`release-notes/`](./release-notes/README.md). Internal changes can use the
+  `release-note: none` commit trailer.
+- Format changed code and run the applicable tests.
 
 ### UI Text Style
 

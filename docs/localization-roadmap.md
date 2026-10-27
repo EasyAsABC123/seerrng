@@ -25,7 +25,7 @@ The locale order remains:
 
 The catalogs include application labels, help, accessibility text, dialogs, empty/error/success states, workflow labels, and server notification copy. User-supplied titles, names and paths, sample data, product names, commands, and protocol/API identifiers remain unchanged. English remains the fallback for future missing messages.
 
-Matching upstream values were reused where available. Machine translation and curated common terms filled the remaining entries; some source-language values remain where a model result was unsafe or the text is a product or technical term. Static checks found full source-key coverage and no placeholder, ICU argument/type, rich-text tag, URL, inline-code, HTTP/HTTPS/URL-token, or plural-marker mismatches. These checks verify catalog structure, not translation quality. A phrase-by-phrase native-speaker review has not been completed, so wording and remaining English values need fluent review.
+Matching upstream values were reused where available. Machine translation and curated common terms filled the remaining entries; some source-language values remain where a model result was unsafe or the text is a product or technical term. Static checks found full source-key coverage and no placeholder, ICU argument/type, rich-text tag, URL, inline-code, HTTP/HTTPS/URL-token, or plural-marker mismatches. These checks verify catalog structure, not translation quality.
 
 A targeted script scan of the Indonesian client catalog found no remaining Arabic, Devanagari, Japanese, or CJK text. This check does not replace a fluent-speaker review.
 

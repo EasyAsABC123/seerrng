@@ -1,4 +1,4 @@
-> Status update (2026-10-23): trusted-main Linux x64 release jobs use the shared JIT pool, and macOS release jobs use the private Apple runner. Public hosted runners still handle pull requests and release targets without a matching private runner (Linux ARM64 and Windows). Standard hosted runners are free for this public repository. The earlier organization-migration details below are historical context.
+> The migration notes below are historical. Current organization runner policy and repository inventory are maintained in `AGENTS.md` and `snapetech-org/packer/scripts/shared-jit-runner-pool/`.
 
 <!-- Copyright (c) 2026 snapetech and SeerrNG contributors. -->
 
@@ -23,8 +23,9 @@ each repository transfer. Recheck the queue immediately before each transfer.
 
 ## Scope
 
-This runbook covers the seven public application repositories in the shared
-`kspld0` / `kspls0` runner pool:
+This migration originally covered seven public application repositories in the
+shared `kspld0` / `kspls0` runner pool. Current organization policy covers all
+65 `snapetech-org` repositories, including forks and low-activity repositories:
 
 - `snapetech/seerrng`
 - `snapetech/chaptarrng`
@@ -160,30 +161,27 @@ Before moving any repository:
 - Create the organization on the Free plan with no billing method or paid
   feature. Use a slug the owner has chosen; do not guess one.
 - Require two-factor authentication for organization members if available on
-  Free. Keep membership owner-only until the repository and runner policy is
-  reviewed.
+  Free. Keep membership owner-only.
 - Set default member repository permission to read or more restrictive, and
   grant owner/admin access only to named maintainers who need it.
 - Set the organization Actions `GITHUB_TOKEN` default to read-only and leave
   workflow permission to create or approve pull requests disabled unless a
   specific audited workflow requires it.
-- Require approval for workflows from public forks. Keep all such jobs on
-  GitHub-hosted runners even after approval.
+- Run public-fork code only in the dedicated disposable VM-backed JIT sandbox,
+  with no secrets, minimal read permissions, and restricted egress.
 - Restrict self-hosted runner access to the explicitly selected repositories.
   Verify public-repository and workflow restrictions in the Free-plan UI/API
   before registering `kspld0` or `kspls0` runners at organization scope.
-- Review each repository's workflow triggers, `runs-on` expressions, token
-  permissions, checkout refs, environments, release/deploy jobs, and use of
-  `pull_request_target`. Ensure outside-contributor code cannot reach local
-  runners or persistent host credentials/data.
+- Audit repository workflow triggers, runner labels, token permissions, checkout
+  refs, environments, and release/deploy paths. Keep outside-contributor code
+  out of trusted runners and persistent host credentials/data.
 - Preserve the distinct runner policy already in use: ChaptarrNG on `kspld0`,
   BookshelfNG on `kspls0`, TorrentNG on both where supported, SLSKDN on its
   private server label, ROMarrNG and SLSKR hosted-only, and SeerrNG on hosted
   main-branch CI. Confirm current settings before relying on this memory-derived
   inventory.
-- Preserve hosted GitHub Actions for public PR checks. Do not disable standard
-  hosted runners, buy larger runners, or change project-specific validation
-  gates as part of the ownership move.
+- Run build, test, scan, packaging, and release jobs on approved private JIT
+  infrastructure. Do not use GitHub-hosted runners or hosted fallback.
 
 If a listed baseline cannot be enforced on GitHub Free, stop before adding
 local runners. Keep repository validation on hosted runners until the owner

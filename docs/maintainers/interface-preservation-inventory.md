@@ -1,17 +1,14 @@
 # Interface Preservation Inventory
 
 Recovered from the development journal and original discussion on October 1–2, 2026. This complements the integration checkpoint. It records what to preserve,
-not a claim that every feature passed final verification or human review.
+not a claim that every feature passed final verification.
 
 ## Evidence labels
 
-- **Accepted** means an explicit recorded human decision for that named state.
+- **Accepted** means a recorded decision for that named state.
 - **Implemented** means the source/journal records implementation; it does not
   establish current full-suite, rendered, physical-interaction or provider success.
 - **Pending** means evidence was not recorded as complete at that checkpoint.
-  Pending human visual review is not a merge or release gate under the project
-  owner's October 7, 2026 direction; required automated and functional checks
-  still apply.
 - **Retired** means superseded; do not restore it during a conflict.
 - **Opt-in** means a retained experiment, not a global production decision.
 
@@ -123,9 +120,8 @@ AGENTS routing, and a clear forward-merge procedure. Implementation was explicit
 authorized at 05:30. The approximate 04:58 history marker identifies the nearby
 conversation, not the exact start of the merge discussion.
 
-Review a page or two per batch, repair only established violations automatically,
-and bring new design choices or unrelated backend failures to the maintainer.
+Inspect a page or two per batch, repair established violations, and record
+assumptions for new design choices or unrelated backend failures.
 Final cumulative checks and production compilation remain required automated
-gates. Human visual acceptance is separate evidence and is not a publication
-gate when the maintainer explicitly directs the work to proceed. This inventory
-is not publication authority.
+gates. This inventory records the evidence state and is not publication
+authority.

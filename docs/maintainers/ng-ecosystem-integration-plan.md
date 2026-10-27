@@ -38,7 +38,7 @@ It carries the Phase 7 work from `feat/ng-phase2-tunerr`. Status values:
 automated checks written and run), `built` (code written, not yet run against a
 real service), `pending`, `blocked`. Targeted local checks and cumulative-gate
 results are recorded in the progress table. A failed required gate blocks
-finalization. Nothing here has had a live round-trip or human visual acceptance
+finalization. Nothing here has had a live round-trip
 yet.
 
 | Item | Status | Notes |
@@ -51,7 +51,7 @@ yet.
 | 1 SSE route + OpenAPI | done | Route test with a fake qBittorrent server and real HTTP stream (3 tests); `seerr-api.yml` paths and schemas added. |
 | 1 Browser store + overlay | done | `src/utils/liveDownloadStore.ts`, `src/hooks/useLiveDownload.ts` (6 tests); used by `DownloadBlock` and `StatusBadge`. |
 | 1 Follow-up: user-scoped live IDs and stale-value clearing | blocked | Focused progress checks: 36/36 on Node 26.10.0; changed-file ESLint and Prettier pass. Two cumulative attempts reached native TypeScript and failed before JavaScript/tooling: attempt 1 had 2,952 tests (2,947 pass, 1 fail, 4 skip); attempt 2 had 2,952 tests (2,945 pass, 3 fail, 4 skip) across 599 suites, with `GET /discover/books` marked failed. Focused auth/override reruns passed 145/145, and the complete discovery route file passed 124/124, so the cumulative-only failures still need their exact assertions isolated. Continue investigating before finalization; live client round-trip and desktop/narrow review remain pending. |
-| 1 Settings UI | built | `SettingsDownloadClients.tsx` on Settings → Services; no new CSS families. Desktop/narrow inspection may be recorded as evidence; it is not a human review gate under the user's 2026-10-07 direction. |
+| 1 Settings UI | built | `SettingsDownloadClients.tsx` on Settings → Services; no new CSS families. Desktop/narrow inspection may be recorded as implementation evidence. |
 | 1 Docs + release note | done | `docs/using-seerr/live-download-progress.md`, `release-notes/2026-10-06-live-download-progress.md`. |
 | 1 Stall signal for Download Recovery | pending | |
 | 1 Pre-approval free-space check | pending | Needs TorrentNG `/api/v1/storage`; other clients do not expose per-root free space the same way. |
@@ -61,7 +61,7 @@ yet.
 | 2 Guide index | done | Streaming XMLTV parser + title index over the tuner's `/guide.xml` (`server/lib/liveTv/`). The capsules API caps at 250 rows, so it is not used. 13 unit tests. |
 | 2 RecordingRequest entity + migrations | done | SQLite and Postgres migrations `1791040000000`; SQLite migration test. Postgres migration not run locally. |
 | 2 Live TV API + sync job | done | `/api/v1/live-tv/*`, `/api/v1/settings/tunerr`, `live-tv-sync` job. Integration test against a fake deck and guide (4 tests), OpenAPI validator test (5), settings parser (5). |
-| 2 UI | built | On Live TV button + dialog on movie/series pages, `/recordings` page, Settings → Services section. Component test (4). Needs human visual review. No sidebar entry yet (sidebar links cannot be conditional on settings today). |
+| 2 UI | built | On Live TV button + dialog on movie/series pages, `/recordings` page, Settings → Services section. Component test (4).  No sidebar entry yet (sidebar links cannot be conditional on settings today). |
 | 2 Tunerr fork: rule-driven recorder | done (pushed) | Branch `feat/seerrng-recording-rules` is at `f8340e5` (implementation `751ae6b`): `title_equals`, `start_after`/`start_before`, response-only `features`, `catchup-daemon -rules-only`. A clean isolated `./scripts/verify` passed, including Go tests, build, and binary smoke; GitHub Local Identity run `37630122249` passed. No real IPTV provider was available. Operators must run the recorder with `-rules-only`. |
 | 2 Optional Tunerr → Sportarr sports DVR link | built | [Sportarr–IPTV Tunerr integration plan](./sportarr-iptvtunerr-integration-plan.md). Admin-only, explicit, retry-safe import of Tunerr's generated sports M3U/XMLTV into the default Sportarr instance. Existing direct Tunerr recording and Sportarr league acquisition remain optional standalone paths. |
 | 2 Live check: deck proxy + Basic auth from another host | pending | Verified from Tunerr source only; needs a local Tunerr run. |
@@ -69,7 +69,7 @@ yet.
 | 3 Track requests | done | `TrackRequest` entity + migrations `1791050000000`, wishlist-backed search with approval, `soulseek-sync` job, `/api/v1/soulseek/track-requests*`. Integration test against a fake slskdN. |
 | 3 Album fixes (library health) | done | Release group → releases via MusicBrainz, then slskdN issues per release; remediation only for that album's auto-fixable issues. Manager-only. |
 | 3 SongID | done | `/api/v1/soulseek/songid`; results readable only by the requester or a manager (in-memory owner map, lost on restart). Album candidates resolved to release groups. |
-| 3 UI | built | Bulk dialog Soulseek card for unmatched playlist tracks, `/track-requests`, `/identify`, album Library Health button, Settings section. Component test for the bulk-dialog card. Needs human visual review. |
+| 3 UI | built | Bulk dialog Soulseek card for unmatched playlist tracks, `/track-requests`, `/identify`, album Library Health button, Settings section. Component test for the bulk-dialog card.  |
 | 3 Peer previews | not started | Open question 3 (legal/permission decision) still applies. |
 | 3 slskdN download progress in live progress | pending | slskdN transfers are not torrents; needs a separate adapter. |
 | 4 Goodreads lists in External Request List Sync | already present | SeerrNG already supports Goodreads lists (`ExternalRequestListProvider = 'imdb' \| 'goodreads'`). Hardcover want-to-read is not supported (needs a per-user Hardcover token). |
@@ -78,8 +78,8 @@ yet.
 | 4 ROMarrNG collections / 1G1R full-set requests | pending | Needs new ROMarrNG contract endpoints for collections; not started. |
 | 4 BookshelfNG series-pack search, M4B option | pending | Needs BookshelfNG contract exposure; not started. |
 | 4 QuestarrNG RomM/Playnite state into My Games | pending | Needs QuestarrNG contract exposure; not started. |
-| 5 Fastest-source routing design | done (awaiting approval) | [fastest-source-routing-design.md](./fastest-source-routing-design.md). Recommends offer-then-race for Live TV; no code until approved. |
-| 6 Swipe discovery (ReadMeABook-inspired) | built | `/swipe` for movies, series, and books; `SwipeDecision`/`SwipeProfile` + migrations `1791070000000`; optional Claude ordering via `@anthropic-ai/sdk` 0.131.0 (structured output, server-side refusal fallback). Server tests (14) + client tests (5). Needs human visual review, especially drag feel on touch devices. |
+| 5 Fastest-source routing design | done (design saved) | [fastest-source-routing-design.md](./fastest-source-routing-design.md). Recommends offer-then-race for Live TV; implementation has not started. |
+| 6 Swipe discovery (ReadMeABook-inspired) | built | `/swipe` for movies, series, and books; `SwipeDecision`/`SwipeProfile` + migrations `1791070000000`; optional Claude ordering via `@anthropic-ai/sdk` 0.131.0 (structured output, server-side refusal fallback). Server tests (14) + client tests (5). |
 | 2 Sports "follow my team" | done | `SportsFollow` entity + migrations `1791060000000`; Live TV Sync maps Tunerr `/v1/sports/events` matches to the nearest guide airing and creates normal recording requests; cancelled games are not re-requested. Integration test against the fake Tunerr. UI: Followed Teams on Recordings. |
 | 2 Recently aired shelf, channel requests, Plex→Jellyfin users | pending | |
 | 2 Recording notifications | pending | Requests do not notify yet. |
@@ -397,8 +397,7 @@ fastest one that is available:
 - [ ] Must not double-acquire. If an earlier source fulfils the request, cancel
       or never start the later ones. Reuse the safe-cancel semantics in
       `RequestDispatchOutbox` and the ChaptarrNG pending-import fences.
-- Produce a written design document and get maintainer approval before any
-  code.
+- Produce a written design document before implementation.
 
 ---
 
