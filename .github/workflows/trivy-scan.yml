@@ -2,14 +2,23 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Trivy Container Vulnerability Scan
+run-name: ${{ format('action:{0}:pool:{1}', inputs.action_tag, inputs.runner_pool_tag) }}
 
 on:
-  workflow_run:
-    workflows:
-      - SeerrNG Release
-    types:
-      - completed
   workflow_dispatch:
+    inputs:
+      action_tag:
+        description: Action to run
+        required: true
+        type: choice
+        options:
+          - trivy
+      runner_pool_tag:
+        description: Private ephemeral JIT runner pool
+        required: true
+        type: choice
+        options:
+          - private
 
 permissions:
   contents: read
