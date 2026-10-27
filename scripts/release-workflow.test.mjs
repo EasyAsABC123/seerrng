@@ -788,6 +788,27 @@ test('main CI installs Node before running its alias-policy check', () => {
   assert.ok(nodeSetupIndex < aliasPolicyIndex);
 });
 
+test('manual container recovery promotes only the latest published release from main', () => {
+  const workflow = readWorkflow('promote-container-aliases.yml');
+  const promotion = workflow.jobs.promote;
+  const resolveRelease = promotion.steps.find(
+    (step) => step.name === 'Resolve latest published stable release'
+  );
+
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.action_tag.options, [
+    'promote',
+  ]);
+  assert.equal(promotion.if, "github.ref == 'refs/heads/main'");
+  assert.equal(workflow.concurrency.group, 'seerrng-stable-container-aliases');
+  assert.match(resolveRelease.run, /latest-published-release-tag\.sh/u);
+  assert.match(
+    promotion.steps.find(
+      (step) => step.name === 'Promote and verify stable aliases'
+    ).run,
+    /promote-container-aliases\.sh/u
+  );
+});
+
 test('release publishing runs only from main dispatches so private runners serve it', () => {
   const release = readWorkflow('release.yml');
   const validation = release.jobs['validate-main-tag'];

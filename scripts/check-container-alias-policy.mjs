@@ -143,8 +143,8 @@ if (
 }
 
 if (
-  !manualPromotionWorkflow.includes('workflow_run:') ||
-  !manualPromotionWorkflow.includes('workflows: [SeerrNG Release]') ||
+  !manualPromotionWorkflow.includes('  workflow_dispatch:') ||
+  !manualPromotionWorkflow.includes("if: github.ref == 'refs/heads/main'") ||
   !manualPromotionWorkflow.includes(
     'scripts/latest-published-release-tag.sh'
   ) ||
