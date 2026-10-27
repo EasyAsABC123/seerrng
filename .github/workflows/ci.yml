@@ -2,11 +2,9 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: SeerrNG CI
+run-name: ${{ format('action:{0}:pool:{1}', inputs.action_tag, inputs.runner_pool_tag) }}
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       action_tag:

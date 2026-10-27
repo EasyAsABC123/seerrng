@@ -1,12 +1,23 @@
 # ng-runner-policy: private-jit-only-v1
 name: iOS Client
+run-name: ${{ format('action:{0}:pool:{1}', inputs.action_tag, inputs.runner_pool_tag) }}
 
 on:
-  push:
-    tags:
-      - '**'
   workflow_dispatch:
+    inputs:
 
+      action_tag:
+        description: Action tag for this workflow
+        required: true
+        type: choice
+        options:
+          - build
+      runner_pool_tag:
+        description: Ephemeral JIT runner-pool tag
+        required: true
+        type: choice
+        options:
+          - private
 permissions:
   contents: read
 
