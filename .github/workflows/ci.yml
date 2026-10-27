@@ -6,8 +6,19 @@ name: SeerrNG CI
 on:
   push:
     tags:
-      - '**'
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      action_tag:
+        description: Action to run
+        type: choice
+        required: true
+        options: [validate, publish-image]
+      runner_pool_tag:
+        description: Private ephemeral JIT runner pool
+        type: choice
+        required: true
+        options: [private]
 
 permissions:
   contents: read
@@ -17,7 +28,7 @@ env:
   GHCR_IMAGE: ghcr.io/snapetech-org/seerrng
 
 concurrency:
-  group: ng-ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}-${{ github.event.action == 'edited' && 'metadata' || 'code' }}
+  group: ng-ci-${{ github.workflow }}-${{ github.run_id }}-${{ github.run_attempt }}
   cancel-in-progress: false
 
 jobs:
@@ -251,6 +262,9 @@ jobs:
       packages: read
       security-events: write
     uses: ./.github/workflows/codeql.yml
+    with:
+      action_tag: codeql
+      runner_pool_tag: private
 
   playwright:
     name: Playwright browser tests
@@ -343,7 +357,7 @@ jobs:
       - test-docs
       - docs-links
       - helm
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.action_tag == 'publish-image' && inputs.runner_pool_tag == 'private'
     concurrency:
       group: seerrng-main-image-publish
       cancel-in-progress: false
