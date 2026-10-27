@@ -33,12 +33,20 @@ test('chart and tooling validation use the current CI triggers and tools', () =>
   assert.ok(docs);
   assert.match(docs.run, /find charts .*Chart\.yaml/u);
   assert.match(lint.run, /ct lint --all --validate-maintainers=false/iu);
+  const chartRunner = workflow.jobs['lint-test']['runs-on'];
+  assert.match(chartRunner, /"group":"ng-shared-main-jit"/u);
+  assert.match(chartRunner, /"ng-shared-main-seerrng"/u);
+  assert.match(chartRunner, /github\.run_id/u);
+  assert.doesNotMatch(chartRunner, /(?:ubuntu|macos|windows)-latest/u);
   assert.ok(Object.hasOwn(workflow.on, 'workflow_call'));
-  assert.deepEqual(ciWorkflow.on.push.tags, ['**']);
-  assert.equal(ciWorkflow.on.push.branches, undefined);
+  assert.equal(ciWorkflow.on.push, undefined);
   assert.equal(Object.hasOwn(ciWorkflow.on, 'pull_request'), false);
   assert.ok(Object.hasOwn(ciWorkflow.on, 'workflow_dispatch'));
   assert.equal(Object.hasOwn(ciWorkflow.on, 'pull_request_target'), false);
+  assert.deepEqual(
+    ciWorkflow.on.workflow_dispatch.inputs.runner_pool_tag.options,
+    ['private']
+  );
   const toolingSteps = ciWorkflow.jobs['i18n-and-tooling'].steps;
   const checkout = toolingSteps.find((step) => step.name === 'Checkout');
   const helmSetup = toolingSteps.find(

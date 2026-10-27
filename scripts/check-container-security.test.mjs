@@ -150,15 +150,13 @@ test('the CI image publisher uses the private pool only for trusted main jobs', 
 
   assert.equal(workflow.jobs['preflight-deploy'], undefined);
   assert.equal(workflow.jobs['deploy-main'], undefined);
-  assert.equal(publisher.if, "github.ref == 'refs/heads/main'");
-  assert.match(publisher['runs-on'], /ng-shared-main-jit/u);
-  assert.match(publisher['runs-on'], /contains\(fromJSON/u);
-  assert.match(publisher['runs-on'], /"push"/u);
-  assert.match(publisher['runs-on'], /github.ref == 'refs\/heads\/main'/u);
-  assert.match(
-    publisher['runs-on'],
-    /github\.ref_type == 'tag'[\s\S]*startsWith\(github\.ref_name, 'v'\)/u
-  );
-  assert.match(publisher['runs-on'], /\|\| 'ubuntu-latest'/u);
+  assert.match(publisher.if, /github\.ref == 'refs\/heads\/main'/u);
+  assert.match(publisher.if, /inputs\.action_tag == 'publish-image'/u);
+  assert.match(publisher.if, /inputs\.runner_pool_tag == 'private'/u);
+  assert.match(publisher['runs-on'], /"group":"ng-shared-main-jit"/u);
+  assert.match(publisher['runs-on'], /"ng-shared-main-seerrng"/u);
+  assert.match(publisher['runs-on'], /"ng-main-run-\{0\}"/u);
+  assert.match(publisher['runs-on'], /github\.run_id/u);
+  assert.doesNotMatch(publisher['runs-on'], /(?:ubuntu|macos|windows)-latest/u);
   assert.equal(publisher.permissions.packages, 'write');
 });

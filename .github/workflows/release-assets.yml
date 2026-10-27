@@ -85,7 +85,13 @@ jobs:
   build:
     name: Build ${{ matrix.os }} ${{ matrix.arch }}
     needs: resolve
-    runs-on: ${{ matrix.runner == 'ubuntu-latest' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) || matrix.runner == 'ubuntu-24.04-arm' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","arm64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) || matrix.runner == 'macos-15' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","macOS","ARM64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) || matrix.runner == 'macos-15-intel' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","macOS","X64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) || matrix.runner == 'windows-2022' && fromJSON(format('{{"group":"packer-windows","labels":["self-hosted","Windows","X64","packer-windows","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) || fromJSON(format('{{"group":"packer-windows","labels":["self-hosted","Windows","ARM64","packer-windows","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) }}
+    runs-on: >-
+      ${{ matrix.runner_key == 'linux-x64' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) ||
+      matrix.runner_key == 'linux-arm64' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","arm64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) ||
+      matrix.runner_key == 'macos-arm64' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","macOS","ARM64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) ||
+      matrix.runner_key == 'macos-x64' && fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","macOS","X64","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) ||
+      matrix.runner_key == 'windows-x64' && fromJSON(format('{{"group":"packer-windows","labels":["self-hosted","Windows","X64","packer-windows","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) ||
+      matrix.runner_key == 'windows-arm64' && fromJSON(format('{{"group":"packer-windows","labels":["self-hosted","Windows","ARM64","packer-windows","ng-shared-main-seerrng","ng-main-run-{0}","gha-{0}-{1}-build"]}}', github.run_id, strategy.job-index)) }}
     timeout-minutes: 45
     permissions:
       actions: read
@@ -94,28 +100,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner_key: linux-x64
             os: linux
             arch: x64
             pnpm_version: 10.24.0
-          - runner: ubuntu-24.04-arm
+          - runner_key: linux-arm64
             os: linux
             arch: arm64
             pnpm_version: 10.24.0
-          - runner: macos-15
+          - runner_key: macos-arm64
             os: macos
             arch: arm64
             pnpm_version: 10.24.0
-          - runner: macos-15-intel
+          - runner_key: macos-x64
             os: macos
             arch: x64
             pnpm_version: 10.24.0
-          - runner: windows-2022
+          - runner_key: windows-x64
             os: windows
             arch: x64
             pnpm_version: 10.24.0
             msvs_version: auto
-          - runner: windows-11-vs2026-arm
+          - runner_key: windows-arm64
             os: windows
             arch: arm64
             pnpm_version: 10.24.0

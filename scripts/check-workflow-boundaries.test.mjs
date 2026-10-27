@@ -30,6 +30,18 @@ const validationScript = workflow.jobs.publish.steps.find(
   (step) => step.name === 'Validate generated change manifest'
 ).run;
 
+const assertSharedMainJitRunner = (runner, context) => {
+  assert.match(runner, /"group":"ng-shared-main-jit"/u, context);
+  assert.match(runner, /"ng-shared-main-seerrng"/u, context);
+  assert.match(runner, /"ng-main-run-\{0\}"/u, context);
+  assert.match(runner, /github\.run_id/u, context);
+  assert.doesNotMatch(
+    runner,
+    /\|\|\s*(?:matrix\.runner(?:\W|$)|['"](?:ubuntu|macos|windows)-)/u,
+    context
+  );
+};
+
 const expectedHeadOid = 'a'.repeat(40);
 const headBranch = 'renovate/workflow-boundary-fixture';
 const headRepository = 'snapetech-org/seerrng';
@@ -332,7 +344,7 @@ test('CodeQL models the awaited image cache validation barrier', () => {
   );
 });
 
-test('unit-test shards use the shared pool only for trusted main runs', () => {
+test('unit-test shards use private JIT runners with exact-run labels', () => {
   const ciWorkflow = yaml.load(
     fs.readFileSync(
       path.join(rootDirectory, '.github', 'workflows', 'ci.yml'),
@@ -340,39 +352,25 @@ test('unit-test shards use the shared pool only for trusted main runs', () => {
     )
   );
   const runner = ciWorkflow.jobs['unit-test']?.['runs-on'];
-  assert.match(runner, /ng-shared-main-jit/u);
-  assert.match(runner, /contains\(fromJSON/u);
-  assert.match(runner, /"push"/u);
-  assert.match(runner, /"workflow_dispatch"/u);
-  assert.match(runner, /github.ref == 'refs\/heads\/main'/u);
-  assert.match(
-    runner,
-    /github\.ref_type == 'tag'[\s\S]*startsWith\(github\.ref_name, 'v'\)/u
+  assertSharedMainJitRunner(runner, 'unit-test');
+  assert.equal(ciWorkflow.on.push, undefined);
+  assert.deepEqual(
+    ciWorkflow.on.workflow_dispatch.inputs.runner_pool_tag.options,
+    ['private']
   );
-  assert.match(runner, /\|\| 'ubuntu-latest'/u);
   assert.equal(ciWorkflow.jobs['unit-test']?.strategy?.['max-parallel'], 4);
   assert.equal(ciWorkflow.jobs['preflight-deploy'], undefined);
   assert.equal(ciWorkflow.jobs['deploy-main'], undefined);
 });
 
-test('main validation and image scanning use the shared pool on trusted runs', () => {
+test('main validation and image scanning use private JIT runners', () => {
   const workflowsDirectory = path.join(rootDirectory, '.github', 'workflows');
   const ciWorkflow = yaml.load(
     fs.readFileSync(path.join(workflowsDirectory, 'ci.yml'), 'utf8')
   );
   for (const jobName of ['release-notes', 'scan-main-image']) {
     const runner = ciWorkflow.jobs[jobName]?.['runs-on'];
-    assert.match(runner, /ng-shared-main-jit/u, jobName);
-    assert.match(runner, /contains\(fromJSON/u, jobName);
-    assert.match(runner, /"push"/u, jobName);
-    assert.match(runner, /"workflow_dispatch"/u, jobName);
-    assert.match(runner, /github.ref == 'refs\/heads\/main'/u, jobName);
-    assert.match(
-      runner,
-      /github\.ref_type == 'tag'[\s\S]*startsWith\(github\.ref_name, 'v'\)/u,
-      jobName
-    );
-    assert.match(runner, /\|\| 'ubuntu-latest'/u, jobName);
+    assertSharedMainJitRunner(runner, jobName);
   }
   for (const [workflowName, jobName] of [
     ['codeql.yml', 'analyze'],
@@ -382,16 +380,11 @@ test('main validation and image scanning use the shared pool on trusted runs', (
       fs.readFileSync(path.join(workflowsDirectory, workflowName), 'utf8')
     );
     const runner = scanWorkflow.jobs[jobName]?.['runs-on'];
-    assert.match(runner, /ng-shared-main-jit/u, workflowName);
-    assert.match(runner, /github\.event_name == 'push'/u, workflowName);
-    assert.match(
-      runner,
-      /github\.event_name == 'workflow_dispatch'/u,
-      workflowName
+    assertSharedMainJitRunner(runner, workflowName);
+    assert.deepEqual(
+      scanWorkflow.on.workflow_dispatch.inputs.runner_pool_tag.options,
+      ['private']
     );
-    assert.match(runner, /github\.event_name == 'schedule'/u, workflowName);
-    assert.match(runner, /github.ref == 'refs\/heads\/main'/u, workflowName);
-    assert.match(runner, /\|\| 'ubuntu-latest'/u, workflowName);
   }
   const semgrep = fs.readFileSync(
     path.join(workflowsDirectory, 'semgrep-community.yml'),
@@ -419,32 +412,20 @@ test('shared runner jobs use SeerrNG and exact-run labels', () => {
         continue;
       }
       sharedRunnerCount += 1;
-      assert.match(runner, /ng-shared-main-seerrng/u, `${filename}/${jobName}`);
-      assert.match(runner, /ng-main-run-\{0\}/u, `${filename}/${jobName}`);
-      assert.match(runner, /github\.run_id/u, `${filename}/${jobName}`);
-      assert.match(
-        runner,
-        /github\.ref == 'refs\/heads\/main'/u,
-        `${filename}/${jobName}`
-      );
-      if (!['release.yml', 'release-assets.yml'].includes(filename)) {
-        assert.match(
-          runner,
-          /github\.event_name == 'push'|"push"/u,
-          `${filename}/${jobName}`
-        );
-      }
+      assertSharedMainJitRunner(runner, `${filename}/${jobName}`);
     }
   }
   assert.ok(sharedRunnerCount > 0);
 });
 
-test('credentialed chart publication stays on a hosted runner', () => {
+test('credentialed chart publication uses the private JIT pool', () => {
   const helmWorkflow = yaml.load(
     fs.readFileSync(
       path.join(rootDirectory, '.github', 'workflows', 'helm.yml'),
       'utf8'
     )
   );
-  assert.equal(helmWorkflow.jobs.publish?.['runs-on'], 'ubuntu-latest');
+  const publisher = helmWorkflow.jobs.publish;
+  assertSharedMainJitRunner(publisher?.['runs-on'], 'Helm publisher');
+  assert.equal(publisher.permissions.packages, 'write');
 });
