@@ -49,9 +49,12 @@ test('settings controls have accessible names linked to their purpose', async ({
   await expect(page.getByLabel('Webhook URL')).toBeVisible();
 
   await page.goto('/settings/users');
-  await page
-    .getByRole('combobox', { name: 'Global Movie Request Limit' })
-    .selectOption('1');
+  const globalMovieLimit = page.getByRole('combobox', {
+    name: 'Global Movie Request Limit',
+  });
+  await expect(globalMovieLimit).toBeVisible();
+  // The days selector is intentionally hidden while the limit is Unlimited.
+  await globalMovieLimit.selectOption('1');
   await expect(
     page.getByRole('combobox', {
       name: 'Number of days for Global Movie Request Limit',
