@@ -1404,7 +1404,7 @@ describe('PostgreSQL and mixed-database migration integration', () => {
       );
       const beforeSource = await readPostgres(
         source.connectionString,
-        'SELECT id, email, userType, permissions FROM "user" ORDER BY id'
+        'SELECT id, email, "userType", permissions FROM "user" ORDER BY id'
       );
 
       const result = await withMigrationDatabaseUrls(
@@ -1438,7 +1438,7 @@ describe('PostgreSQL and mixed-database migration integration', () => {
       assert.deepEqual(
         await readPostgres(
           source.connectionString,
-          'SELECT id, email, userType, permissions FROM "user" ORDER BY id'
+          'SELECT id, email, "userType", permissions FROM "user" ORDER BY id'
         ),
         beforeSource
       );
@@ -1509,7 +1509,7 @@ describe('PostgreSQL and mixed-database migration integration', () => {
       assert.deepEqual(
         await readPostgres(
           target.connectionString,
-          'SELECT id, mediaType, tmdbId, title FROM media ORDER BY id'
+          'SELECT id, "mediaType", "tmdbId", title FROM media ORDER BY id'
         ),
         [
           { id: 1, mediaType: 'movie', tmdbId: 100, title: 'Movie' },
