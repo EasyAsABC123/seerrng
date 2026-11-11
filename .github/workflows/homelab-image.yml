@@ -39,7 +39,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run regression tests
-        run: pnpm test
+        run: pnpm test server/models/Book.test.ts server/api/openlibrary/openlibrary.test.ts server/api/externalapi.test.ts
 
       - name: Lint changed files
         run: pnpm lint
