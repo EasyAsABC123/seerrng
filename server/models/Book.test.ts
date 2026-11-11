@@ -21,6 +21,55 @@ const makeIsbn13 = (body: number): string => {
 };
 
 describe('mapOpenLibraryWork', () => {
+  it('uses edition covers and publication dates when the work omits them', () => {
+    const result = mapOpenLibraryWork(
+      {
+        key: '/works/OL28217339W',
+        title: 'The Art of Shralpinism',
+        covers: [-1],
+      },
+      undefined,
+      [
+        {
+          key: '/books/OL38631286M',
+          title: 'The Art of Shralpinism',
+          covers: [14755839],
+          publish_date: 'Nov 01, 2022',
+        },
+      ]
+    );
+    assert.equal(
+      result.posterPath,
+      'https://covers.openlibrary.org/b/id/14755839-L.jpg'
+    );
+    assert.equal(result.firstPublishYear, 2022);
+  });
+
+  it('preserves work cover priority and finds the earliest publication year', () => {
+    const result = mapOpenLibraryWork(
+      {
+        key: '/works/OL1W',
+        title: 'Book',
+        covers: [123],
+        first_publish_date: '2000',
+      },
+      undefined,
+      [
+        {
+          key: '/books/OL1M',
+          title: 'Book',
+          covers: [456],
+          publish_date: '2005',
+        },
+      ]
+    );
+    assert.equal(
+      result.posterPath,
+      'https://covers.openlibrary.org/b/id/123-L.jpg'
+    );
+    assert.equal(result.firstPublishYear, 2000);
+  });
+
   it('extracts and ranks unique ISBN candidates from editions', () => {
     const result = mapOpenLibraryWork(
       {

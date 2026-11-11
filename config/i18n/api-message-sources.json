@@ -9885,7 +9885,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 633,
+          "line": 637,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Invalid ISBN batch.'",
@@ -14889,7 +14889,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 538,
+          "line": 542,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library returned an invalid search response.'",
@@ -16248,7 +16248,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 326,
+          "line": 328,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library returned an invalid work.'",
@@ -19343,7 +19343,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 655,
+          "line": 659,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library ISBN results are incomplete.'",
@@ -19390,7 +19390,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 406,
+          "line": 410,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library returned an invalid author.'",
@@ -27464,7 +27464,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 777,
+          "line": 781,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library returned an invalid author works response.'",
@@ -31647,7 +31647,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 195,
+          "line": 197,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`Open Library returned an invalid ${field}.`",
@@ -33085,7 +33085,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 734,
+          "line": 738,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library returned an invalid edition.'",
@@ -34976,7 +34976,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 814,
+          "line": 818,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library returned an invalid editions response.'",
@@ -45136,7 +45136,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 593,
+          "line": 597,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library returned an invalid author search response.'",
@@ -49676,7 +49676,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 212,
+          "line": 214,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`Open Library ${resourceType} ID is invalid.`",
@@ -56194,7 +56194,7 @@
       "callsites": [
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 663,
+          "line": 667,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library ISBN results are invalid.'",
@@ -56202,7 +56202,7 @@
         },
         {
           "path": "server/api/openlibrary/index.ts",
-          "line": 672,
+          "line": 676,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Open Library ISBN results are invalid.'",
@@ -67505,7 +67505,7 @@
     },
     {
       "path": "server/api/openlibrary/index.ts",
-      "line": 699,
+      "line": 703,
       "kind": "authored-message-variable",
       "field": "summary",
       "expression": "isRecord(response) && isRecord(response.summary)\n        ? response.summary\n        : undefined",
@@ -67514,7 +67514,7 @@
     },
     {
       "path": "server/api/openlibrary/index.ts",
-      "line": 699,
+      "line": 703,
       "kind": "authored-message-variable",
       "field": "summary",
       "expression": "isRecord(response) && isRecord(response.summary)\n        ? response.summary\n        : undefined",

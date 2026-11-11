@@ -236,6 +236,26 @@ describe('OpenLibraryAPI response bounds', () => {
     assert.strictEqual(work.subjects?.length, 100);
   });
 
+  it('retains bounded edition covers and publication dates for detail fallbacks', async () => {
+    const openLibrary = new OpenLibraryAPI();
+    Object.defineProperty(openLibrary, 'get', {
+      configurable: true,
+      value: async () => ({
+        size: 1,
+        entries: [
+          {
+            key: '/books/OL1M',
+            covers: [14755839],
+            publish_date: 'Nov 01, 2022',
+          },
+        ],
+      }),
+    });
+    const response = await openLibrary.getWorkEditions('OL1W');
+    assert.deepEqual(response.entries[0].covers, [14755839]);
+    assert.equal(response.entries[0].publish_date, 'Nov 01, 2022');
+  });
+
   it('bounds edition count and aggregate ISBN values', async () => {
     const openLibrary = new OpenLibraryAPI();
     Object.defineProperty(openLibrary, 'get', {

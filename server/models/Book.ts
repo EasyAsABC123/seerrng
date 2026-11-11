@@ -221,7 +221,17 @@ export const mapOpenLibraryWork = (
     typeof work.description === 'string'
       ? work.description
       : work.description?.value;
-  const coverId = work.covers?.[0];
+  const coverId = [
+    ...(work.covers ?? []),
+    ...editions.flatMap((edition) => edition.covers ?? []),
+  ].find((id) => Number.isInteger(id) && id > 0);
+  const publicationYears = [
+    work.first_publish_date,
+    ...editions.map((edition) => edition.publish_date),
+  ].flatMap((date) => {
+    const year = date?.match(/\b\d{4}\b/)?.[0];
+    return year ? [Number(year)] : [];
+  });
   const isbnCandidates = mapEditionIsbnCandidates(editions);
   const selectedCandidate = isbnCandidates[0];
   const publisher = editions
@@ -236,8 +246,8 @@ export const mapOpenLibraryWork = (
     title: work.title,
     author: authorName,
     authorId: work.authors?.[0]?.author.key.replace('/authors/', ''),
-    firstPublishYear: work.first_publish_date
-      ? Number(work.first_publish_date.match(/\d{4}/)?.[0])
+    firstPublishYear: publicationYears.length
+      ? Math.min(...publicationYears)
       : undefined,
     posterPath: coverId
       ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
