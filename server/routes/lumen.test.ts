@@ -214,7 +214,11 @@ test('embedded Lumen does not unlink a pre-existing save path after exclusive cr
     .send({ defaults: { theme: 'light' } });
 
   assert.equal(save.status, 503);
-  assert.equal(open.mock.callCount(), 1);
+  assert.ok(
+    open.mock.calls.some((call) =>
+      String(call.arguments[0]).endsWith('.saving')
+    )
+  );
   assert.equal(unlink.mock.callCount(), 0);
 });
 

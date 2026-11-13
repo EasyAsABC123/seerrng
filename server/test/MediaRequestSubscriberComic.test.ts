@@ -5,6 +5,7 @@ import BackIssueAPI from '@server/api/comics/backissue';
 import type { KapowarrVolume } from '@server/api/comics/kapowarr';
 import KapowarrAPI from '@server/api/comics/kapowarr';
 import MylarAPI from '@server/api/comics/mylar';
+import ComicVineAPI from '@server/api/comicvine';
 import {
   MediaRequestStatus,
   MediaStatus,
@@ -221,7 +222,15 @@ describe('MediaRequestSubscriber comic dispatch', () => {
         preventSearch: false,
       },
     ];
-    getSettings().main.comicVineApiKey = '';
+    getSettings().main.comicVineApiKey = 'fixture';
+    mock.method(ComicVineAPI.prototype, 'getVolume', async () => ({
+      id: 4321,
+      name: 'Western Comic',
+      resource_type: 'volume',
+      publisher: { id: 1, name: 'Image Comics' },
+      count_of_issues: 1,
+      description: '',
+    }));
     const adds = mock.method(BackIssueAPI.prototype, 'addVolume', async () => ({
       seriesId: 32,
     }));
