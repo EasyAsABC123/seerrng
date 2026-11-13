@@ -123,7 +123,7 @@ export interface ExternalAPIOptions {
    */
   sharedRateLimit?: {
     key: string;
-    limits: Array<{ maxRequests: number; perMilliseconds: number }>;
+    limits: { maxRequests: number; perMilliseconds: number }[];
     maxPendingRequests?: number;
     maxWaitMs?: number;
   };
@@ -354,7 +354,7 @@ class ExternalAPI {
   private onRequestFailure?: ExternalAPIOptions['onRequestFailure'];
   private sharedRateLimit?: {
     keyDigest: string;
-    limits: Array<{ maxRequests: number; perMilliseconds: number }>;
+    limits: { maxRequests: number; perMilliseconds: number }[];
     maxPendingRequests: number;
     maxWaitMs: number;
   };
@@ -367,11 +367,11 @@ class ExternalAPI {
       lastUsedAt: number;
       maxPendingRequests: number;
       maxWaitMs: number;
-      limits: Array<{
+      limits: {
         maxRequests: number;
         perMilliseconds: number;
         timestamps: number[];
-      }>;
+      }[];
     }
   >();
   private static explicitCacheKeys = new WeakMap<
