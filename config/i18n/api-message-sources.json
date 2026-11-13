@@ -356,7 +356,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2944,
+          "line": 3026,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to lookup author: ${e.message}`",
@@ -560,7 +560,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2315,
+          "line": 2316,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve cover for author ${authorId}: ${\n        lastError instanceof Error ? lastError.message : 'No poster path worked'\n      }`",
@@ -1312,7 +1312,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1773,
+          "line": 1774,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Invalid book ID.'",
@@ -1569,7 +1569,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1672,
+          "line": 1673,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Invalid series cover content type.'",
@@ -3389,7 +3389,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3092,
+          "line": 3174,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Chaptarr returned an invalid pending add ID.'",
@@ -3685,7 +3685,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1649,
+          "line": 1650,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Invalid series cover path.'",
@@ -4213,7 +4213,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2168,
+          "line": 2169,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve book files: ${error.message}`",
@@ -5294,7 +5294,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3237,
+          "line": 3319,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'This destination cannot add an edition alongside.'",
@@ -7123,7 +7123,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1824,
+          "line": 1825,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Book server edition metadata is unavailable.'",
@@ -11712,7 +11712,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3381,
+          "line": 3463,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to remove book: ${e.message}`",
@@ -11978,7 +11978,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1397,
+          "line": 1398,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Invalid author ID.'",
@@ -14026,7 +14026,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2784,
+          "line": 2866,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to lookup book: ${e.message}`",
@@ -14312,7 +14312,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2023,
+          "line": 2024,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'BookshelfNG returned an incomplete media-move preview.'",
@@ -15864,7 +15864,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2144,
+          "line": 2145,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve book ${bookId}: ${e.message}`",
@@ -15883,7 +15883,7 @@
         },
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2190,
+          "line": 2191,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve book ${bookId}: ${e.message}`",
@@ -16538,7 +16538,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1939,
+          "line": 1940,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve a book page: ${getReadarrErrorMessage(error)}`",
@@ -17014,7 +17014,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3405,
+          "line": 3487,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to start book search: ${getReadarrErrorMessage(e)}`",
@@ -17117,7 +17117,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1366,
+          "line": 1367,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Chaptarr returned a non-advancing library page'",
@@ -19126,7 +19126,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3098,
+          "line": 3180,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Chaptarr queued author preparation without advertising pending-import support. Update ChaptarrNG before retrying this request.'",
@@ -19164,7 +19164,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2003,
+          "line": 2004,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'BookshelfNG returned an invalid media-move preview.'",
@@ -20700,7 +20700,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1423,
+          "line": 1424,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Book server series metadata is unavailable.'",
@@ -20963,7 +20963,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 516,
+          "line": 517,
           "kind": "message-helper-return",
           "field": "message",
           "expression": "status ? `${message} (status ${status})` : message",
@@ -20982,7 +20982,7 @@
         },
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 516,
+          "line": 517,
           "kind": "message-helper-return",
           "field": "message",
           "expression": "status ? `${message} (status ${status})` : message",
@@ -21001,7 +21001,7 @@
         },
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 516,
+          "line": 517,
           "kind": "message-helper-return",
           "field": "message",
           "expression": "status ? `${message} (status ${status})` : message",
@@ -21775,7 +21775,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1919,
+          "line": 1920,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Readarr returned an invalid paged library response.'",
@@ -22387,7 +22387,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2927,
+          "line": 3009,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to cancel pending Chaptarr import ${pendingId}: ${getReadarrErrorMessage(error)}`",
@@ -24252,7 +24252,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1797,
+          "line": 1798,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Invalid book server member.'",
@@ -24342,7 +24342,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1315,
+          "line": 1316,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Chaptarr returned an invalid paged library response'",
@@ -25472,7 +25472,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 673,
+          "line": 674,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Book metadata lookup timed out. Please retry.'",
@@ -27531,7 +27531,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 864,
+          "line": 865,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve system status: ${getReadarrErrorMessage(e)}`",
@@ -28506,7 +28506,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1598,
+          "line": 1599,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Invalid series catalog ID.'",
@@ -28847,7 +28847,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1356,
+          "line": 1357,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`Chaptarr returned an empty page before the reported library total of ${totalCount}`",
@@ -28861,7 +28861,7 @@
         },
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1356,
+          "line": 1357,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`Chaptarr returned an empty page before the reported library total of ${totalCount}`",
@@ -29255,7 +29255,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2332,
+          "line": 2333,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve editions for book ${bookId}: ${e.message}`",
@@ -32734,7 +32734,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3246,
+          "line": 3328,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'An additional edition requires an explicit selection.'",
@@ -34365,7 +34365,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1568,
+          "line": 1569,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Catalog book identity does not match the requested work and format.'",
@@ -34460,7 +34460,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2897,
+          "line": 2979,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve pending Chaptarr import ${pendingId}: ${getReadarrErrorMessage(error)}`",
@@ -40602,7 +40602,7 @@
       "callsites": [
         {
           "path": "server/lib/bookRequestSearch.ts",
-          "line": 424,
+          "line": 429,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Waiting before recovering a book removed from the service.'",
@@ -40732,7 +40732,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3241,
+          "line": 3323,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'This destination no longer supports additional editions.'",
@@ -42097,7 +42097,7 @@
       "callsites": [
         {
           "path": "server/lib/bookRequestSearch.ts",
-          "line": 1110,
+          "line": 1223,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Skipping book metadata lookup while the service recovers.'",
@@ -44962,7 +44962,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2315,
+          "line": 2316,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve cover for author ${authorId}: ${\n        lastError instanceof Error ? lastError.message : 'No poster path worked'\n      }`",
@@ -46611,7 +46611,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2252,
+          "line": 2253,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve cover for book ${bookId}: ${\n        lastError instanceof Error ? lastError.message : 'No cover path worked'\n      }`",
@@ -47394,7 +47394,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2261,
+          "line": 2262,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'[Readarr] Invalid author ID for cover lookup.'",
@@ -47457,7 +47457,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2103,
+          "line": 2104,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'BookshelfNG returned an invalid media-move command.'",
@@ -47465,7 +47465,7 @@
         },
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2109,
+          "line": 2110,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'BookshelfNG returned an invalid media-move command.'",
@@ -50999,7 +50999,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3254,
+          "line": 3336,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'The selected additional edition is missing from the catalog.'",
@@ -51592,7 +51592,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3149,
+          "line": 3231,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to add book: ${getReadarrErrorMessage(e)}`",
@@ -51947,7 +51947,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1333,
+          "line": 1334,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`Chaptarr returned offset ${responseOffset} when SeerrNG requested ${offset}`",
@@ -51966,7 +51966,7 @@
         },
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1333,
+          "line": 1334,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`Chaptarr returned offset ${responseOffset} when SeerrNG requested ${offset}`",
@@ -58065,7 +58065,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1124,
+          "line": 1125,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve metadata profiles: ${e.message}`",
@@ -59284,7 +59284,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 3131,
+          "line": 3213,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Bookshelf returned an invalid book response.'",
@@ -60975,7 +60975,7 @@
       "callsites": [
         {
           "path": "server/lib/bookRequestSearch.ts",
-          "line": 646,
+          "line": 651,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Bookshelf returned an invalid BookSearch command ID.'",
@@ -61101,7 +61101,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1385,
+          "line": 1386,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`Chaptarr library scan reached the ${MAX_SERVARR_LIBRARY_RESULTS}-book safety limit before confirming the library was complete`",
@@ -61497,7 +61497,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1153,
+          "line": 1154,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve development config: ${e.message}`",
@@ -62291,7 +62291,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 2252,
+          "line": 2253,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve cover for book ${bookId}: ${\n        lastError instanceof Error ? lastError.message : 'No cover path worked'\n      }`",
@@ -62567,7 +62567,7 @@
       "callsites": [
         {
           "path": "server/api/servarr/readarr.ts",
-          "line": 1877,
+          "line": 1878,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "`[Readarr] Failed to retrieve books: ${e.message}`",
@@ -64417,7 +64417,7 @@
       "callsites": [
         {
           "path": "server/lib/bookRequestSearch.ts",
-          "line": 814,
+          "line": 927,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Bookshelf returned no book ID after its pending add.'",
@@ -68725,7 +68725,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 388,
+      "line": 389,
       "kind": "authored-message-field",
       "field": "warnings",
       "expression": "Array.isArray(record.warnings)\n      ? record.warnings\n          .slice(0, 100)\n          .flatMap((warning) =>\n            typeof warning === 'string' ? [boundedMediaMoveText(warning)] : []\n          )\n      : []",
@@ -68734,7 +68734,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 501,
+      "line": 502,
       "kind": "authored-message-variable",
       "field": "getReadarrErrorMessage",
       "expression": "(error: unknown): string => {\n  if (!axios.isAxiosError(error)) {\n    return error instanceof Error ? error.message : String(error);\n  }\n\n  const status = error.response?.status;\n  const data = error.response?.data as\n    { message?: unknown; errorMessage?: unknown } | undefined;\n  const message =\n    typeof data?.message === 'string'\n      ? data.message\n      : typeof data?.errorMessage === 'string'\n        ? data.errorMessage\n        : error.message;\n\n  return status ? `${message} (status ${status})` : message;\n}",
@@ -68743,7 +68743,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 503,
+      "line": 504,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68752,7 +68752,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 503,
+      "line": 504,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68761,7 +68761,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 510,
+      "line": 511,
       "kind": "authored-message-variable",
       "field": "message",
       "expression": "typeof data?.message === 'string'\n      ? data.message\n      : typeof data?.errorMessage === 'string'\n        ? data.errorMessage\n        : error.message",
@@ -68770,7 +68770,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 510,
+      "line": 511,
       "kind": "authored-message-variable",
       "field": "message",
       "expression": "typeof data?.message === 'string'\n      ? data.message\n      : typeof data?.errorMessage === 'string'\n        ? data.errorMessage\n        : error.message",
@@ -68779,7 +68779,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 510,
+      "line": 511,
       "kind": "authored-message-variable",
       "field": "message",
       "expression": "typeof data?.message === 'string'\n      ? data.message\n      : typeof data?.errorMessage === 'string'\n        ? data.errorMessage\n        : error.message",
@@ -68788,7 +68788,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 516,
+      "line": 517,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "status ? `${message} (status ${status})` : message",
@@ -68797,7 +68797,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 516,
+      "line": 517,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "status ? `${message} (status ${status})` : message",
@@ -68806,7 +68806,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 516,
+      "line": 517,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "status ? `${message} (status ${status})` : message",
@@ -68815,7 +68815,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 534,
+      "line": 535,
       "kind": "authored-message-variable",
       "field": "isMissingRowServerError",
       "expression": "(error: unknown): boolean => {\n  const response = (\n    error as { response?: { status?: unknown; data?: unknown } } | undefined\n  )?.response;\n  if (response?.status !== 500) return false;\n  const data = response.data;\n  const message =\n    typeof data === 'string'\n      ? data\n      : isRecord(data) && typeof data.message === 'string'\n        ? data.message\n        : '';\n  return /expected query to return 1 rows? but returned 0/i.test(message);\n}",
@@ -68824,7 +68824,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 538,
+      "line": 539,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "false",
@@ -68833,7 +68833,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 541,
+      "line": 542,
       "kind": "authored-message-variable",
       "field": "message",
       "expression": "typeof data === 'string'\n      ? data\n      : isRecord(data) && typeof data.message === 'string'\n        ? data.message\n        : ''",
@@ -68842,7 +68842,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 541,
+      "line": 542,
       "kind": "authored-message-variable",
       "field": "message",
       "expression": "typeof data === 'string'\n      ? data\n      : isRecord(data) && typeof data.message === 'string'\n        ? data.message\n        : ''",
@@ -68851,7 +68851,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 541,
+      "line": 542,
       "kind": "authored-message-variable",
       "field": "message",
       "expression": "typeof data === 'string'\n      ? data\n      : isRecord(data) && typeof data.message === 'string'\n        ? data.message\n        : ''",
@@ -68860,7 +68860,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 546,
+      "line": 547,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "/expected query to return 1 rows? but returned 0/i.test(message)",
@@ -68869,7 +68869,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 682,
+      "line": 683,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "status.appName?.trim().toLowerCase() === 'chaptarr'",
@@ -68878,7 +68878,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 853,
+      "line": 854,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "super.getSystemStatus()",
@@ -68887,7 +68887,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 858,
+      "line": 859,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "this.detectedSystemStatus as Pick<\n        SystemStatus,\n        'appName' | 'version' | 'urlBase'\n      >",
@@ -68896,7 +68896,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 1245,
+      "line": 1246,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68905,7 +68905,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 1245,
+      "line": 1246,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68914,7 +68914,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 1265,
+      "line": 1266,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68923,7 +68923,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 1265,
+      "line": 1266,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68932,7 +68932,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2050,
+      "line": 2051,
       "kind": "authored-message-field",
       "field": "warnings",
       "expression": "Array.isArray(record.warnings)\n        ? record.warnings\n            .slice(0, 100)\n            .flatMap((warning) =>\n              typeof warning === 'string' ? [boundedMediaMoveText(warning)] : []\n            )\n        : []",
@@ -68941,7 +68941,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2115,
+      "line": 2116,
       "kind": "authored-message-field",
       "field": "message",
       "expression": "boundedMediaMoveText(record.message)",
@@ -68950,7 +68950,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2528,
+      "line": 2610,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68959,7 +68959,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2528,
+      "line": 2610,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68968,7 +68968,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2555,
+      "line": 2637,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68977,7 +68977,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2555,
+      "line": 2637,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68986,7 +68986,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2651,
+      "line": 2733,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -68995,7 +68995,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2651,
+      "line": 2733,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -69004,7 +69004,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2719,
+      "line": 2801,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -69013,7 +69013,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2719,
+      "line": 2801,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -69022,7 +69022,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2778,
+      "line": 2860,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -69031,7 +69031,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2778,
+      "line": 2860,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -69040,7 +69040,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2870,
+      "line": 2952,
       "kind": "message-helper-expression",
       "field": "message",
       "expression": "readText(response[camel] ?? response[pascal])",
@@ -69049,7 +69049,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 2889,
+      "line": 2971,
       "kind": "authored-message-field",
       "field": "lastError",
       "expression": "status('lastError', 'LastError')",
@@ -69058,7 +69058,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 3108,
+      "line": 3190,
       "kind": "authored-message-field",
       "field": "message",
       "expression": "typeof (postedBook.message ?? postedBook.Message) === 'string'\n                ? String(postedBook.message ?? postedBook.Message).slice(\n                    0,\n                    10_000\n                  )\n                : undefined",
@@ -69067,7 +69067,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 3108,
+      "line": 3190,
       "kind": "authored-message-field",
       "field": "message",
       "expression": "typeof (postedBook.message ?? postedBook.Message) === 'string'\n                ? String(postedBook.message ?? postedBook.Message).slice(\n                    0,\n                    10_000\n                  )\n                : undefined",
@@ -69076,7 +69076,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 3322,
+      "line": 3404,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "getReadarrErrorMessage(e)",
@@ -69085,7 +69085,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 3351,
+      "line": 3433,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "getReadarrErrorMessage(e)",
@@ -69094,7 +69094,7 @@
     },
     {
       "path": "server/api/servarr/readarr.ts",
-      "line": 3400,
+      "line": 3482,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "getReadarrErrorMessage(e)",
@@ -70282,7 +70282,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 173,
+      "line": 178,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -70291,7 +70291,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 173,
+      "line": 178,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -70300,7 +70300,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 387,
+      "line": 392,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -70309,7 +70309,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 387,
+      "line": 392,
       "kind": "authored-message-field",
       "field": "errorMessage",
       "expression": "error instanceof Error ? error.message : String(error)",
@@ -70318,7 +70318,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 853,
+      "line": 966,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "undefined",
@@ -70327,7 +70327,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 854,
+      "line": 967,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "normalize(\n      format === 'audiobook'\n        ? (pendingImport.audiobookStatus ?? pendingImport.overallStatus)\n        : (pendingImport.ebookStatus ?? pendingImport.overallStatus)\n    )",
@@ -70336,7 +70336,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 1467,
+      "line": 1586,
       "kind": "persisted-message-assignment",
       "field": "failureReason",
       "expression": "null",
