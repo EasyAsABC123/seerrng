@@ -42097,7 +42097,7 @@
       "callsites": [
         {
           "path": "server/lib/bookRequestSearch.ts",
-          "line": 1223,
+          "line": 1225,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Skipping book metadata lookup while the service recovers.'",
@@ -64417,7 +64417,7 @@
       "callsites": [
         {
           "path": "server/lib/bookRequestSearch.ts",
-          "line": 927,
+          "line": 929,
           "kind": "app-error-candidate",
           "field": "message",
           "expression": "'Bookshelf returned no book ID after its pending add.'",
@@ -70318,7 +70318,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 966,
+      "line": 968,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "undefined",
@@ -70327,7 +70327,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 967,
+      "line": 969,
       "kind": "message-helper-return",
       "field": "message",
       "expression": "normalize(\n      format === 'audiobook'\n        ? (pendingImport.audiobookStatus ?? pendingImport.overallStatus)\n        : (pendingImport.ebookStatus ?? pendingImport.overallStatus)\n    )",
@@ -70336,7 +70336,7 @@
     },
     {
       "path": "server/lib/bookRequestSearch.ts",
-      "line": 1586,
+      "line": 1588,
       "kind": "persisted-message-assignment",
       "field": "failureReason",
       "expression": "null",
