@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate book provider identity tracking
+    name: Validate requested book scans and provider identity tracking
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -39,7 +39,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run regression tests
-        run: pnpm test server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.test.ts
+        run: pnpm test server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.test.ts
 
       - name: Lint changed files
         run: pnpm exec eslint server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
