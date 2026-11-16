@@ -94,7 +94,7 @@ jobs:
           CI: true
         run: pnpm exec playwright test playwright/book-isbn-format.spec.ts playwright/book-both-formats.spec.ts --reporter=list
       - name: Render deployed baseline at matching viewports
-        if: steps.request-ui.outputs.changed == 'true'
+        if: steps.request-ui.outputs.changed == 'true' || github.ref == 'refs/heads/delivery/default-both-book-formats-compact'
         env:
           CI: true
           BOOK_ISBN_BASELINE: '1'
