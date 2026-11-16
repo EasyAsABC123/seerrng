@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - develop
-      - fix/chaptarr-isbn-format
+      - delivery/book-isbn-format
 
 permissions:
   contents: read
@@ -24,6 +24,16 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          fetch-depth: 2
+
+      - name: Detect request UI changes
+        id: request-ui
+        run: |
+          if git diff --quiet HEAD^ HEAD -- src/components/RequestModal/BookRequestModal.tsx server/utils/bookIsbnFormat.ts playwright/book-isbn-format.spec.ts; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Enable Corepack
         run: corepack enable
@@ -45,8 +55,11 @@ jobs:
       - name: Verify bulk ISBN hints do not become strict selections
         run: pnpm test server/routes/request.test.ts -t "zero-valued Bookshelf service and profile overrides in bulk book requests"
 
+      - name: Verify automatic and explicit edition import policies
+        run: pnpm test server/test/MediaRequestSubscriber.test.ts -t "bare Hardcover edition id|no-ISBN translated OpenLibrary works"
+
       - name: Lint changed files
-        run: pnpm exec eslint server/utils/bookIsbnFormat.ts server/utils/bookIsbnFormat.test.ts src/components/RequestModal/BookRequestModal.tsx server/routes/request.ts server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
+        run: pnpm exec eslint server/subscriber/MediaRequestSubscriber.ts server/test/MediaRequestSubscriber.test.ts server/utils/bookIsbnFormat.ts server/utils/bookIsbnFormat.test.ts src/components/RequestModal/BookRequestModal.tsx server/routes/request.ts server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
 
       - name: Type-check
         run: pnpm typecheck
@@ -63,6 +76,7 @@ jobs:
           CI: true
         run: pnpm exec playwright test playwright/book-isbn-format.spec.ts --reporter=list
       - name: Render deployed baseline at matching viewports
+        if: steps.request-ui.outputs.changed == 'true'
         env:
           CI: true
           BOOK_ISBN_BASELINE: '1'
@@ -89,7 +103,6 @@ jobs:
 
   publish:
     name: Publish immutable image
-    if: github.ref == 'refs/heads/develop'
     needs: validate
     runs-on: ubuntu-24.04
     outputs:
@@ -120,7 +133,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/easyasabc123/seerrng:sha-${{ github.sha }}
-            ghcr.io/easyasabc123/seerrng:develop
+            ${{ github.ref == 'refs/heads/develop' && 'ghcr.io/easyasabc123/seerrng:develop' || '' }}
           build-args: |
             COMMIT_TAG=${{ github.sha }}
             BUILD_VERSION=develop

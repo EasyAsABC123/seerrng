@@ -419,6 +419,8 @@ export interface ReadarrBookOptions extends ReadarrBookLookupResult {
   rootFolderPath: string;
   monitored: boolean;
   useRequestedEdition?: boolean;
+  /** Automatic requests must not pin the import to a guessed edition. */
+  anyEditionOk?: boolean;
   /** `alongside` tracks the requested edition as an additional variant. */
   editionPolicy?: 'only' | 'either' | 'alongside';
   tags?: number[];

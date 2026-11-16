@@ -3207,6 +3207,7 @@ describe('MediaRequestSubscriber service dispatch', () => {
     assert.equal(add.mock.callCount(), 1);
     const payload = add.mock.calls[0].arguments[0] as ReadarrBookOptions;
     assert.equal(payload.useRequestedEdition, true);
+    assert.equal(payload.anyEditionOk, false);
     assert.deepEqual(
       payload.editions?.map((edition) => [
         edition.foreignEditionId,
@@ -3766,6 +3767,8 @@ describe('MediaRequestSubscriber service dispatch', () => {
 
     assert.equal(addBook.mock.callCount(), 1);
     const addPayload = addBook.mock.calls[0].arguments[0] as ReadarrBookOptions;
+    assert.equal(addPayload.useRequestedEdition, false);
+    assert.equal(addPayload.anyEditionOk, true);
     assert.equal(addPayload.title, 'Diary of a Wimpy Kid: Dog Days');
     assert.equal(addPayload.foreignBookId, '126573');
     const savedRequest = await getRepository(MediaRequest).findOneByOrFail({

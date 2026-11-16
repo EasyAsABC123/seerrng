@@ -3579,6 +3579,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
             : bookInfo.author,
           editions: bookEditions,
           useRequestedEdition: !!(preferredEditionId || preferredIsbn),
+          anyEditionOk: !(preferredEditionId || preferredIsbn),
           editionPolicy: entity.editionPolicy ?? undefined,
           addOptions: {
             // Let Bookshelf own acquisition. Seerr only checks for the file
