@@ -3,6 +3,7 @@ import AssociationBadge from '@app/components/Association/AssociationBadge';
 import BookDetailsLayout from '@app/components/BookDetails/BookDetailsLayout';
 import {
   getBookFormatMessage,
+  getBookFormatSelectionMessage,
   getRequestedBookFormat,
   type RequestedBookFormat,
 } from '@app/components/Common/BookFormatBadge';
@@ -656,7 +657,9 @@ const BookDetails = () => {
               ? [
                   {
                     id: 'both',
-                    label: intl.formatMessage(getBookFormatMessage('both')),
+                    label: intl.formatMessage(
+                      getBookFormatSelectionMessage('both')
+                    ),
                     onClick: () => openRequestModal('both'),
                     disabled: !canRequestEbook && !canRequestAudiobook,
                   },

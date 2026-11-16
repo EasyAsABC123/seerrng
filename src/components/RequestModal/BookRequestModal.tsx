@@ -1,5 +1,8 @@
 import Alert from '@app/components/Common/Alert';
-import { getBookFormatMessage } from '@app/components/Common/BookFormatBadge';
+import {
+  getBookFormatMessage,
+  getBookFormatSelectionMessage,
+} from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
 import CachedImage from '@app/components/Common/CachedImage';
 import Modal from '@app/components/Common/Modal';
@@ -612,7 +615,7 @@ const BookRequestModal = ({
 
   const formatOptions = [
     {
-      label: intl.formatMessage(globalMessages.ebookAndAudiobook),
+      label: intl.formatMessage(getBookFormatSelectionMessage('both')),
       value: 'both' as const,
       disabled:
         !formatAvailable.both ||

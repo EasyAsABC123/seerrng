@@ -94,7 +94,7 @@ for (const theme of ['seerrOrig', 'seerrNGJ']) {
       await expect(dialog).toBeVisible();
       if (!process.env.BOOK_ISBN_BASELINE) {
         await expect(
-          dialog.getByRole('button', { name: 'Book + Audiobook', exact: true })
+          dialog.getByRole('button', { name: 'Both', exact: true })
         ).toBeVisible();
         await expect(dialog.locator('#isbn')).toHaveCount(0);
       }
@@ -103,6 +103,14 @@ for (const theme of ['seerrOrig', 'seerrNGJ']) {
         fullPage: true,
       });
       expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(width);
+      const tops = await dialog
+        .getByRole('group', { name: 'Format', exact: true })
+        .locator('button')
+        .evaluateAll((buttons) =>
+          buttons.map((button) => button.getBoundingClientRect().top)
+        );
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
+
       if (!process.env.BOOK_ISBN_BASELINE) {
         await page.route('**/api/v1/request', (route) =>
           route.fulfill({ json: { id: 999993, status: 1 } })

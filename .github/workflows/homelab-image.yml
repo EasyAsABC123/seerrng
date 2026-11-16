@@ -8,6 +8,7 @@ on:
       - delivery/book-isbn-format
       - delivery/default-both-book-formats
       - delivery/default-both-book-formats-final
+      - delivery/default-both-book-formats-compact
 
 permissions:
   contents: read
@@ -31,7 +32,7 @@ jobs:
       - name: Detect request UI changes
         id: request-ui
         run: |
-          if git diff --quiet HEAD^ HEAD -- src/components/RequestModal/BookRequestModal.tsx server/utils/bookIsbnFormat.ts playwright/book-isbn-format.spec.ts; then
+          if git diff --quiet HEAD^ HEAD -- src/components/BookDetails src/components/RequestModal src/components/Common/BookFormatBadge server/utils/bookIsbnFormat.ts playwright/book-isbn-format.spec.ts playwright/book-both-formats.spec.ts; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -40,6 +41,11 @@ jobs:
             echo "implementation=false" >> "$GITHUB_OUTPUT"
           else
             echo "implementation=true" >> "$GITHUB_OUTPUT"
+          fi
+          if git diff --quiet HEAD^ HEAD -- server package.json pnpm-lock.yaml; then
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Enable Corepack
@@ -57,20 +63,20 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run regression tests
-        if: steps.request-ui.outputs.implementation == 'true'
+        if: steps.request-ui.outputs.backend == 'true'
         run: pnpm test server/utils/readarrService.test.ts server/utils/bookIsbnFormat.test.ts server/models/Book.test.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.test.ts
 
       - name: Verify bulk ISBN hints do not become strict selections
-        if: steps.request-ui.outputs.implementation == 'true'
+        if: steps.request-ui.outputs.backend == 'true'
         run: pnpm test server/routes/request.test.ts -t "zero-valued Bookshelf service and profile overrides in bulk book requests|defaults automatic book requests|explicit ebook service with the default audiobook"
 
       - name: Verify automatic and explicit edition import policies
-        if: steps.request-ui.outputs.implementation == 'true'
+        if: steps.request-ui.outputs.backend == 'true'
         run: pnpm test server/test/MediaRequestSubscriber.test.ts -t "bare Hardcover edition id|no-ISBN translated OpenLibrary works|sends both-format book requests|ebook service link when the audiobook half"
 
       - name: Lint changed files
         if: steps.request-ui.outputs.implementation == 'true'
-        run: pnpm exec eslint src/components/BookDetails/index.tsx src/components/RequestModal/BulkRequestModal.tsx server/entity/MediaRequest.ts server/utils/readarrService.ts server/utils/readarrService.test.ts server/subscriber/MediaRequestSubscriber.ts server/test/MediaRequestSubscriber.test.ts server/utils/bookIsbnFormat.ts server/utils/bookIsbnFormat.test.ts src/components/RequestModal/BookRequestModal.tsx server/routes/request.ts server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
+        run: pnpm exec eslint src/components/Common/BookFormatBadge/index.tsx src/components/RequestCard/index.tsx src/components/BookDetails/index.tsx src/components/RequestModal/BulkRequestModal.tsx server/entity/MediaRequest.ts server/utils/readarrService.ts server/utils/readarrService.test.ts server/subscriber/MediaRequestSubscriber.ts server/test/MediaRequestSubscriber.test.ts server/utils/bookIsbnFormat.ts server/utils/bookIsbnFormat.test.ts src/components/RequestModal/BookRequestModal.tsx server/routes/request.ts server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
 
       - name: Type-check
         if: steps.request-ui.outputs.implementation == 'true'

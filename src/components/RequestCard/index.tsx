@@ -91,7 +91,6 @@ const messages = defineMessages('components.RequestCard', {
   bookFormat: 'Format',
   ebook: 'Book',
   audiobook: 'Audiobook',
-  both: 'Both',
   partialBookService: 'Partial Bookshelf link',
 });
 

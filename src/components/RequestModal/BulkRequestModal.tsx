@@ -4,6 +4,7 @@ import Alert from '@app/components/Common/Alert';
 import ApiMessageText from '@app/components/Common/ApiMessageText';
 import {
   getBookFormatMessage,
+  getBookFormatSelectionMessage,
   type RequestedBookFormat,
 } from '@app/components/Common/BookFormatBadge';
 import Button from '@app/components/Common/Button';
@@ -1272,7 +1273,9 @@ const BulkRequestModal = ({
                 value={format}
                 options={[
                   {
-                    label: intl.formatMessage(getBookFormatMessage('both')),
+                    label: intl.formatMessage(
+                      getBookFormatSelectionMessage('both')
+                    ),
                     value: 'both',
                     disabled: !formatAvailable.both,
                   },

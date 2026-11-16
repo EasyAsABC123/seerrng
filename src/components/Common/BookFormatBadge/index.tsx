@@ -1,10 +1,16 @@
 import globalMessages from '@app/i18n/globalMessages';
+import defineMessages from '@app/utils/defineMessages';
 import { BookOpenIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
 import { forwardRef, type HTMLAttributes } from 'react';
 import { useIntl } from 'react-intl';
 
 export type BookFormat = 'book' | 'ebook' | 'audiobook' | 'both';
 export type RequestedBookFormat = Exclude<BookFormat, 'book'>;
+
+// Preserve the existing translated identifier while sharing compact selectors.
+const selectionMessages = defineMessages('components.RequestCard', {
+  both: 'Both',
+});
 
 export const getRequestedBookFormat = (
   format?: string | null
@@ -32,6 +38,9 @@ export const getBookFormatMessage = (format?: BookFormat | null) => {
       return globalMessages.book;
   }
 };
+
+export const getBookFormatSelectionMessage = (format: RequestedBookFormat) =>
+  format === 'both' ? selectionMessages.both : getBookFormatMessage(format);
 
 interface BookFormatBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   format?: BookFormat | null;
