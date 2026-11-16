@@ -3126,6 +3126,12 @@ requestRoutes.post<never, MediaRequestCreationResponse, MediaRequestBody>(
         return next(body.error);
       }
 
+      if (body.value.mediaType === MediaType.BOOK && body.value.format == null) {
+        body.value.format = getDefaultBookRequestFormat(
+          getExternalRuntimeConfig().readarr
+        );
+      }
+
       if (
         body.value.watchAheadEpisodeCount !== undefined &&
         !req.user.hasPermission(Permission.MANAGE_USERS)
@@ -3451,6 +3457,12 @@ requestRoutes.post<never, BulkMediaRequestResponse, BulkMediaRequestBody>(
         return next(sanitizedBody.error);
       }
       const body = sanitizedBody.value;
+
+      if (body.mediaType === MediaType.BOOK && body.format == null) {
+        body.format = getDefaultBookRequestFormat(
+          getExternalRuntimeConfig().readarr
+        );
+      }
 
       const disabledCategory = getDisabledCategoryForRequest(
         body.mediaType,

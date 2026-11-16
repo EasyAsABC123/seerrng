@@ -4207,6 +4207,44 @@ describe('POST /request', () => {
     }
   });
 
+  it('checks both categories before admitting omitted-format paired requests', async (t) => {
+    const settings = getSettings();
+    const categories = { ...settings.main.enabledMediaCategories };
+    const services = settings.readarr;
+    settings.readarr = [
+      createReadarrSettings(0, 'ebook', true),
+      createReadarrSettings(1, 'audiobook', true),
+    ];
+    settings.main.enabledMediaCategories = {
+      ...categories,
+      ebook: true,
+      audiobook: false,
+    };
+    const lookup = mock.method(OpenLibraryAPI.prototype, 'getWork');
+    t.after(() => {
+      settings.main.enabledMediaCategories = categories;
+      settings.readarr = services;
+      lookup.mock.restore();
+    });
+    const agent = await loginAs('friend@seerr.dev', 'test1234');
+    for (const [path, body] of [
+      ['/request', { mediaType: MediaType.BOOK, mediaId: 'OL999995W' }],
+      [
+        '/request/bulk',
+        {
+          mediaType: MediaType.BOOK,
+          items: [{ mediaId: 'OL999996W', title: 'Disabled audio pair' }],
+        },
+      ],
+    ] as const) {
+      const response = await agent.post(path).send(body);
+      assert.equal(response.status, 403);
+      assert.match(response.body.message, /Audiobook requests are disabled/i);
+    }
+    assert.equal(lookup.mock.callCount(), 0);
+    assert.equal(await getRepository(MediaRequest).count(), 0);
+  });
+
   it('rejects Open Library path-control IDs before request processing', async () => {
     const getWork = mock.method(OpenLibraryAPI.prototype, 'getWork');
     const agent = await loginAs('friend@seerr.dev', 'test1234');

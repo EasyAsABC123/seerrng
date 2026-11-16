@@ -470,6 +470,15 @@ export class MediaRequest {
   ): Promise<MediaRequest> {
     requestBody = { ...requestBody, is4k: requestBody.is4k ?? false };
     if (
+      requestBody.mediaType === MediaType.BOOK &&
+      requestBody.format == null
+    ) {
+      // Resolve intent before admission keys and service locks are selected.
+      requestBody.format = getDefaultBookRequestFormat(
+        getExternalRuntimeConfig().readarr
+      );
+    }
+    if (
       requestBody.is4k &&
       (requestBody.mediaType === MediaType.MOVIE ||
         requestBody.mediaType === MediaType.TV) &&

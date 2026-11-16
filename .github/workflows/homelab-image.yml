@@ -9,6 +9,7 @@ on:
       - delivery/default-both-book-formats
       - delivery/default-both-book-formats-final
       - delivery/default-both-book-formats-compact
+      - delivery/default-both-book-formats-admission
 
 permissions:
   contents: read
@@ -68,7 +69,7 @@ jobs:
 
       - name: Verify bulk ISBN hints do not become strict selections
         if: steps.request-ui.outputs.backend == 'true'
-        run: pnpm test server/routes/request.test.ts -t "zero-valued Bookshelf service and profile overrides in bulk book requests|defaults automatic book requests|explicit ebook service with the default audiobook"
+        run: pnpm test server/routes/request.test.ts -t "zero-valued Bookshelf service and profile overrides in bulk book requests|defaults automatic book requests|checks both categories before admitting|explicit ebook service with the default audiobook"
 
       - name: Verify automatic and explicit edition import policies
         if: steps.request-ui.outputs.backend == 'true'
