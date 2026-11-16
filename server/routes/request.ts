@@ -149,6 +149,7 @@ import {
   parseOptionalPositiveInt,
   parsePageParams,
 } from '@server/utils/pagination';
+import { getDefaultBookRequestFormat } from '@server/utils/readarrService';
 import { parsePositiveRouteId } from '@server/utils/routeId';
 import { MAX_SERVARR_INSTANCES_PER_TYPE } from '@server/utils/servarrSettings';
 import {
@@ -2262,7 +2263,8 @@ const getBulkCoveredReason = async (
     return 'This book is blocklisted.';
   }
 
-  const requestedFormat = format ?? 'ebook';
+  const requestedFormat =
+    format ?? getDefaultBookRequestFormat(getExternalRuntimeConfig().readarr);
   const observedMedia =
     (await projectBookFileObservations([media])).get(media.id) ?? media;
   const ebookAvailable = hasAvailableBookFormat(observedMedia, 'ebook');

@@ -5578,9 +5578,9 @@ describe('POST /request', () => {
     const work = mock.method(
       OpenLibraryAPI.prototype,
       'getWork',
-      async () =>
+      async (workId: string) =>
         ({
-          key: '/works/OL999993W',
+          key: `/works/${workId}`,
           title: 'Automatic paired book',
         }) as Awaited<ReturnType<OpenLibraryAPI['getWork']>>
     );
@@ -5605,6 +5605,13 @@ describe('POST /request', () => {
     });
     assert.equal(response.status, 201);
     assert.equal(response.body.bookFormat, 'both');
+    const bulk = await agent.post('/request/bulk').send({
+      mediaType: MediaType.BOOK,
+      items: [{ mediaId: 'OL999994W', title: 'Automatic paired bulk book' }],
+    });
+    assert.equal(bulk.status, 207);
+    assert.equal(bulk.body.created.length, 1);
+    assert.equal(bulk.body.created[0].bookFormat, 'both');
     assert.deepEqual(
       response.body.serviceTargets.map(
         (target: { format: string; serverId: number }) => [
