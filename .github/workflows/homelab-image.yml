@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - develop
+      - fix/chaptarr-isbn-format
 
 permissions:
   contents: read
@@ -39,10 +40,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run regression tests
-        run: pnpm test server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.test.ts
+        run: pnpm test server/utils/bookIsbnFormat.test.ts server/models/Book.test.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.test.ts
+
+      - name: Verify bulk ISBN hints do not become strict selections
+        run: pnpm test server/routes/request.test.ts -t "zero-valued Bookshelf service and profile overrides in bulk book requests"
 
       - name: Lint changed files
-        run: pnpm exec eslint server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
+        run: pnpm exec eslint server/utils/bookIsbnFormat.ts server/utils/bookIsbnFormat.test.ts src/components/RequestModal/BookRequestModal.tsx server/routes/request.ts server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
 
       - name: Type-check
         run: pnpm typecheck
@@ -50,8 +54,42 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Prepare candidate browser configuration
+        run: pnpm cypress:prepare
+      - name: Verify candidate ISBN selection and geometry
+        env:
+          CI: true
+        run: pnpm exec playwright test playwright/book-isbn-format.spec.ts --reporter=list
+      - name: Render deployed baseline at matching viewports
+        env:
+          CI: true
+          BOOK_ISBN_BASELINE: '1'
+          PORT: '5056'
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:5056
+        run: |
+          git fetch --no-tags origin 61491390e856498ed8a0ab0d5bae21fd3628ddf4
+          git worktree add "$RUNNER_TEMP/isbn-baseline" FETCH_HEAD
+          cp playwright/book-isbn-format.spec.ts "$RUNNER_TEMP/isbn-baseline/playwright/"
+          cd "$RUNNER_TEMP/isbn-baseline"
+          pnpm install --frozen-lockfile
+          pnpm cypress:prepare
+          pnpm build
+          pnpm exec playwright test playwright/book-isbn-format.spec.ts --reporter=list
+      - name: Preserve browser comparison evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: book-isbn-format-${{ github.sha }}
+          path: |
+            test-results/
+            ${{ runner.temp }}/isbn-baseline/test-results/
+          retention-days: 7
+
   publish:
     name: Publish immutable image
+    if: github.ref == 'refs/heads/develop'
     needs: validate
     runs-on: ubuntu-24.04
     outputs:

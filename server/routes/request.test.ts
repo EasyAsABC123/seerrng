@@ -9323,6 +9323,11 @@ describe('POST /request/bulk', () => {
     assert.strictEqual(res.body.created[0].serverId, 0);
     assert.strictEqual(res.body.created[0].profileId, 0);
     assert.strictEqual(res.body.created[0].metadataProfileId, 0);
+    const saved = await getRepository(MediaRequest).findOneByOrFail({
+      id: res.body.created[0].id,
+    });
+    assert.equal(saved.preferredIsbn13, null);
+    assert.equal(saved.preferredEditionId, null);
   });
 
   it('does not count skipped music bulk items against quota', async (t) => {

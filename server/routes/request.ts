@@ -3588,8 +3588,8 @@ requestRoutes.post<never, BulkMediaRequestResponse, BulkMediaRequestBody>(
               format: body.format,
               isbn13: item.isbn13,
               editionId: item.editionId,
-              preferredIsbn13: item.isbn13,
-              preferredEditionId: item.editionId,
+              // Bulk catalogue identifiers are lookup hints, not explicit
+              // edition choices; they can represent audio or print editions.
               authorId: item.authorId,
               serverId: body.serverId,
               profileId: body.profileId,

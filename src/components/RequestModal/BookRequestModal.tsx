@@ -52,6 +52,7 @@ import { isBookDestinationFileAvailable } from '@server/lib/bookRequestDestinati
 import { Permission, hasAutoApprovePermission } from '@server/lib/permissions';
 import type { BookDetails } from '@server/models/Book';
 import { isProviderBookEdition } from '@server/utils/bookEdition';
+import { isbnCandidateSupportsFormat } from '@server/utils/bookIsbnFormat';
 import {
   getPreferredLanguage,
   languageCodesMatch,
@@ -219,7 +220,9 @@ const BookRequestModal = ({
     'book'
   );
   const visibleEditionCandidates = useMemo(() => {
-    const candidates = data?.isbnCandidates ?? [];
+    const candidates = (data?.isbnCandidates ?? []).filter((candidate) =>
+      isbnCandidateSupportsFormat(candidate, bookFormat)
+    );
     if (!preferredBookLanguage) {
       return candidates.slice(0, 25);
     }
@@ -234,7 +237,7 @@ const BookRequestModal = ({
     return preferredCandidate
       ? [preferredCandidate, ...visibleCandidates].slice(0, 25)
       : candidates.slice(0, 25);
-  }, [data?.isbnCandidates, preferredBookLanguage]);
+  }, [data?.isbnCandidates, preferredBookLanguage, bookFormat]);
   const editionLanguages = useMemo(() => {
     const languages = visibleEditionCandidates.flatMap(
       (candidate) => candidate.languages ?? []
@@ -419,7 +422,8 @@ const BookRequestModal = ({
       return;
     }
 
-    setSelectedIsbn(preferredEdition.isbn);
+    // A language preference is not an explicit edition choice. Keep automatic
+    // matching free to bridge Open Library and the downstream provider catalog.
     setPreferredLanguage(
       preferredEdition.languages?.find((language) =>
         matchesBookLanguage([language], preferredBookLanguage)
@@ -571,6 +575,7 @@ const BookRequestModal = ({
     setHasUserSelectedFormat(true);
     setRequestOverrides(null);
     setBookFormat(value);
+    setSelectedIsbn('');
     setEditionChoice({ policy: 'only' });
   };
 
