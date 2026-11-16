@@ -150,7 +150,7 @@ const BookDetails = () => {
       ? routeBookFormat
       : undefined;
   const [requestModalFormat, setRequestModalFormat] =
-    useState<RequestedBookFormat>(preferredBookFormat ?? 'ebook');
+    useState<RequestedBookFormat>(preferredBookFormat ?? 'both');
 
   useEffect(() => {
     if (
@@ -162,7 +162,7 @@ const BookDetails = () => {
     }
 
     setEditRequest(undefined);
-    setRequestModalFormat(preferredBookFormat ?? 'ebook');
+    setRequestModalFormat(preferredBookFormat ?? 'both');
     setShowRequestModal(true);
 
     const remainingQuery = { ...router.query };
@@ -649,6 +649,19 @@ const BookDetails = () => {
       {canRequest && (
         <FormatRequestControl
           options={[
+            ...(ebookCategoryEnabled &&
+            audiobookCategoryEnabled &&
+            hasEbookService &&
+            hasAudiobookService
+              ? [
+                  {
+                    id: 'both',
+                    label: intl.formatMessage(getBookFormatMessage('both')),
+                    onClick: () => openRequestModal('both'),
+                    disabled: !canRequestEbook && !canRequestAudiobook,
+                  },
+                ]
+              : []),
             ...(ebookCategoryEnabled
               ? [
                   {

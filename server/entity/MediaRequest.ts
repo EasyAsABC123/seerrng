@@ -116,7 +116,10 @@ import {
   getPreferredLanguage,
   languageNameMatchesCode,
 } from '@server/utils/preferredLanguage';
-import { readarrServiceSupportsFormat } from '@server/utils/readarrService';
+import {
+  getDefaultBookRequestFormat,
+  readarrServiceSupportsFormat,
+} from '@server/utils/readarrService';
 import {
   AfterLoad,
   Column,
@@ -1553,7 +1556,8 @@ export class MediaRequest {
         .find((identifier) => identifier !== undefined);
 
       let media = existingIdentifier?.media;
-      const requestedBookFormat = requestBody.format ?? 'ebook';
+      const requestedBookFormat =
+        requestBody.format ?? getDefaultBookRequestFormat(settings.readarr);
 
       if (!media) {
         media = new Media({

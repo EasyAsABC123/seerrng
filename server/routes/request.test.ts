@@ -5569,6 +5569,56 @@ describe('POST /request', () => {
     assert.ok(providerWorkIds.every((workId) => !workId.includes('OLBOTH2W')));
   });
 
+  it('defaults automatic book requests to both configured formats', async (t) => {
+    const settings = getSettings();
+    settings.readarr = [
+      createReadarrSettings(0, 'ebook', true),
+      createReadarrSettings(1, 'audiobook', true),
+    ];
+    const work = mock.method(
+      OpenLibraryAPI.prototype,
+      'getWork',
+      async () =>
+        ({
+          key: '/works/OL999993W',
+          title: 'Automatic paired book',
+        }) as Awaited<ReturnType<OpenLibraryAPI['getWork']>>
+    );
+    const editions = mock.method(
+      OpenLibraryAPI.prototype,
+      'getWorkEditions',
+      async () =>
+        ({
+          size: 0,
+          entries: [],
+        }) as Awaited<ReturnType<OpenLibraryAPI['getWorkEditions']>>
+    );
+    t.after(() => {
+      work.mock.restore();
+      editions.mock.restore();
+      settings.readarr = [];
+    });
+    const agent = await loginAs('admin@seerr.dev', 'test1234');
+    const response = await agent.post('/request').send({
+      mediaType: MediaType.BOOK,
+      mediaId: 'OL999993W',
+    });
+    assert.equal(response.status, 201);
+    assert.equal(response.body.bookFormat, 'both');
+    assert.deepEqual(
+      response.body.serviceTargets.map(
+        (target: { format: string; serverId: number }) => [
+          target.format,
+          target.serverId,
+        ]
+      ),
+      [
+        ['ebook', 0],
+        ['audiobook', 1],
+      ]
+    );
+  });
+
   it('blocks duplicate book requests that resolve to an existing ISBN', async (t) => {
     const settings = getSettings();
     settings.readarr = [createReadarrSettings(21, 'ebook')];

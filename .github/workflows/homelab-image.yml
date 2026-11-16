@@ -6,6 +6,7 @@ on:
     branches:
       - develop
       - delivery/book-isbn-format
+      - delivery/default-both-book-formats
 
 permissions:
   contents: read
@@ -56,19 +57,19 @@ jobs:
 
       - name: Run regression tests
         if: steps.request-ui.outputs.implementation == 'true'
-        run: pnpm test server/utils/bookIsbnFormat.test.ts server/models/Book.test.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.test.ts
+        run: pnpm test server/utils/readarrService.test.ts server/utils/bookIsbnFormat.test.ts server/models/Book.test.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.test.ts
 
       - name: Verify bulk ISBN hints do not become strict selections
         if: steps.request-ui.outputs.implementation == 'true'
-        run: pnpm test server/routes/request.test.ts -t "zero-valued Bookshelf service and profile overrides in bulk book requests"
+        run: pnpm test server/routes/request.test.ts -t "zero-valued Bookshelf service and profile overrides in bulk book requests|defaults automatic book requests|explicit ebook service with the default audiobook"
 
       - name: Verify automatic and explicit edition import policies
         if: steps.request-ui.outputs.implementation == 'true'
-        run: pnpm test server/test/MediaRequestSubscriber.test.ts -t "bare Hardcover edition id|no-ISBN translated OpenLibrary works"
+        run: pnpm test server/test/MediaRequestSubscriber.test.ts -t "bare Hardcover edition id|no-ISBN translated OpenLibrary works|sends both-format book requests|ebook service link when the audiobook half"
 
       - name: Lint changed files
         if: steps.request-ui.outputs.implementation == 'true'
-        run: pnpm exec eslint server/subscriber/MediaRequestSubscriber.ts server/test/MediaRequestSubscriber.test.ts server/utils/bookIsbnFormat.ts server/utils/bookIsbnFormat.test.ts src/components/RequestModal/BookRequestModal.tsx server/routes/request.ts server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
+        run: pnpm exec eslint src/components/BookDetails/index.tsx src/components/RequestModal/BulkRequestModal.tsx server/entity/MediaRequest.ts server/utils/readarrService.ts server/utils/readarrService.test.ts server/subscriber/MediaRequestSubscriber.ts server/test/MediaRequestSubscriber.test.ts server/utils/bookIsbnFormat.ts server/utils/bookIsbnFormat.test.ts src/components/RequestModal/BookRequestModal.tsx server/routes/request.ts server/lib/scanners/readarr/index.ts server/lib/scanners/readarr/readarr.test.ts server/api/servarr/readarr.ts server/api/servarr/readarr.test.ts server/lib/bookRequestSearch.ts server/lib/bookRequestSearch.test.ts
 
       - name: Type-check
         if: steps.request-ui.outputs.implementation == 'true'
@@ -84,7 +85,7 @@ jobs:
       - name: Verify candidate ISBN selection and geometry
         env:
           CI: true
-        run: pnpm exec playwright test playwright/book-isbn-format.spec.ts --reporter=list
+        run: pnpm exec playwright test playwright/book-isbn-format.spec.ts playwright/book-both-formats.spec.ts --reporter=list
       - name: Render deployed baseline at matching viewports
         if: steps.request-ui.outputs.changed == 'true'
         env:
@@ -93,14 +94,14 @@ jobs:
           PORT: '5056'
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:5056
         run: |
-          git fetch --no-tags origin 61491390e856498ed8a0ab0d5bae21fd3628ddf4
+          git fetch --no-tags origin 60f0114a048a2cdb6bc49b5540632c37af2b8b03
           git worktree add "$RUNNER_TEMP/isbn-baseline" FETCH_HEAD
-          cp playwright/book-isbn-format.spec.ts "$RUNNER_TEMP/isbn-baseline/playwright/"
+          cp playwright/book-isbn-format.spec.ts playwright/book-both-formats.spec.ts "$RUNNER_TEMP/isbn-baseline/playwright/"
           cd "$RUNNER_TEMP/isbn-baseline"
           pnpm install --frozen-lockfile
           pnpm cypress:prepare
           pnpm build
-          pnpm exec playwright test playwright/book-isbn-format.spec.ts --reporter=list
+          pnpm exec playwright test playwright/book-isbn-format.spec.ts playwright/book-both-formats.spec.ts --reporter=list
       - name: Preserve browser comparison evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

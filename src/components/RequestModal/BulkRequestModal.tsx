@@ -126,7 +126,7 @@ const messages = defineMessages('components.RequestModal.BulkRequestModal', {
     'Book ratings could not be loaded. Clear the Rating filter to continue.',
 });
 
-type BulkBookFormat = Exclude<RequestedBookFormat, 'both'>;
+type BulkBookFormat = RequestedBookFormat;
 type BulkMediaType = 'music' | 'book';
 
 export type BulkItem = {
@@ -340,6 +340,10 @@ const getBookIneligibleReason = (
     hasBookFormat(item.mediaInfo, 'audiobook') ||
     hasBookRequest(item.mediaInfo, 'audiobook');
 
+  if (format === 'both' && ebookCovered && audiobookCovered) {
+    return messages.requested.defaultMessage;
+  }
+
   if (format === 'ebook' && ebookCovered) {
     return messages.requested.defaultMessage;
   }
@@ -388,7 +392,7 @@ const BulkRequestModal = ({
   artistId,
   authorId,
   seriesId,
-  initialBookFormat = 'ebook',
+  initialBookFormat = 'both',
   initialItems = EMPTY_BULK_ITEMS,
   initialTotalItems,
   sourceUrl,
@@ -482,6 +486,7 @@ const BulkRequestModal = ({
     return {
       ebook: hasEbookServer,
       audiobook: hasAudiobookServer,
+      both: hasEbookServer && hasAudiobookServer,
     };
   }, [bookServices]);
 
@@ -1266,6 +1271,11 @@ const BulkRequestModal = ({
               <MediaQualitySelect
                 value={format}
                 options={[
+                  {
+                    label: intl.formatMessage(getBookFormatMessage('both')),
+                    value: 'both',
+                    disabled: !formatAvailable.both,
+                  },
                   {
                     label: intl.formatMessage(getBookFormatMessage('ebook')),
                     value: 'ebook',

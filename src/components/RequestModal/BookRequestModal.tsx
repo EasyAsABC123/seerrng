@@ -144,7 +144,7 @@ interface BookRequestModalProps {
 
 const BookRequestModal = ({
   bookId,
-  initialBookFormat = 'ebook',
+  initialBookFormat = 'both',
   initialEditionChoice,
   onCancel,
   onComplete,
@@ -161,10 +161,8 @@ const BookRequestModal = ({
     hasPermission(Permission.ADMIN)
   );
   const [isUpdating, setIsUpdating] = useState(false);
-  const [bookFormat, setBookFormat] = useState<'ebook' | 'audiobook'>(
-    (editRequest?.bookFormat ?? initialBookFormat) === 'audiobook'
-      ? 'audiobook'
-      : 'ebook'
+  const [bookFormat, setBookFormat] = useState<'ebook' | 'audiobook' | 'both'>(
+    editRequest?.bookFormat ?? initialBookFormat
   );
   const [hasUserSelectedFormat, setHasUserSelectedFormat] = useState(false);
   const [selectedIsbn, setSelectedIsbn] = useState<string>('');
@@ -220,8 +218,10 @@ const BookRequestModal = ({
     'book'
   );
   const visibleEditionCandidates = useMemo(() => {
-    const candidates = (data?.isbnCandidates ?? []).filter((candidate) =>
-      isbnCandidateSupportsFormat(candidate, bookFormat)
+    const candidates = (data?.isbnCandidates ?? []).filter(
+      (candidate) =>
+        bookFormat !== 'both' &&
+        isbnCandidateSupportsFormat(candidate, bookFormat)
     );
     if (!preferredBookLanguage) {
       return candidates.slice(0, 25);
@@ -267,10 +267,10 @@ const BookRequestModal = ({
   const ebookDestination = createRequestDestination(
     'readarr',
     'ebook',
-    bookFormat === 'ebook'
+    bookFormat !== 'audiobook'
       ? (selectedService ?? defaultEbookService)
       : defaultEbookService,
-    bookFormat === 'ebook' ? requestOverrides : null
+    bookFormat !== 'audiobook' ? requestOverrides : null
   );
   const audiobookDestination = createRequestDestination(
     'readarr',
@@ -284,7 +284,7 @@ const BookRequestModal = ({
     (bookFormat === 'audiobook' ? audiobookDestination : ebookDestination)
       ?.serverId ?? undefined;
   const { data: editionComparison } = useBookEditions(
-    data
+    data && bookFormat !== 'both'
       ? {
           bookId: data.id,
           mediaId: data.mediaInfo?.id,
@@ -307,7 +307,11 @@ const BookRequestModal = ({
       (editionChoice.policy === 'alongside' &&
         !editionComparison?.supportsAlongside));
   const selectedDestinations =
-    bookFormat === 'audiobook' ? [audiobookDestination] : [ebookDestination];
+    bookFormat === 'both'
+      ? [ebookDestination, audiobookDestination]
+      : bookFormat === 'audiobook'
+        ? [audiobookDestination]
+        : [ebookDestination];
   const destinationAvailable = (format: 'ebook' | 'audiobook') =>
     !!data?.mediaInfo &&
     isBookDestinationFileAvailable(
@@ -367,11 +371,7 @@ const BookRequestModal = ({
   );
 
   useEffect(() => {
-    setBookFormat(
-      (editRequest?.bookFormat ?? initialBookFormat) === 'audiobook'
-        ? 'audiobook'
-        : 'ebook'
-    );
+    setBookFormat(editRequest?.bookFormat ?? initialBookFormat);
     setHasUserSelectedFormat(false);
     setSelectedIsbn(editRequest?.preferredIsbn13 ?? '');
     setEditionChoice(
@@ -567,7 +567,7 @@ const BookRequestModal = ({
     };
   }, [requestOverrides]);
 
-  const handleBookFormatChange = (value: 'ebook' | 'audiobook') => {
+  const handleBookFormatChange = (value: 'ebook' | 'audiobook' | 'both') => {
     if (bookServices && !formatAvailable[value]) {
       return;
     }
@@ -593,17 +593,31 @@ const BookRequestModal = ({
   );
   const notAvailable = intl.formatMessage(messages.notAvailable);
   const serviceLabel =
-    selectedService?.name ??
-    (bookFormat === 'audiobook'
-      ? defaultAudiobookService?.name
-      : defaultEbookService?.name) ??
-    notAvailable;
+    bookFormat === 'both'
+      ? new Intl.ListFormat(intl.locale, { type: 'conjunction' }).format(
+          [
+            selectedService?.name ?? defaultEbookService?.name,
+            defaultAudiobookService?.name,
+          ].filter((name): name is string => !!name)
+        ) || notAvailable
+      : (selectedService?.name ??
+        (bookFormat === 'audiobook'
+          ? defaultAudiobookService?.name
+          : defaultEbookService?.name) ??
+        notAvailable);
   const genres = data?.subjects?.slice(0, 3).join(', ') || notAvailable;
   const requestButtonLabel = isUpdating
     ? intl.formatMessage(globalMessages.requesting)
     : intl.formatMessage(globalMessages.request);
 
   const formatOptions = [
+    {
+      label: intl.formatMessage(globalMessages.ebookAndAudiobook),
+      value: 'both' as const,
+      disabled:
+        !formatAvailable.both ||
+        isProviderBookEdition(editRequest?.preferredEditionId),
+    },
     {
       label: intl.formatMessage(messages.ebook),
       value: 'ebook' as const,
@@ -682,10 +696,9 @@ const BookRequestModal = ({
             ? MediaStatus.PROCESSING
             : MediaStatus.PENDING
         );
-        const formatLabel =
-          bookFormat === 'ebook'
-            ? intl.formatMessage(messages.ebook)
-            : intl.formatMessage(messages.audiobook);
+        const formatLabel = intl.formatMessage(
+          getBookFormatMessage(bookFormat)
+        );
         addToast(
           <span>
             {intl.formatMessage(messages.requestSuccessWithFormat, {
@@ -1073,7 +1086,7 @@ const BookRequestModal = ({
             autoSelectAvailable={false}
             purpose="request"
           />
-          {!!data?.isbnCandidates?.length && (
+          {bookFormat !== 'both' && !!data?.isbnCandidates?.length && (
             <div className="flex flex-wrap items-center gap-2">
               {!!editionLanguages.length && (
                 <RequestListboxControl
@@ -1130,7 +1143,7 @@ const BookRequestModal = ({
             </div>
           )}
         </div>
-        {data && (
+        {data && bookFormat !== 'both' && (
           <EditionCardPicker
             bookId={data.id}
             serverId={editionServerId}
